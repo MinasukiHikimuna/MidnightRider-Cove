@@ -1,0 +1,53 @@
+{
+  "id": "hash-the-cove",
+  "name": "Hash The Cove",
+  "version": "1.0.0",
+  "description": "Calculates additional whole-file fingerprints for Cove video and gallery files.",
+  "author": "MidnightRider",
+  "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "categories": [
+    "metadata",
+    "tools"
+  ],
+  "minCoveVersion": "0.9.0",
+  "entryDll": "HashTheCove.dll",
+  "jsBundle": "ui/HashTheCove.js",
+  "dependencies": {},
+  "settings": [
+    {
+      "name": "xxhash",
+      "type": "BOOLEAN",
+      "displayName": "xxHash hashing",
+      "description": "Calculate xxHash64 fingerprints. Disabled until explicitly enabled."
+    },
+    {
+      "name": "sha256",
+      "type": "BOOLEAN",
+      "displayName": "SHA-256 hashing",
+      "description": "Calculate SHA-256 fingerprints. Disabled until explicitly enabled."
+    },
+    {
+      "name": "sha1",
+      "type": "BOOLEAN",
+      "displayName": "SHA-1 hashing",
+      "description": "Calculate SHA-1 fingerprints. Disabled until explicitly enabled."
+    },
+    {
+      "name": "hash_videos",
+      "type": "BOOLEAN",
+      "displayName": "Hash videos",
+      "description": "Process video files. Enabled when unset."
+    },
+    {
+      "name": "hash_galleries",
+      "type": "BOOLEAN",
+      "displayName": "Hash galleries",
+      "description": "Process gallery archive files. Enabled when unset."
+    }
+  ],
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

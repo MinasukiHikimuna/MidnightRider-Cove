@@ -1,78 +1,64 @@
-# Cove Multi-Extension Template
+# MidnightRider Cove Extensions
 
-Use this template when one repository owns multiple related Cove extensions. On
-GitHub, create new extension sets with the **Use this template** button.
+Native extensions for [Cove](https://github.com/yourcove/cove), maintained by
+MidnightRider. This private repository is licensed under AGPL-3.0-only.
+The XXH64 implementation is adapted from the BSD-2-Clause-licensed
+[xxHash v0.8.3 reference](https://github.com/Cyan4973/xxHash/tree/v0.8.3); its
+copyright and license notice are retained in both the source and `LICENSE`.
 
-After creating a repository from the template, replace the example extension IDs,
-namespaces, manifest fields, catalog entries, and workflow matrix values with
-your real extension set.
+## Hash The Cove
 
-## Extension metadata lives in `extension.json`
+Hash The Cove calculates lowercase `xxhash` (xxHash64), `sha256`, and `sha1`
+whole-file fingerprints for Cove video and gallery files. All algorithms and
+both media types are configurable. Hash algorithms are disabled by default and
+must be explicitly enabled; video and gallery selection is enabled by default.
 
-Each extension's `extension.json` is the single source of truth for its identity
-and metadata (`id`, `name`, `version`, `description`, `author`, `url`,
-`categories`, `minCoveVersion`, `entryDll`, `dependencies`). Do **not** redeclare
-any of these in C# — the example extensions extend `CoveExtensionBase`, which the
-host injects the parsed manifest into at load time and surfaces all of those
-values from it.
+Install the extension, configure it on Cove's Extensions settings page, then
+run **Hash The Cove** from the extension tasks page. Existing fingerprint types
+are matched case-insensitively and left untouched. Each file is streamed once
+for every missing enabled algorithm. Missing, unreadable, and files changed
+since Cove scanned them are reported as failures without stopping the job.
+Cancellation stops the job promptly.
 
-Implement whatever capability interfaces the extension needs alongside
-`CoveExtensionBase` and override only the methods you use:
+The algorithm and media choices are available at **Settings → Extensions →
+Hash The Cove**. `xxhash`, `sha256`, and `sha1` are disabled until explicitly
+enabled. Video and gallery processing are enabled by default.
 
-```csharp
-using Cove.Plugins;
-using Cove.Sdk;
+Before hashing begins, the task reports the distinct candidate file count and
+the number of fingerprints missing for each enabled algorithm. A file missing
+more than one enabled fingerprint is counted once in the candidate file total.
+Progress messages then report four totals:
 
-// Scraper: keep the capability interface, drop all metadata properties.
-public sealed class ExampleScraperExtension : CoveExtensionBase, IScraperProvider { /* ... */ }
+- `processed`: file records visited
+- `added`: new fingerprints inserted
+- `skipped`: files needing no insert
+- `failed`: files that could not be safely hashed
 
-// Downloader: same pattern.
-public sealed class ExampleDownloaderExtension : CoveExtensionBase, IDownloaderProvider { /* ... */ }
+## Development
 
-// UI: CoveExtensionBase already implements IUIExtension; override GetUIManifest() to contribute UI.
-public sealed class ExampleUiExtension : CoveExtensionBase { /* ... */ }
+Hash The Cove targets .NET 10 and released Cove 0.9.0 packages. To ensure a
+sibling Cove source checkout cannot mask package compatibility, validate and
+test with package mode forced:
+
+```bash
+node scripts/validate-extension-repo.mjs
+dotnet restore HashTheCove.slnx --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
+dotnet test HashTheCove.slnx --configuration Release --no-restore --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
 ```
 
-`extensions/catalog.json` lists every extension (id, path, tag prefix);
-`scripts/validate-extension-repo.mjs` checks the catalog and manifests stay
-consistent (including that each manifest's `minCoveVersion` is at least the
-repo's `CoveMinVersion`).
+To assemble version 1.0.0 manually, publish the project, place
+`HashTheCove.dll`, `extension.json`, `README.md`, and `LICENSE` at the package
+root, include `ui/HashTheCove.js`, stamp the manifest version, and run:
 
-## Build
-
-```powershell
-dotnet build -c Release
+```bash
+node scripts/validate-extension-package.mjs artifacts/HashTheCove 1.0.0
 ```
 
-## Cove host references and central build wiring
+## Publishing
 
-The repo-root `Directory.Build.props` and `Directory.Build.targets` centralize
-all Cove host-contract wiring, so each `.csproj` stays minimal. Any project with
-an `extension.json` automatically references the Cove host contracts
-(`Cove.Sdk` + `Cove.Core`) **compile-only** — the host provides them (and the EF
-Core / Npgsql / Pgvector infrastructure) at runtime, so they are never shipped in
-the package.
-
-- **Local dev:** if this repo is checked out beside `cove`
-  (`..\cove\src\Cove.Sdk` / `..\cove\src\Cove.Core` exist), `UseLocalCoveSource`
-  and `UseLocalCoveCore` auto-enable and the projects reference the local Cove
-  source via `ProjectReference`, so contract changes flow without a NuGet bump.
-- **CI / external authors:** otherwise the projects use `PackageReference` to the
-  published `Cove.Sdk` / `Cove.Core` packages at `CoveSdkVersion` /
-  `CoveCoreVersion` (both default to `CoveMinVersion`).
-
-Force package mode even with a sibling `cove` checkout present:
-
-```powershell
-dotnet build -p:UseLocalCoveSource=false -p:UseLocalCoveCore=false
-```
-
-## Release tags
-
-Each extension has its own tag prefix:
-
-- `example-ui/v0.1.0`
-- `example-downloader/v0.1.0`
-- `example-scraper/v0.1.0`
-
-The CI workflow only packages the extension that matches the pushed tag.
+Release tags use the `hash-the-cove/v<version>` form. The manifest version must
+match the tag, so version 1.0.0 is published by pushing
+`hash-the-cove/v1.0.0`. GitHub Actions validates the repository, restores and
+tests against released Cove packages, publishes the extension, validates its
+package contents, and creates both a ZIP and SHA-256 checksum. A successful tag
+build uploads those files to a GitHub release.

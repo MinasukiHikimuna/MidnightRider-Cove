@@ -1,4 +1,4 @@
-name: Build and Release Extensions
+name: Build, Test, and Release Extensions
 
 on:
   push:
@@ -11,7 +11,7 @@ env:
   DOTNET_VERSION: '10.0.x'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -47,7 +47,15 @@ jobs:
             process.exit(1);
           }
 
-          console.log(`Release tag '${tag}' targets ${extension.name} (${extension.id}) version ${versionTag.slice(1)}.`);
+          const releaseVersion = versionTag.slice(1);
+          const manifestPath = `${extension.path}/extension.json`;
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          if (manifest.version !== releaseVersion) {
+            console.error(`ERROR: Release tag version ${releaseVersion} does not match ${manifestPath} version ${manifest.version}.`);
+            process.exit(1);
+          }
+
+          console.log(`Release tag '${tag}' targets ${extension.name} (${extension.id}) version ${releaseVersion}.`);
           NODE
       - name: Build extension matrix
         id: catalog
@@ -104,28 +112,43 @@ jobs:
 
       - name: Restore
         if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: dotnet restore ${{ matrix.extension.path }} -p:UseLocalCoveSource=false -p:UseLocalCoveCore=false
+        run: dotnet restore HashTheCove.slnx --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
 
-      - name: Build
+      - name: Test
         if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: dotnet build ${{ matrix.extension.path }} -c Release --no-restore -p:Version=${{ steps.check.outputs.version }} -p:ContinuousIntegrationBuild=true -p:UseLocalCoveSource=false -p:UseLocalCoveCore=false
+        run: dotnet test HashTheCove.slnx --configuration Release --no-restore --property:Version=${{ steps.check.outputs.version }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
 
       - name: Publish
         if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: dotnet publish ${{ matrix.extension.path }} -c Release -o artifacts/${{ matrix.extension.name }} --no-build -p:Version=${{ steps.check.outputs.version }} -p:ContinuousIntegrationBuild=true -p:UseLocalCoveSource=false -p:UseLocalCoveCore=false
+        run: dotnet publish ${{ matrix.extension.path }} --configuration Release --output artifacts/publish/${{ matrix.extension.name }} --no-restore --property:Version=${{ steps.check.outputs.version }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
 
-      - name: Create manifest-only package root
-        if: steps.check.outputs.match == 'true' && matrix.extension.manifestOnly
+      - name: Create package root
+        if: steps.check.outputs.match == 'true'
         run: mkdir -p artifacts/${{ matrix.extension.name }}
 
       - name: Copy extension.json
         if: steps.check.outputs.match == 'true'
         run: cp ${{ matrix.extension.path }}/extension.json artifacts/${{ matrix.extension.name }}/
 
+      - name: Assemble native package files
+        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
+        run: |
+          cp artifacts/publish/${{ matrix.extension.name }}/${{ matrix.extension.name }}.dll artifacts/${{ matrix.extension.name }}/
+          cp README.md LICENSE artifacts/${{ matrix.extension.name }}/
+          cp -R ${{ matrix.extension.path }}/ui artifacts/${{ matrix.extension.name }}/
+
+      - name: Validate extension UI module
+        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
+        run: node --check ${{ matrix.extension.path }}/ui/${{ matrix.extension.name }}.js
+
       - name: Stamp packaged extension.json version
         if: steps.check.outputs.match == 'true'
         run: |
           node -e "const fs=require('fs'); const file='artifacts/${{ matrix.extension.name }}/extension.json'; const json=JSON.parse(fs.readFileSync(file,'utf8')); json.version='${{ steps.check.outputs.version }}'; fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');"
+
+      - name: Validate assembled package
+        if: steps.check.outputs.match == 'true'
+        run: node scripts/validate-extension-package.mjs artifacts/${{ matrix.extension.name }} ${{ steps.check.outputs.version }}
 
       - name: Package
         if: steps.check.outputs.match == 'true' && github.event_name != 'pull_request'
@@ -133,13 +156,18 @@ jobs:
         run: |
           cd artifacts/${{ matrix.extension.name }}
           zip -r ../../${{ matrix.extension.id }}-${{ steps.check.outputs.version }}.zip .
+          cd ../..
+          sha256sum ${{ matrix.extension.id }}-${{ steps.check.outputs.version }}.zip > ${{ matrix.extension.id }}-${{ steps.check.outputs.version }}.zip.sha256
 
       - name: Upload artifact
         if: steps.check.outputs.match == 'true' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.extension.id }}
-          path: ${{ matrix.extension.id }}-*.zip
+          path: |
+            ${{ matrix.extension.id }}-*.zip
+            ${{ matrix.extension.id }}-*.zip.sha256
+          if-no-files-found: error
 
   release:
     needs: build
@@ -153,5 +181,7 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v3
         with:
-          files: '*.zip'
+          files: |
+            *.zip
+            *.zip.sha256
           generate_release_notes: true

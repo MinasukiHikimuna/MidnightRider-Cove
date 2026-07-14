@@ -157,6 +157,15 @@ for (const entry of entries) {
   if (!manifest.version) errors.push(`${entry.id}: extension.json missing version`);
   if (coveMinVersion) validateVersionFloor(entry.id, "extension.json minCoveVersion", manifest.minCoveVersion, coveMinVersion);
   if (!isManifestOnly && !manifest.entryDll) errors.push(`${entry.id}: extension.json missing entryDll`);
+  if (manifest.jsBundle) {
+    const jsBundlePath = path.resolve(extensionDir, manifest.jsBundle);
+    const relativeBundlePath = path.relative(extensionDir, jsBundlePath);
+    if (relativeBundlePath.startsWith("..") || path.isAbsolute(relativeBundlePath)) {
+      errors.push(`${entry.id}: jsBundle must stay within the extension directory`);
+    } else if (!fs.existsSync(jsBundlePath)) {
+      errors.push(`${entry.id}: jsBundle does not exist: ${manifest.jsBundle}`);
+    }
+  }
   if (isManifestOnly && manifest.entryDll) errors.push(`${entry.id}: manifestOnly entry must not declare entryDll`);
   if (isManifestOnly && !["bundle", "scraper-pack"].includes(manifest.kind)) {
     errors.push(`${entry.id}: manifestOnly entries must use kind=bundle or kind=scraper-pack`);

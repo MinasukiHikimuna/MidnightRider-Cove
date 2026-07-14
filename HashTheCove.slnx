@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/extensions/">
+    <Project Path="extensions/HashTheCove/HashTheCove.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HashTheCove.Tests/HashTheCove.Tests.csproj" />
+  </Folder>
+</Solution>
