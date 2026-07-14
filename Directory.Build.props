@@ -7,9 +7,11 @@
     <CoveMinVersion Condition="'$(CoveMinVersion)' == ''">0.9.0</CoveMinVersion>
     <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
     <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
-    <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == '' and Exists('$(MSBuildThisFileDirectory)..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">true</UseLocalCoveSource>
+    <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>
+    <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">$(MSBuildThisFileDirectory)..\cove</CoveSourceRoot>
+    <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj')">true</UseLocalCoveSource>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == ''">false</UseLocalCoveSource>
-    <UseLocalCoveCore Condition="'$(UseLocalCoveCore)' == '' and Exists('$(MSBuildThisFileDirectory)..\cove\src\Cove.Core\Cove.Core.csproj')">true</UseLocalCoveCore>
+    <UseLocalCoveCore Condition="'$(UseLocalCoveCore)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Core\Cove.Core.csproj')">true</UseLocalCoveCore>
     <UseLocalCoveCore Condition="'$(UseLocalCoveCore)' == ''">false</UseLocalCoveCore>
   </PropertyGroup>
 

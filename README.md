@@ -54,6 +54,28 @@ root, include `ui/HashTheCove.js`, stamp the manifest version, and run:
 node scripts/validate-extension-package.mjs artifacts/HashTheCove 1.0.0
 ```
 
+### Cove devbox workflow
+
+The Cove devbox `extensions` profile mounts this checkout and supplies the active
+Cove worktree through `COVE_SOURCE_ROOT`. Inside that devbox, build any cataloged
+extension against the current Cove source with:
+
+```bash
+cd "$COVE_EXTENSION_WORKSPACE"
+node scripts/package-extension.mjs --extension <extension-id> --configuration Debug
+```
+
+For example, `--extension hash-the-cove` builds the extension currently present
+in this repository. The packager prints its stable development URL in the form:
+
+```text
+http://127.0.0.1:4174/<extension-id>-dev.zip
+```
+
+Use **Settings → Extensions → Install from URL** to install it. Re-run the package
+command and install the same URL again to replace the running extension without
+restarting Cove.
+
 ## Publishing
 
 Release tags use the `hash-the-cove/v<version>` form. The manifest version must
