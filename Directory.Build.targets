@@ -10,7 +10,7 @@
     identity of types that cross the host boundary (entities, DbContext, Pgvector.Vector, …) and silently
     break casts and DI.
 
-      * Local dev (sibling ../cove checkout present) → ProjectReference, so changes flow without a NuGet bump.
+      * Local dev (COVE_SOURCE_ROOT or sibling ../cove checkout) → ProjectReference, so changes flow without a NuGet bump.
       * CI / external authors          → PackageReference to the published Cove.* packages.
 
     When the Cove.Sdk *package* is used, its own buildTransitive/Cove.Sdk.targets also strips the host
@@ -19,7 +19,7 @@
   -->
 
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json') and '$(UseLocalCoveSource)' == 'true'">
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\cove\src\Cove.Sdk\Cove.Sdk.csproj">
+    <ProjectReference Include="$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json') and '$(UseLocalCoveCore)' == 'true'">
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\cove\src\Cove.Core\Cove.Core.csproj">
+    <ProjectReference Include="$(CoveSourceRoot)\src\Cove.Core\Cove.Core.csproj">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
