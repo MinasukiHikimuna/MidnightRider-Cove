@@ -118,39 +118,36 @@ public sealed class PreviewHealthAndMaintenanceTests
     }
 
     [Fact]
-    public async Task Deleting_preview_updates_the_tag_timestamp()
+    public async Task Deleting_preview_removes_extension_state_without_mutating_the_tag()
     {
         var tag = new Tag { Id = 9, Name = "Kissing", UpdatedAt = DateTime.UnixEpoch };
-        var tags = new MaintenanceTags(tag);
         var state = new MaintenanceState
         {
             Previews = [Record(9, "preview-blob")],
         };
-        var maintenance = new PreviewMaintenanceService(state, new RecordingDeleteBlobs(), tags, new PreviewMutationGate());
+        var maintenance = new PreviewMaintenanceService(state, new RecordingDeleteBlobs(), new MaintenanceTags(tag), new PreviewMutationGate());
 
         var result = await maintenance.DeleteAsync(9, CancellationToken.None);
 
         Assert.True(result.Deleted);
-        Assert.Equal(1, tags.TouchCount);
-        Assert.True(tag.UpdatedAt > DateTime.UnixEpoch);
+        Assert.Equal(DateTime.UnixEpoch, tag.UpdatedAt);
+        Assert.Empty(state.Previews);
     }
 
     [Fact]
-    public async Task Timestamp_failure_does_not_skip_preview_blob_cleanup()
+    public async Task Deleting_preview_keeps_state_blob_cleanup_order()
     {
         var events = new List<string>();
-        var tags = new MaintenanceTags(new Tag { Id = 9, Name = "Kissing" }) { FailTouch = true };
         var state = new MaintenanceState(events)
         {
             Previews = [Record(9, "preview-blob")],
         };
-        var maintenance = new PreviewMaintenanceService(state, new RecordingDeleteBlobs(events), tags, new PreviewMutationGate());
+        var maintenance = new PreviewMaintenanceService(state, new RecordingDeleteBlobs(events), new MaintenanceTags(9), new PreviewMutationGate());
 
         var result = await maintenance.DeleteAsync(9, CancellationToken.None);
 
         Assert.True(result.Deleted);
         Assert.True(result.BlobDeleted);
-        Assert.Equal(1, tags.TouchCount);
         Assert.Equal(["state.remove:9", "blob.delete:preview-blob", "state.untrack:preview-blob"], events);
     }
 
@@ -231,23 +228,10 @@ public sealed class PreviewHealthAndMaintenanceTests
         private MaintenanceTags(Tag[] existing)
             => _existing = existing.ToDictionary(tag => tag.Id);
 
-        public int TouchCount { get; private set; }
-        public bool FailTouch { get; set; }
-
         public Task<Tag?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult(_existing.GetValueOrDefault(id));
         public Task<IReadOnlyList<Tag>> GetAllAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<Tag> AddAsync(Tag entity, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpdateAsync(Tag entity, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<bool> TouchAsync(int id, CancellationToken ct = default)
-        {
-            TouchCount++;
-            if (FailTouch)
-                throw new InvalidOperationException("simulated timestamp failure");
-            if (!_existing.TryGetValue(id, out var tag))
-                return Task.FromResult(false);
-            tag.UpdatedAt = DateTime.UtcNow;
-            return Task.FromResult(true);
-        }
         public Task DeleteAsync(int id, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int> CountAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<(IReadOnlyList<Tag> Items, int TotalCount)> FindAsync(TagFilter? filter, FindFilter? findFilter, CancellationToken ct = default) => throw new NotSupportedException();

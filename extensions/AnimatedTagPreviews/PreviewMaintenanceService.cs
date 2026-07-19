@@ -22,9 +22,6 @@ public sealed class PreviewMaintenanceService(
         if (record is null)
             return new DeletePreviewResponse(tagId, Deleted: false, BlobDeleted: false);
 
-        try { await tags.TouchAsync(tagId, CancellationToken.None); }
-        catch { }
-
         var blobDeleted = false;
         try
         {

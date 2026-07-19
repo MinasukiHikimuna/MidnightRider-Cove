@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AnimatedTagPreviews;
 using Cove.Plugins;
 
@@ -38,6 +39,42 @@ public sealed class PreviewStateStoreTests
         Assert.Equal("inherit", settings.CardFit);
         Assert.True(settings.MatchCardAspectRatio);
     }
+
+    [Fact]
+    public async Task Entity_filter_tracks_presence_and_absence_after_publish_and_delete()
+    {
+        var extensionStore = new MemoryExtensionStore();
+        var state = new PreviewStateStore(() => extensionStore);
+        var provider = new AnimatedPreviewEntityFilterProvider(state);
+        var record = new PreviewRecord(
+            9,
+            "blob-id",
+            "content-version",
+            new PreviewRecipe(7, 11, 1.5, 5, 0.5, 0.25, 1.8, 720, "libvpx-vp9", 2140, 24, DateTimeOffset.UnixEpoch));
+
+        await state.PublishAsync(record);
+        var present = await provider.ResolveAsync(Request(true), default);
+        var absent = await provider.ResolveAsync(Request(false), default);
+
+        Assert.Equal([9], present.MatchingEntityIds);
+        Assert.Equal([8, 10], absent.MatchingEntityIds);
+        var publishedRevision = present.Revision;
+
+        await state.RemovePreviewAsync(9);
+        var afterDelete = await provider.ResolveAsync(Request(true), default);
+
+        Assert.Empty(afterDelete.MatchingEntityIds);
+        Assert.NotEqual(publishedRevision, afterDelete.Revision);
+    }
+
+    private static ExtensionEntityFilterRequest Request(bool value) => new(
+        "animated-tag-previews",
+        "tags",
+        "has-preview",
+        "equals",
+        JsonSerializer.SerializeToElement(value),
+        [8, 9, 10],
+        new ExtensionFilterPrincipal(null, "system", "System", [], ["*"]));
 
     private sealed class MemoryExtensionStore : IExtensionStore
     {

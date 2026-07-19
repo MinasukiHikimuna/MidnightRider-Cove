@@ -7,7 +7,7 @@ import { AnimatedTagMedia } from "../media";
 import { AnimatedPreviewSettings } from "../settings";
 import { __resetApiForTests, setApiTransportForTests } from "../api";
 import { __resetEditorStoreForTests } from "../editorStore";
-import { __resetPreviewCacheForTests, invalidatePreviewIndex, loadPreviewCache } from "../indexCache";
+import { __resetPreviewCacheForTests, getPreviewCacheSnapshot, invalidatePreviewIndex, loadPreviewCache } from "../indexCache";
 import { previewFrameTimestamps } from "../framePreview";
 
 const healthyDependencies = {
@@ -389,5 +389,57 @@ describe("preview index cache", () => {
     await invalidatePreviewIndex();
     expect(indexReads).toBe(2);
     expect(settingsReads).toBe(1);
+  });
+
+  it("refreshes the index when another tab broadcasts an invalidation", async () => {
+    let indexReads = 0;
+    const channels: FakeBroadcastChannel[] = [];
+    class FakeBroadcastChannel {
+      listeners: Array<() => void> = [];
+      posts: unknown[] = [];
+      constructor(_name: string) { channels.push(this); }
+      addEventListener(_type: string, listener: () => void) { this.listeners.push(listener); }
+      postMessage(message: unknown) { this.posts.push(message); }
+      close() {}
+      receive() { this.listeners.forEach((listener) => listener()); }
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel);
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/tags")) { indexReads += 1; return { version: String(indexReads), items: [] }; }
+      if (path.endsWith("/settings")) return {};
+      return {};
+    });
+
+    try {
+      await loadPreviewCache();
+      channels[0].receive();
+      await waitFor(() => expect(indexReads).toBe(2));
+      expect(channels[0].posts).toEqual([]);
+    } finally {
+      __resetPreviewCacheForTests();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not let a pre-invalidation index request repopulate the cache", async () => {
+    let resolveStale!: (value: { version: string; items: never[] }) => void;
+    let resolveFresh!: (value: { version: string; items: never[] }) => void;
+    const stale = new Promise<{ version: string; items: never[] }>((resolve) => { resolveStale = resolve; });
+    const fresh = new Promise<{ version: string; items: never[] }>((resolve) => { resolveFresh = resolve; });
+    let indexReads = 0;
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/tags")) return ++indexReads === 1 ? stale : fresh;
+      if (path.endsWith("/settings")) return {};
+      return {};
+    });
+
+    const initialLoad = loadPreviewCache();
+    const refresh = invalidatePreviewIndex();
+    resolveStale({ version: "stale", items: [] });
+    resolveFresh({ version: "fresh", items: [] });
+    await Promise.all([initialLoad, refresh]);
+
+    expect(indexReads).toBe(2);
+    expect(getPreviewCacheSnapshot().index?.version).toBe("fresh");
   });
 });

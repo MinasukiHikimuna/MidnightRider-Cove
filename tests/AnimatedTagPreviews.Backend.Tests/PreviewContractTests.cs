@@ -185,6 +185,9 @@ public sealed class PreviewContractTests
         Assert.Contains(manifest.Slots, slot => slot.Slot == "media-player-actions" && slot.ComponentName == "AnimatedPreviewPlayerAction");
         Assert.Contains(manifest.Slots, slot => slot.Slot == "media-player-overlay" && slot.ComponentName == "AnimatedPreviewPlayerOverlay");
         Assert.Contains(manifest.ComponentOverrides, component => component.TargetComponent == "entity.media" && component.ComponentName == "AnimatedTagMedia");
+        Assert.Contains(manifest.ListFilters, filter => filter.EntityType == "tags"
+            && filter.FilterId == "has-preview"
+            && filter.CriterionType == "boolean");
         Assert.Contains(manifest.SettingsPanels, panel => panel.ComponentName == "AnimatedPreviewSettings");
     }
 }
