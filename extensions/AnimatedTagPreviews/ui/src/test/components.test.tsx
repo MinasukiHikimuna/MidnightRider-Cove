@@ -223,6 +223,48 @@ describe("preview editor", () => {
     expect(Array.from(view.container.querySelectorAll(".atp-thumbnails video"))).toEqual(videos);
   });
 
+  it("updates decoded crop previews only after a pointer drag finishes", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/videos/12/source")) return { fileId: 91 };
+      return {};
+    });
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+    const view = render(<><AnimatedPreviewPlayerAction {...context()} /><AnimatedPreviewPlayerOverlay {...context()} /></>);
+    await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await waitFor(() => expect(view.container.querySelectorAll(".atp-thumbnails video")).toHaveLength(2));
+    for (const video of view.container.querySelectorAll(".atp-thumbnails video")) {
+      Object.defineProperties(video, {
+        duration: { configurable: true, value: 100 },
+        readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA },
+        videoWidth: { configurable: true, value: 1920 },
+        videoHeight: { configurable: true, value: 1080 },
+      });
+      fireEvent.loadedData(video);
+      fireEvent.seeked(video);
+    }
+    drawImage.mockClear();
+
+    const cropEditor = screen.getByRole("application", { name: /crop/i });
+    Object.defineProperty(cropEditor, "setPointerCapture", { configurable: true, value: vi.fn() });
+    fireEvent.pointerDown(cropEditor, { pointerId: 1, clientX: 400, clientY: 200 });
+    fireEvent.pointerMove(cropEditor, { pointerId: 1, clientX: 420, clientY: 200 });
+
+    expect(drawImage).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(cropEditor, { pointerId: 1, clientX: 420, clientY: 200 });
+    expect(drawImage.mock.calls.filter(([source]) => source instanceof HTMLVideoElement)).toHaveLength(2);
+
+    drawImage.mockClear();
+    fireEvent.pointerDown(cropEditor, { pointerId: 2, clientX: 420, clientY: 200 });
+    fireEvent.pointerMove(cropEditor, { pointerId: 2, clientX: 440, clientY: 200 });
+    expect(drawImage).not.toHaveBeenCalled();
+
+    fireEvent.pointerCancel(cropEditor, { pointerId: 2, clientX: 440, clientY: 200 });
+    expect(drawImage.mock.calls.filter(([source]) => source instanceof HTMLVideoElement)).toHaveLength(2);
+  });
+
   it("presents and edits the start time as a compact timestamp between its nudges", async () => {
     const ctx = context();
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);

@@ -51,6 +51,7 @@ export function AnimatedPreviewPlayerOverlay(context: MediaPlayerExtensionContex
 
 function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionContext; sequence: number }) {
   const [crop, setCrop] = useState<CropRecipe>({ anchorX: 0.5, anchorY: 0.5, zoom: 1 });
+  const [previewCrop, setPreviewCrop] = useState<CropRecipe>({ anchorX: 0.5, anchorY: 0.5, zoom: 1 });
   const [startSeconds, setStartSeconds] = useState(context.currentTime);
   const [startTimestamp, setStartTimestamp] = useState(() => formatTimestamp(context.currentTime));
   const cache = useSyncExternalStore(subscribePreviewCache, getPreviewCacheSnapshot, getPreviewCacheSnapshot);
@@ -72,6 +73,7 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
   const [source, setSource] = useState<PreviewSource>();
   const [error, setError] = useState<string>();
   const dragRef = useRef<{ mode: "move" | "resize"; x: number; y: number } | undefined>(undefined);
+  const cropRef = useRef(crop);
   const [panelElement, setPanelElement] = useState<HTMLElement | null>(null);
   const terminalStatusRef = useRef<JobStatus["status"] | undefined>(undefined);
   const reviewActionRef = useRef(false);
@@ -103,6 +105,12 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
     closeRequestedRef.current = false;
     setCloseRequested(false);
     setCloseStatus(undefined);
+  }, []);
+  const applyCrop = useCallback((update: (current: CropRecipe) => CropRecipe, updatePreview: boolean) => {
+    const next = update(cropRef.current);
+    cropRef.current = next;
+    setCrop(next);
+    if (updatePreview) setPreviewCrop(next);
   }, []);
 
   const discardCandidate = useCallback(async (onSuccess: () => void, onFailure?: () => void) => {
@@ -228,13 +236,13 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
       const step = event.shiftKey ? 10 : 2;
       const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
       const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
-      if (event.altKey) setCrop((value) => resizeCropByPixels(value, context.contentRect, dx + dy, aspectRatio));
-      else setCrop((value) => moveCropByPixels(value, context.contentRect, dx, dy, aspectRatio));
+      if (event.altKey) applyCrop((value) => resizeCropByPixels(value, context.contentRect, dx + dy, aspectRatio), true);
+      else applyCrop((value) => moveCropByPixels(value, context.contentRect, dx, dy, aspectRatio), true);
       event.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [close, context.contentRect]);
+  }, [applyCrop, aspectRatio, close, context.contentRect]);
 
   useEffect(() => {
     if (!jobId || !tagId || terminal.has(job?.status ?? "pending")) return;
@@ -324,8 +332,12 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
     if (!drag) return;
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
-    setCrop((value) => drag.mode === "move" ? moveCropByPixels(value, context.contentRect, dx, dy, aspectRatio) : resizeCropByPixels(value, context.contentRect, Math.max(dx, dy), aspectRatio));
+    applyCrop((value) => drag.mode === "move" ? moveCropByPixels(value, context.contentRect, dx, dy, aspectRatio) : resizeCropByPixels(value, context.contentRect, Math.max(dx, dy), aspectRatio), false);
     dragRef.current = { ...drag, x: event.clientX, y: event.clientY };
+  };
+  const finishPointer = () => {
+    dragRef.current = undefined;
+    setPreviewCrop(cropRef.current);
   };
 
   const generate = async () => {
@@ -434,10 +446,11 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
         tabIndex={0}
         onPointerDown={beginPointer("move")}
         onPointerMove={movePointer}
-        onPointerUp={() => { dragRef.current = undefined; }}
+        onPointerUp={finishPointer}
+        onPointerCancel={finishPointer}
       >
         <span className="atp-crop-grid" />
-        <button type="button" className="atp-resize" aria-label="Resize crop" onPointerDown={(event) => { event.stopPropagation(); beginPointer("resize")(event); }} onPointerMove={movePointer} onPointerUp={() => { dragRef.current = undefined; }} />
+        <button type="button" className="atp-resize" aria-label="Resize crop" onPointerDown={(event) => { event.stopPropagation(); beginPointer("resize")(event); }} onPointerMove={movePointer} onPointerUp={finishPointer} onPointerCancel={finishPointer} />
       </div> : null}
       <aside ref={setPanelElement} className="atp-panel">
         <header><strong>Animated tag preview</strong><button type="button" className="atp-button atp-close" aria-label="Close preview editor" disabled={Boolean(reviewAction) || closeRequested} autoFocus onClick={close}>×</button></header>
@@ -460,8 +473,8 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
           </div>
           {error || closeStatus ? <div className="atp-status" aria-live="polite">{error ?? closeStatus}</div> : null}
         </div> : <><div className="atp-thumbnails">
-          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview mediaUrl={source.mediaUrl} seconds={previewTimes.first} crop={crop} aspectRatio={aspectRatio} alt="First preview frame" /> : null}<figcaption>{formatTime(previewTimes.first)}</figcaption></figure>
-          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview mediaUrl={source.mediaUrl} seconds={previewTimes.last} crop={crop} aspectRatio={aspectRatio} alt="Last preview frame" /> : null}<figcaption>{formatTime(previewTimes.last)}</figcaption></figure>
+          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview mediaUrl={source.mediaUrl} seconds={previewTimes.first} crop={previewCrop} aspectRatio={aspectRatio} alt="First preview frame" /> : null}<figcaption>{formatTime(previewTimes.first)}</figcaption></figure>
+          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview mediaUrl={source.mediaUrl} seconds={previewTimes.last} crop={previewCrop} aspectRatio={aspectRatio} alt="Last preview frame" /> : null}<figcaption>{formatTime(previewTimes.last)}</figcaption></figure>
         </div>
         <div className="atp-time-row" role="group" aria-label="Start time">
           {[-1, -0.1].map((delta) => <button type="button" className="atp-button" key={delta} onClick={() => nudgeStartTimestamp(delta)}>{delta}s</button>)}

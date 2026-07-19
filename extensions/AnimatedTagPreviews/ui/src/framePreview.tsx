@@ -14,8 +14,9 @@ export function DecodedFramePreview({ mediaUrl, seconds, crop, aspectRatio, alt 
   alt: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestIdRef = useRef(0);
-  const [preview, setPreview] = useState<{ imageUrl?: string; status: "loading" | "ready" | "error" }>({ status: "loading" });
+  const [preview, setPreview] = useState<{ hasFrame: boolean; status: "loading" | "ready" | "error" }>({ hasFrame: false, status: "loading" });
 
   useEffect(() => {
     const video = videoRef.current;
@@ -33,20 +34,25 @@ export function DecodedFramePreview({ mediaUrl, seconds, crop, aspectRatio, alt 
       if (!isCurrent()) return;
       if (!video.videoWidth || !video.videoHeight) { fail(); return; }
       try {
-        const canvas = document.createElement("canvas");
+        const output = canvasRef.current;
+        if (!output) { fail(); return; }
         const ratio = aspectRatioValue(aspectRatio);
-        canvas.width = 160;
-        canvas.height = Math.round(160 / ratio);
-        const context = canvas.getContext("2d");
-        if (!context) { fail(); return; }
+        const staged = document.createElement("canvas");
+        staged.width = 160;
+        staged.height = Math.round(160 / ratio);
+        const stagedContext = staged.getContext("2d");
+        if (!stagedContext) { fail(); return; }
         const sourceWidth = Math.min(video.videoWidth, video.videoHeight * ratio) / crop.zoom;
         const sourceHeight = sourceWidth / ratio;
         const sourceX = (video.videoWidth - sourceWidth) * crop.anchorX;
         const sourceY = (video.videoHeight - sourceHeight) * crop.anchorY;
-        context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-        const imageUrl = canvas.toDataURL("image/jpeg", 0.7);
-        if (!imageUrl) { fail(); return; }
-        if (isCurrent()) setPreview({ imageUrl, status: "ready" });
+        stagedContext.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, staged.width, staged.height);
+        const outputContext = output.getContext("2d");
+        if (!outputContext) { fail(); return; }
+        output.width = staged.width;
+        output.height = staged.height;
+        outputContext.drawImage(staged, 0, 0);
+        if (isCurrent()) setPreview({ hasFrame: true, status: "ready" });
       } catch {
         fail();
       }
@@ -97,10 +103,10 @@ export function DecodedFramePreview({ mediaUrl, seconds, crop, aspectRatio, alt 
     };
   }, [aspectRatio, crop.anchorX, crop.anchorY, crop.zoom, mediaUrl, seconds]);
 
-  const loadingLabel = preview.imageUrl ? `Updating ${alt}` : `Loading ${alt}`;
+  const loadingLabel = preview.hasFrame ? `Updating ${alt}` : `Loading ${alt}`;
 
   return <div className="atp-frame-preview" aria-busy={preview.status === "loading"}>
-    {preview.imageUrl ? <img src={preview.imageUrl} alt={alt} /> : null}
+    <canvas ref={canvasRef} role="img" aria-label={alt} hidden={!preview.hasFrame} />
     {preview.status !== "ready" ? <span
       className={`atp-frame-state is-${preview.status}`}
       role="status"
