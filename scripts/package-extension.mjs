@@ -50,6 +50,12 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
   fail(`version '${version}' is not a semantic version`);
 }
 
+if (extension.uiDirectory) {
+  const uiDirectory = path.join(root, extension.uiDirectory);
+  run("npm", ["ci"], { cwd: uiDirectory });
+  run("npm", ["run", "build"], { cwd: uiDirectory });
+}
+
 const artifactsRoot = path.join(root, "artifacts");
 const publishRoot = path.join(artifactsRoot, "publish", `${extension.name}-dev`);
 const packageRoot = path.join(artifactsRoot, "packages", extension.name);
@@ -83,7 +89,8 @@ if (!fs.existsSync(assemblyPath)) fail(`publish output is missing ${path.basenam
 const packagedAssemblyPath = path.join(packageRoot, manifest.entryDll);
 fs.mkdirSync(path.dirname(packagedAssemblyPath), { recursive: true });
 fs.copyFileSync(assemblyPath, packagedAssemblyPath);
-fs.copyFileSync(path.join(root, "README.md"), path.join(packageRoot, "README.md"));
+const extensionReadme = path.join(extensionRoot, "README.md");
+fs.copyFileSync(fs.existsSync(extensionReadme) ? extensionReadme : path.join(root, "README.md"), path.join(packageRoot, "README.md"));
 fs.copyFileSync(path.join(root, "LICENSE"), path.join(packageRoot, "LICENSE"));
 
 for (const declaredAsset of [manifest.jsBundle, manifest.cssBundle].filter(Boolean)) {

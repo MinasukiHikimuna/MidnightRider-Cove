@@ -5,7 +5,18 @@
       "name": "HashTheCove",
       "id": "hash-the-cove",
       "path": "extensions/HashTheCove",
-      "tagPrefix": "hash-the-cove/"
+      "tagPrefix": "hash-the-cove/",
+      "solution": "HashTheCove.slnx"
+    },
+    {
+      "name": "AnimatedTagPreviews",
+      "id": "animated-tag-previews",
+      "path": "extensions/AnimatedTagPreviews",
+      "tagPrefix": "animated-tag-previews/",
+      "solution": "AnimatedTagPreviews.slnx",
+      "uiDirectory": "extensions/AnimatedTagPreviews/ui",
+      "developmentCoveRepository": "MinasukiHikimuna/cove",
+      "developmentCoveRef": "feature/extension-media-runtime"
     }
   ]
 }
