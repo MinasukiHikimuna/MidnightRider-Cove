@@ -24,7 +24,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         services.AddSingleton<ITemporaryFileProvider, TemporaryFileProvider>();
         services.AddSingleton<IPreviewHealthService, PreviewHealthService>();
         services.AddSingleton<PreviewMutationGate>();
-        services.AddSingleton<IPreviewMaintenanceService, PreviewMaintenanceService>();
+        services.AddScoped<IPreviewMaintenanceService, PreviewMaintenanceService>();
         services.AddSingleton<IPreviewJobCoordinator, PreviewJobCoordinator>();
         services.AddSingleton<IExtensionEntityFilterProvider, AnimatedPreviewEntityFilterProvider>();
         services.AddScoped<IPreviewGenerationService, PreviewGenerationService>();

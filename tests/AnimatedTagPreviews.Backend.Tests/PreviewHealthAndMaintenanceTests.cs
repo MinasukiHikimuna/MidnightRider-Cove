@@ -2,11 +2,26 @@ using System.Diagnostics;
 using AnimatedTagPreviews;
 using Cove.Core.Entities;
 using Cove.Core.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AnimatedTagPreviews.Backend.Tests;
 
 public sealed class PreviewHealthAndMaintenanceTests
 {
+    [Fact]
+    public void Extension_registration_resolves_maintenance_from_a_validated_request_scope()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IBlobService>(new RecordingDeleteBlobs());
+        services.AddScoped<ITagRepository>(_ => new MaintenanceTags());
+        new AnimatedTagPreviewsExtension().ConfigureServices(services, null!);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        using var scope = provider.CreateScope();
+
+        Assert.IsType<PreviewMaintenanceService>(
+            scope.ServiceProvider.GetRequiredService<IPreviewMaintenanceService>());
+    }
+
     [Fact]
     public async Task Health_requires_ffmpeg_ffprobe_and_libvpx_vp9()
     {
