@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/extensions/">
+    <Project Path="extensions/AnimatedTagPreviews/AnimatedTagPreviews.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AnimatedTagPreviews.Backend.Tests/AnimatedTagPreviews.Backend.Tests.csproj" />
+  </Folder>
+</Solution>

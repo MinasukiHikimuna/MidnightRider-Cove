@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>AnimatedTagPreviews</AssemblyName>
+    <RootNamespace>AnimatedTagPreviews</RootNamespace>
+    <!-- Temporary until Cove releases the extension media runtime. -->
+    <CoveMinVersion>1.0.0</CoveMinVersion>
+    <CoveSdkVersion>$(CoveMinVersion)</CoveSdkVersion>
+    <CoveCoreVersion>$(CoveMinVersion)</CoveCoreVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

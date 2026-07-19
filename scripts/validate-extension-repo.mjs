@@ -140,6 +140,17 @@ for (const entry of entries) {
   const projectPath = path.join(extensionDir, `${entry.name}.csproj`);
   const isManifestOnly = entry.manifestOnly === true;
 
+  if (!isManifestOnly) {
+    if (!entry.solution) errors.push(`${entry.id}: missing solution`);
+    else if (!fs.existsSync(path.join(root, entry.solution))) errors.push(`${entry.id}: solution does not exist: ${entry.solution}`);
+  }
+  if (entry.uiDirectory && !fs.existsSync(path.join(root, entry.uiDirectory, "package.json"))) {
+    errors.push(`${entry.id}: uiDirectory does not contain package.json: ${entry.uiDirectory}`);
+  }
+  if (Boolean(entry.developmentCoveRepository) !== Boolean(entry.developmentCoveRef)) {
+    errors.push(`${entry.id}: developmentCoveRepository and developmentCoveRef must be specified together`);
+  }
+
   if (!fs.existsSync(extensionDir)) {
     errors.push(`${entry.id}: path does not exist: ${entry.path}`);
     continue;
@@ -162,8 +173,17 @@ for (const entry of entries) {
     const relativeBundlePath = path.relative(extensionDir, jsBundlePath);
     if (relativeBundlePath.startsWith("..") || path.isAbsolute(relativeBundlePath)) {
       errors.push(`${entry.id}: jsBundle must stay within the extension directory`);
-    } else if (!fs.existsSync(jsBundlePath)) {
+    } else if (!fs.existsSync(jsBundlePath) && !entry.uiDirectory) {
       errors.push(`${entry.id}: jsBundle does not exist: ${manifest.jsBundle}`);
+    }
+  }
+  if (manifest.cssBundle) {
+    const cssBundlePath = path.resolve(extensionDir, manifest.cssBundle);
+    const relativeBundlePath = path.relative(extensionDir, cssBundlePath);
+    if (relativeBundlePath.startsWith("..") || path.isAbsolute(relativeBundlePath)) {
+      errors.push(`${entry.id}: cssBundle must stay within the extension directory`);
+    } else if (!fs.existsSync(cssBundlePath) && !entry.uiDirectory) {
+      errors.push(`${entry.id}: cssBundle does not exist: ${manifest.cssBundle}`);
     }
   }
   if (isManifestOnly && manifest.entryDll) errors.push(`${entry.id}: manifestOnly entry must not declare entryDll`);

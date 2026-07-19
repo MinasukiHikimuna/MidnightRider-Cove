@@ -1,10 +1,22 @@
 # MidnightRider Cove Extensions
 
+<!-- TODO(COVE_MIN_VERSION): Before the first Animated Tag Previews release,
+replace its temporary Cove 1.0.0 minimum with the production Cove version that
+contains the extension media runtime changes, then remove this comment. -->
+
 Native extensions for [Cove](https://github.com/yourcove/cove), maintained by
 MidnightRider. This private repository is licensed under AGPL-3.0-only.
 The XXH64 implementation is adapted from the BSD-2-Clause-licensed
 [xxHash v0.8.3 reference](https://github.com/Cyan4973/xxHash/tree/v0.8.3); its
 copyright and license notice are retained in both the source and `LICENSE`.
+
+## Animated Tag Previews
+
+Animated Tag Previews creates cropped VP9 WebM previews from existing Cove
+videos and displays them as optional animated tag media. It includes a player
+tool for choosing the time, crop, playback speed, and tag, plus settings for
+card, hero, hover, aspect-ratio, and fit behavior. See the extension's
+`README.md` for security, storage, and lifecycle details.
 
 ## Hash The Cove
 

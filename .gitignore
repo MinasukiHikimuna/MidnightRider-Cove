@@ -1,5 +1,7 @@
 **/bin/*
 **/obj/*
 artifacts/
+extensions/AnimatedTagPreviews/dist/
+extensions/AnimatedTagPreviews/ui/node_modules/
 *.zip
 .DS_Store
