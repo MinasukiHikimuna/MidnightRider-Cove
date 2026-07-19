@@ -7,6 +7,12 @@ namespace AnimatedTagPreviews;
 public static class FfprobeCommandBuilder
 {
     public static ProcessStartInfo Build(string executable, string outputPath)
+        => Build(executable, outputPath, includeAllStreams: false);
+
+    public static ProcessStartInfo BuildForUpload(string executable, string outputPath)
+        => Build(executable, outputPath, includeAllStreams: true);
+
+    private static ProcessStartInfo Build(string executable, string outputPath, bool includeAllStreams)
     {
         var info = new ProcessStartInfo
         {
@@ -16,12 +22,17 @@ public static class FfprobeCommandBuilder
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
-        foreach (var value in new[]
+        var arguments = new List<string>
         {
-            "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=codec_name,width,height:format=format_name,duration",
+            "-v", "error",
+        };
+        if (!includeAllStreams)
+            arguments.AddRange(["-select_streams", "v:0"]);
+        arguments.AddRange([
+            "-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate:format=format_name,duration",
             "-of", "json", outputPath,
-        })
+        ]);
+        foreach (var value in arguments)
             info.ArgumentList.Add(value);
         return info;
     }

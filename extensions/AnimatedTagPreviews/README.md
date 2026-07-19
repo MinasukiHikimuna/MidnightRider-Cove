@@ -1,8 +1,9 @@
 # Animated Tag Previews
 
-Animated Tag Previews is a separately packaged Cove extension that turns a short, square crop from
-an existing video into optional animated media for a tag. It uses Cove's entity-media and player-tool
-extension contracts; it does not replace the video player, tag card, tag page, or normal tag image.
+Animated Tag Previews is a separately packaged Cove extension that turns a short crop from an existing
+video, or a custom VP9 WebM, into optional animated media for a tag. It uses Cove's entity-media,
+entity-cover-editor, and player-tool extension contracts; it does not replace the video player, tag
+card, tag page, or normal tag image.
 
 ## Requirements and setup
 
@@ -42,16 +43,26 @@ CPU-intensive encoding. Extension settings can instead generate square or 16:9 p
 whether card media inherits Cove's image fit or uses cover/contain explicitly, and make animated
 cards in the top-level Tags grid match the configured preview aspect ratio.
 
+To supply a finished animation instead, open a tag, choose **Change cover**, and use **Upload WebM**
+in the Animated preview section. The upload is published immediately and stored byte-for-byte without
+re-encoding. It must contain exactly one VP9 video stream with no audio or attachments, use even
+dimensions within the configured maximum width, remain within the configured duration limit, and
+have a frame rate from 1 through 60 frames per second. The upload limit is 100 MiB. Replacing or
+deleting a custom upload uses the same controls in that section; the ordinary static cover remains
+independent and continues to act as its poster and fallback.
+
 On supported tag cards and heroes, the regular tag image remains the poster and fallback. Animated
 media is lazy-loaded, paused outside the viewport or while the document is hidden, and replaced by the
 static image when playback fails. Cove's reduced-motion preference always uses static media by default.
 
 ## Storage, privacy, and security
 
-Generated WebM bytes are stored through Cove's disk-backed blob service. The extension database store
-contains only a tag-to-blob reference, a content version, settings, and a compact generation recipe.
-Recipes may contain Cove video and file IDs, crop coordinates, timing, encoder settings, and creation
-time. They never contain media bytes, base64 video, or physical source paths.
+Generated and uploaded WebM bytes are stored through Cove's disk-backed blob service. The extension
+database store contains only a tag-to-blob reference, a content version, settings, and compact origin
+metadata. Generated recipes may contain Cove video and file IDs, crop coordinates, timing, encoder
+settings, and creation time. Upload metadata contains dimensions, duration, frame rate, and creation
+time. Neither form contains media bytes, base64 video, original filenames, byte counts, or physical
+source paths.
 
 Temporary output is written under Cove-managed temporary/cache storage and deleted after success,
 failure, cancellation, or timeout. Generated media is never written into this installed extension
@@ -94,6 +105,11 @@ and browser media error. The normal image should remain visible throughout.
 **Generation is rejected.** Confirm read access to the video, write access to the tag, valid source
 media, and crop/time values within the video bounds. Authorization deliberately runs before source
 path lookup, so a restricted request does not disclose whether a physical file exists.
+
+**A custom WebM is rejected.** Confirm it uses the WebM container with one VP9 video stream, no audio
+or attachments, even dimensions within the configured maximum, a duration within the configured
+limit, and a frame rate from 1 through 60 frames per second. Uploading requires write access to the
+tag and is limited to 100 MiB.
 
 **A job fails or times out.** Check free space in Cove's cache and blob locations, then inspect the
 bounded job error. Full FFmpeg stderr is intentionally not retained. Cancellation and timeout kill the

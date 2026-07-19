@@ -13,10 +13,11 @@ copyright and license notice are retained in both the source and `LICENSE`.
 ## Animated Tag Previews
 
 Animated Tag Previews creates cropped VP9 WebM previews from existing Cove
-videos and displays them as optional animated tag media. It includes a player
-tool for choosing the time, crop, playback speed, and tag, plus settings for
-card, hero, hover, aspect-ratio, and fit behavior. See the extension's
-`README.md` for security, storage, and lifecycle details.
+videos or accepts a custom VP9 WebM from the tag cover editor, then displays it
+as optional animated tag media. It includes a player tool for choosing the
+time, crop, playback speed, and tag, plus settings for card, hero, hover,
+aspect-ratio, and fit behavior. See the extension's `README.md` for security,
+storage, and lifecycle details.
 
 ## Hash The Cove
 

@@ -6,6 +6,7 @@ import type { MediaPlayerExtensionContext } from "@cove/runtime/components";
 import { AnimatedPreviewPlayerAction, AnimatedPreviewPlayerOverlay } from "../editor";
 import { AnimatedTagMedia } from "../media";
 import { AnimatedPreviewSettings } from "../settings";
+import { AnimatedTagCoverEditor } from "../coverEditor";
 import { ApiError, __resetApiForTests, setApiTransportForTests } from "../api";
 import { __resetEditorStoreForTests } from "../editorStore";
 import { __resetPreviewCacheForTests, getPreviewCacheSnapshot, invalidatePreviewIndex, loadPreviewCache } from "../indexCache";
@@ -828,6 +829,47 @@ describe("animated tag media", () => {
     });
     await waitFor(() => expect(pause).toHaveBeenCalled());
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
+  });
+});
+
+describe("animated tag cover editor", () => {
+  it("renders only for tag cover contexts", () => {
+    render(<AnimatedTagCoverEditor entityType="performer" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+    expect(screen.queryByRole("region", { name: "Animated preview" })).not.toBeInTheDocument();
+  });
+
+  it("uploads a multipart WebM and immediately refreshes the published preview", async () => {
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    let uploaded = false;
+    setApiTransportForTests(async (path, init) => {
+      requests.push({ path, init });
+      if (path.endsWith("/tags/7/media") && init?.method === "POST") {
+        uploaded = true;
+        return { tagId: 7, version: "uploaded-v1", replacedExisting: false };
+      }
+      if (path.endsWith("/settings")) return {};
+      if (path.endsWith("/tags")) return { version: uploaded ? "2" : "1", items: uploaded ? [{ tagId: 7, version: "uploaded-v1" }] : [] };
+      return {};
+    });
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "custom.webm", { type: "video/webm" });
+    await userEvent.upload(screen.getByLabelText("Animated preview").querySelector('input[type="file"]') as HTMLInputElement, file);
+
+    await waitFor(() => expect(screen.getByLabelText("Current animated preview")).toBeInTheDocument());
+    const upload = requests.find((request) => request.path.endsWith("/tags/7/media") && request.init?.method === "POST");
+    expect(upload?.init?.body).toBeInstanceOf(FormData);
+    expect(upload?.init?.headers).toBeUndefined();
+  });
+
+  it("does not present the static cover as an animated preview when none exists", async () => {
+    setApiTransportForTests(async (path) => path.endsWith("/tags") ? { version: "1", items: [] } : {});
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    expect(await screen.findByText("Drop a custom WebM here")).toBeInTheDocument();
+    expect(screen.queryByAltText("Static tag cover")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Current animated preview")).not.toBeInTheDocument();
   });
 });
 

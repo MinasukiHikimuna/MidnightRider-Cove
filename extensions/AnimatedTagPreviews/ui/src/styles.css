@@ -78,6 +78,16 @@
 .atp-status { min-height: 1.25rem; margin-top: 0.4rem; color: var(--color-secondary); }
 .atp-review { display: grid; gap: 0.65rem; }
 .atp-review-tag { font-size: 0.95rem; }
+
+.atp-cover-editor { margin-top: .75rem; border-top: 1px solid var(--color-border, #374151); padding-top: .75rem; }
+.atp-cover-heading { margin-bottom: .5rem; font-size: .875rem; font-weight: 600; }
+.atp-cover-drop { position: relative; display: flex; aspect-ratio: 16 / 9; cursor: pointer; align-items: center; justify-content: center; overflow: hidden; border: 1px dashed var(--color-border, #4b5563); border-radius: .5rem; background: rgba(0,0,0,.18); color: #9ca3af; }
+.atp-cover-drop video, .atp-cover-drop img { width: 100%; height: 100%; object-fit: contain; }
+.atp-cover-busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.68); color: white; }
+.atp-cover-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+.atp-cover-help { margin-top: .5rem; color: #9ca3af; font-size: .75rem; }
+.atp-hidden-input { display: none; }
+.atp-danger { margin-left: auto; color: #f87171; }
 .atp-review-media { display: block; width: 100%; border-radius: 0.4rem; background: black; object-fit: contain; }
 .atp-review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
 .atp-review-actions .atp-primary { margin-top: 0; }

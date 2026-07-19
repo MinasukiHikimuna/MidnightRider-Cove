@@ -85,7 +85,7 @@ public sealed class PreviewMaintenanceService(
             .Concat(liveCandidates.Select(record => record.BlobId))
             .ToHashSet(StringComparer.Ordinal);
         var orphans = owned
-            .Concat(stalePreviews.Select(record => new OwnedBlobRecord(record.BlobId, record.TagId, record.Recipe.CreatedAt)))
+            .Concat(stalePreviews.Select(record => new OwnedBlobRecord(record.BlobId, record.TagId, record.CreatedAt)))
             .Concat(staleCandidates.Select(record => new OwnedBlobRecord(record.BlobId, record.TagId, record.CreatedAt)))
             .Where(record => !referenced.Contains(record.BlobId))
             .DistinctBy(record => record.BlobId, StringComparer.Ordinal)

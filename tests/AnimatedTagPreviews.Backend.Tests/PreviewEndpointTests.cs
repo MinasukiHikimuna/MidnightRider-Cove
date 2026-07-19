@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using AnimatedTagPreviews;
 using Cove.Core.Auth;
 using Cove.Core.Entities;
@@ -256,12 +257,37 @@ public sealed class PreviewEndpointTests
                 && requirement.Permission == Permissions.VideosRead);
     }
 
+    [Fact]
+    public async Task Upload_route_accepts_multipart_publishes_immediately_and_declares_tag_write_access()
+    {
+        var uploads = new EndpointUploads();
+        var audit = new EndpointAudit();
+        await using var app = await StartAppAsync(new EndpointState(), new EndpointBlobs([1]), audit: audit, uploads: uploads);
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent([1, 2, 3]);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(file, "file", "custom.webm");
+
+        var response = await app.GetTestClient().PostAsync("/api/extensions/animated-tag-previews/tags/42/media", content);
+        var body = await response.Content.ReadFromJsonAsync<UploadPreviewResponse>();
+        var endpoint = ((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
+            .Single(item => item.DisplayName?.StartsWith("HTTP: POST /api/extensions/animated-tag-previews/tags/{tagId:int}/media", StringComparison.Ordinal) == true);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(42, body!.TagId);
+        Assert.Equal([1, 2, 3], uploads.Bytes);
+        Assert.Equal([Permissions.TagsWrite], endpoint.Metadata.GetMetadata<CovePermissionRequirementMetadata>()!.Permissions);
+        Assert.Contains(endpoint.Metadata.GetOrderedMetadata<CoveRouteEntityAccessRequirementMetadata>(), requirement => requirement.EntityKind == EntityKinds.Tag && requirement.RouteValueName == "tagId" && requirement.Permission == Permissions.TagsWrite);
+        Assert.Contains("animated_preview.upload", audit.Actions);
+    }
+
     private static async Task<WebApplication> StartAppAsync(
         EndpointState state,
         IBlobService blobs,
         string? deniedTagId = null,
         IAuditService? audit = null,
-        IPreviewMaintenanceService? maintenance = null)
+        IPreviewMaintenanceService? maintenance = null,
+        IUploadedPreviewService? uploads = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
@@ -273,6 +299,8 @@ public sealed class PreviewEndpointTests
         builder.Services.AddSingleton<IVideoRepository, EndpointVideos>();
         builder.Services.AddSingleton<ITagRepository, EndpointTags>();
         RegisterUnused<IPreviewJobCoordinator>(builder.Services);
+        if (uploads is null) RegisterUnused<IUploadedPreviewService>(builder.Services);
+        else builder.Services.AddSingleton(uploads);
         if (maintenance is null)
             RegisterUnused<IPreviewMaintenanceService>(builder.Services);
         else
@@ -309,6 +337,19 @@ public sealed class PreviewEndpointTests
         public Task<(Stream Stream, string ContentType)?> GetBlobAsync(string blobId, CancellationToken ct = default)
             => Task.FromResult<(Stream, string)?>(new ValueTuple<Stream, string>(new MemoryStream(bytes), "video/webm"));
         public Task DeleteBlobAsync(string blobId, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class EndpointUploads : IUploadedPreviewService
+    {
+        public byte[] Bytes { get; private set; } = [];
+        public async Task<UploadPreviewResponse> UploadAsync(int tagId, Stream input, long declaredLength, CancellationToken ct)
+        {
+            using var output = new MemoryStream();
+            await input.CopyToAsync(output, ct);
+            Bytes = output.ToArray();
+            Assert.Equal(Bytes.Length, declaredLength);
+            return new UploadPreviewResponse(tagId, "uploaded", ReplacedExisting: false);
+        }
     }
 
     private sealed class EndpointState : IPreviewStateStore
