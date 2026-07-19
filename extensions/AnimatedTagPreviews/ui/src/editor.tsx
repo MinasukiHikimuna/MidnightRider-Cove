@@ -269,8 +269,8 @@ function PreviewEditor({ context }: { context: MediaPlayerExtensionContext }) {
       <aside ref={setPanelElement} className="atp-panel">
         <header><strong>Animated tag preview</strong><button type="button" aria-label="Close preview editor" autoFocus onClick={close}>×</button></header>
         <div className="atp-thumbnails">
-          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview key={`first-${previewTimes.first}`} mediaUrl={source.mediaUrl} seconds={previewTimes.first} crop={crop} aspectRatio={aspectRatio} alt="First preview frame" /> : null}<figcaption>{formatTime(previewTimes.first)}</figcaption></figure>
-          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview key={`last-${previewTimes.last}`} mediaUrl={source.mediaUrl} seconds={previewTimes.last} crop={crop} aspectRatio={aspectRatio} alt="Last preview frame" /> : null}<figcaption>{formatTime(previewTimes.last)}</figcaption></figure>
+          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview mediaUrl={source.mediaUrl} seconds={previewTimes.first} crop={crop} aspectRatio={aspectRatio} alt="First preview frame" /> : null}<figcaption>{formatTime(previewTimes.first)}</figcaption></figure>
+          <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview mediaUrl={source.mediaUrl} seconds={previewTimes.last} crop={crop} aspectRatio={aspectRatio} alt="Last preview frame" /> : null}<figcaption>{formatTime(previewTimes.last)}</figcaption></figure>
         </div>
         <div className="atp-time-row" role="group" aria-label="Start time">
           {[-1, -0.1].map((delta) => <button type="button" key={delta} onClick={() => nudgeStartTimestamp(delta)}>{delta}s</button>)}

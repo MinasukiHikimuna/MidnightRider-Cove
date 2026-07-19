@@ -169,6 +169,23 @@ describe("preview editor", () => {
     expect(ctx.seek).toHaveBeenCalledWith(42.6);
   });
 
+  it("keeps decoded preview elements mounted when the start time changes", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/videos/12/source")) return { fileId: 91 };
+      return {};
+    });
+    const ctx = context();
+    const view = render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await waitFor(() => expect(view.container.querySelectorAll(".atp-thumbnails video")).toHaveLength(2));
+    const videos = Array.from(view.container.querySelectorAll(".atp-thumbnails video"));
+
+    await userEvent.click(screen.getByRole("button", { name: "+0.1s" }));
+
+    expect(Array.from(view.container.querySelectorAll(".atp-thumbnails video"))).toEqual(videos);
+  });
+
   it("presents and edits the start time as a compact timestamp between its nudges", async () => {
     const ctx = context();
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
