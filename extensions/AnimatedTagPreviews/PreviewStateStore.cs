@@ -12,6 +12,14 @@ public interface IPreviewStateStore
     Task<IReadOnlyList<PreviewRecord>> GetPreviewsAsync(CancellationToken ct = default);
     Task<PreviewRecord?> PublishAsync(PreviewRecord record, CancellationToken ct = default);
     Task<PreviewRecord?> RemovePreviewAsync(int tagId, CancellationToken ct = default);
+    Task<PreviewCandidateRecord?> GetCandidateAsync(string candidateId, CancellationToken ct = default);
+    Task<IReadOnlyList<PreviewCandidateRecord>> GetCandidatesAsync(CancellationToken ct = default);
+    Task SaveCandidateAsync(PreviewCandidateRecord record, CancellationToken ct = default);
+    Task<PreviewCandidateRecord?> RemoveCandidateAsync(string candidateId, CancellationToken ct = default);
+    Task<PreviewApprovalReceipt?> GetApprovalReceiptAsync(string candidateId, CancellationToken ct = default);
+    Task<IReadOnlyList<PreviewApprovalReceipt>> GetApprovalReceiptsAsync(CancellationToken ct = default);
+    Task SaveApprovalReceiptAsync(PreviewApprovalReceipt receipt, CancellationToken ct = default);
+    Task<PreviewApprovalReceipt?> RemoveApprovalReceiptAsync(string candidateId, CancellationToken ct = default);
     Task TrackOwnedBlobAsync(OwnedBlobRecord record, CancellationToken ct = default);
     Task UntrackOwnedBlobAsync(string blobId, CancellationToken ct = default);
     Task<IReadOnlyList<OwnedBlobRecord>> GetOwnedBlobsAsync(CancellationToken ct = default);
@@ -22,6 +30,8 @@ public sealed class PreviewStateStore(Func<IExtensionStore> storeFactory) : IPre
     private const string SettingsKey = "settings";
     private const string PreviewPrefix = "preview:tag:";
     private const string OwnedBlobPrefix = "owned-blob:";
+    private const string CandidatePrefix = "candidate:";
+    private const string ApprovalReceiptPrefix = "approval-receipt:";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ConcurrentDictionary<int, SemaphoreSlim> _tagLocks = new();
 
@@ -93,6 +103,58 @@ public sealed class PreviewStateStore(Func<IExtensionStore> storeFactory) : IPre
         }
     }
 
+    public async Task<PreviewCandidateRecord?> GetCandidateAsync(string candidateId, CancellationToken ct = default)
+        => Deserialize<PreviewCandidateRecord>(await storeFactory().GetAsync(CandidateKey(candidateId), ct));
+
+    public async Task<IReadOnlyList<PreviewCandidateRecord>> GetCandidatesAsync(CancellationToken ct = default)
+    {
+        var all = await storeFactory().GetAllAsync(ct);
+        return all
+            .Where(pair => pair.Key.StartsWith(CandidatePrefix, StringComparison.Ordinal))
+            .Select(pair => Deserialize<PreviewCandidateRecord>(pair.Value))
+            .Where(record => record is not null)
+            .Cast<PreviewCandidateRecord>()
+            .OrderBy(record => record.CreatedAt)
+            .ToArray();
+    }
+
+    public Task SaveCandidateAsync(PreviewCandidateRecord record, CancellationToken ct = default)
+        => storeFactory().SetAsync(CandidateKey(record.CandidateId), JsonSerializer.Serialize(record, JsonOptions), ct);
+
+    public async Task<PreviewCandidateRecord?> RemoveCandidateAsync(string candidateId, CancellationToken ct = default)
+    {
+        var old = await GetCandidateAsync(candidateId, ct);
+        if (old is not null)
+            await storeFactory().DeleteAsync(CandidateKey(candidateId), ct);
+        return old;
+    }
+
+    public async Task<PreviewApprovalReceipt?> GetApprovalReceiptAsync(string candidateId, CancellationToken ct = default)
+        => Deserialize<PreviewApprovalReceipt>(await storeFactory().GetAsync(ApprovalReceiptKey(candidateId), ct));
+
+    public async Task<IReadOnlyList<PreviewApprovalReceipt>> GetApprovalReceiptsAsync(CancellationToken ct = default)
+    {
+        var all = await storeFactory().GetAllAsync(ct);
+        return all
+            .Where(pair => pair.Key.StartsWith(ApprovalReceiptPrefix, StringComparison.Ordinal))
+            .Select(pair => Deserialize<PreviewApprovalReceipt>(pair.Value))
+            .Where(record => record is not null)
+            .Cast<PreviewApprovalReceipt>()
+            .OrderBy(record => record.ApprovedAt)
+            .ToArray();
+    }
+
+    public Task SaveApprovalReceiptAsync(PreviewApprovalReceipt receipt, CancellationToken ct = default)
+        => storeFactory().SetAsync(ApprovalReceiptKey(receipt.CandidateId), JsonSerializer.Serialize(receipt, JsonOptions), ct);
+
+    public async Task<PreviewApprovalReceipt?> RemoveApprovalReceiptAsync(string candidateId, CancellationToken ct = default)
+    {
+        var old = await GetApprovalReceiptAsync(candidateId, ct);
+        if (old is not null)
+            await storeFactory().DeleteAsync(ApprovalReceiptKey(candidateId), ct);
+        return old;
+    }
+
     public Task TrackOwnedBlobAsync(OwnedBlobRecord record, CancellationToken ct = default)
         => storeFactory().SetAsync(OwnedBlobKey(record.BlobId), JsonSerializer.Serialize(record, JsonOptions), ct);
 
@@ -113,6 +175,8 @@ public sealed class PreviewStateStore(Func<IExtensionStore> storeFactory) : IPre
 
     private static string PreviewKey(int tagId) => $"{PreviewPrefix}{tagId}";
     private static string OwnedBlobKey(string blobId) => $"{OwnedBlobPrefix}{blobId}";
+    private static string CandidateKey(string candidateId) => $"{CandidatePrefix}{candidateId}";
+    private static string ApprovalReceiptKey(string candidateId) => $"{ApprovalReceiptPrefix}{candidateId}";
 
     private static T? Deserialize<T>(string? json)
     {

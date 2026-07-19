@@ -6,7 +6,7 @@ export function AnimatedPreviewSettings() {
   const [settings, setSettings] = useState<PreviewSettings>(DEFAULT_SETTINGS);
   const [health, setHealth] = useState<PreviewHealth>();
   const [status, setStatus] = useState("Loading…");
-  const [cleanup, setCleanup] = useState<{ count: number; blobIds?: string[]; snapshotVersion: string }>();
+  const [cleanup, setCleanup] = useState<{ count: number; stalePreviewRecordCount: number; stalePreviewCandidateCount: number; expiredApprovalReceiptCount: number; blobIds?: string[]; snapshotVersion: string }>();
 
   useEffect(() => {
     let active = true;
@@ -33,20 +33,46 @@ export function AnimatedPreviewSettings() {
     setStatus("Scanning for orphaned previews…");
     try {
       const result = await previewApi.cleanupOrphans(true);
-      setCleanup({ count: result.count, blobIds: result.blobIds, snapshotVersion: result.snapshotVersion });
+      setCleanup({ count: result.count, stalePreviewRecordCount: result.stalePreviewRecordCount, stalePreviewCandidateCount: result.stalePreviewCandidateCount, expiredApprovalReceiptCount: result.expiredApprovalReceiptCount, blobIds: result.blobIds, snapshotVersion: result.snapshotVersion });
       setStatus("Dry run complete; no files were deleted.");
     }
     catch (reason) { setStatus(reason instanceof Error ? reason.message : "Could not scan orphaned previews"); }
   };
   const deleteOrphans = async () => {
-    if (!cleanup?.count || !cleanup.snapshotVersion || !window.confirm(`Permanently delete ${cleanup.count} orphaned preview blob${cleanup.count === 1 ? "" : "s"}? This cannot be undone.`)) return;
-    setStatus("Deleting orphaned previews…");
+    if (!cleanup || cleanup.count + cleanup.stalePreviewRecordCount + cleanup.stalePreviewCandidateCount + cleanup.expiredApprovalReceiptCount === 0 || !cleanup.snapshotVersion) return;
+    const actions = [];
+    if (cleanup.count) actions.push(`permanently delete ${cleanup.count} orphaned preview blob${cleanup.count === 1 ? "" : "s"}`);
+    if (cleanup.stalePreviewRecordCount) actions.push(`remove ${cleanup.stalePreviewRecordCount} stale published preview record${cleanup.stalePreviewRecordCount === 1 ? "" : "s"}`);
+    if (cleanup.stalePreviewCandidateCount) actions.push(`remove ${cleanup.stalePreviewCandidateCount} stale preview candidate record${cleanup.stalePreviewCandidateCount === 1 ? "" : "s"}`);
+    if (cleanup.expiredApprovalReceiptCount) actions.push(`remove ${cleanup.expiredApprovalReceiptCount} expired preview approval record${cleanup.expiredApprovalReceiptCount === 1 ? "" : "s"}`);
+    const joinedActions = actions.length === 1 ? actions[0] : `${actions.slice(0, -1).join(", ")} and ${actions.at(-1)}`;
+    const prompt = `${joinedActions.charAt(0).toUpperCase()}${joinedActions.slice(1)}?${cleanup.count ? " Preview blobs cannot be recovered." : ""}`;
+    if (!window.confirm(prompt)) return;
+    setStatus("Cleaning up preview data…");
     try {
       const result = await previewApi.cleanupOrphans(false, cleanup.snapshotVersion);
       setCleanup(undefined);
-      setStatus(`Deleted ${result.deletedBlobCount} orphaned preview blob${result.deletedBlobCount === 1 ? "" : "s"}.${result.failedBlobIds.length ? ` ${result.failedBlobIds.length} could not be deleted.` : ""}`);
+      const completed = [];
+      if (cleanup.count) completed.push(`Deleted ${result.deletedBlobCount} orphaned preview blob${result.deletedBlobCount === 1 ? "" : "s"}.`);
+      if (cleanup.stalePreviewRecordCount) completed.push(`Removed ${result.stalePreviewRecordCount} stale published preview record${result.stalePreviewRecordCount === 1 ? "" : "s"}.`);
+      if (cleanup.stalePreviewCandidateCount) completed.push(`Removed ${result.stalePreviewCandidateCount} stale preview candidate record${result.stalePreviewCandidateCount === 1 ? "" : "s"}.`);
+      if (cleanup.expiredApprovalReceiptCount) completed.push(`Removed ${result.expiredApprovalReceiptCount} expired preview approval record${result.expiredApprovalReceiptCount === 1 ? "" : "s"}.`);
+      if (result.failedBlobIds.length) completed.push(`${result.failedBlobIds.length} blob${result.failedBlobIds.length === 1 ? "" : "s"} could not be deleted.`);
+      setStatus(completed.join(" "));
     } catch (reason) { setStatus(reason instanceof Error ? reason.message : "Could not delete orphaned previews"); }
   };
+
+  const cleanupActionCount = cleanup ? cleanup.count + cleanup.stalePreviewRecordCount + cleanup.stalePreviewCandidateCount + cleanup.expiredApprovalReceiptCount : 0;
+  const cleanupKinds = cleanup ? [cleanup.count, cleanup.stalePreviewRecordCount, cleanup.stalePreviewCandidateCount, cleanup.expiredApprovalReceiptCount].filter(Boolean).length : 0;
+  const cleanupButtonLabel = cleanupKinds > 1
+    ? "Clean up preview data"
+    : cleanup?.count
+      ? "Delete orphaned previews"
+      : cleanup?.stalePreviewRecordCount
+        ? "Remove stale published preview records"
+        : cleanup?.stalePreviewCandidateCount
+          ? "Remove stale preview candidate records"
+          : "Remove expired approval records";
 
   return (
     <section className="atp-settings" aria-labelledby="atp-settings-title">
@@ -74,12 +100,16 @@ export function AnimatedPreviewSettings() {
         <label><input type="checkbox" checked={settings.hoverUnmute} onChange={(event) => update("hoverUnmute", event.target.checked)} /> Unmute on hover</label>
       </div>
       <div className="atp-settings-actions">
-        <button type="button" onClick={() => void save()}>Save settings</button>
-        <button type="button" onClick={() => void dryRunCleanup()}>Find orphaned previews</button>
-        {cleanup?.count ? <button type="button" className="atp-danger" onClick={() => void deleteOrphans()}>Delete orphaned previews</button> : null}
+        <button type="button" className="atp-button" onClick={() => void save()}>Save settings</button>
+        <button type="button" className="atp-button" onClick={() => void dryRunCleanup()}>Find orphaned previews</button>
+        {cleanupActionCount ? <button type="button" className="atp-button atp-danger" onClick={() => void deleteOrphans()}>{cleanupButtonLabel}</button> : null}
       </div>
       {cleanup ? <>
-        <p>{cleanup.count} orphaned preview blob{cleanup.count === 1 ? "" : "s"} found.</p>
+        {cleanup.count ? <p>{cleanup.count} orphaned preview blob{cleanup.count === 1 ? "" : "s"} found.</p> : null}
+        {cleanup.stalePreviewRecordCount ? <p>{cleanup.stalePreviewRecordCount} stale published preview record{cleanup.stalePreviewRecordCount === 1 ? "" : "s"} found.</p> : null}
+        {cleanup.stalePreviewCandidateCount ? <p>{cleanup.stalePreviewCandidateCount} stale preview candidate record{cleanup.stalePreviewCandidateCount === 1 ? "" : "s"} found.</p> : null}
+        {cleanup.expiredApprovalReceiptCount ? <p>{cleanup.expiredApprovalReceiptCount} expired preview approval record{cleanup.expiredApprovalReceiptCount === 1 ? "" : "s"} found.</p> : null}
+        {!cleanupActionCount ? <p>No orphaned preview data found.</p> : null}
         {cleanup.blobIds?.length ? <ul className="atp-orphan-list">{cleanup.blobIds.map((blobId) => <li key={blobId}><code>{blobId}</code></li>)}</ul> : null}
       </> : null}
       <p aria-live="polite">{status}</p>
