@@ -27,7 +27,19 @@ const parseTimestamp = (value: string) => {
 
 export function AnimatedPreviewPlayerAction(context: MediaPlayerExtensionContext) {
   if (context.surface !== "detail") return null;
-  return <button type="button" className="atp-action" onClick={(event) => openEditor(context.hostId, event.currentTarget)}>Animated preview</button>;
+  return <button
+    type="button"
+    className="atp-action"
+    aria-label="Animated preview"
+    title="Animated preview"
+    onClick={(event) => openEditor(context.hostId, event.currentTarget)}
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M5 7h2.1l1.4-2h7l1.4 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <circle cx="12" cy="12.5" r="4" fill="none" stroke="currentColor" strokeWidth="1.75" />
+      <path d="m11 10.25 3.4 2.25-3.4 2.25Z" fill="currentColor" />
+    </svg>
+  </button>;
 }
 
 export function AnimatedPreviewPlayerOverlay(context: MediaPlayerExtensionContext) {

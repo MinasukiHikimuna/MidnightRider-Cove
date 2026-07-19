@@ -37,6 +37,17 @@ beforeEach(() => {
 });
 
 describe("preview editor", () => {
+  it("renders an icon-only toolbar action with an accessible tooltip", () => {
+    render(<AnimatedPreviewPlayerAction {...context()} />);
+
+    const action = screen.getByRole("button", { name: "Animated preview" });
+    expect(action).toHaveAttribute("title", "Animated preview");
+    expect(action).toHaveTextContent(/^$/);
+    const icon = action.querySelector("svg");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(icon).toHaveAttribute("focusable", "false");
+  });
+
   it("previews the decoded first frame and the last encoded output frame", () => {
     expect(previewFrameTimestamps(2.227, 5, 30)).toEqual({ first: 2.227, last: 7.227 - (1 / 30) });
     // The encoder resamples a 60fps source to 24fps, so the last displayed input
