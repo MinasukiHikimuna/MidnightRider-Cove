@@ -12,9 +12,12 @@ export class ApiError extends Error {
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
+  const headers = init.body instanceof FormData
+    ? init.headers
+    : { "Content-Type": "application/json", ...init.headers };
   const response = await fetch(`/api${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init.headers },
+    headers,
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -72,6 +75,7 @@ export interface DiscardPreviewCandidateResponse {
   blobDeleted: boolean;
   blobRetained: boolean;
 }
+export interface UploadPreviewResponse { tagId: number; version: string; replacedExisting: boolean }
 
 export const DEFAULT_SETTINGS: PreviewSettings = {
   defaultDurationSeconds: 5,
@@ -122,6 +126,11 @@ export const previewApi = {
   approveCandidate: (videoId: number, tagId: number, candidateId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}/approve`, { method: "POST" }) as Promise<ApprovePreviewCandidateResponse>,
   discardCandidate: (videoId: number, tagId: number, candidateId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}`, { method: "DELETE" }) as Promise<DiscardPreviewCandidateResponse>,
   deleteMedia: (tagId: number) => transport(`${BASE}/tags/${tagId}/media`, { method: "DELETE" }) as Promise<{ tagId: number; deleted: boolean; blobDeleted: boolean }>,
+  uploadMedia: (tagId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return transport(`${BASE}/tags/${tagId}/media`, { method: "POST", body: form }) as Promise<UploadPreviewResponse>;
+  },
   cleanupOrphans: async (dryRun = true, expectedVersion?: string) => {
     const query = new URLSearchParams({ dryRun: String(dryRun) });
     if (expectedVersion) query.set("expectedVersion", expectedVersion);

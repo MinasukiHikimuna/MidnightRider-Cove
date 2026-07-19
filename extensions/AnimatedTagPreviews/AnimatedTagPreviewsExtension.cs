@@ -7,6 +7,7 @@ using Cove.Plugins;
 using Cove.Sdk;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,6 +27,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         services.AddSingleton<PreviewMutationGate>();
         services.AddScoped<IPreviewMaintenanceService, PreviewMaintenanceService>();
         services.AddScoped<IPreviewCandidateService, PreviewCandidateService>();
+        services.AddScoped<IUploadedPreviewService, UploadedPreviewService>();
         services.AddSingleton<IPreviewJobCoordinator, PreviewJobCoordinator>();
         services.AddSingleton<IExtensionEntityFilterProvider, AnimatedPreviewEntityFilterProvider>();
         services.AddScoped<IPreviewGenerationService, PreviewGenerationService>();
@@ -49,6 +51,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
             .AddSlot("media-player-actions", "AnimatedPreviewPlayerAction", "animated-tag-previews:player-action", 100)
             .AddSlot("media-player-overlay", "AnimatedPreviewPlayerOverlay", "animated-tag-previews:player-overlay", 100)
             .OverrideComponent("entity.media", "AnimatedTagMedia", 100)
+            .AddSlot("entity-cover-editor", "AnimatedTagCoverEditor", "animated-tag-previews:cover-editor", 100)
             .AddExtensionListFilter(
                 "tags",
                 "animated-preview",
@@ -120,6 +123,11 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         endpoints.MapGet($"{ApiBase}/tags/{{tagId:int}}/media", GetMediaAsync)
             .RequireCovePermission(Permissions.TagsRead)
             .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsRead);
+
+        endpoints.MapPost($"{ApiBase}/tags/{{tagId:int}}/media", UploadMediaAsync)
+            .DisableAntiforgery()
+            .RequireCovePermission(Permissions.TagsWrite)
+            .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsWrite);
 
         endpoints.MapDelete($"{ApiBase}/tags/{{tagId:int}}/media", DeleteMediaAsync)
             .RequireCovePermission(Permissions.TagsWrite)
@@ -445,6 +453,42 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         await audit.LogAsync("animated_preview.delete", result.Deleted ? AuditOutcomes.Success : AuditOutcomes.Fail,
             principals.Current, "tag", tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { result.BlobDeleted }, ct);
         return Results.Ok(result);
+    }
+
+    private static async Task<IResult> UploadMediaAsync(
+        int tagId,
+        [FromForm] IFormFile file,
+        [FromServices] IUploadedPreviewService uploads,
+        [FromServices] IAuditService audit,
+        [FromServices] ICurrentPrincipalAccessor principals,
+        CancellationToken ct)
+    {
+        try
+        {
+            await using var input = file.OpenReadStream();
+            var result = await uploads.UploadAsync(tagId, input, file.Length, ct);
+            await audit.LogAsync(
+                "animated_preview.upload",
+                AuditOutcomes.Success,
+                principals.Current,
+                "tag",
+                tagId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                new { result.Version, result.ReplacedExisting },
+                CancellationToken.None);
+            return Results.Ok(result);
+        }
+        catch (UploadedPreviewException ex)
+        {
+            await audit.LogAsync(
+                "animated_preview.upload",
+                AuditOutcomes.Fail,
+                principals.Current,
+                "tag",
+                tagId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                new { error = ex.Message },
+                CancellationToken.None);
+            return Results.BadRequest(ex.Message);
+        }
     }
 
     private static Task<PreviewSettings> GetSettingsAsync(IPreviewStateStore state, CancellationToken ct)

@@ -20,3 +20,11 @@ export interface ExtensionModule {
   onLoad?: () => void | Promise<void>;
   onUnload?: () => void | Promise<void>;
 }
+
+export interface EntityCoverEditorContext {
+  entityType: string;
+  entityId: number;
+  coverKey: "primary" | "front" | "back";
+  currentImageUrl?: string | null;
+  canEdit: boolean;
+}

@@ -30,7 +30,22 @@ public sealed record PreviewRecord(
     int TagId,
     string BlobId,
     string Version,
-    PreviewRecipe Recipe);
+    PreviewRecipe? Recipe,
+    string Origin = "generated",
+    UploadedPreviewMetadata? Upload = null)
+{
+    public DateTimeOffset CreatedAt => Recipe?.CreatedAt ?? Upload?.CreatedAt ?? DateTimeOffset.UnixEpoch;
+}
+
+public sealed record UploadedPreviewMetadata(
+    double DurationSeconds,
+    int Width,
+    int Height,
+    string VideoCodec,
+    double FrameRate,
+    DateTimeOffset CreatedAt);
+
+public sealed record UploadPreviewResponse(int TagId, string Version, bool ReplacedExisting);
 
 public sealed record PreviewCandidateRecord(
     string CandidateId,
