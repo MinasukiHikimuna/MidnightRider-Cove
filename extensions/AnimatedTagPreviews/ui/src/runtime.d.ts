@@ -27,5 +27,6 @@ declare module "@cove/runtime/components" {
     placeholder?: string;
     disabled?: boolean;
     allowCreate?: boolean;
+    dropdownPortalContainer?: HTMLElement | null;
   }>;
 }

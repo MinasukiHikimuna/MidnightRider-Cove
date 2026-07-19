@@ -54,6 +54,7 @@ function PreviewEditor({ context }: { context: MediaPlayerExtensionContext }) {
   const [source, setSource] = useState<PreviewSource>();
   const [error, setError] = useState<string>();
   const dragRef = useRef<{ mode: "move" | "resize"; x: number; y: number } | undefined>(undefined);
+  const [panelElement, setPanelElement] = useState<HTMLElement | null>(null);
   const terminalStatusRef = useRef<JobStatus["status"] | undefined>(undefined);
   const settingsAppliedRef = useRef(false);
   const initiallyPlayingRef = useRef(context.playing);
@@ -265,7 +266,7 @@ function PreviewEditor({ context }: { context: MediaPlayerExtensionContext }) {
         <span className="atp-crop-grid" />
         <button type="button" className="atp-resize" aria-label="Resize crop" onPointerDown={(event) => { event.stopPropagation(); beginPointer("resize")(event); }} onPointerMove={movePointer} onPointerUp={() => { dragRef.current = undefined; }} />
       </div>
-      <aside className="atp-panel">
+      <aside ref={setPanelElement} className="atp-panel">
         <header><strong>Animated tag preview</strong><button type="button" aria-label="Close preview editor" autoFocus onClick={close}>×</button></header>
         <div className="atp-thumbnails">
           <figure style={{ aspectRatio: aspectRatio.replace(":", " / ") }}>{source ? <DecodedFramePreview key={`first-${previewTimes.first}`} mediaUrl={source.mediaUrl} seconds={previewTimes.first} crop={crop} aspectRatio={aspectRatio} alt="First preview frame" /> : null}<figcaption>{formatTime(previewTimes.first)}</figcaption></figure>
@@ -288,7 +289,7 @@ function PreviewEditor({ context }: { context: MediaPlayerExtensionContext }) {
           {tagId ? <div className="atp-selected-tag" aria-label="Selected tag">
             <span>{tagLabel ?? "Loading tag…"}</span>
             <button type="button" disabled={busy} onClick={() => setTagId(undefined)}>Change</button>
-          </div> : <EntityReferenceSelector entityType="tag" value={undefined} onChange={setTagId} allowCreate={false} disabled={busy} placeholder="Select a tag" />}
+          </div> : <EntityReferenceSelector entityType="tag" value={undefined} onChange={setTagId} allowCreate={false} disabled={busy} placeholder="Select a tag" dropdownPortalContainer={panelElement} />}
         </div>
         {job?.status !== "completed" ? <div className="atp-actions">
           <button type="button" disabled={!tagId || busy || !dependenciesReady || !previewReady} onClick={() => void generate()}>{job?.status === "cancelled"
