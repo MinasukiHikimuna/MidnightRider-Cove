@@ -297,6 +297,15 @@ describe("animated tag media", () => {
     expect(await screen.findByLabelText("Animated preview for Tag")).toBeInTheDocument();
   });
 
+  it("keeps the core static hover when the tag has no animated preview", async () => {
+    setApiTransportForTests(async (path) => path.endsWith("/settings") ? {} : { version: "a", items: [] });
+    render(<AnimatedTagMedia entityType="tag" entityId={7} surface="hover" imageUrl="poster.jpg" alt="Tag" fit="cover" renderDefault={() => <img src="poster.jpg" alt="static" />} />);
+
+    await waitFor(() => expect(getPreviewCacheSnapshot().index?.version).toBe("a"));
+    expect(screen.getByRole("img", { name: "static" })).toHaveAttribute("src", "poster.jpg");
+    expect(screen.queryByLabelText("Animated preview for Tag")).not.toBeInTheDocument();
+  });
+
   it("applies explicit card fit and the configured aspect class", async () => {
     setApiTransportForTests(async (path) => path.endsWith("/settings")
       ? { cardFit: "contain", aspectRatio: "4:3", matchCardAspectRatio: true }
