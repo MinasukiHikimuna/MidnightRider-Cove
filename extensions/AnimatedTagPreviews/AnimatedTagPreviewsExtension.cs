@@ -25,6 +25,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         services.AddSingleton<IPreviewHealthService, PreviewHealthService>();
         services.AddSingleton<PreviewMutationGate>();
         services.AddScoped<IPreviewMaintenanceService, PreviewMaintenanceService>();
+        services.AddScoped<IPreviewCandidateService, PreviewCandidateService>();
         services.AddSingleton<IPreviewJobCoordinator, PreviewJobCoordinator>();
         services.AddSingleton<IExtensionEntityFilterProvider, AnimatedPreviewEntityFilterProvider>();
         services.AddScoped<IPreviewGenerationService, PreviewGenerationService>();
@@ -98,6 +99,21 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
 
         endpoints.MapDelete($"{ApiBase}/videos/{{videoId:int}}/tags/{{tagId:int}}/jobs/{{jobId}}", CancelJobAsync)
             .RequireCovePermission(Permissions.VideosRead, Permissions.TagsWrite, Permissions.JobsCancel)
+            .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
+            .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsWrite);
+
+        endpoints.MapGet($"{ApiBase}/videos/{{videoId:int}}/tags/{{tagId:int}}/candidates/{{candidateId}}/media", GetCandidateMediaAsync)
+            .RequireCovePermission(Permissions.VideosRead, Permissions.TagsRead, Permissions.StreamRead)
+            .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
+            .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsRead);
+
+        endpoints.MapPost($"{ApiBase}/videos/{{videoId:int}}/tags/{{tagId:int}}/candidates/{{candidateId}}/approve", ApproveCandidateAsync)
+            .RequireCovePermission(Permissions.VideosRead, Permissions.TagsWrite)
+            .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
+            .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsWrite);
+
+        endpoints.MapDelete($"{ApiBase}/videos/{{videoId:int}}/tags/{{tagId:int}}/candidates/{{candidateId}}", DiscardCandidateAsync)
+            .RequireCovePermission(Permissions.VideosRead, Permissions.TagsWrite)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
             .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsWrite);
 
@@ -297,6 +313,127 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         return Results.File(blob.Value.Stream, "video/webm", enableRangeProcessing: blob.Value.Stream.CanSeek);
     }
 
+    private static async Task<IResult> GetCandidateMediaAsync(
+        int videoId,
+        int tagId,
+        string candidateId,
+        HttpContext context,
+        IPreviewStateStore state,
+        IBlobService blobs,
+        IVideoRepository videos,
+        ITagRepository tags,
+        CancellationToken ct)
+    {
+        if (!IsCandidateId(candidateId))
+            return Results.NotFound();
+        if (await videos.GetByIdAsync(videoId, ct) is null || await tags.GetByIdAsync(tagId, ct) is null)
+            return Results.NotFound();
+        var candidate = await state.GetCandidateAsync(candidateId, ct);
+        if (candidate is null || candidate.VideoId != videoId || candidate.TagId != tagId)
+            return Results.NotFound();
+
+        var blob = await blobs.GetBlobAsync(candidate.BlobId, ct);
+        if (blob is null)
+            return Results.NotFound();
+        if (!string.Equals(blob.Value.ContentType, "video/webm", StringComparison.OrdinalIgnoreCase))
+        {
+            await blob.Value.Stream.DisposeAsync();
+            return Results.Problem("Stored preview candidate has an invalid content type.", statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+        return Results.File(blob.Value.Stream, "video/webm", enableRangeProcessing: blob.Value.Stream.CanSeek);
+    }
+
+    private static async Task<IResult> ApproveCandidateAsync(
+        int videoId,
+        int tagId,
+        string candidateId,
+        IPreviewCandidateService candidates,
+        IVideoRepository videos,
+        ITagRepository tags,
+        IAuditService audit,
+        ICurrentPrincipalAccessor principals,
+        CancellationToken ct)
+    {
+        if (!IsCandidateId(candidateId))
+            return Results.NotFound();
+        if (await videos.GetByIdAsync(videoId, ct) is null || await tags.GetByIdAsync(tagId, ct) is null)
+            return Results.NotFound();
+        PreviewCandidateApproval? result;
+        try
+        {
+            result = await candidates.ApproveAsync(videoId, tagId, candidateId, ct);
+        }
+        catch (PreviewCandidateStaleApprovalException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+        if (result is null)
+            return Results.NotFound();
+
+        await audit.LogAsync(
+            result.ReplacedExisting ? "animated_preview.replace" : "animated_preview.generate",
+            AuditOutcomes.Success,
+            principals.Current,
+            "tag",
+            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            new { videoId, candidateId, result.AlreadyApproved },
+            CancellationToken.None);
+        return Results.Ok(new ApprovePreviewCandidateResponse(
+            candidateId,
+            videoId,
+            tagId,
+            result.Published.Version,
+            result.ReplacedExisting,
+            result.AlreadyApproved));
+    }
+
+    private static async Task<IResult> DiscardCandidateAsync(
+        int videoId,
+        int tagId,
+        string candidateId,
+        IPreviewCandidateService candidates,
+        IVideoRepository videos,
+        ITagRepository tags,
+        IAuditService audit,
+        ICurrentPrincipalAccessor principals,
+        CancellationToken ct)
+    {
+        if (!IsCandidateId(candidateId))
+            return Results.NotFound();
+        if (await videos.GetByIdAsync(videoId, ct) is null || await tags.GetByIdAsync(tagId, ct) is null)
+            return Results.NotFound();
+        PreviewCandidateDiscard? result;
+        try
+        {
+            result = await candidates.DiscardAsync(videoId, tagId, candidateId, ct);
+        }
+        catch (PreviewCandidateAlreadyPublishedException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+        if (result is null)
+            return Results.NotFound();
+
+        await audit.LogAsync(
+            "animated_preview.candidate.discard",
+            result.BlobDeleted || result.BlobRetained ? AuditOutcomes.Success : AuditOutcomes.Fail,
+            principals.Current,
+            "tag",
+            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            new { videoId, candidateId, result.BlobDeleted, result.BlobRetained },
+            CancellationToken.None);
+        return Results.Ok(new DiscardPreviewCandidateResponse(
+            candidateId,
+            videoId,
+            tagId,
+            Discarded: true,
+            result.BlobDeleted,
+            result.BlobRetained));
+    }
+
     private static async Task<IResult> DeleteMediaAsync(
         int tagId,
         IPreviewMaintenanceService maintenance,
@@ -347,7 +484,8 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
             return Results.Conflict(new { error = ex.Message, currentVersion = ex.CurrentVersion });
         }
         await audit.LogAsync("animated_preview.orphan_cleanup", AuditOutcomes.Success, principals.Current,
-            "extension", "animated-tag-previews", new { dryRun, result.Count, result.DeletedBlobCount, failed = result.FailedBlobIds.Count }, ct);
+            "extension", "animated-tag-previews", new { dryRun, result.Count, result.StalePreviewRecordCount, result.StalePreviewCandidateCount, result.ExpiredApprovalReceiptCount, result.DeletedBlobCount, failed = result.FailedBlobIds.Count },
+            dryRun ? ct : CancellationToken.None);
         return Results.Ok(result);
     }
 
@@ -361,6 +499,9 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         var canonical = string.Join('|', items.Select(item => $"{item.TagId}:{item.Version}"));
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))[..16].ToLowerInvariant();
     }
+
+    private static bool IsCandidateId(string value)
+        => Guid.TryParseExact(value, "N", out _);
 }
 
 public sealed class AnimatedPreviewEntityFilterProvider(IPreviewStateStore state) : IExtensionEntityFilterProvider

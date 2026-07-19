@@ -27,6 +27,8 @@ declare module "@cove/runtime/components" {
     placeholder?: string;
     disabled?: boolean;
     allowCreate?: boolean;
+    selectedDisplay?: "chip" | "input";
+    selectedLabel?: string;
     dropdownPortalContainer?: HTMLElement | null;
   }>;
 }

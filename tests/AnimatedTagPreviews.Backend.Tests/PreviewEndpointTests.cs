@@ -14,6 +14,8 @@ namespace AnimatedTagPreviews.Backend.Tests;
 
 public sealed class PreviewEndpointTests
 {
+    private const string CandidateId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     [Fact]
     public async Task Media_endpoint_serves_webm_ranges_with_immutable_and_nosniff_headers()
     {
@@ -48,6 +50,99 @@ public sealed class PreviewEndpointTests
             "/api/extensions/animated-tag-previews/tags/42/media?v=stale");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Candidate_media_endpoint_serves_private_webm_ranges_and_rejects_path_ownership_mismatches()
+    {
+        var state = new EndpointState
+        {
+            Candidates = [Candidate(CandidateId, 7, 42, "candidate-blob")],
+        };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([0, 1, 2, 3, 4, 5]));
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"/api/extensions/animated-tag-previews/videos/7/tags/42/candidates/{CandidateId}/media");
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(1, 3);
+
+        var response = await app.GetTestClient().SendAsync(request);
+        var wrongVideo = await app.GetTestClient().GetAsync(
+            $"/api/extensions/animated-tag-previews/videos/8/tags/42/candidates/{CandidateId}/media");
+        var wrongTag = await app.GetTestClient().GetAsync(
+            $"/api/extensions/animated-tag-previews/videos/7/tags/41/candidates/{CandidateId}/media");
+
+        Assert.Equal(HttpStatusCode.PartialContent, response.StatusCode);
+        Assert.Equal([1, 2, 3], await response.Content.ReadAsByteArrayAsync());
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.True(response.Headers.CacheControl!.Private);
+        Assert.Contains("immutable", response.Headers.CacheControl.Extensions.Select(x => x.Name));
+        Assert.Equal(HttpStatusCode.NotFound, wrongVideo.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, wrongTag.StatusCode);
+    }
+
+    [Fact]
+    public async Task Approve_endpoint_is_idempotent_after_full_commit_and_audits_without_request_cancellation()
+    {
+        var state = new EndpointState
+        {
+            Candidates = [Candidate(CandidateId, 7, 42, "candidate-blob")],
+        };
+        var blobs = new EndpointBlobs([1]);
+        var audit = new EndpointAudit();
+        await using var app = await StartAppAsync(state, blobs, audit: audit);
+        var url = $"/api/extensions/animated-tag-previews/videos/7/tags/42/candidates/{CandidateId}/approve";
+
+        var first = await app.GetTestClient().PostAsync(url, null);
+        var retried = await app.GetTestClient().PostAsync(url, null);
+        var firstBody = await first.Content.ReadFromJsonAsync<ApprovePreviewCandidateResponse>();
+        var retryBody = await retried.Content.ReadFromJsonAsync<ApprovePreviewCandidateResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retried.StatusCode);
+        Assert.False(firstBody!.AlreadyApproved);
+        Assert.True(retryBody!.AlreadyApproved);
+        Assert.Equal(firstBody.Version, retryBody.Version);
+        Assert.Empty(state.Candidates);
+        Assert.Single(state.Receipts);
+        Assert.Equal(2, audit.Actions.Count(action => action == "animated_preview.generate"));
+        Assert.All(audit.CancellationTokens, token => Assert.False(token.CanBeCanceled));
+    }
+
+    [Fact]
+    public async Task Discard_endpoint_audits_without_request_cancellation_after_candidate_removal()
+    {
+        var state = new EndpointState
+        {
+            Candidates = [Candidate(CandidateId, 7, 42, "candidate-blob")],
+        };
+        var audit = new EndpointAudit();
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]), audit: audit);
+        var url = $"/api/extensions/animated-tag-previews/videos/7/tags/42/candidates/{CandidateId}";
+
+        var response = await app.GetTestClient().DeleteAsync(url);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(state.Candidates);
+        Assert.Contains("animated_preview.candidate.discard", audit.Actions);
+        Assert.All(audit.CancellationTokens, token => Assert.False(token.CanBeCanceled));
+    }
+
+    [Fact]
+    public async Task Destructive_cleanup_audits_without_request_cancellation_after_mutation()
+    {
+        var audit = new EndpointAudit();
+        await using var app = await StartAppAsync(
+            new EndpointState(),
+            new EndpointBlobs([1]),
+            audit: audit,
+            maintenance: new CompletedMaintenance());
+
+        var response = await app.GetTestClient().PostAsync(
+            "/api/extensions/animated-tag-previews/cleanup/orphans?dryRun=false&expectedVersion=snapshot",
+            null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("animated_preview.orphan_cleanup", audit.Actions);
+        Assert.All(audit.CancellationTokens, token => Assert.False(token.CanBeCanceled));
     }
 
     [Fact]
@@ -102,6 +197,33 @@ public sealed class PreviewEndpointTests
     }
 
     [Fact]
+    public async Task Candidate_routes_declare_read_stream_and_write_permissions_with_both_entity_checks()
+    {
+        await using var app = await StartAppAsync(new EndpointState(), new EndpointBlobs([1]));
+        var endpoints = ((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .Where(endpoint => endpoint.DisplayName?.Contains("/candidates/{candidateId}", StringComparison.Ordinal) == true)
+            .ToArray();
+
+        var media = endpoints.Single(endpoint => endpoint.DisplayName!.Contains("/media", StringComparison.Ordinal));
+        var approve = endpoints.Single(endpoint => endpoint.DisplayName!.Contains("/approve", StringComparison.Ordinal));
+        var discard = endpoints.Single(endpoint => endpoint.DisplayName!.StartsWith("HTTP: DELETE", StringComparison.Ordinal));
+
+        Assert.Equal([Permissions.VideosRead, Permissions.TagsRead, Permissions.StreamRead],
+            media.Metadata.GetMetadata<CovePermissionRequirementMetadata>()!.Permissions);
+        Assert.Equal([Permissions.VideosRead, Permissions.TagsWrite],
+            approve.Metadata.GetMetadata<CovePermissionRequirementMetadata>()!.Permissions);
+        Assert.Equal([Permissions.VideosRead, Permissions.TagsWrite],
+            discard.Metadata.GetMetadata<CovePermissionRequirementMetadata>()!.Permissions);
+        foreach (var endpoint in endpoints)
+        {
+            var entities = endpoint.Metadata.GetOrderedMetadata<CoveRouteEntityAccessRequirementMetadata>();
+            Assert.Contains(entities, item => item.EntityKind == EntityKinds.Video && item.RouteValueName == "videoId");
+            Assert.Contains(entities, item => item.EntityKind == EntityKinds.Tag && item.RouteValueName == "tagId");
+        }
+    }
+
+    [Fact]
     public async Task Settings_read_is_available_to_tag_readers_but_write_requires_extension_configuration()
     {
         await using var app = await StartAppAsync(new EndpointState(), new EndpointBlobs([1]));
@@ -134,7 +256,12 @@ public sealed class PreviewEndpointTests
                 && requirement.Permission == Permissions.VideosRead);
     }
 
-    private static async Task<WebApplication> StartAppAsync(EndpointState state, IBlobService blobs, string? deniedTagId = null)
+    private static async Task<WebApplication> StartAppAsync(
+        EndpointState state,
+        IBlobService blobs,
+        string? deniedTagId = null,
+        IAuditService? audit = null,
+        IPreviewMaintenanceService? maintenance = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
@@ -143,11 +270,15 @@ public sealed class PreviewEndpointTests
         builder.Services.AddSingleton<IAuthorizationService>(new EndpointAuthorization(deniedTagId));
         builder.Services.AddSingleton<ICurrentPrincipalAccessor>(new EndpointPrincipal());
         RegisterUnused<IPreviewHealthService>(builder.Services);
-        RegisterUnused<IVideoRepository>(builder.Services);
+        builder.Services.AddSingleton<IVideoRepository, EndpointVideos>();
         builder.Services.AddSingleton<ITagRepository, EndpointTags>();
         RegisterUnused<IPreviewJobCoordinator>(builder.Services);
-        RegisterUnused<IPreviewMaintenanceService>(builder.Services);
-        RegisterUnused<IAuditService>(builder.Services);
+        if (maintenance is null)
+            RegisterUnused<IPreviewMaintenanceService>(builder.Services);
+        else
+            builder.Services.AddSingleton(maintenance);
+        builder.Services.AddSingleton<IPreviewCandidateService>(new PreviewCandidateService(state, blobs, new PreviewMutationGate()));
+        builder.Services.AddSingleton(audit ?? new EndpointAudit());
 
         var app = builder.Build();
         new AnimatedTagPreviewsExtension().MapEndpoints(app);
@@ -164,6 +295,14 @@ public sealed class PreviewEndpointTests
         version,
         new PreviewRecipe(7, 11, 1, 5, 0.5, 0.5, 1, 720, "libvpx-vp9", 2140, 24, DateTimeOffset.UnixEpoch));
 
+    private static PreviewCandidateRecord Candidate(string candidateId, int videoId, int tagId, string blobId) => new(
+        candidateId,
+        videoId,
+        tagId,
+        blobId,
+        new PreviewRecipe(videoId, 11, 1, 5, 0.5, 0.5, 1, 720, "libvpx-vp9", 2140, 24, DateTimeOffset.UnixEpoch),
+        DateTimeOffset.UtcNow);
+
     private sealed class EndpointBlobs(byte[] bytes) : IBlobService
     {
         public Task<string> StoreBlobAsync(Stream data, string contentType, CancellationToken ct = default) => throw new NotSupportedException();
@@ -175,12 +314,47 @@ public sealed class PreviewEndpointTests
     private sealed class EndpointState : IPreviewStateStore
     {
         public IReadOnlyList<PreviewRecord> Records { get; set; } = [];
+        public IReadOnlyList<PreviewCandidateRecord> Candidates { get; set; } = [];
+        public IReadOnlyList<PreviewApprovalReceipt> Receipts { get; set; } = [];
         public Task<PreviewSettings> GetSettingsAsync(CancellationToken ct = default) => Task.FromResult(PreviewSettings.Default);
         public Task SaveSettingsAsync(PreviewSettings settings, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<PreviewRecord?> GetPreviewAsync(int tagId, CancellationToken ct = default) => Task.FromResult(Records.FirstOrDefault(x => x.TagId == tagId));
         public Task<IReadOnlyList<PreviewRecord>> GetPreviewsAsync(CancellationToken ct = default) => Task.FromResult(Records);
-        public Task<PreviewRecord?> PublishAsync(PreviewRecord record, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<PreviewRecord?> PublishAsync(PreviewRecord record, CancellationToken ct = default)
+        {
+            var old = Records.FirstOrDefault(item => item.TagId == record.TagId);
+            Records = Records.Where(item => item.TagId != record.TagId).Append(record).ToArray();
+            return Task.FromResult(old);
+        }
         public Task<PreviewRecord?> RemovePreviewAsync(int tagId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<PreviewCandidateRecord?> GetCandidateAsync(string candidateId, CancellationToken ct = default)
+            => Task.FromResult(Candidates.FirstOrDefault(x => x.CandidateId == candidateId));
+        public Task<IReadOnlyList<PreviewCandidateRecord>> GetCandidatesAsync(CancellationToken ct = default) => Task.FromResult(Candidates);
+        public Task SaveCandidateAsync(PreviewCandidateRecord record, CancellationToken ct = default)
+        {
+            Candidates = Candidates.Where(item => item.CandidateId != record.CandidateId).Append(record).ToArray();
+            return Task.CompletedTask;
+        }
+        public Task<PreviewCandidateRecord?> RemoveCandidateAsync(string candidateId, CancellationToken ct = default)
+        {
+            var old = Candidates.FirstOrDefault(item => item.CandidateId == candidateId);
+            Candidates = Candidates.Where(item => item.CandidateId != candidateId).ToArray();
+            return Task.FromResult(old);
+        }
+        public Task<PreviewApprovalReceipt?> GetApprovalReceiptAsync(string candidateId, CancellationToken ct = default)
+            => Task.FromResult(Receipts.FirstOrDefault(item => item.CandidateId == candidateId));
+        public Task<IReadOnlyList<PreviewApprovalReceipt>> GetApprovalReceiptsAsync(CancellationToken ct = default) => Task.FromResult(Receipts);
+        public Task SaveApprovalReceiptAsync(PreviewApprovalReceipt receipt, CancellationToken ct = default)
+        {
+            Receipts = Receipts.Where(item => item.CandidateId != receipt.CandidateId).Append(receipt).ToArray();
+            return Task.CompletedTask;
+        }
+        public Task<PreviewApprovalReceipt?> RemoveApprovalReceiptAsync(string candidateId, CancellationToken ct = default)
+        {
+            var old = Receipts.FirstOrDefault(item => item.CandidateId == candidateId);
+            Receipts = Receipts.Where(item => item.CandidateId != candidateId).ToArray();
+            return Task.FromResult(old);
+        }
         public Task TrackOwnedBlobAsync(OwnedBlobRecord record, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UntrackOwnedBlobAsync(string blobId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<OwnedBlobRecord>> GetOwnedBlobsAsync(CancellationToken ct = default) => throw new NotSupportedException();
@@ -202,6 +376,41 @@ public sealed class PreviewEndpointTests
         public void Set(CovePrincipal? principal) => Current = principal;
     }
 
+    private sealed class EndpointAudit : IAuditService
+    {
+        public List<string> Actions { get; } = [];
+        public List<CancellationToken> CancellationTokens { get; } = [];
+
+        public Task LogAsync(
+            string action,
+            string outcome,
+            CovePrincipal? actor = null,
+            string? targetKind = null,
+            string? targetId = null,
+            object? detail = null,
+            CancellationToken ct = default)
+        {
+            Actions.Add(action);
+            CancellationTokens.Add(ct);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CompletedMaintenance : IPreviewMaintenanceService
+    {
+        public Task<DeletePreviewResponse> DeleteAsync(int tagId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<OrphanCleanupResponse> CleanupOrphansAsync(bool dryRun, string? expectedVersion, CancellationToken ct)
+            => Task.FromResult(new OrphanCleanupResponse(
+                dryRun,
+                1,
+                ["blob"],
+                1,
+                0,
+                1,
+                [],
+                expectedVersion ?? "snapshot"));
+    }
+
     private sealed class EndpointTags : ITagRepository
     {
         public Task<Tag?> GetByIdAsync(int id, CancellationToken ct = default)
@@ -216,5 +425,20 @@ public sealed class PreviewEndpointTests
         public Task<Tag?> GetByNameAsync(string name, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<Tag>> FindByNamesAsync(IReadOnlyList<string> names, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<Dictionary<string, Tag>> FindOrCreateByNamesAsync(IReadOnlyList<string> names, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class EndpointVideos : IVideoRepository
+    {
+        public Task<Video?> GetByIdAsync(int id, CancellationToken ct = default)
+            => Task.FromResult<Video?>(id > 0 ? new Video { Id = id } : null);
+        public Task<Video?> GetByIdWithRelationsAsync(int id, CancellationToken ct = default)
+            => Task.FromResult<Video?>(id > 0 ? new Video { Id = id } : null);
+        public Task<IReadOnlyList<Video>> GetAllAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Video> AddAsync(Video entity, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpdateAsync(Video entity, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeleteAsync(int id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<int> CountAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<(IReadOnlyList<Video> Items, int TotalCount)> FindAsync(VideoFilter? filter, FindFilter? findFilter, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<VideoPerformer>> GetVideoPerformersAsync(IReadOnlyList<int> videoIds, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

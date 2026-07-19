@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import type { MediaPlayerExtensionContext } from "@cove/runtime/components";
 import { AnimatedPreviewPlayerAction, AnimatedPreviewPlayerOverlay } from "../editor";
 import { AnimatedTagMedia } from "../media";
 import { AnimatedPreviewSettings } from "../settings";
-import { __resetApiForTests, setApiTransportForTests } from "../api";
+import { ApiError, __resetApiForTests, setApiTransportForTests } from "../api";
 import { __resetEditorStoreForTests } from "../editorStore";
 import { __resetPreviewCacheForTests, getPreviewCacheSnapshot, invalidatePreviewIndex, loadPreviewCache } from "../indexCache";
 import { previewFrameTimestamps } from "../framePreview";
@@ -24,6 +25,14 @@ function context(overrides: Partial<MediaPlayerExtensionContext> = {}): MediaPla
     intrinsicWidth: 1920, intrinsicHeight: 1080, contentRect: { left: 100, top: 50, width: 800, height: 450 },
     play: vi.fn(async () => {}), pause: vi.fn(), seek: vi.fn(), setPlaybackRate: vi.fn(), acquireInteractionMode: vi.fn(() => vi.fn()), ...overrides,
   };
+}
+
+function selectTag(id = 77) {
+  const selector = screen.getByRole("combobox", { name: "Tag ID" });
+  fireEvent.change(selector, { target: { value: id === 88 ? "replacement" : "first" } });
+  fireEvent.keyDown(selector, { key: "ArrowDown" });
+  fireEvent.keyDown(selector, { key: "Enter" });
+  return selector;
 }
 
 beforeEach(() => {
@@ -70,7 +79,7 @@ describe("preview editor", () => {
     await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
     await userEvent.click(screen.getByText("Advanced settings"));
     fireEvent.change(screen.getByRole("slider", { name: "Preview speed" }), { target: { value: "0.5" } });
-    fireEvent.change(screen.getByLabelText("Tag ID"), { target: { value: "77" } });
+    selectTag();
     await userEvent.click(screen.getByRole("button", { name: /generate preview/i }));
     await waitFor(() => expect(requests.some((request) => request.path.endsWith("/generate"))).toBe(true));
     const generate = requests.find((request) => request.path.endsWith("/generate"))!;
@@ -78,22 +87,37 @@ describe("preview editor", () => {
     expect(JSON.parse(String(generate.init?.body))).toEqual({ sourceFileId: 91, startSeconds: 42.5, durationSeconds: 5, playbackSpeed: 0.5, anchorX: 0.5, anchorY: 0.5, zoom: 1 });
   });
 
-  it("replaces the tag selector with the single selected tag", async () => {
-    setApiTransportForTests(async (path) => {
-      if (path.endsWith("/health")) return healthyDependencies;
-      if (path.endsWith("/videos/12/source")) return { fileId: 91 };
-      if (path.endsWith("/tags/77")) return { name: "Featured tag" };
-      return {};
-    });
+  it("keeps the single tag combobox focused and mounted while replacing or clearing its selection", async () => {
     const ctx = context();
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
     await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
-    fireEvent.change(screen.getByLabelText("Tag ID"), { target: { value: "77" } });
+    const selector = screen.getByRole("combobox", { name: "Tag ID" });
+    selector.focus();
 
-    expect(await screen.findByText("Featured tag")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Tag ID")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Change" }));
-    expect(screen.getByLabelText("Tag ID")).toBeInTheDocument();
+    selectTag();
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBe(selector);
+    expect(selector).toHaveFocus();
+    expect(selector).toHaveAttribute("data-selected-display", "input");
+    expect(selector).toHaveValue("Tag 77");
+
+    fireEvent.change(selector, { target: { value: "replacement" } });
+    expect(selector).toHaveFocus();
+    expect(selector).toHaveValue("replacement");
+    expect(screen.getByRole("option", { name: "Tag 88" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear selected tag" })).toBeInTheDocument();
+
+    fireEvent.keyDown(selector, { key: "ArrowDown" });
+    fireEvent.keyDown(selector, { key: "Enter" });
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBe(selector);
+    expect(selector).toHaveFocus();
+    expect(selector).toHaveValue("Tag 88");
+
+    const clear = screen.getByRole("button", { name: "Clear selected tag" });
+    clear.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBe(selector);
+    expect(selector).toHaveFocus();
+    expect(selector).toHaveValue("");
   });
 
   it("releases the lease, restores focus, and closes on Escape", async () => {
@@ -122,19 +146,21 @@ describe("preview editor", () => {
     expect(ctx.play).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps duration and live playback speed in advanced settings below generate", async () => {
+  it("places the primary generate action immediately below advanced settings", async () => {
     const ctx = context({ playbackRate: 1.5 });
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
     await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
 
     const options = screen.getByText("Advanced settings").closest("details")!;
-    const generate = screen.getByRole("button", { name: "Generate preview" });
-    expect(generate.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(options).not.toHaveAttribute("open");
+    const generate = screen.getByRole("button", { name: "Generate preview" });
+    expect(options.nextElementSibling).toBe(generate);
+    expect(generate).toHaveClass("atp-button", "atp-primary");
     await userEvent.click(screen.getByText("Advanced settings"));
     expect(options).toHaveAttribute("open");
     expect(screen.getByRole("spinbutton", { name: "Duration (seconds)" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("slider", { name: "Preview speed" }), { target: { value: "0.5" } });
+    const speed = screen.getByRole("slider", { name: "Preview speed" });
+    fireEvent.change(speed, { target: { value: "0.5" } });
     expect(screen.getByText("Preview speed — 0.50×")).toBeInTheDocument();
     expect(ctx.setPlaybackRate).toHaveBeenLastCalledWith(0.5);
 
@@ -197,6 +223,48 @@ describe("preview editor", () => {
     expect(Array.from(view.container.querySelectorAll(".atp-thumbnails video"))).toEqual(videos);
   });
 
+  it("updates decoded crop previews only after a pointer drag finishes", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/videos/12/source")) return { fileId: 91 };
+      return {};
+    });
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+    const view = render(<><AnimatedPreviewPlayerAction {...context()} /><AnimatedPreviewPlayerOverlay {...context()} /></>);
+    await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await waitFor(() => expect(view.container.querySelectorAll(".atp-thumbnails video")).toHaveLength(2));
+    for (const video of view.container.querySelectorAll(".atp-thumbnails video")) {
+      Object.defineProperties(video, {
+        duration: { configurable: true, value: 100 },
+        readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA },
+        videoWidth: { configurable: true, value: 1920 },
+        videoHeight: { configurable: true, value: 1080 },
+      });
+      fireEvent.loadedData(video);
+      fireEvent.seeked(video);
+    }
+    drawImage.mockClear();
+
+    const cropEditor = screen.getByRole("application", { name: /crop/i });
+    Object.defineProperty(cropEditor, "setPointerCapture", { configurable: true, value: vi.fn() });
+    fireEvent.pointerDown(cropEditor, { pointerId: 1, clientX: 400, clientY: 200 });
+    fireEvent.pointerMove(cropEditor, { pointerId: 1, clientX: 420, clientY: 200 });
+
+    expect(drawImage).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(cropEditor, { pointerId: 1, clientX: 420, clientY: 200 });
+    expect(drawImage.mock.calls.filter(([source]) => source instanceof HTMLVideoElement)).toHaveLength(2);
+
+    drawImage.mockClear();
+    fireEvent.pointerDown(cropEditor, { pointerId: 2, clientX: 420, clientY: 200 });
+    fireEvent.pointerMove(cropEditor, { pointerId: 2, clientX: 440, clientY: 200 });
+    expect(drawImage).not.toHaveBeenCalled();
+
+    fireEvent.pointerCancel(cropEditor, { pointerId: 2, clientX: 440, clientY: 200 });
+    expect(drawImage.mock.calls.filter(([source]) => source instanceof HTMLVideoElement)).toHaveLength(2);
+  });
+
   it("presents and edits the start time as a compact timestamp between its nudges", async () => {
     const ctx = context();
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
@@ -232,9 +300,385 @@ describe("preview editor", () => {
     expect(input).toHaveValue("00:01:02.35");
   });
 
-  it("removes generation and deletion actions after completion", async () => {
+  it("pauses the host and replaces the crop editor with the generated candidate review", async () => {
     vi.useFakeTimers();
-    const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+
+    expect(ctx.pause).toHaveBeenCalled();
+    expect(screen.queryByRole("application", { name: /crop/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Tag ID" })).not.toBeInTheDocument();
+    expect(screen.getByText("Tag 77")).toBeInTheDocument();
+    const candidate = screen.getByLabelText("Generated preview for Tag 77");
+    expect(candidate).toHaveAttribute("src", "/api/extensions/animated-tag-previews/videos/12/tags/77/candidates/candidate-1/media");
+    expect(candidate).toHaveAttribute("autoplay");
+    expect(candidate).toHaveAttribute("loop");
+    expect(candidate).toHaveAttribute("playsinline");
+    expect(candidate).toHaveProperty("muted", true);
+    expect(screen.getByRole("region", { name: "Generated preview ready for Tag 77" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete preview" })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("waits for a starting generation request, cancels its job, and only then closes", async () => {
+    let resolveGenerate!: (value: { jobId: string }) => void;
+    const generate = new Promise<{ jobId: string }>((resolve) => { resolveGenerate = resolve; });
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/videos/12/source")) return { fileId: 91 };
+      requests.push({ path, init });
+      if (path.endsWith("/generate")) return generate;
+      if (path.includes("/jobs/job-1") && init?.method === "DELETE") return { jobId: "job-1", cancelled: true };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close preview editor" }));
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+    expect(screen.getByText(/waiting for generation to start/i)).toBeInTheDocument();
+    expect(requests.some(({ path, init }) => path.includes("/jobs/job-1") && init?.method === "DELETE")).toBe(false);
+
+    await act(async () => { resolveGenerate({ jobId: "job-1" }); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(requests.some(({ path, init }) => path.includes("/jobs/job-1") && init?.method === "DELETE")).toBe(true);
+    expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps polling after cancellation loses the commit race, then discards and closes", async () => {
+    vi.useFakeTimers();
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      requests.push({ path, init });
+      if (path.includes("/jobs/job-1") && init?.method === "DELETE") return { jobId: "job-1", cancelled: false };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (path.endsWith("/candidates/candidate-1") && init?.method === "DELETE") return { candidateId: "candidate-1", videoId: 12, tagId: 77, discarded: true, blobDeleted: true, blobRetained: false };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close preview editor" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/will be discarded before closing/i)).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(requests.some(({ path, init }) => path.endsWith("/candidates/candidate-1") && init?.method === "DELETE")).toBe(true);
+    expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("discards the candidate and restores the exact editor state and loop on Reset", async () => {
+    vi.useFakeTimers();
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/videos/12/source")) return { fileId: 91 };
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      requests.push({ path, init });
+      if (init?.method === "DELETE") return { candidateId: "candidate-1", videoId: 12, tagId: 77, discarded: true, blobDeleted: true, blobRetained: false };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: "+0.1s" }));
+    fireEvent.click(screen.getByText("Advanced settings"));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Duration (seconds)" }), { target: { value: "4.25" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Preview speed" }), { target: { value: "0.5" } });
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+
+    vi.mocked(ctx.seek).mockClear();
+    vi.mocked(ctx.play).mockClear();
+    vi.mocked(ctx.setPlaybackRate!).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(requests).toContainEqual(expect.objectContaining({
+      path: "/extensions/animated-tag-previews/videos/12/tags/77/candidates/candidate-1",
+      init: expect.objectContaining({ method: "DELETE" }),
+    }));
+    expect(screen.getByRole("application", { name: /4:3 crop/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toHaveValue("Tag 77");
+    expect(screen.getByRole("textbox", { name: "Start time (HH:MM:SS)" })).toHaveValue("00:00:42.6");
+    expect(screen.getByText("Advanced settings").closest("details")).toHaveAttribute("open");
+    expect(screen.getByRole("spinbutton", { name: "Duration (seconds)" })).toHaveValue(4.25);
+    expect(screen.getByRole("slider", { name: "Preview speed" })).toHaveValue("0.5");
+    expect(ctx.setPlaybackRate).toHaveBeenCalledWith(0.5);
+    expect(ctx.seek).toHaveBeenCalledWith(42.6);
+    expect(ctx.play).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("publishes only on Approve, refreshes the index, and closes the editor", async () => {
+    vi.useFakeTimers();
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    let indexReads = 0;
+    setApiTransportForTests(async (path, init) => {
+      requests.push({ path, init });
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/tags")) { indexReads += 1; return { version: String(indexReads), items: [] }; }
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (path.endsWith("/candidates/candidate-1/approve")) return { candidateId: "candidate-1", videoId: 12, tagId: 77, version: "candidate-1", replacedExisting: false, alreadyApproved: false };
+      return {};
+    });
+    const ctx = context({ playing: true });
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+    vi.mocked(ctx.play).mockClear();
+    const readsBeforeApproval = indexReads;
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(requests).toContainEqual(expect.objectContaining({
+      path: "/extensions/animated-tag-previews/videos/12/tags/77/candidates/candidate-1/approve",
+      init: expect.objectContaining({ method: "POST" }),
+    }));
+    expect(indexReads).toBe(readsBeforeApproval + 1);
+    expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
+    expect(requests.some(({ path, init }) => path.endsWith("/candidates/candidate-1") && init?.method === "DELETE")).toBe(false);
+    expect(ctx.play).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("keeps the candidate review open when approval fails", async () => {
+    vi.useFakeTimers();
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (path.endsWith("/approve")) throw new Error("Approval failed");
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByLabelText("Generated preview for Tag 77")).toBeInTheDocument();
+    expect(screen.getByText("Approval failed")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("closes an approved review even when its best-effort index refresh fails", async () => {
+    vi.useFakeTimers();
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    let indexReads = 0;
+    setApiTransportForTests(async (path, init) => {
+      requests.push({ path, init });
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/tags")) {
+        indexReads += 1;
+        if (indexReads > 1) throw new Error("Refresh failed");
+        return { version: "1", items: [] };
+      }
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (path.endsWith("/approve")) return { candidateId: "candidate-1", videoId: 12, tagId: 77, version: "candidate-1", replacedExisting: false, alreadyApproved: false };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+    vi.mocked(ctx.play).mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
+    expect(requests.some(({ path, init }) => path.endsWith("/candidates/candidate-1") && init?.method === "DELETE")).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("discards before closing review and keeps it open if discard fails", async () => {
+    vi.useFakeTimers();
+    let discardAttempts = 0;
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (init?.method === "DELETE") {
+        requests.push({ path, init });
+        discardAttempts += 1;
+        if (discardAttempts === 1) throw new Error("Discard failed");
+        throw new ApiError(404, "Not Found", path);
+      }
+      return {};
+    });
+    const ctx = context({ playing: true });
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+    vi.mocked(ctx.play).mockClear();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+    expect(screen.getByText("Discard failed")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close preview editor" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(requests).toHaveLength(2);
+    expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
+    expect(ctx.play).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("does not let a stale approval close a newly opened editor for the same video", async () => {
+    vi.useFakeTimers();
+    let resolveApproval!: (value: object) => void;
+    const approval = new Promise<object>((resolve) => { resolveApproval = resolve; });
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (path.endsWith("/approve")) return approval;
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Animated preview" }));
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBeInTheDocument();
+
+    await act(async () => { resolveApproval({}); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("detaches cleanup when a stale generation cannot be cancelled", async () => {
+    vi.useFakeTimers();
+    let resolveGenerate!: (value: { jobId: string }) => void;
+    const generation = new Promise<{ jobId: string }>((resolve) => { resolveGenerate = resolve; });
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      requests.push({ path, init });
+      if (path.endsWith("/generate")) return generation;
+      if (path.includes("/jobs/job-stale") && init?.method === "DELETE") return { jobId: "job-stale", cancelled: false };
+      if (path.includes("/jobs/job-stale")) return { status: "completed", progress: 1, candidateId: "candidate-stale" };
+      if (path.endsWith("/candidates/candidate-stale") && init?.method === "DELETE") return { candidateId: "candidate-stale", videoId: 12, tagId: 77, discarded: true, blobDeleted: true, blobRetained: false };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Animated preview" }));
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBeInTheDocument();
+    await act(async () => { resolveGenerate({ jobId: "job-stale" }); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(requests.some(({ path, init }) => path.includes("/jobs/job-stale") && init?.method === "DELETE")).toBe(true);
+    expect(requests.some(({ path, init }) => path.endsWith("/candidates/candidate-stale") && init?.method === "DELETE")).toBe(true);
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tag ID" })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("keeps generation attached through the StrictMode effect lifecycle", async () => {
+    vi.useFakeTimers();
+    let cancelRequests = 0;
+    let jobReads = 0;
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-strict" };
+      if (path.includes("/jobs/job-strict") && init?.method === "DELETE") {
+        cancelRequests += 1;
+        return { jobId: "job-strict", cancelled: true };
+      }
+      if (path.includes("/jobs/job-strict")) {
+        jobReads += 1;
+        return { status: "running", progress: 0.5 };
+      }
+      return {};
+    });
+    const ctx = context();
+    render(<StrictMode><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></StrictMode>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(cancelRequests).toBe(0);
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+    expect(jobReads).toBe(1);
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("returns to a retryable editor when a completed job omits its candidate", async () => {
+    vi.useFakeTimers();
     setApiTransportForTests(async (path) => {
       if (path.endsWith("/health")) return healthyDependencies;
       if (path.endsWith("/generate")) return { jobId: "job-1" };
@@ -245,15 +689,21 @@ describe("preview editor", () => {
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
     fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
     await act(async () => { await Promise.resolve(); });
-    fireEvent.change(screen.getByLabelText("Tag ID"), { target: { value: "77" } });
+    selectTag();
     fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
     await act(async () => { await Promise.resolve(); });
+    vi.mocked(ctx.play).mockClear();
+    vi.mocked(ctx.seek).mockClear();
+    vi.mocked(ctx.setPlaybackRate!).mockClear();
     await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
-    expect(screen.queryByRole("button", { name: "Preview generated" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete preview" })).not.toBeInTheDocument();
-    expect(alert).not.toHaveBeenCalled();
-    await act(async () => { vi.advanceTimersByTime(2_000); await Promise.resolve(); });
-    expect(alert).not.toHaveBeenCalled();
+
+    expect(ctx.pause).toHaveBeenCalled();
+    expect(screen.getByText(/completed without a preview candidate/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try generation again" })).toBeEnabled();
+    expect(screen.queryByLabelText(/Generated preview/)).not.toBeInTheDocument();
+    expect(ctx.setPlaybackRate).toHaveBeenCalledWith(1);
+    expect(ctx.seek).toHaveBeenCalledWith(42.5);
+    expect(ctx.play).toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -268,7 +718,7 @@ describe("preview editor", () => {
         statusReads += 1;
         return statusReads < 3
           ? { status: "running", progress: statusReads / 4 }
-          : { status: "completed", progress: 1 };
+          : { status: "completed", progress: 1, candidateId: "candidate-1" };
       }
       return {};
     });
@@ -276,7 +726,7 @@ describe("preview editor", () => {
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
     fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
     await act(async () => { await Promise.resolve(); });
-    fireEvent.change(screen.getByLabelText("Tag ID"), { target: { value: "77" } });
+    selectTag();
     fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
     await act(async () => { await Promise.resolve(); });
 
@@ -285,7 +735,7 @@ describe("preview editor", () => {
     }
 
     expect(statusReads).toBe(3);
-    expect(screen.queryByRole("button", { name: "Preview generated" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(alert).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
@@ -309,7 +759,7 @@ describe("preview editor", () => {
     const ctx = context();
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
     await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
-    fireEvent.change(screen.getByLabelText("Tag ID"), { target: { value: "77" } });
+    selectTag();
 
     await userEvent.click(screen.getByRole("button", { name: "Delete preview" }));
 
@@ -386,6 +836,95 @@ describe("animated tag media", () => {
 });
 
 describe("preview settings cleanup", () => {
+  it("offers stale-published-preview-only metadata cleanup without blob deletion copy", async () => {
+    const requests: string[] = [];
+    setApiTransportForTests(async (path) => {
+      requests.push(path);
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.includes("dryRun=true")) return { count: 0, blobIds: [], stalePreviewRecordCount: 1, snapshotVersion: "preview-snapshot" };
+      if (path.includes("dryRun=false")) return { count: 0, blobIds: [], deletedBlobCount: 0, failedBlobIds: [], stalePreviewRecordCount: 1 };
+      return {};
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AnimatedPreviewSettings />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Find orphaned previews" }));
+    expect(await screen.findByText("1 stale published preview record found.")).toBeInTheDocument();
+    expect(screen.queryByText(/blob.*found/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove stale published preview records" }));
+
+    await waitFor(() => expect(requests.some((path) => path.includes("dryRun=false"))).toBe(true));
+    expect(requests.find((path) => path.includes("dryRun=false"))).toContain("expectedVersion=preview-snapshot");
+    expect(confirm).toHaveBeenCalledWith("Remove 1 stale published preview record?");
+    expect(await screen.findByText("Removed 1 stale published preview record.")).toBeInTheDocument();
+  });
+
+  it("offers candidate-only cleanup without describing stale metadata as blobs", async () => {
+    const requests: string[] = [];
+    setApiTransportForTests(async (path) => {
+      requests.push(path);
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.includes("dryRun=true")) return { count: 0, blobIds: [], stalePreviewCandidateCount: 1, snapshotVersion: "candidate-snapshot" };
+      if (path.includes("dryRun=false")) return { count: 0, blobIds: [], deletedBlobCount: 0, failedBlobIds: [], stalePreviewCandidateCount: 1 };
+      return {};
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AnimatedPreviewSettings />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Find orphaned previews" }));
+    expect(await screen.findByText("1 stale preview candidate record found.")).toBeInTheDocument();
+    expect(screen.queryByText(/blob.*found/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove stale preview candidate records" }));
+
+    await waitFor(() => expect(requests.some((path) => path.includes("dryRun=false"))).toBe(true));
+    expect(requests.find((path) => path.includes("dryRun=false"))).toContain("expectedVersion=candidate-snapshot");
+    expect(confirm).toHaveBeenCalledWith("Remove 1 stale preview candidate record?");
+    expect(await screen.findByText("Removed 1 stale preview candidate record.")).toBeInTheDocument();
+  });
+
+  it("describes mixed blob and metadata cleanup separately", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.includes("dryRun=true")) return { count: 1, blobIds: ["orphan"], stalePreviewRecordCount: 1, stalePreviewCandidateCount: 1, expiredApprovalReceiptCount: 1, snapshotVersion: "mixed" };
+      if (path.includes("dryRun=false")) return { count: 1, blobIds: ["orphan"], deletedBlobCount: 1, failedBlobIds: [], stalePreviewRecordCount: 1, stalePreviewCandidateCount: 1, expiredApprovalReceiptCount: 1 };
+      return {};
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AnimatedPreviewSettings />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Find orphaned previews" }));
+    expect(await screen.findByText("1 orphaned preview blob found.")).toBeInTheDocument();
+    expect(screen.getByText("1 stale published preview record found.")).toBeInTheDocument();
+    expect(screen.getByText("1 stale preview candidate record found.")).toBeInTheDocument();
+    expect(screen.getByText("1 expired preview approval record found.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clean up preview data" }));
+
+    expect(await screen.findByText("Deleted 1 orphaned preview blob. Removed 1 stale published preview record. Removed 1 stale preview candidate record. Removed 1 expired preview approval record.")).toBeInTheDocument();
+  });
+
+  it("offers receipt-only cleanup without describing approval metadata as blobs", async () => {
+    const requests: string[] = [];
+    setApiTransportForTests(async (path) => {
+      requests.push(path);
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.includes("dryRun=true")) return { count: 0, blobIds: [], expiredApprovalReceiptCount: 1, snapshotVersion: "receipt-snapshot" };
+      if (path.includes("dryRun=false")) return { count: 0, blobIds: [], deletedBlobCount: 0, failedBlobIds: [], expiredApprovalReceiptCount: 1 };
+      return {};
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AnimatedPreviewSettings />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Find orphaned previews" }));
+    expect(await screen.findByText("1 expired preview approval record found.")).toBeInTheDocument();
+    expect(screen.queryByText(/blob.*found/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove expired approval records" }));
+
+    await waitFor(() => expect(requests.some((path) => path.includes("dryRun=false"))).toBe(true));
+    expect(requests.find((path) => path.includes("dryRun=false"))).toContain("expectedVersion=receipt-snapshot");
+    expect(confirm).toHaveBeenCalledWith("Remove 1 expired preview approval record?");
+    expect(await screen.findByText("Removed 1 expired preview approval record.")).toBeInTheDocument();
+  });
+
   it("keeps the scan dry and gates destructive cleanup behind confirmation", async () => {
     const requests: string[] = [];
     setApiTransportForTests(async (path) => {

@@ -32,6 +32,27 @@ public sealed record PreviewRecord(
     string Version,
     PreviewRecipe Recipe);
 
+public sealed record PreviewCandidateRecord(
+    string CandidateId,
+    int VideoId,
+    int TagId,
+    string BlobId,
+    PreviewRecipe Recipe,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ApprovalStartedAt = null,
+    string? PreviousBlobId = null,
+    string? PreviousVersion = null);
+
+public sealed record PreviewApprovalReceipt(
+    string CandidateId,
+    int VideoId,
+    int TagId,
+    string Version,
+    bool ReplacedExisting,
+    string? PreviousBlobId,
+    string? PreviousVersion,
+    DateTimeOffset ApprovedAt);
+
 public sealed record PreviewIndexItem(int TagId, string Version, string MediaUrl);
 
 public sealed record PreviewIndexResponse(string Version, IReadOnlyList<PreviewIndexItem> Items);
@@ -48,9 +69,25 @@ public sealed record PreviewJobResponse(
     DateTime StartedAt,
     DateTime? CompletedAt,
     string? Error,
-    string? Version);
+    string? CandidateId);
 
 public sealed record CancelPreviewJobResponse(string JobId, bool Cancelled);
+
+public sealed record ApprovePreviewCandidateResponse(
+    string CandidateId,
+    int VideoId,
+    int TagId,
+    string Version,
+    bool ReplacedExisting,
+    bool AlreadyApproved);
+
+public sealed record DiscardPreviewCandidateResponse(
+    string CandidateId,
+    int VideoId,
+    int TagId,
+    bool Discarded,
+    bool BlobDeleted,
+    bool BlobRetained);
 
 public sealed record DeletePreviewResponse(int TagId, bool Deleted, bool BlobDeleted);
 
@@ -62,7 +99,10 @@ public sealed record OrphanCleanupResponse(
     int ReferencedBlobCount,
     int DeletedBlobCount,
     IReadOnlyList<string> FailedBlobIds,
-    string SnapshotVersion);
+    string SnapshotVersion,
+    int ExpiredApprovalReceiptCount = 0,
+    int StalePreviewCandidateCount = 0,
+    int StalePreviewRecordCount = 0);
 
 public sealed record ToolHealth(bool Available, bool Compatible, string? Version, string? Message);
 

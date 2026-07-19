@@ -1,6 +1,7 @@
 using AnimatedTagPreviews;
 using Cove.Core.Interfaces;
 using Cove.Plugins;
+using System.Text.Json;
 
 namespace AnimatedTagPreviews.Backend.Tests;
 
@@ -189,5 +190,48 @@ public sealed class PreviewContractTests
             && filter.FilterId == "has-preview"
             && filter.CriterionType == "boolean");
         Assert.Contains(manifest.SettingsPanels, panel => panel.ComponentName == "AnimatedPreviewSettings");
+    }
+
+    [Fact]
+    public void Completed_job_contract_identifies_the_private_candidate_instead_of_a_published_version()
+    {
+        var response = new PreviewJobResponse(
+            "job-1",
+            7,
+            9,
+            "completed",
+            1,
+            "Preview candidate ready",
+            DateTime.UnixEpoch,
+            DateTime.UnixEpoch,
+            null,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+        var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Contains("\"candidateId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"version\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Orphan_cleanup_contract_reports_expired_approval_metadata_separately_from_blobs()
+    {
+        var response = new OrphanCleanupResponse(
+            DryRun: true,
+            Count: 0,
+            BlobIds: [],
+            OwnedBlobCount: 1,
+            ReferencedBlobCount: 1,
+            DeletedBlobCount: 0,
+            FailedBlobIds: [],
+            SnapshotVersion: "snapshot",
+            ExpiredApprovalReceiptCount: 2,
+            StalePreviewCandidateCount: 3,
+            StalePreviewRecordCount: 4);
+
+        Assert.Equal(0, response.Count);
+        Assert.Equal(2, response.ExpiredApprovalReceiptCount);
+        Assert.Equal(3, response.StalePreviewCandidateCount);
+        Assert.Equal(4, response.StalePreviewRecordCount);
     }
 }

@@ -29,6 +29,56 @@ public sealed class PreviewStateStoreTests
     }
 
     [Fact]
+    public async Task Candidate_metadata_is_durable_and_addressed_by_unguessable_candidate_id()
+    {
+        var extensionStore = new MemoryExtensionStore();
+        var state = new PreviewStateStore(() => extensionStore);
+        var candidateId = Guid.NewGuid().ToString("N");
+        var candidate = new PreviewCandidateRecord(
+            candidateId,
+            7,
+            9,
+            "candidate-blob",
+            new PreviewRecipe(7, 11, 1.5, 5, 0.5, 0.25, 1.8, 720, "libvpx-vp9", 2140, 24, DateTimeOffset.UnixEpoch),
+            DateTimeOffset.UnixEpoch);
+
+        await state.SaveCandidateAsync(candidate);
+        var reloaded = await new PreviewStateStore(() => extensionStore).GetCandidateAsync(candidateId);
+
+        Assert.Equal(candidate, reloaded);
+        var stored = Assert.Single(await extensionStore.GetAllAsync());
+        Assert.Equal($"candidate:{candidateId}", stored.Key);
+        Assert.Contains("\"blobId\":\"candidate-blob\"", stored.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("/media/", stored.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Approval_receipt_survives_candidate_removal_without_becoming_a_candidate_blob_reference()
+    {
+        var extensionStore = new MemoryExtensionStore();
+        var state = new PreviewStateStore(() => extensionStore);
+        var candidateId = Guid.NewGuid().ToString("N");
+        var receipt = new PreviewApprovalReceipt(
+            candidateId,
+            7,
+            9,
+            candidateId,
+            ReplacedExisting: true,
+            PreviousBlobId: "previous-blob",
+            PreviousVersion: "previous-version",
+            DateTimeOffset.UnixEpoch);
+
+        await state.SaveApprovalReceiptAsync(receipt);
+        var reloaded = await new PreviewStateStore(() => extensionStore).GetApprovalReceiptAsync(candidateId);
+
+        Assert.Equal(receipt, reloaded);
+        var stored = Assert.Single(await extensionStore.GetAllAsync());
+        Assert.Equal($"approval-receipt:{candidateId}", stored.Key);
+        Assert.Contains("previous-blob", stored.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("candidate-blob", stored.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Older_settings_gain_the_new_aspect_and_fit_defaults()
     {
         var extensionStore = new MemoryExtensionStore();

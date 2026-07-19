@@ -2,7 +2,7 @@ using Cove.Core.Interfaces;
 
 namespace AnimatedTagPreviews;
 
-public sealed record PreviewGenerationResult(PreviewRecord Record, bool ReplacedExisting);
+public sealed record PreviewGenerationResult(PreviewCandidateRecord Candidate);
 
 public interface IPreviewGenerationService
 {
@@ -75,7 +75,7 @@ public sealed class PreviewGenerationService(
 
         var outputPath = temporaryFiles.CreateWebmPath();
         string? newBlobId = null;
-        var published = false;
+        var candidatePersisted = false;
         try
         {
             var executable = string.IsNullOrWhiteSpace(configuration.FfmpegPath) ? "ffmpeg" : configuration.FfmpegPath;
@@ -102,51 +102,43 @@ public sealed class PreviewGenerationService(
             await using (var input = new FileStream(outputPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
                 newBlobId = await blobs.StoreBlobAsync(input, "video/webm", ct);
 
-            var version = Guid.NewGuid().ToString("N");
-            var record = new PreviewRecord(tagId, newBlobId, version, recipe);
+            var candidateId = Guid.NewGuid().ToString("N");
+            var candidate = new PreviewCandidateRecord(
+                candidateId,
+                videoId,
+                tagId,
+                newBlobId,
+                recipe,
+                DateTimeOffset.UtcNow);
             ct.ThrowIfCancellationRequested();
-            PreviewRecord? old;
             await using (var mutation = await mutations.AcquireAsync(ct))
             {
                 ct.ThrowIfCancellationRequested();
                 if (!commitGuard.TryBeginCommit())
-                    throw new OperationCanceledException("Preview generation was cancelled before publication.", ct);
+                    throw new OperationCanceledException("Preview generation was cancelled before candidate persistence.", ct);
                 await state.TrackOwnedBlobAsync(new OwnedBlobRecord(newBlobId, tagId, DateTimeOffset.UtcNow), CancellationToken.None);
-                old = await state.PublishAsync(record, CancellationToken.None);
-                published = true;
-
-                if (old is not null && !string.Equals(old.BlobId, newBlobId, StringComparison.Ordinal))
-                {
-                    try
-                    {
-                        await blobs.DeleteBlobAsync(old.BlobId, CancellationToken.None);
-                        await state.UntrackOwnedBlobAsync(old.BlobId, CancellationToken.None);
-                    }
-                    catch
-                    {
-                        // The durable new mapping wins. The owned marker intentionally remains for dry-run cleanup.
-                    }
-                }
+                await state.SaveCandidateAsync(candidate, CancellationToken.None);
+                candidatePersisted = true;
             }
 
-            progress.Report(1, "Preview ready");
-            return new PreviewGenerationResult(record, old is not null);
+            progress.Report(1, "Preview candidate ready");
+            return new PreviewGenerationResult(candidate);
         }
         catch (OperationCanceledException)
         {
-            if (!published && newBlobId is not null)
+            if (!candidatePersisted && newBlobId is not null)
                 await SafeDeleteNewBlobAsync(newBlobId);
             throw;
         }
         catch (PreviewGenerationException)
         {
-            if (!published && newBlobId is not null)
+            if (!candidatePersisted && newBlobId is not null)
                 await SafeDeleteNewBlobAsync(newBlobId);
             throw;
         }
         catch
         {
-            if (!published && newBlobId is not null)
+            if (!candidatePersisted && newBlobId is not null)
                 await SafeDeleteNewBlobAsync(newBlobId);
             throw new PreviewGenerationException("Preview generation failed.");
         }

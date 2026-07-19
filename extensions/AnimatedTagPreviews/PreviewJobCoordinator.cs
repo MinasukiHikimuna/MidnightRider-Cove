@@ -22,7 +22,7 @@ public sealed class PreviewJobCoordinator(
     private const int MaximumRetainedJobs = 512;
     private static readonly TimeSpan Retention = TimeSpan.FromHours(1);
     private readonly ConcurrentDictionary<string, OwnedPreviewJob> _ownedJobs = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, string> _completedVersions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _completedCandidateIds = new(StringComparer.Ordinal);
     private readonly object _lifecycleLock = new();
     private bool _stopping;
 
@@ -32,7 +32,7 @@ public sealed class PreviewJobCoordinator(
         var actorSnapshot = Snapshot(actor);
         var commitGuard = new PreviewCommitGuard();
         var execution = new PreviewJobExecution();
-        string? assignedJobId = null;
+        var assignedJobId = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         string jobId;
         lock (_lifecycleLock)
         {
@@ -43,6 +43,7 @@ public sealed class PreviewJobCoordinator(
                 $"Generate animated tag preview for {tagName}",
                 async (progress, ct) =>
                 {
+                    var ownedJobId = await assignedJobId.Task.ConfigureAwait(false);
                     if (!execution.TryStart())
                         return;
                     try
@@ -50,33 +51,32 @@ public sealed class PreviewJobCoordinator(
                         await using var scope = scopes.CreateAsyncScope();
                         var generator = scope.ServiceProvider.GetRequiredService<IPreviewGenerationService>();
                         var result = await generator.GenerateAsync(videoId, tagId, request, commitGuard, progress, ct);
-                        if (assignedJobId is not null)
-                            _completedVersions[assignedJobId] = result.Record.Version;
+                        _completedCandidateIds[ownedJobId] = result.Candidate.CandidateId;
                         await audit.LogAsync(
-                            result.ReplacedExisting ? "animated_preview.replace" : "animated_preview.generate",
+                            "animated_preview.candidate.generate",
                             AuditOutcomes.Success,
                             actorSnapshot,
                             "tag",
                             tagId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                            new { videoId, jobId = assignedJobId, result.Record.Version },
+                            new { videoId, jobId = ownedJobId, candidateId = result.Candidate.CandidateId },
                             CancellationToken.None);
                     }
                     catch (OperationCanceledException)
                     {
-                        await audit.LogAsync("animated_preview.generate", "cancelled", actorSnapshot, "tag",
-                            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { videoId, jobId = assignedJobId }, CancellationToken.None);
+                        await audit.LogAsync("animated_preview.candidate.generate", "cancelled", actorSnapshot, "tag",
+                            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { videoId, jobId = ownedJobId }, CancellationToken.None);
                         throw;
                     }
                     catch (PreviewGenerationException ex)
                     {
-                        await audit.LogAsync("animated_preview.generate", AuditOutcomes.Fail, actorSnapshot, "tag",
-                            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { videoId, jobId = assignedJobId, reason = ex.Message }, CancellationToken.None);
+                        await audit.LogAsync("animated_preview.candidate.generate", AuditOutcomes.Fail, actorSnapshot, "tag",
+                            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { videoId, jobId = ownedJobId, reason = ex.Message }, CancellationToken.None);
                         throw;
                     }
                     catch
                     {
-                        await audit.LogAsync("animated_preview.generate", AuditOutcomes.Fail, actorSnapshot, "tag",
-                            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { videoId, jobId = assignedJobId }, CancellationToken.None);
+                        await audit.LogAsync("animated_preview.candidate.generate", AuditOutcomes.Fail, actorSnapshot, "tag",
+                            tagId.ToString(System.Globalization.CultureInfo.InvariantCulture), new { videoId, jobId = ownedJobId }, CancellationToken.None);
                         throw new PreviewGenerationException("Preview generation failed.");
                     }
                     finally
@@ -85,8 +85,8 @@ public sealed class PreviewJobCoordinator(
                     }
                 },
                 exclusive: true);
-            assignedJobId = jobId;
             _ownedJobs[jobId] = new OwnedPreviewJob(jobId, videoId, tagId, commitGuard, execution, DateTimeOffset.UtcNow);
+            assignedJobId.SetResult(jobId);
         }
         return jobId;
     }
@@ -106,7 +106,7 @@ public sealed class PreviewJobCoordinator(
             job.StartedAt,
             job.CompletedAt,
             job.Status == JobStatus.Failed ? SafeError(job.Error) : null,
-            _completedVersions.GetValueOrDefault(jobId));
+            _completedCandidateIds.GetValueOrDefault(jobId));
     }
 
     public bool Cancel(int videoId, int tagId, string jobId)
@@ -144,7 +144,7 @@ public sealed class PreviewJobCoordinator(
         }
         await Task.WhenAll(ownedJobs.Select(owned => owned.Execution.Completion));
         _ownedJobs.Clear();
-        _completedVersions.Clear();
+        _completedCandidateIds.Clear();
     }
 
     private void PruneFinishedJobs()
@@ -157,7 +157,7 @@ public sealed class PreviewJobCoordinator(
             if (job is null)
             {
                 _ownedJobs.TryRemove(pair.Key, out _);
-                _completedVersions.TryRemove(pair.Key, out _);
+                _completedCandidateIds.TryRemove(pair.Key, out _);
                 continue;
             }
             if (job.CompletedAt is not { } completedAt)
@@ -165,7 +165,7 @@ public sealed class PreviewJobCoordinator(
             if (completedAt < cutoff)
             {
                 _ownedJobs.TryRemove(pair.Key, out _);
-                _completedVersions.TryRemove(pair.Key, out _);
+                _completedCandidateIds.TryRemove(pair.Key, out _);
             }
             else
             {
@@ -176,7 +176,7 @@ public sealed class PreviewJobCoordinator(
         foreach (var stale in finished.OrderByDescending(item => item.CompletedAt).Skip(MaximumRetainedJobs))
         {
             _ownedJobs.TryRemove(stale.JobId, out _);
-            _completedVersions.TryRemove(stale.JobId, out _);
+            _completedCandidateIds.TryRemove(stale.JobId, out _);
         }
     }
 

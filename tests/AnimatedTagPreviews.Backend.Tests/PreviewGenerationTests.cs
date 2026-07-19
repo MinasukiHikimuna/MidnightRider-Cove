@@ -10,7 +10,7 @@ public sealed class PreviewGenerationTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"animated-preview-tests-{Guid.NewGuid():N}");
 
     [Fact]
-    public async Task Successful_replacement_publishes_new_mapping_before_deleting_old_blob()
+    public async Task Successful_generation_persists_a_private_candidate_without_publishing_or_deleting_current_preview()
     {
         var harness = CreateHarness();
         harness.State.Current = ExistingRecord("old-blob");
@@ -18,21 +18,24 @@ public sealed class PreviewGenerationTests : IDisposable
 
         var result = await harness.Service.GenerateAsync(7, 9, ValidRequest(), new PreviewCommitGuard(), new NullProgress(), CancellationToken.None);
 
-        Assert.True(result.ReplacedExisting);
-        Assert.Equal("new-blob", harness.State.Current!.BlobId);
+        Assert.Equal("new-blob", result.Candidate.BlobId);
+        Assert.Equal(7, result.Candidate.VideoId);
+        Assert.Equal(9, result.Candidate.TagId);
+        Assert.Equal("old-blob", harness.State.Current!.BlobId);
+        Assert.Equal(result.Candidate, harness.State.Candidate);
         Assert.Equal(DateTime.UnixEpoch, harness.Tags.Tag.UpdatedAt);
         Assert.Equal(
-            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "blob.delete:old-blob", "state.untrack:old-blob"],
+            ["blob.store", "state.track:new-blob", "state.candidate:new-blob"],
             harness.Events);
         Assert.False(File.Exists(harness.Temporary.LastPath));
     }
 
     [Fact]
-    public async Task Failed_mapping_publication_preserves_old_mapping_and_deletes_new_blob()
+    public async Task Failed_candidate_persistence_preserves_old_mapping_and_deletes_new_blob()
     {
         var harness = CreateHarness();
         harness.State.Current = ExistingRecord("old-blob");
-        harness.State.FailPublish = true;
+        harness.State.FailCandidateSave = true;
         harness.Blobs.NextBlobId = "new-blob";
 
         await Assert.ThrowsAsync<PreviewGenerationException>(() =>
@@ -40,7 +43,7 @@ public sealed class PreviewGenerationTests : IDisposable
 
         Assert.Equal("old-blob", harness.State.Current!.BlobId);
         Assert.Equal(
-            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "blob.delete:new-blob", "state.untrack:new-blob"],
+            ["blob.store", "state.track:new-blob", "state.candidate:new-blob", "blob.delete:new-blob", "state.untrack:new-blob"],
             harness.Events);
         Assert.False(File.Exists(harness.Temporary.LastPath));
     }
@@ -59,7 +62,7 @@ public sealed class PreviewGenerationTests : IDisposable
     }
 
     [Fact]
-    public async Task Publication_waits_for_the_shared_mutation_gate_after_storing_the_blob()
+    public async Task Candidate_persistence_waits_for_the_shared_mutation_gate_after_storing_the_blob()
     {
         var gate = new PreviewMutationGate();
         var harness = CreateHarness(gate);
@@ -79,22 +82,22 @@ public sealed class PreviewGenerationTests : IDisposable
             await held.DisposeAsync();
         }
 
-        Assert.Contains("state.publish:new-blob", harness.Events);
+        Assert.Contains("state.candidate:new-blob", harness.Events);
     }
 
     [Fact]
-    public async Task Publishing_preview_does_not_mutate_core_tag_state()
+    public async Task Creating_candidate_does_not_mutate_core_tag_state()
     {
         var harness = CreateHarness();
         harness.State.Current = ExistingRecord("old-blob");
 
         var result = await harness.Service.GenerateAsync(7, 9, ValidRequest(), new PreviewCommitGuard(), new NullProgress(), CancellationToken.None);
 
-        Assert.True(result.ReplacedExisting);
-        Assert.Equal("new-blob", harness.State.Current!.BlobId);
+        Assert.Equal("new-blob", result.Candidate.BlobId);
+        Assert.Equal("old-blob", harness.State.Current!.BlobId);
         Assert.Equal(DateTime.UnixEpoch, harness.Tags.Tag.UpdatedAt);
         Assert.Equal(
-            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "blob.delete:old-blob", "state.untrack:old-blob"],
+            ["blob.store", "state.track:new-blob", "state.candidate:new-blob"],
             harness.Events);
     }
 
@@ -235,7 +238,8 @@ public sealed class PreviewGenerationTests : IDisposable
     private sealed class FakeState(List<string> events) : IPreviewStateStore
     {
         public PreviewRecord? Current { get; set; }
-        public bool FailPublish { get; set; }
+        public PreviewCandidateRecord? Candidate { get; set; }
+        public bool FailCandidateSave { get; set; }
         public Task<PreviewSettings> GetSettingsAsync(CancellationToken ct = default) => Task.FromResult(PreviewSettings.Default);
         public Task SaveSettingsAsync(PreviewSettings settings, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<PreviewRecord?> GetPreviewAsync(int tagId, CancellationToken ct = default) => Task.FromResult(Current);
@@ -243,12 +247,32 @@ public sealed class PreviewGenerationTests : IDisposable
         public Task<PreviewRecord?> PublishAsync(PreviewRecord record, CancellationToken ct = default)
         {
             events.Add($"state.publish:{record.BlobId}");
-            if (FailPublish)
-                throw new InvalidOperationException("simulated persistence failure");
             var old = Current;
             Current = record;
             return Task.FromResult(old);
         }
+        public Task SaveCandidateAsync(PreviewCandidateRecord record, CancellationToken ct = default)
+        {
+            events.Add($"state.candidate:{record.BlobId}");
+            if (FailCandidateSave)
+                throw new InvalidOperationException("simulated candidate persistence failure");
+            Candidate = record;
+            return Task.CompletedTask;
+        }
+        public Task<PreviewCandidateRecord?> GetCandidateAsync(string candidateId, CancellationToken ct = default)
+            => Task.FromResult(Candidate?.CandidateId == candidateId ? Candidate : null);
+        public Task<IReadOnlyList<PreviewCandidateRecord>> GetCandidatesAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<PreviewCandidateRecord>>(Candidate is null ? [] : [Candidate]);
+        public Task<PreviewCandidateRecord?> RemoveCandidateAsync(string candidateId, CancellationToken ct = default)
+        {
+            var old = Candidate?.CandidateId == candidateId ? Candidate : null;
+            Candidate = null;
+            return Task.FromResult(old);
+        }
+        public Task<PreviewApprovalReceipt?> GetApprovalReceiptAsync(string candidateId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<PreviewApprovalReceipt>> GetApprovalReceiptsAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task SaveApprovalReceiptAsync(PreviewApprovalReceipt receipt, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<PreviewApprovalReceipt?> RemoveApprovalReceiptAsync(string candidateId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<PreviewRecord?> RemovePreviewAsync(int tagId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task TrackOwnedBlobAsync(OwnedBlobRecord record, CancellationToken ct = default)
         {

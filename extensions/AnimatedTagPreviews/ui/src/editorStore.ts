@@ -10,8 +10,12 @@ export function openEditor(hostId: number, opener: HTMLElement | null) {
   listeners.forEach((listener) => listener());
 }
 
-export function closeEditor(hostId: number, restoreFocus = true) {
-  if (current?.hostId !== hostId) return;
+export function isEditorCurrent(hostId: number, expectedSequence: number) {
+  return current?.hostId === hostId && current.sequence === expectedSequence;
+}
+
+export function closeEditor(hostId: number, restoreFocus = true, expectedSequence?: number) {
+  if (current?.hostId !== hostId || (expectedSequence != null && current.sequence !== expectedSequence)) return;
   const opener = current.opener;
   current = null;
   listeners.forEach((listener) => listener());

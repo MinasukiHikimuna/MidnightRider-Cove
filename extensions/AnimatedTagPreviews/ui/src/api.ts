@@ -54,9 +54,24 @@ export interface GeneratePreviewRequest {
   width?: number | null;
   playbackSpeed?: number;
 }
-export interface JobStatus { status: "pending" | "running" | "completed" | "failed" | "cancelled"; progress?: number; message?: string; error?: string; version?: string }
+export interface JobStatus { status: "pending" | "running" | "completed" | "failed" | "cancelled"; progress?: number; message?: string; error?: string; candidateId?: string }
 export interface PreviewSource { fileId: number; mediaUrl: string }
-interface TagInfo { name?: string }
+export interface ApprovePreviewCandidateResponse {
+  candidateId: string;
+  videoId: number;
+  tagId: number;
+  version: string;
+  replacedExisting: boolean;
+  alreadyApproved: boolean;
+}
+export interface DiscardPreviewCandidateResponse {
+  candidateId: string;
+  videoId: number;
+  tagId: number;
+  discarded: boolean;
+  blobDeleted: boolean;
+  blobRetained: boolean;
+}
 
 export const DEFAULT_SETTINGS: PreviewSettings = {
   defaultDurationSeconds: 5,
@@ -100,18 +115,17 @@ export const previewApi = {
     const source = await transport(`${BASE}/videos/${videoId}/source`) as Omit<PreviewSource, "mediaUrl">;
     return { ...source, mediaUrl: `/api${BASE}/videos/${videoId}/source/media?fileId=${encodeURIComponent(source.fileId)}` };
   },
-  tagLabel: async (tagId: number) => {
-    const tag = await transport(`/tags/${tagId}`) as TagInfo;
-    return tag.name?.trim() || `Tag ${tagId}`;
-  },
   generate: (videoId: number, tagId: number, payload: GeneratePreviewRequest) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/generate`, { method: "POST", body: JSON.stringify(payload) }) as Promise<{ jobId: string }>,
   job: (videoId: number, tagId: number, jobId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/jobs/${encodeURIComponent(jobId)}`) as Promise<JobStatus>,
   cancel: (videoId: number, tagId: number, jobId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" }) as Promise<{ jobId: string; cancelled: boolean }>,
+  candidateMediaUrl: (videoId: number, tagId: number, candidateId: string) => `/api${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}/media`,
+  approveCandidate: (videoId: number, tagId: number, candidateId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}/approve`, { method: "POST" }) as Promise<ApprovePreviewCandidateResponse>,
+  discardCandidate: (videoId: number, tagId: number, candidateId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}`, { method: "DELETE" }) as Promise<DiscardPreviewCandidateResponse>,
   deleteMedia: (tagId: number) => transport(`${BASE}/tags/${tagId}/media`, { method: "DELETE" }) as Promise<{ tagId: number; deleted: boolean; blobDeleted: boolean }>,
   cleanupOrphans: async (dryRun = true, expectedVersion?: string) => {
     const query = new URLSearchParams({ dryRun: String(dryRun) });
     if (expectedVersion) query.set("expectedVersion", expectedVersion);
-    const value = await transport(`${BASE}/cleanup/orphans?${query}`, { method: "POST" }) as { count?: unknown; orphanCount?: unknown; blobIds?: unknown; orphans?: unknown; deletedBlobCount?: unknown; failedBlobIds?: unknown; snapshotVersion?: unknown };
+    const value = await transport(`${BASE}/cleanup/orphans?${query}`, { method: "POST" }) as { count?: unknown; orphanCount?: unknown; blobIds?: unknown; orphans?: unknown; deletedBlobCount?: unknown; failedBlobIds?: unknown; snapshotVersion?: unknown; expiredApprovalReceiptCount?: unknown; stalePreviewCandidateCount?: unknown; stalePreviewRecordCount?: unknown };
     const blobIds = Array.isArray(value?.blobIds)
       ? value.blobIds.map(String)
       : Array.isArray(value?.orphans)
@@ -126,6 +140,9 @@ export const previewApi = {
       deletedBlobCount: Number(value?.deletedBlobCount ?? 0),
       failedBlobIds: Array.isArray(value?.failedBlobIds) ? value.failedBlobIds.map(String) : [],
       snapshotVersion: String(value?.snapshotVersion ?? ""),
+      expiredApprovalReceiptCount: Number(value?.expiredApprovalReceiptCount ?? 0),
+      stalePreviewCandidateCount: Number(value?.stalePreviewCandidateCount ?? 0),
+      stalePreviewRecordCount: Number(value?.stalePreviewRecordCount ?? 0),
     };
   },
   mediaUrl: (tagId: number, version: string) => `/api${BASE}/tags/${tagId}/media?v=${encodeURIComponent(version)}`,
