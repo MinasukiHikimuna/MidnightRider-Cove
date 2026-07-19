@@ -26,6 +26,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         services.AddSingleton<PreviewMutationGate>();
         services.AddScoped<IPreviewMaintenanceService, PreviewMaintenanceService>();
         services.AddSingleton<IPreviewJobCoordinator, PreviewJobCoordinator>();
+        services.AddSingleton<IExtensionEntityFilterProvider, AnimatedPreviewEntityFilterProvider>();
         services.AddScoped<IPreviewGenerationService, PreviewGenerationService>();
     }
 
@@ -47,6 +48,13 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
             .AddSlot("media-player-actions", "AnimatedPreviewPlayerAction", "animated-tag-previews:player-action", 100)
             .AddSlot("media-player-overlay", "AnimatedPreviewPlayerOverlay", "animated-tag-previews:player-overlay", 100)
             .OverrideComponent("entity.media", "AnimatedTagMedia", 100)
+            .AddExtensionListFilter(
+                "tags",
+                "animated-preview",
+                "Animated preview",
+                "boolean",
+                "has-preview",
+                modifiers: ["EQUALS"])
             .AddSettingsTab(
                 "animated-tag-previews",
                 "Animated tag previews",
@@ -143,6 +151,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
     }
 
     private static async Task<IResult> GetIndexAsync(
+        HttpContext context,
         IPreviewStateStore state,
         IAuthorizationService authorization,
         ICurrentPrincipalAccessor principals,
@@ -170,7 +179,13 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
                 preview.Version,
                 $"{ApiBase}/tags/{preview.TagId}/media?v={Uri.EscapeDataString(preview.Version)}"))
             .ToArray();
-        return Results.Ok(new PreviewIndexResponse(CalculateIndexVersion(items), items));
+        var version = CalculateIndexVersion(items);
+        var etag = $"\"{version}\"";
+        context.Response.Headers.ETag = etag;
+        context.Response.Headers.CacheControl = "no-cache";
+        if (context.Request.Headers.IfNoneMatch.Any(value => string.Equals(value, etag, StringComparison.Ordinal)))
+            return Results.StatusCode(StatusCodes.Status304NotModified);
+        return Results.Ok(new PreviewIndexResponse(version, items));
     }
 
     private static async Task<IResult> GenerateAsync(
@@ -344,6 +359,30 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
     private static string CalculateIndexVersion(IEnumerable<PreviewIndexItem> items)
     {
         var canonical = string.Join('|', items.Select(item => $"{item.TagId}:{item.Version}"));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))[..16].ToLowerInvariant();
+    }
+}
+
+public sealed class AnimatedPreviewEntityFilterProvider(IPreviewStateStore state) : IExtensionEntityFilterProvider
+{
+    public IReadOnlyCollection<ExtensionEntityFilterDefinition> Filters { get; } =
+        [new("has-preview", "tags")];
+
+    public async Task<ExtensionEntityFilterResult> ResolveAsync(ExtensionEntityFilterRequest request, CancellationToken ct)
+    {
+        var requirePreview = request.Value.GetBoolean();
+        var previews = await state.GetPreviewsAsync(ct);
+        var previewTagIds = previews.Select(preview => preview.TagId).ToHashSet();
+        var matches = request.CandidateIds
+            .Where(tagId => previewTagIds.Contains(tagId) == requirePreview)
+            .ToArray();
+        var revision = CalculateRevision(previews);
+        return new ExtensionEntityFilterResult(matches, revision);
+    }
+
+    private static string CalculateRevision(IEnumerable<PreviewRecord> previews)
+    {
+        var canonical = string.Join('|', previews.OrderBy(item => item.TagId).Select(item => $"{item.TagId}:{item.Version}"));
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))[..16].ToLowerInvariant();
     }
 }

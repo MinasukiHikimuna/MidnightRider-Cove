@@ -114,7 +114,6 @@ public sealed class PreviewGenerationService(
                 await state.TrackOwnedBlobAsync(new OwnedBlobRecord(newBlobId, tagId, DateTimeOffset.UtcNow), CancellationToken.None);
                 old = await state.PublishAsync(record, CancellationToken.None);
                 published = true;
-                await TryTouchTagAsync(tagId);
 
                 if (old is not null && !string.Equals(old.BlobId, newBlobId, StringComparison.Ordinal))
                 {
@@ -162,12 +161,6 @@ public sealed class PreviewGenerationService(
         try { await blobs.DeleteBlobAsync(blobId, CancellationToken.None); }
         catch { }
         try { await state.UntrackOwnedBlobAsync(blobId, CancellationToken.None); }
-        catch { }
-    }
-
-    private async Task TryTouchTagAsync(int tagId)
-    {
-        try { await tags.TouchAsync(tagId, CancellationToken.None); }
         catch { }
     }
 

@@ -20,10 +20,9 @@ public sealed class PreviewGenerationTests : IDisposable
 
         Assert.True(result.ReplacedExisting);
         Assert.Equal("new-blob", harness.State.Current!.BlobId);
-        Assert.Equal(1, harness.Tags.TouchCount);
-        Assert.True(harness.Tags.Tag.UpdatedAt > DateTime.UnixEpoch);
+        Assert.Equal(DateTime.UnixEpoch, harness.Tags.Tag.UpdatedAt);
         Assert.Equal(
-            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "tag.touch", "blob.delete:old-blob", "state.untrack:old-blob"],
+            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "blob.delete:old-blob", "state.untrack:old-blob"],
             harness.Events);
         Assert.False(File.Exists(harness.Temporary.LastPath));
     }
@@ -40,7 +39,6 @@ public sealed class PreviewGenerationTests : IDisposable
             harness.Service.GenerateAsync(7, 9, ValidRequest(), new PreviewCommitGuard(), new NullProgress(), CancellationToken.None));
 
         Assert.Equal("old-blob", harness.State.Current!.BlobId);
-        Assert.Equal(0, harness.Tags.TouchCount);
         Assert.Equal(
             ["blob.store", "state.track:new-blob", "state.publish:new-blob", "blob.delete:new-blob", "state.untrack:new-blob"],
             harness.Events);
@@ -56,7 +54,6 @@ public sealed class PreviewGenerationTests : IDisposable
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             harness.Service.GenerateAsync(7, 9, ValidRequest(), new PreviewCommitGuard(), new NullProgress(), new CancellationToken(canceled: true)));
 
-        Assert.Equal(0, harness.Tags.TouchCount);
         Assert.Empty(harness.Events);
         Assert.False(File.Exists(harness.Temporary.LastPath));
     }
@@ -86,19 +83,18 @@ public sealed class PreviewGenerationTests : IDisposable
     }
 
     [Fact]
-    public async Task Timestamp_failure_does_not_fail_a_published_preview_or_skip_old_blob_cleanup()
+    public async Task Publishing_preview_does_not_mutate_core_tag_state()
     {
         var harness = CreateHarness();
         harness.State.Current = ExistingRecord("old-blob");
-        harness.Tags.FailTouch = true;
 
         var result = await harness.Service.GenerateAsync(7, 9, ValidRequest(), new PreviewCommitGuard(), new NullProgress(), CancellationToken.None);
 
         Assert.True(result.ReplacedExisting);
         Assert.Equal("new-blob", harness.State.Current!.BlobId);
-        Assert.Equal(1, harness.Tags.TouchCount);
+        Assert.Equal(DateTime.UnixEpoch, harness.Tags.Tag.UpdatedAt);
         Assert.Equal(
-            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "tag.touch", "blob.delete:old-blob", "state.untrack:old-blob"],
+            ["blob.store", "state.track:new-blob", "state.publish:new-blob", "blob.delete:old-blob", "state.untrack:old-blob"],
             harness.Events);
     }
 
@@ -131,7 +127,7 @@ public sealed class PreviewGenerationTests : IDisposable
         var blobs = new FakeBlobs(events);
         var runner = new FakeRunner();
         var temporary = new FakeTemporary(_root);
-        var tags = new StubTagRepository(new Tag { Id = 9, Name = "Tag", UpdatedAt = DateTime.UnixEpoch }, events);
+        var tags = new StubTagRepository(new Tag { Id = 9, Name = "Tag", UpdatedAt = DateTime.UnixEpoch });
         var service = new PreviewGenerationService(
             new StubVideoRepository(video),
             tags,
@@ -280,25 +276,14 @@ public sealed class PreviewGenerationTests : IDisposable
         public Task<IReadOnlyList<VideoPerformer>> GetVideoPerformersAsync(IReadOnlyList<int> videoIds, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
-    private sealed class StubTagRepository(Tag tag, List<string> events) : ITagRepository
+    private sealed class StubTagRepository(Tag tag) : ITagRepository
     {
         public Tag Tag => tag;
-        public int TouchCount { get; private set; }
-        public bool FailTouch { get; set; }
         public Task<Tag?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult(id == tag.Id ? tag : null);
         public Task<IReadOnlyList<Tag>> GetAllAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<Tag> AddAsync(Tag entity, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpdateAsync(Tag entity, CancellationToken ct = default)
             => throw new NotSupportedException("Preview generation must not perform a full tag update.");
-        public Task<bool> TouchAsync(int id, CancellationToken ct = default)
-        {
-            TouchCount++;
-            events.Add("tag.touch");
-            if (FailTouch)
-                throw new InvalidOperationException("simulated timestamp failure");
-            tag.UpdatedAt = DateTime.UtcNow;
-            return Task.FromResult(true);
-        }
         public Task DeleteAsync(int id, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int> CountAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<(IReadOnlyList<Tag> Items, int TotalCount)> FindAsync(TagFilter? filter, FindFilter? findFilter, CancellationToken ct = default) => throw new NotSupportedException();

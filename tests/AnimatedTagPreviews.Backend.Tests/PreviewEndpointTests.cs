@@ -68,6 +68,24 @@ public sealed class PreviewEndpointTests
     }
 
     [Fact]
+    public async Task Compact_index_exposes_revision_etag_and_honors_conditional_refresh()
+    {
+        var state = new EndpointState { Records = [Record(1, "blob-a", "a")] };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]));
+        var client = app.GetTestClient();
+
+        var first = await client.GetAsync("/api/extensions/animated-tag-previews/tags");
+        var etag = first.Headers.ETag;
+        Assert.NotNull(etag);
+        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/api/extensions/animated-tag-previews/tags");
+        conditional.Headers.IfNoneMatch.Add(etag!);
+
+        var second = await client.SendAsync(conditional);
+
+        Assert.Equal(HttpStatusCode.NotModified, second.StatusCode);
+    }
+
+    [Fact]
     public async Task Generation_route_declares_permissions_and_both_entity_checks()
     {
         await using var app = await StartAppAsync(new EndpointState(), new EndpointBlobs([1]));
