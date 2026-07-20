@@ -875,6 +875,44 @@ describe("animated tag cover editor", () => {
     expect(screen.queryByAltText("Static tag cover")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Current animated preview")).not.toBeInTheDocument();
   });
+
+  it("links a generated preview to its source video and starting timestamp", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated", source: { videoId: 12, startSeconds: 42.5 } };
+      if (path.endsWith("/tags")) return { version: "1", items: [{ tagId: 7, version: "generated-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    expect(await screen.findByRole("link", { name: "Open source video at 00:42.5" })).toHaveAttribute("href", "/video/12?t=42.5");
+  });
+
+  it("identifies a directly uploaded preview without rendering a source link", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/tags/7/preview?v=uploaded-v1")) return { tagId: 7, version: "uploaded-v1", origin: "uploaded" };
+      if (path.endsWith("/tags")) return { version: "1", items: [{ tagId: 7, version: "uploaded-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    expect(await screen.findByText("Uploaded file")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /source video/i })).not.toBeInTheDocument();
+  });
+
+  it("does not expose a link when a generated preview source is unavailable", async () => {
+    setApiTransportForTests(async (path) => {
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated" };
+      if (path.endsWith("/tags")) return { version: "1", items: [{ tagId: 7, version: "generated-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    expect(await screen.findByText("Source video unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /source video/i })).not.toBeInTheDocument();
+  });
 });
 
 describe("preview settings cleanup", () => {

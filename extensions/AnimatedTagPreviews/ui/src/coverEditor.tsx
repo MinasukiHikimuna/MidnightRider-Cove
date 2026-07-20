@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
-import { previewApi } from "./api";
+import { previewApi, type PreviewDetails } from "./api";
 import type { EntityCoverEditorContext } from "./hostContracts";
 import { getPreviewCacheSnapshot, invalidatePreviewIndex, loadPreviewCache, subscribePreviewCache } from "./indexCache";
 
@@ -14,6 +14,7 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [details, setDetails] = useState<PreviewDetails | null>(null);
   const preview = cache.index?.items.find((item) => item.tagId === context.entityId);
 
   useEffect(() => { void loadPreviewCache().catch(() => {}); }, []);
@@ -24,6 +25,17 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
     query.addEventListener?.("change", update);
     return () => query.removeEventListener?.("change", update);
   }, []);
+  useEffect(() => {
+    let current = true;
+    setDetails(null);
+    if (!preview) return () => { current = false; };
+    void previewApi.previewDetails(context.entityId, preview.version)
+      .then((next) => {
+        if (current && next.version === preview.version) setDetails(next);
+      })
+      .catch(() => {});
+    return () => { current = false; };
+  }, [context.entityId, preview?.version]);
 
   const upload = async (file?: File) => {
     if (!file || busy || !context.canEdit) return;
@@ -89,7 +101,30 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
       <button type="button" className="atp-button" disabled={!context.canEdit || busy} onClick={() => inputRef.current?.click()}>{preview ? "Replace WebM" : "Upload WebM"}</button>
       {preview ? <button type="button" className="atp-button atp-danger" disabled={!context.canEdit || busy} onClick={() => void remove()}>Delete preview</button> : null}
     </div>
+    {preview && details?.version === preview.version ? <PreviewSource details={details} /> : null}
     <p className="atp-cover-help">Stored as supplied after WebM, VP9, duration, dimensions, and stream validation.</p>
     {error ? <p className="atp-error" role="alert">{error}</p> : null}
   </section>;
+}
+
+function PreviewSource({ details }: { details: PreviewDetails }) {
+  if (details.origin === "uploaded") {
+    return <p className="atp-cover-source"><span>Source:</span> Uploaded file</p>;
+  }
+  if (!details.source) {
+    return <p className="atp-cover-source"><span>Source:</span> Source video unavailable</p>;
+  }
+
+  const timestamp = formatSourceTimestamp(details.source.startSeconds);
+  const href = `/video/${details.source.videoId}?t=${encodeURIComponent(String(details.source.startSeconds))}`;
+  return <p className="atp-cover-source"><span>Source:</span> <a href={href} aria-label={`Open source video at ${timestamp}`}>Open video at {timestamp}</a></p>;
+}
+
+function formatSourceTimestamp(seconds: number) {
+  const totalMilliseconds = Math.round(seconds * 1000);
+  const minutes = Math.floor(totalMilliseconds / 60_000);
+  const wholeSeconds = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+  const fraction = milliseconds ? `.${milliseconds.toString().padStart(3, "0").replace(/0+$/, "")}` : "";
+  return `${minutes.toString().padStart(2, "0")}:${wholeSeconds.toString().padStart(2, "0")}${fraction}`;
 }

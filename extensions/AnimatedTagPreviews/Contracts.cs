@@ -72,6 +72,14 @@ public sealed record PreviewIndexItem(int TagId, string Version, string MediaUrl
 
 public sealed record PreviewIndexResponse(string Version, IReadOnlyList<PreviewIndexItem> Items);
 
+public sealed record PreviewSourceDetails(int VideoId, double StartSeconds);
+
+public sealed record PreviewDetailsResponse(
+    int TagId,
+    string Version,
+    string Origin,
+    PreviewSourceDetails? Source);
+
 public sealed record GeneratePreviewResponse(string JobId, int VideoId, int TagId);
 
 public sealed record PreviewJobResponse(

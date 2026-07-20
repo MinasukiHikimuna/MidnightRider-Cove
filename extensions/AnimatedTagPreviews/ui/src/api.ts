@@ -29,6 +29,12 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
 
 export interface PreviewIndexItem { tagId: number; version: string; mediaUrl?: string }
 export interface PreviewIndex { version: string; items: PreviewIndexItem[] }
+export interface PreviewDetails {
+  tagId: number;
+  version: string;
+  origin: "generated" | "uploaded";
+  source?: { videoId: number; startSeconds: number } | null;
+}
 export interface PreviewSettings {
   defaultDurationSeconds: number;
   maximumDurationSeconds: number;
@@ -112,6 +118,7 @@ function normalizeIndex(value: unknown): PreviewIndex {
 
 export const previewApi = {
   async getIndex() { return normalizeIndex(await transport(`${BASE}/tags`)); },
+  previewDetails: (tagId: number, version: string) => transport(`${BASE}/tags/${tagId}/preview?v=${encodeURIComponent(version)}`) as Promise<PreviewDetails>,
   getSettings: async () => ({ ...DEFAULT_SETTINGS, ...await transport(`${BASE}/settings`) as Partial<PreviewSettings> }),
   saveSettings: (settings: PreviewSettings) => transport(`${BASE}/settings`, { method: "PUT", body: JSON.stringify(settings) }).then(() => undefined),
   health: () => transport(`${BASE}/health`) as Promise<PreviewHealth>,

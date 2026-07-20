@@ -85,6 +85,9 @@
 .atp-cover-drop video, .atp-cover-drop img { width: 100%; height: 100%; object-fit: contain; }
 .atp-cover-busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.68); color: white; }
 .atp-cover-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+.atp-cover-source { margin-top: .5rem; color: #d1d5db; font-size: .75rem; }
+.atp-cover-source span { color: #9ca3af; }
+.atp-cover-source a { color: var(--color-accent, #60a5fa); text-decoration: underline; text-underline-offset: 2px; }
 .atp-cover-help { margin-top: .5rem; color: #9ca3af; font-size: .75rem; }
 .atp-hidden-input { display: none; }
 .atp-danger { margin-left: auto; color: #f87171; }

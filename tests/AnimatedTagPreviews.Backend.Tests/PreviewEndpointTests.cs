@@ -182,6 +182,82 @@ public sealed class PreviewEndpointTests
     }
 
     [Fact]
+    public async Task Preview_details_expose_the_authorized_generated_source_and_timestamp()
+    {
+        var state = new EndpointState { Records = [Record(42, "blob-a", "version-a")] };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]));
+
+        var response = await app.GetTestClient().GetFromJsonAsync<PreviewDetailsResponse>(
+            "/api/extensions/animated-tag-previews/tags/42/preview?v=version-a");
+
+        Assert.NotNull(response);
+        Assert.Equal(42, response.TagId);
+        Assert.Equal("version-a", response.Version);
+        Assert.Equal("generated", response.Origin);
+        Assert.Equal(7, response.Source?.VideoId);
+        Assert.Equal(1, response.Source?.StartSeconds);
+    }
+
+    [Fact]
+    public async Task Preview_details_identify_direct_uploads_without_a_source_video()
+    {
+        var state = new EndpointState
+        {
+            Records = [new PreviewRecord(42, "blob-a", "version-a", Recipe: null, Origin: "uploaded")],
+        };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]));
+
+        var response = await app.GetTestClient().GetFromJsonAsync<PreviewDetailsResponse>(
+            "/api/extensions/animated-tag-previews/tags/42/preview?v=version-a");
+
+        Assert.NotNull(response);
+        Assert.Equal("uploaded", response.Origin);
+        Assert.Null(response.Source);
+    }
+
+    [Fact]
+    public async Task Preview_details_do_not_disclose_a_denied_source_video()
+    {
+        var state = new EndpointState { Records = [Record(42, "blob-a", "version-a")] };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]), deniedVideoId: "7");
+
+        var response = await app.GetTestClient().GetFromJsonAsync<PreviewDetailsResponse>(
+            "/api/extensions/animated-tag-previews/tags/42/preview?v=version-a");
+
+        Assert.NotNull(response);
+        Assert.Equal("generated", response.Origin);
+        Assert.Null(response.Source);
+    }
+
+    [Fact]
+    public async Task Preview_details_reject_a_stale_preview_version()
+    {
+        var state = new EndpointState { Records = [Record(42, "blob-a", "current")] };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]));
+
+        var response = await app.GetTestClient().GetAsync(
+            "/api/extensions/animated-tag-previews/tags/42/preview?v=stale");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
+    }
+
+    [Fact]
+    public async Task Preview_details_route_requires_tag_read_access()
+    {
+        await using var app = await StartAppAsync(new EndpointState(), new EndpointBlobs([1]));
+        var endpoint = ((Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .Single(item => item.DisplayName?.Contains("/tags/{tagId:int}/preview", StringComparison.Ordinal) == true);
+
+        Assert.Equal([Permissions.TagsRead], endpoint.Metadata.GetMetadata<CovePermissionRequirementMetadata>()!.Permissions);
+        Assert.Contains(endpoint.Metadata.GetOrderedMetadata<CoveRouteEntityAccessRequirementMetadata>(),
+            requirement => requirement.EntityKind == EntityKinds.Tag
+                && requirement.RouteValueName == "tagId"
+                && requirement.Permission == Permissions.TagsRead);
+    }
+
+    [Fact]
     public async Task Generation_route_declares_permissions_and_both_entity_checks()
     {
         await using var app = await StartAppAsync(new EndpointState(), new EndpointBlobs([1]));
@@ -285,6 +361,7 @@ public sealed class PreviewEndpointTests
         EndpointState state,
         IBlobService blobs,
         string? deniedTagId = null,
+        string? deniedVideoId = null,
         IAuditService? audit = null,
         IPreviewMaintenanceService? maintenance = null,
         IUploadedPreviewService? uploads = null)
@@ -293,7 +370,7 @@ public sealed class PreviewEndpointTests
         builder.WebHost.UseTestServer();
         builder.Services.AddSingleton<IPreviewStateStore>(state);
         builder.Services.AddSingleton(blobs);
-        builder.Services.AddSingleton<IAuthorizationService>(new EndpointAuthorization(deniedTagId));
+        builder.Services.AddSingleton<IAuthorizationService>(new EndpointAuthorization(deniedTagId, deniedVideoId));
         builder.Services.AddSingleton<ICurrentPrincipalAccessor>(new EndpointPrincipal());
         RegisterUnused<IPreviewHealthService>(builder.Services);
         builder.Services.AddSingleton<IVideoRepository, EndpointVideos>();
@@ -401,10 +478,14 @@ public sealed class PreviewEndpointTests
         public Task<IReadOnlyList<OwnedBlobRecord>> GetOwnedBlobsAsync(CancellationToken ct = default) => throw new NotSupportedException();
     }
 
-    private sealed class EndpointAuthorization(string? deniedTagId) : IAuthorizationService
+    private sealed class EndpointAuthorization(string? deniedTagId, string? deniedVideoId) : IAuthorizationService
     {
         public AuthorizationResult Authorize(CovePrincipal? principal, string permission, EntityRef? entity = null)
-            => entity?.Id == deniedTagId ? AuthorizationResult.Deny("denied") : AuthorizationResult.Allow();
+            => entity is EntityRef entityRef
+                && (entityRef.Kind == EntityKinds.Tag && entityRef.Id == deniedTagId
+                    || entityRef.Kind == EntityKinds.Video && entityRef.Id == deniedVideoId)
+                ? AuthorizationResult.Deny("denied")
+                : AuthorizationResult.Allow();
         public Task<AuthorizationResult> AuthorizeAsync(CovePrincipal? principal, string permission, EntityRef? entity, CancellationToken ct)
             => Task.FromResult(Authorize(principal, permission, entity));
         public void Require(CovePrincipal? principal, string permission, EntityRef? entity = null) => throw new NotSupportedException();

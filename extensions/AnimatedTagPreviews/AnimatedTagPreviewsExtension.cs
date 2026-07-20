@@ -82,6 +82,10 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         endpoints.MapGet($"{ApiBase}/tags", GetIndexAsync)
             .RequireCovePermission(Permissions.TagsRead);
 
+        endpoints.MapGet($"{ApiBase}/tags/{{tagId:int}}/preview", GetPreviewDetailsAsync)
+            .RequireCovePermission(Permissions.TagsRead)
+            .RequireCoveEntityAccess(EntityKinds.Tag, "tagId", Permissions.TagsRead);
+
         endpoints.MapGet($"{ApiBase}/videos/{{videoId:int}}/source", GetPreviewSourceAsync)
             .RequireCovePermission(Permissions.VideosRead)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead);
@@ -172,6 +176,44 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
             _ => "application/octet-stream"
         };
         return Results.File(source.Value.Path, contentType, enableRangeProcessing: true);
+    }
+
+    private static async Task<IResult> GetPreviewDetailsAsync(
+        HttpContext context,
+        int tagId,
+        string v,
+        IPreviewStateStore state,
+        IVideoRepository videos,
+        IAuthorizationService authorization,
+        ICurrentPrincipalAccessor principals,
+        CancellationToken ct)
+    {
+        context.Response.Headers.CacheControl = "private, no-store";
+        var preview = await state.GetPreviewAsync(tagId, ct);
+        if (preview is null || !string.Equals(preview.Version, v, StringComparison.Ordinal))
+            return Results.NotFound();
+
+        PreviewSourceDetails? source = null;
+        if (preview.Recipe is { } recipe)
+        {
+            var video = await videos.GetByIdAsync(recipe.SourceVideoId, ct);
+            if (video is not null)
+            {
+                var decision = await authorization.AuthorizeAsync(
+                    principals.Current,
+                    Permissions.VideosRead,
+                    new EntityRef(EntityKinds.Video, recipe.SourceVideoId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    ct);
+                if (decision.Allowed)
+                    source = new PreviewSourceDetails(recipe.SourceVideoId, recipe.StartSeconds);
+            }
+        }
+
+        return Results.Ok(new PreviewDetailsResponse(
+            preview.TagId,
+            preview.Version,
+            preview.Origin,
+            source));
     }
 
     private static async Task<IResult> GetIndexAsync(
