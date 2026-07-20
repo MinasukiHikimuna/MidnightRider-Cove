@@ -7,7 +7,7 @@ function playWithoutSurfacingAutoplayErrors(video: HTMLVideoElement) {
   try {
     const result = video.play();
     if (result && typeof result.catch === "function") void result.catch(() => {});
-  } catch { /* The static poster remains visible when playback is unavailable. */ }
+  } catch { /* Autoplay rejection is intentionally non-fatal. */ }
 }
 
 function useReducedMotion() {
@@ -22,7 +22,7 @@ function useReducedMotion() {
 }
 
 export function AnimatedTagMedia(props: EntityMediaRenderProps) {
-  const { entityType, entityId, surface, imageUrl, alt, fit, loading, className, renderDefault } = props;
+  const { entityType, entityId, surface, alt, fit, loading, className, renderDefault } = props;
   const cache = useSyncExternalStore(subscribePreviewCache, getPreviewCacheSnapshot, getPreviewCacheSnapshot);
   const reducedMotion = useReducedMotion();
   const [nearViewport, setNearViewport] = useState(false);
@@ -77,7 +77,6 @@ export function AnimatedTagMedia(props: EntityMediaRenderProps) {
       data-entity-media-aspect-ratio={settings.aspectRatio}
       className={`${className ?? ""} atp-media ${aspectClass}`.trim()}
       style={{ width: "100%", height: "100%", objectFit: resolvedFit }}
-      poster={imageUrl ?? undefined}
       preload={loading === "eager" && nearViewport ? "metadata" : "none"}
       src={nearViewport ? (preview.mediaUrl ?? previewApi.mediaUrl(entityId, preview.version)) : undefined}
       muted

@@ -67,7 +67,6 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
   const [closeRequested, setCloseRequested] = useState(false);
   const [closeStatus, setCloseStatus] = useState<string>();
   const [pollAttempt, setPollAttempt] = useState(0);
-  const [deleting, setDeleting] = useState(false);
   const [health, setHealth] = useState<PreviewHealth>();
   const [healthError, setHealthError] = useState<string>();
   const [source, setSource] = useState<PreviewSource>();
@@ -87,8 +86,6 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
   const aspectRatio = cache.settings?.aspectRatio ?? DEFAULT_SETTINGS.aspectRatio;
   const rect = cropRectFromRecipe(crop, context.contentRect, context.intrinsicWidth, context.intrinsicHeight, aspectRatio);
   const jobBusy = job?.status === "pending" || job?.status === "running";
-  const busy = deleting || jobBusy;
-  const hasPreview = Boolean(tagId && cache.index?.items.some((item) => item.tagId === tagId));
   const dependenciesReady = health?.healthy === true;
   const previewReady = Boolean(source && cache.settings);
   const previewTimes = previewFrameTimestamps(startSeconds, durationSeconds, cache.settings?.frameRate ?? DEFAULT_SETTINGS.frameRate, previewSpeed);
@@ -386,22 +383,6 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
     }
     catch (reason) { if (isCurrent()) setError(reason instanceof Error ? reason.message : "Could not cancel preview generation"); }
   };
-  const deletePreview = async () => {
-    if (!tagId || !hasPreview || !window.confirm("Delete the animated preview for this tag? The static tag image will remain.")) return;
-    setDeleting(true);
-    setError(undefined);
-    try {
-      const result = await previewApi.deleteMedia(tagId);
-      await invalidatePreviewIndex();
-      if (!isCurrent()) return;
-      if (result.deleted) window.alert("Animated tag preview deleted.");
-      else setError("This tag no longer has an animated preview.");
-    } catch (reason) {
-      if (isCurrent()) setError(reason instanceof Error ? reason.message : "Could not delete the animated preview");
-    } finally {
-      if (isCurrent()) setDeleting(false);
-    }
-  };
   const approveCandidate = async () => {
     if (!candidateId || !tagId || reviewActionRef.current) return;
     reviewActionRef.current = true;
@@ -410,6 +391,12 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
     try {
       await previewApi.approveCandidate(context.hostId, tagId, candidateId);
       try { await invalidatePreviewIndex(); } catch { /* A later cache load retries the invalidated index. */ }
+      try {
+        await previewApi.deleteCustomImage(tagId);
+      } catch {
+        if (isCurrent()) setError("The animated preview was approved, but the custom image could not be removed. Choose Approve again to retry.");
+        return;
+      }
       if (isCurrent()) closeCurrent();
     } catch (reason) {
       if (isCurrent()) setError(reason instanceof Error ? reason.message : "Could not approve the generated preview");
@@ -500,7 +487,7 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
               setTagLabel(option?.label);
             }}
             allowCreate={false}
-            disabled={busy}
+            disabled={jobBusy}
             placeholder="Select a tag"
             dropdownPortalContainer={panelElement}
           />
@@ -510,16 +497,15 @@ function PreviewEditor({ context, sequence }: { context: MediaPlayerExtensionCon
           <label>Duration (seconds)<input type="number" min={0.25} max={Math.max(0.25, context.duration - startSeconds)} step={0.25} value={durationSeconds} onChange={(event) => updateTiming(startSeconds, Number(event.target.value))} /></label>
           <label>Preview speed — {previewSpeed.toFixed(2)}×<input type="range" aria-label="Preview speed" min={0.25} max={1} step={0.05} value={previewSpeed} onChange={(event) => updatePreviewSpeed(Number(event.target.value))} /></label>
         </details>
-        {job?.status !== "completed" ? <button type="button" className="atp-button atp-primary" disabled={!tagId || busy || !dependenciesReady || !previewReady} onClick={() => void generate()}>{job?.status === "cancelled"
+        {job?.status !== "completed" ? <button type="button" className="atp-button atp-primary" disabled={!tagId || jobBusy || !dependenciesReady || !previewReady} onClick={() => void generate()}>{job?.status === "cancelled"
           ? "Generation cancelled"
           : job?.status === "failed"
             ? "Try generation again"
             : jobBusy
               ? `Generating preview${job.progress != null ? ` — ${Math.round(job.progress * 100)}%` : "…"}`
               : "Generate preview"}</button> : null}
-        {job?.status !== "completed" && (Boolean(jobBusy && jobId) || hasPreview) ? <div className="atp-actions">
-          {jobBusy && jobId ? <button type="button" className="atp-button" disabled={closeRequested} onClick={() => void cancel()}>Cancel generation</button> : null}
-          {hasPreview ? <button type="button" className="atp-button atp-danger" disabled={busy} onClick={() => void deletePreview()}>Delete preview</button> : null}
+        {job?.status !== "completed" && jobBusy && jobId ? <div className="atp-actions">
+          <button type="button" className="atp-button" disabled={closeRequested} onClick={() => void cancel()}>Cancel generation</button>
         </div> : null}
         <div className="atp-status" aria-live="polite">{error
           ?? closeStatus

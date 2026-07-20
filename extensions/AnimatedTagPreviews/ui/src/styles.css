@@ -85,6 +85,11 @@
 .atp-cover-drop video, .atp-cover-drop img { width: 100%; height: 100%; object-fit: contain; }
 .atp-cover-busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.68); color: white; }
 .atp-cover-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+.atp-cover-mode { margin-top: .5rem; color: #9ca3af; font-size: .75rem; }
+.atp-cover-conflict { margin-top: .5rem; border: 1px solid #d9a441; border-radius: .4rem; padding: .55rem; color: #f3d58b; font-size: .75rem; }
+.atp-cover-conflict p { margin: 0; }
+.atp-cover-conflict-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.atp-cover-success { margin-top: .5rem; color: #86efac; font-size: .75rem; }
 .atp-cover-source { margin-top: .5rem; color: #d1d5db; font-size: .75rem; }
 .atp-cover-source span { color: #9ca3af; }
 .atp-cover-source a { color: var(--color-accent, #60a5fa); text-decoration: underline; text-underline-offset: 2px; }

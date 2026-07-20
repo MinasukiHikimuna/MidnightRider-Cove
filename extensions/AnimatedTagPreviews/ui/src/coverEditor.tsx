@@ -8,14 +8,24 @@ export function AnimatedTagCoverEditor(context: EntityCoverEditorContext) {
   return <AnimatedTagPrimaryCoverEditor {...context} />;
 }
 
+function refreshHostCoverState() {
+  window.history.go(0);
+}
+
 function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
   const cache = useSyncExternalStore(subscribePreviewCache, getPreviewCacheSnapshot, getPreviewCacheSnapshot);
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [reducedMotion, setReducedMotion] = useState(false);
   const [details, setDetails] = useState<PreviewDetails | null>(null);
-  const preview = cache.index?.items.find((item) => item.tagId === context.entityId);
+  const [customImageConflict, setCustomImageConflict] = useState(false);
+  const [fallbackPreview, setFallbackPreview] = useState<{ tagId: number; version: string; mediaUrl?: string } | null>(null);
+  const [switchedToImage, setSwitchedToImage] = useState(false);
+  const cachedPreview = cache.index?.items.find((item) => item.tagId === context.entityId);
+  const preview = cachedPreview ?? fallbackPreview ?? undefined;
+  const hasCustomImage = customImageConflict || Boolean(details?.hasCustomImage);
 
   useEffect(() => { void loadPreviewCache().catch(() => {}); }, []);
   useEffect(() => {
@@ -31,11 +41,18 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
     if (!preview) return () => { current = false; };
     void previewApi.previewDetails(context.entityId, preview.version)
       .then((next) => {
-        if (current && next.version === preview.version) setDetails(next);
+        if (current && next.version === preview.version) {
+          setDetails(next);
+          setCustomImageConflict(false);
+        }
       })
       .catch(() => {});
     return () => { current = false; };
   }, [context.entityId, preview?.version]);
+  useEffect(() => {
+    if (preview) setSwitchedToImage(false);
+    else setCustomImageConflict(false);
+  }, [preview?.version]);
 
   const upload = async (file?: File) => {
     if (!file || busy || !context.canEdit) return;
@@ -45,9 +62,23 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
     }
     setBusy(true);
     setError(undefined);
+    setCustomImageConflict(false);
+    setFallbackPreview(null);
     try {
-      await previewApi.uploadMedia(context.entityId, file);
-      await invalidatePreviewIndex();
+      const published = await previewApi.uploadMedia(context.entityId, file);
+      let cleanupFailed = false;
+      try {
+        await previewApi.deleteCustomImage(context.entityId);
+      } catch {
+        cleanupFailed = true;
+      }
+      if (cleanupFailed)
+        setFallbackPreview({ tagId: context.entityId, version: published.version });
+      try { await invalidatePreviewIndex(); } catch { /* A later cache load retries the invalidated index. */ }
+      if (cleanupFailed) {
+        setCustomImageConflict(true);
+        setError("The animated preview was saved, but the custom image could not be removed. Keep the animated preview to retry cleanup, or use the image cover instead.");
+      } else refreshHostCoverState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not upload the custom WebM.");
     } finally {
@@ -61,15 +92,67 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
     void upload(event.dataTransfer.files[0]);
   };
 
-  const remove = async () => {
-    if (!preview || busy || !window.confirm("Delete the animated preview for this tag? The static tag image will remain.")) return;
+  const useImageCover = async () => {
+    if (!preview || busy || !context.canEdit) return;
     setBusy(true);
     setError(undefined);
     try {
       await previewApi.deleteMedia(context.entityId);
-      await invalidatePreviewIndex();
+      try { await invalidatePreviewIndex(); } catch { /* A later cache load retries the invalidated index. */ }
+      setDetails(null);
+      setCustomImageConflict(false);
+      setFallbackPreview(null);
+      setSwitchedToImage(true);
+      refreshHostCoverState();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not delete the animated preview.");
+      setError(reason instanceof Error ? reason.message : "Could not switch to the image cover.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const replaceWithImage = async (file?: File) => {
+    if (!file || !preview || busy || !context.canEdit) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Choose a JPEG, PNG, WebP, or GIF image.");
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      await previewApi.uploadCustomImage(context.entityId, file);
+      try {
+        await previewApi.deleteMedia(context.entityId);
+      } catch {
+        setCustomImageConflict(true);
+        setDetails((current) => current ? { ...current, hasCustomImage: true } : current);
+        setError("The image was saved, but the animated preview could not be removed. Use the image cover to retry.");
+        return;
+      }
+      try { await invalidatePreviewIndex(); } catch { /* A later cache load retries the invalidated index. */ }
+      setDetails(null);
+      setFallbackPreview(null);
+      setSwitchedToImage(true);
+      refreshHostCoverState();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not upload the image. The animated preview is still active.");
+    } finally {
+      setBusy(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
+  const keepAnimatedPreview = async () => {
+    if (!preview || busy || !context.canEdit) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await previewApi.deleteCustomImage(context.entityId);
+      setCustomImageConflict(false);
+      setDetails((current) => current ? { ...current, hasCustomImage: false } : current);
+      refreshHostCoverState();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not remove the custom image.");
     } finally {
       setBusy(false);
     }
@@ -87,21 +170,30 @@ function AnimatedTagPrimaryCoverEditor(context: EntityCoverEditorContext) {
       {mediaUrl && !reducedMotion ? <video
         aria-label="Current animated preview"
         src={mediaUrl}
-        poster={context.currentImageUrl ?? undefined}
         muted
         loop
         autoPlay
         playsInline
         disableRemotePlayback
-      /> : preview && context.currentImageUrl ? <img src={context.currentImageUrl} alt="Static tag cover" /> : <span>{preview ? "Animated preview available" : "Drop a custom WebM here"}</span>}
-      {busy ? <span className="atp-cover-busy">Processing WebM…</span> : null}
+      /> : <span>{preview ? "Animated preview available" : "Drop a custom WebM here"}</span>}
+      {busy ? <span className="atp-cover-busy">Updating cover…</span> : null}
     </div>
     <input ref={inputRef} className="atp-hidden-input" type="file" accept="video/webm,.webm" disabled={!context.canEdit || busy} onChange={(event) => void upload(event.target.files?.[0])} />
+    <input ref={imageInputRef} className="atp-hidden-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={!context.canEdit || busy} onChange={(event) => void replaceWithImage(event.target.files?.[0])} />
     <div className="atp-cover-actions">
       <button type="button" className="atp-button" disabled={!context.canEdit || busy} onClick={() => inputRef.current?.click()}>{preview ? "Replace WebM" : "Upload WebM"}</button>
-      {preview ? <button type="button" className="atp-button atp-danger" disabled={!context.canEdit || busy} onClick={() => void remove()}>Delete preview</button> : null}
+      {preview && !hasCustomImage ? <button type="button" className="atp-button" disabled={!context.canEdit || busy} onClick={() => imageInputRef.current?.click()}>Replace with image…</button> : null}
     </div>
+    {preview && !hasCustomImage ? <p className="atp-cover-mode">The animated preview is active. Use “Replace with image…” here to switch cover types.</p> : null}
+    {preview && hasCustomImage ? <div className="atp-cover-conflict" role="alert">
+      <p>Both a custom image and an animated preview are stored. Choose which cover to keep.</p>
+      <div className="atp-cover-conflict-actions">
+        <button type="button" className="atp-button" disabled={!context.canEdit || busy} onClick={() => void keepAnimatedPreview()}>Keep animated preview</button>
+        <button type="button" className="atp-button" disabled={!context.canEdit || busy} onClick={() => void useImageCover()}>Use image cover</button>
+      </div>
+    </div> : null}
     {preview && details?.version === preview.version ? <PreviewSource details={details} /> : null}
+    {switchedToImage ? <p className="atp-cover-success" role="status">The image cover is now active.</p> : null}
     <p className="atp-cover-help">Stored as supplied after WebM, VP9, duration, dimensions, and stream validation.</p>
     {error ? <p className="atp-error" role="alert">{error}</p> : null}
   </section>;

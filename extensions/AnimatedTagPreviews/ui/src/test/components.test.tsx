@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.mocked(window.matchMedia).mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(window.history, "go").mockImplementation(() => {});
 });
 
 describe("preview editor", () => {
@@ -473,6 +474,10 @@ describe("preview editor", () => {
       path: "/extensions/animated-tag-previews/videos/12/tags/77/candidates/candidate-1/approve",
       init: expect.objectContaining({ method: "POST" }),
     }));
+    expect(requests).toContainEqual(expect.objectContaining({
+      path: "/tags/77/image",
+      init: expect.objectContaining({ method: "DELETE" }),
+    }));
     expect(indexReads).toBe(readsBeforeApproval + 1);
     expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
     expect(requests.some(({ path, init }) => path.endsWith("/candidates/candidate-1") && init?.method === "DELETE")).toBe(false);
@@ -503,6 +508,45 @@ describe("preview editor", () => {
 
     expect(screen.getByLabelText("Generated preview for Tag 77")).toBeInTheDocument();
     expect(screen.getByText("Approval failed")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("keeps an approved candidate review open until custom-image cleanup succeeds", async () => {
+    vi.useFakeTimers();
+    let imageDeleteAttempts = 0;
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/health")) return healthyDependencies;
+      if (path.endsWith("/generate")) return { jobId: "job-1" };
+      if (path.includes("/jobs/job-1")) return { status: "completed", progress: 1, candidateId: "candidate-1" };
+      if (path.endsWith("/approve")) return { candidateId: "candidate-1", videoId: 12, tagId: 77, version: "candidate-1", replacedExisting: false, alreadyApproved: imageDeleteAttempts > 0 };
+      if (path === "/tags/77/image" && init?.method === "DELETE") {
+        imageDeleteAttempts += 1;
+        if (imageDeleteAttempts === 1) throw new Error("cleanup failed");
+        return undefined;
+      }
+      if (path.endsWith("/tags")) return { version: "1", items: [] };
+      return {};
+    });
+    const ctx = context();
+    render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
+    fireEvent.click(screen.getByRole("button", { name: /animated preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    selectTag();
+    fireEvent.click(screen.getByRole("button", { name: /generate preview/i }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(screen.getByText(/animated preview was approved, but the custom image could not be removed/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /animated tag preview editor/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(imageDeleteAttempts).toBe(2);
+    expect(screen.queryByRole("dialog", { name: /animated tag preview editor/i })).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -741,31 +785,22 @@ describe("preview editor", () => {
     vi.useRealTimers();
   });
 
-  it("deletes an existing preview only after confirmation", async () => {
+  it("does not offer deletion for an existing preview in the generation dialog", async () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
-    let deleted = false;
     setApiTransportForTests(async (path, init) => {
       if (path.endsWith("/health")) return healthyDependencies;
       requests.push({ path, init });
-      if (path.endsWith("/tags")) return { version: deleted ? "2" : "1", items: deleted ? [] : [{ tagId: 77, version: "v1" }] };
-      if (path.endsWith("/tags/77/media") && init?.method === "DELETE") {
-        deleted = true;
-        return { tagId: 77, deleted: true, blobDeleted: true };
-      }
+      if (path.endsWith("/tags")) return { version: "1", items: [{ tagId: 77, version: "v1" }] };
       return {};
     });
     await loadPreviewCache();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.spyOn(window, "alert").mockImplementation(() => {});
     const ctx = context();
     render(<><AnimatedPreviewPlayerAction {...ctx} /><AnimatedPreviewPlayerOverlay {...ctx} /></>);
     await userEvent.click(screen.getByRole("button", { name: /animated preview/i }));
     selectTag();
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete preview" }));
-
-    await waitFor(() => expect(requests.some((request) => request.path.endsWith("/tags/77/media") && request.init?.method === "DELETE")).toBe(true));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Delete preview" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Delete preview" })).not.toBeInTheDocument();
+    expect(requests.some((request) => request.path.endsWith("/tags/77/media") && request.init?.method === "DELETE")).toBe(false);
   });
 });
 
@@ -777,6 +812,7 @@ describe("animated tag media", () => {
     render(<AnimatedTagMedia entityType="tag" entityId={7} surface="hover" imageUrl="poster.jpg" alt="Tag" fit="cover" renderDefault={() => <img alt="static" />} />);
     const video = await screen.findByLabelText("Animated preview for Tag");
     expect(video).toBeInTheDocument();
+    expect(video).not.toHaveAttribute("poster");
     expect(video).toHaveAttribute("data-entity-media-aspect-ratio", "1:1");
   });
 
@@ -864,6 +900,154 @@ describe("animated tag cover editor", () => {
     const upload = requests.find((request) => request.path.endsWith("/tags/7/media") && request.init?.method === "POST");
     expect(upload?.init?.body).toBeInstanceOf(FormData);
     expect(upload?.init?.headers).toBeUndefined();
+    const uploadIndex = requests.findIndex((request) => request.path.endsWith("/tags/7/media") && request.init?.method === "POST");
+    const imageDeleteIndex = requests.findIndex((request) => request.path === "/tags/7/image" && request.init?.method === "DELETE");
+    expect(imageDeleteIndex).toBeGreaterThan(uploadIndex);
+    expect(window.history.go).toHaveBeenCalledWith(0);
+  });
+
+  it("offers an explicit choice when both custom cover types are stored", async () => {
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      requests.push({ path, init });
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated", hasCustomImage: true };
+      if (path.endsWith("/tags")) return { version: "1", items: [{ tagId: 7, version: "generated-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    expect(await screen.findByText(/both a custom image and an animated preview are stored/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep animated preview" }));
+
+    await waitFor(() => expect(requests).toContainEqual(expect.objectContaining({
+      path: "/tags/7/image",
+      init: expect.objectContaining({ method: "DELETE" }),
+    })));
+    expect(screen.queryByText(/both a custom image and an animated preview are stored/i)).not.toBeInTheDocument();
+  });
+
+  it("uploads a replacement image before deleting the animated preview", async () => {
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    let deleted = false;
+    setApiTransportForTests(async (path, init) => {
+      requests.push({ path, init });
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated", hasCustomImage: false };
+      if (path === "/tags/7/image" && init?.method === "POST") return { blobId: "image-v1" };
+      if (path.endsWith("/tags/7/media") && init?.method === "DELETE") { deleted = true; return { tagId: 7, deleted: true, blobDeleted: true }; }
+      if (path.endsWith("/tags")) return { version: deleted ? "2" : "1", items: deleted ? [] : [{ tagId: 7, version: "generated-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+    await userEvent.click(await screen.findByRole("button", { name: "Replace with image…" }));
+    const image = new File([new Uint8Array([4, 5, 6])], "replacement.png", { type: "image/png" });
+    await userEvent.upload(screen.getByLabelText("Animated preview").querySelector('input[accept^="image/"]') as HTMLInputElement, image);
+
+    await waitFor(() => expect(requests).toContainEqual(expect.objectContaining({
+      path: "/extensions/animated-tag-previews/tags/7/media",
+      init: expect.objectContaining({ method: "DELETE" }),
+    })));
+    const imageUploadIndex = requests.findIndex((request) => request.path === "/tags/7/image" && request.init?.method === "POST");
+    const previewDeleteIndex = requests.findIndex((request) => request.path.endsWith("/tags/7/media") && request.init?.method === "DELETE");
+    expect(imageUploadIndex).toBeGreaterThanOrEqual(0);
+    expect(previewDeleteIndex).toBeGreaterThan(imageUploadIndex);
+    expect(await screen.findByText(/image cover is now active/i)).toBeInTheDocument();
+    expect(window.history.go).toHaveBeenCalledWith(0);
+  });
+
+  it("preserves the animated preview when replacement-image upload fails", async () => {
+    const requests: Array<{ path: string; init?: RequestInit }> = [];
+    setApiTransportForTests(async (path, init) => {
+      requests.push({ path, init });
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated", hasCustomImage: false };
+      if (path === "/tags/7/image" && init?.method === "POST") throw new Error("image upload failed");
+      if (path.endsWith("/tags")) return { version: "1", items: [{ tagId: 7, version: "generated-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+    await screen.findByRole("button", { name: "Replace with image…" });
+    const image = new File([new Uint8Array([4, 5, 6])], "replacement.png", { type: "image/png" });
+    await userEvent.upload(screen.getByLabelText("Animated preview").querySelector('input[accept^="image/"]') as HTMLInputElement, image);
+
+    expect(await screen.findByText("image upload failed")).toBeInTheDocument();
+    expect(screen.getByLabelText("Current animated preview")).toBeInTheDocument();
+    expect(requests.some((request) => request.path.endsWith("/tags/7/media") && request.init?.method === "DELETE")).toBe(false);
+  });
+
+  it("offers a retry when the image is saved but preview deletion fails", async () => {
+    let previewDeleteAttempts = 0;
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated", hasCustomImage: false };
+      if (path === "/tags/7/image" && init?.method === "POST") return { blobId: "image-v1" };
+      if (path.endsWith("/tags/7/media") && init?.method === "DELETE") {
+        previewDeleteAttempts += 1;
+        if (previewDeleteAttempts === 1) throw new Error("preview delete failed");
+        return { tagId: 7, deleted: true, blobDeleted: true };
+      }
+      if (path.endsWith("/tags")) return { version: previewDeleteAttempts > 1 ? "2" : "1", items: previewDeleteAttempts > 1 ? [] : [{ tagId: 7, version: "generated-v1" }] };
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+    await screen.findByRole("button", { name: "Replace with image…" });
+    const image = new File([new Uint8Array([4, 5, 6])], "replacement.png", { type: "image/png" });
+    await userEvent.upload(screen.getByLabelText("Animated preview").querySelector('input[accept^="image/"]') as HTMLInputElement, image);
+
+    expect(await screen.findByText(/image was saved, but the animated preview could not be removed/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Use image cover" }));
+
+    await waitFor(() => expect(previewDeleteAttempts).toBe(2));
+    expect(await screen.findByText(/image cover is now active/i)).toBeInTheDocument();
+  });
+
+  it("does not report a successful preview deletion as failed when index refresh fails", async () => {
+    let indexReads = 0;
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/tags/7/preview?v=generated-v1")) return { tagId: 7, version: "generated-v1", origin: "generated", hasCustomImage: true };
+      if (path.endsWith("/tags/7/media") && init?.method === "DELETE") return { tagId: 7, deleted: true, blobDeleted: true };
+      if (path.endsWith("/tags")) {
+        indexReads += 1;
+        if (indexReads > 1) throw new Error("refresh failed");
+        return { version: "1", items: [{ tagId: 7, version: "generated-v1" }] };
+      }
+      return {};
+    });
+
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+    await userEvent.click(await screen.findByRole("button", { name: "Use image cover" }));
+
+    expect(await screen.findByText(/image cover is now active/i)).toBeInTheDocument();
+    expect(screen.queryByText(/could not switch to the image cover/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a published animation recoverable when custom-image cleanup fails", async () => {
+    let imageDeleteAttempts = 0;
+    let uploaded = false;
+    setApiTransportForTests(async (path, init) => {
+      if (path.endsWith("/tags/7/media") && init?.method === "POST") { uploaded = true; return { tagId: 7, version: "uploaded-v1", replacedExisting: false }; }
+      if (path === "/tags/7/image" && init?.method === "DELETE") {
+        imageDeleteAttempts += 1;
+        if (imageDeleteAttempts === 1) throw new Error("cleanup failed");
+        return undefined;
+      }
+      if (path.endsWith("/tags/7/preview?v=uploaded-v1")) return { tagId: 7, version: "uploaded-v1", origin: "uploaded", hasCustomImage: true };
+      if (path.endsWith("/tags")) {
+        if (uploaded) throw new Error("refresh failed");
+        return { version: "1", items: [] };
+      }
+      return {};
+    });
+    render(<AnimatedTagCoverEditor entityType="tag" entityId={7} coverKey="primary" currentImageUrl="poster.jpg" canEdit />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "custom.webm", { type: "video/webm" });
+    await userEvent.upload(screen.getByLabelText("Animated preview").querySelector('input[type="file"]') as HTMLInputElement, file);
+
+    expect(await screen.findByText(/animated preview was saved, but the custom image could not be removed/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep animated preview" }));
+    await waitFor(() => expect(imageDeleteAttempts).toBe(2));
+    expect(screen.queryByText(/animated preview was saved, but the custom image could not be removed/i)).not.toBeInTheDocument();
   });
 
   it("does not present the static cover as an animated preview when none exists", async () => {

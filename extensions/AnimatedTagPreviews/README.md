@@ -81,8 +81,8 @@ downloader runtime permission.
   metadata remain outside the install directory and survive the upgrade.
 - **Uninstall:** preserves generated previews by default. This prevents an accidental uninstall from
   destroying user-created media, but the media is not served while the extension is absent.
-- **Explicit deletion:** select a tag in the player editor and use **Delete preview** before uninstalling
-  to remove its mapping, recipe, and current blob.
+- **Switch to an image cover:** use **Replace with image…** in the tag cover editor to remove the
+  animated preview mapping, recipe, and current blob before uninstalling.
 - **Orphan cleanup:** use the settings UI dry run to identify owned blobs no longer referenced by a
   live tag. The UI displays the dry-run IDs, and the authorized `dryRun=false` request must include
   that dry run's `expectedVersion`; Cove rejects deletion if the orphan set changed meanwhile. Never

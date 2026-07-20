@@ -78,7 +78,8 @@ public sealed record PreviewDetailsResponse(
     int TagId,
     string Version,
     string Origin,
-    PreviewSourceDetails? Source);
+    PreviewSourceDetails? Source,
+    bool HasCustomImage);
 
 public sealed record GeneratePreviewResponse(string JobId, int VideoId, int TagId);
 

@@ -34,6 +34,7 @@ export interface PreviewDetails {
   version: string;
   origin: "generated" | "uploaded";
   source?: { videoId: number; startSeconds: number } | null;
+  hasCustomImage: boolean;
 }
 export interface PreviewSettings {
   defaultDurationSeconds: number;
@@ -133,6 +134,12 @@ export const previewApi = {
   approveCandidate: (videoId: number, tagId: number, candidateId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}/approve`, { method: "POST" }) as Promise<ApprovePreviewCandidateResponse>,
   discardCandidate: (videoId: number, tagId: number, candidateId: string) => transport(`${BASE}/videos/${videoId}/tags/${tagId}/candidates/${encodeURIComponent(candidateId)}`, { method: "DELETE" }) as Promise<DiscardPreviewCandidateResponse>,
   deleteMedia: (tagId: number) => transport(`${BASE}/tags/${tagId}/media`, { method: "DELETE" }) as Promise<{ tagId: number; deleted: boolean; blobDeleted: boolean }>,
+  deleteCustomImage: (tagId: number) => transport(`/tags/${tagId}/image`, { method: "DELETE" }).then(() => undefined),
+  uploadCustomImage: (tagId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return transport(`/tags/${tagId}/image`, { method: "POST", body: form }) as Promise<{ blobId: string }>;
+  },
   uploadMedia: (tagId: number, file: File) => {
     const form = new FormData();
     form.append("file", file);

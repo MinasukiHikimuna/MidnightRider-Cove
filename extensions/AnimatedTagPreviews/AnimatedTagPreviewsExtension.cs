@@ -183,6 +183,7 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         int tagId,
         string v,
         IPreviewStateStore state,
+        ITagRepository tags,
         IVideoRepository videos,
         IAuthorizationService authorization,
         ICurrentPrincipalAccessor principals,
@@ -191,6 +192,10 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
         context.Response.Headers.CacheControl = "private, no-store";
         var preview = await state.GetPreviewAsync(tagId, ct);
         if (preview is null || !string.Equals(preview.Version, v, StringComparison.Ordinal))
+            return Results.NotFound();
+
+        var tag = await tags.GetByIdAsync(tagId, ct);
+        if (tag is null)
             return Results.NotFound();
 
         PreviewSourceDetails? source = null;
@@ -213,7 +218,8 @@ public sealed class AnimatedTagPreviewsExtension : FullExtensionBase
             preview.TagId,
             preview.Version,
             preview.Origin,
-            source));
+            source,
+            tag.ImageOverrideBlobId is not null));
     }
 
     private static async Task<IResult> GetIndexAsync(

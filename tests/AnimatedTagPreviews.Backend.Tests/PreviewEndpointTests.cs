@@ -216,6 +216,19 @@ public sealed class PreviewEndpointTests
     }
 
     [Fact]
+    public async Task Preview_details_report_a_competing_custom_tag_image()
+    {
+        var state = new EndpointState { Records = [Record(42, "blob-a", "version-a")] };
+        await using var app = await StartAppAsync(state, new EndpointBlobs([1]), customImageTagId: 42);
+
+        var response = await app.GetTestClient().GetFromJsonAsync<PreviewDetailsResponse>(
+            "/api/extensions/animated-tag-previews/tags/42/preview?v=version-a");
+
+        Assert.NotNull(response);
+        Assert.True(response.HasCustomImage);
+    }
+
+    [Fact]
     public async Task Preview_details_do_not_disclose_a_denied_source_video()
     {
         var state = new EndpointState { Records = [Record(42, "blob-a", "version-a")] };
@@ -362,6 +375,7 @@ public sealed class PreviewEndpointTests
         IBlobService blobs,
         string? deniedTagId = null,
         string? deniedVideoId = null,
+        int? customImageTagId = null,
         IAuditService? audit = null,
         IPreviewMaintenanceService? maintenance = null,
         IUploadedPreviewService? uploads = null)
@@ -374,7 +388,7 @@ public sealed class PreviewEndpointTests
         builder.Services.AddSingleton<ICurrentPrincipalAccessor>(new EndpointPrincipal());
         RegisterUnused<IPreviewHealthService>(builder.Services);
         builder.Services.AddSingleton<IVideoRepository, EndpointVideos>();
-        builder.Services.AddSingleton<ITagRepository, EndpointTags>();
+        builder.Services.AddSingleton<ITagRepository>(new EndpointTags(customImageTagId));
         RegisterUnused<IPreviewJobCoordinator>(builder.Services);
         if (uploads is null) RegisterUnused<IUploadedPreviewService>(builder.Services);
         else builder.Services.AddSingleton(uploads);
@@ -533,10 +547,15 @@ public sealed class PreviewEndpointTests
                 expectedVersion ?? "snapshot"));
     }
 
-    private sealed class EndpointTags : ITagRepository
+    private sealed class EndpointTags(int? customImageTagId) : ITagRepository
     {
         public Task<Tag?> GetByIdAsync(int id, CancellationToken ct = default)
-            => Task.FromResult<Tag?>(id > 0 ? new Tag { Id = id, Name = $"Tag {id}" } : null);
+            => Task.FromResult<Tag?>(id > 0 ? new Tag
+            {
+                Id = id,
+                Name = $"Tag {id}",
+                ImageOverrideBlobId = id == customImageTagId ? "custom-image" : null,
+            } : null);
         public Task<IReadOnlyList<Tag>> GetAllAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<Tag> AddAsync(Tag entity, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpdateAsync(Tag entity, CancellationToken ct = default) => throw new NotSupportedException();

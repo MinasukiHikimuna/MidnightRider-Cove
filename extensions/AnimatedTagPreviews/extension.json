@@ -90,11 +90,11 @@
           "id": "lifecycle",
           "title": "Keep or remove generated media",
           "caption": "Generated files are data, not extension binaries.",
-          "bodyMarkdown": "Disabling or upgrading the extension preserves preview mappings and Cove-managed blobs. Uninstall also preserves generated data by default. Delete an individual preview from the extension before uninstalling when it should be removed, and use the explicit orphan-cleanup dry run before approving bulk deletion.",
+          "bodyMarkdown": "Disabling or upgrading the extension preserves preview mappings and Cove-managed blobs. Uninstall also preserves generated data by default. Replace an animated preview with an image cover before uninstalling when it should be removed, and use the explicit orphan-cleanup dry run before approving bulk deletion.",
           "points": [
             "Disable hides UI without deleting previews",
             "Upgrade replaces code without replacing user data",
-            "Deletion and orphan cleanup are explicit operations"
+            "Cover replacement and orphan cleanup are explicit operations"
           ]
         }
       ]
