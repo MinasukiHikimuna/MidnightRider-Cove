@@ -6,6 +6,12 @@
       "id": "hash-the-cove",
       "path": "extensions/HashTheCove",
       "tagPrefix": "hash-the-cove/"
+    },
+    {
+      "name": "CompleteTheCove",
+      "id": "complete-the-cove",
+      "path": "extensions/CompleteTheCove",
+      "tagPrefix": "complete-the-cove/"
     }
   ]
 }

@@ -1,0 +1,36 @@
+{
+  "id": "complete-the-cove",
+  "name": "Complete the Cove",
+  "version": "1.0.0",
+  "description": "Builds a native catalog of remote scenes missing from this Cove for selected performers, studios, and tags.",
+  "author": "MidnightRider",
+  "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "categories": [
+    "metadata",
+    "tools"
+  ],
+  "minCoveVersion": "1.0.0-dev",
+  "entryDll": "CompleteTheCove.dll",
+  "jsBundle": "ui/CompleteTheCove.js",
+  "cssBundle": "ui/CompleteTheCove.css",
+  "dependencies": {},
+  "settings": [
+    {
+      "name": "selected_metadata_endpoints",
+      "type": "STRING",
+      "displayName": "Selected metadata providers",
+      "description": "Comma-separated provider endpoints selected by the Complete the Cove settings UI. Blank uses every supported configured provider."
+    },
+    {
+      "name": "excluded_tags",
+      "type": "STRING",
+      "displayName": "Excluded remote tags",
+      "description": "Comma-separated metadata-server tag names to omit from the missing-scene catalog."
+    }
+  ],
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}
