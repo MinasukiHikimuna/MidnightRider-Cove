@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../extensions/HashTheCove/HashTheCove.csproj" />
+    <ProjectReference Include="../../src/HashTheCove/HashTheCove.csproj" />
   </ItemGroup>
 
 </Project>

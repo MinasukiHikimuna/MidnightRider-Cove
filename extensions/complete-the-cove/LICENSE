@@ -664,7 +664,7 @@ For more information on this, and how to apply and follow the GNU AGPL, see
 Third-party notice: xxHash
 ----------------------------------------------------------------------
 
-The XXH64 implementation in extensions/hash-the-cove/src/HashTheCove/XxHash64.cs is adapted from
+The XXH64 implementation is supplied by the separately packaged Hash The Cove extension.
 xxHash v0.8.3: https://github.com/Cyan4973/xxHash/tree/v0.8.3
 
 xxHash Library

@@ -1,6 +1,6 @@
 <Solution>
-  <Folder Name="/extensions/">
-    <Project Path="extensions/CompleteTheCove/CompleteTheCove.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/CompleteTheCove/CompleteTheCove.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CompleteTheCove.Tests/CompleteTheCove.Tests.csproj" />

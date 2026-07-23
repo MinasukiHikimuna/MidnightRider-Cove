@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("uses Cove's authenticated extension API runtime", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const manifest = JSON.parse(await readFile(new URL("../extensions/CompleteTheCove/extension.json", import.meta.url), "utf8"));
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("../src/CompleteTheCove/extension.json", import.meta.url), "utf8"));
 
   assert.match(source, /import \{ extensionFetch \} from "@cove\/runtime\/api"/);
   assert.match(source, /const response = await extensionFetch\(url,/);
@@ -13,7 +13,7 @@ test("uses Cove's authenticated extension API runtime", async () => {
 });
 
 test("accepts successful extension API responses with empty bodies", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declaration = source.match(/async function request\(url, options\) \{[\s\S]*?\n\}/)?.[0];
   assert.ok(declaration, "request helper should be present");
   const request = Function("extensionFetch", `"use strict"; ${declaration}; return request;`)(
@@ -27,7 +27,7 @@ test("accepts successful extension API responses with empty bodies", async () =>
 });
 
 test("uses Cove's canonical detail-list pagination", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/function clampCatalogPage\(page, totalCount, perPage\) \{[\s\S]*?(?=\n\nfunction SceneGrid)/)?.[0];
 
   assert.match(source, /import \{[^}]*DetailListPagination[^}]*\} from "@cove\/runtime\/components"/);
@@ -45,7 +45,7 @@ test("uses Cove's canonical detail-list pagination", async () => {
 });
 
 test("renders matching pagination above and below the scene list", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const paginationCalls = source.match(/h\(DetailListPagination,/g) || [];
 
   assert.equal(paginationCalls.length, 2);
@@ -54,8 +54,8 @@ test("renders matching pagination above and below the scene list", async () => {
 });
 
 test("spaces catalog content from the controls when top pagination is hidden", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const stylesheet = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
   assert.match(source, /key: "error", className: "complete-the-cove-content /);
   assert.match(source, /key: "grid", className: "complete-the-cove-content complete-the-cove-grid"/);
@@ -64,7 +64,7 @@ test("spaces catalog content from the controls when top pagination is hidden", a
 });
 
 test("formats last-refreshed timestamps with Cove's UTC ISO style", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declaration = source.match(/function formatDateTime\(value\) \{[\s\S]*?\n\}/)?.[0];
   assert.ok(declaration, "formatDateTime declaration should be present in the packaged UI bundle");
   const formatDateTime = Function(`"use strict"; ${declaration}; return formatDateTime;`)();
@@ -75,8 +75,8 @@ test("formats last-refreshed timestamps with Cove's UTC ISO style", async () => 
 });
 
 test("declares a scoped stylesheet for the catalog controls and cards", async () => {
-  const manifest = JSON.parse(await readFile(new URL("../extensions/CompleteTheCove/extension.json", import.meta.url), "utf8"));
-  const stylesheet = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("../src/CompleteTheCove/extension.json", import.meta.url), "utf8"));
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
   assert.equal(manifest.cssBundle, "ui/CompleteTheCove.css");
   assert.match(stylesheet, /\.complete-the-cove-toolbar/);
@@ -87,8 +87,8 @@ test("declares a scoped stylesheet for the catalog controls and cards", async ()
 });
 
 test("mirrors Cove's native video-card layout with missing-scene data", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const stylesheet = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
   assert.match(source, /complete-the-cove-card-preview card-media/);
   assert.match(source, /complete-the-cove-performer-badge/);
@@ -126,14 +126,14 @@ test("mirrors Cove's native video-card layout with missing-scene data", async ()
 });
 
 test("uses Cove's persisted video-card sizing profile", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   assert.match(source, /localStorage\.getItem\("cove\.cardSize\.video"\)/);
   assert.match(source, /Math\.round\(225 \+ level \* 50\)/);
   assert.match(source, /"--card-min-width": `\$\{cardMinWidth\}px`/);
 });
 
 test("provides a URL-backed tracked-records overview with grouped target sections", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
   assert.match(source, /params\.set\("view", "tracked"\)/);
   assert.match(source, /targetType/);
@@ -150,7 +150,7 @@ test("provides a URL-backed tracked-records overview with grouped target section
 });
 
 test("parses and writes catalog URLs without losing unrelated parameters", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/function readCatalogLocation\(\) \{[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
   assert.ok(declarations, "catalog URL helpers should be present");
   let pushedUrl = "";
@@ -178,7 +178,7 @@ test("parses and writes catalog URLs without losing unrelated parameters", async
 });
 
 test("persists missing-scene catalog filters in the URL", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/const DEFAULT_CATALOG_FILTERS[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
   assert.ok(declarations, "catalog filter URL helpers should be present");
   let replacedUrl = "";
@@ -232,7 +232,7 @@ test("persists missing-scene catalog filters in the URL", async () => {
 });
 
 test("carries the catalog query through missing-scene detail navigation", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
   assert.match(source, /navigateUrl\(missingSceneDetailUrl\(scene\.id\)\)/);
   assert.match(source, /navigateUrl\(missingScenesCatalogUrl\(\)\)/);
@@ -241,7 +241,7 @@ test("carries the catalog query through missing-scene detail navigation", async 
 });
 
 test("URL-backs catalog filters in scoped entity tabs", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
   assert.match(source, /useEffect\(\(\) => \{ writeCatalogFilters\(filters\); \}, \[filters\]\)/);
   assert.match(source, /SCOPED_CATALOG_FILTER_KEYS/);
@@ -249,7 +249,7 @@ test("URL-backs catalog filters in scoped entity tabs", async () => {
 });
 
 test("filters scenes by provider and renders linked native-like detail entities", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   assert.match(source, /select\("provider", "All providers"/);
   assert.match(source, /Open \$\{providerLabel\(scene\.remoteEndpoint\)\} metadata page/);
   assert.match(source, /rounded-full border border-border bg-card px-3 py-1 text-xs text-accent/);
@@ -263,7 +263,7 @@ test("filters scenes by provider and renders linked native-like detail entities"
 });
 
 test("hides ignored scenes by default and supports showing and restoring them", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
   assert.match(source, /showIgnored: false/);
   assert.match(source, /Show ignored scenes/);
@@ -276,8 +276,8 @@ test("hides ignored scenes by default and supports showing and restoring them", 
 });
 
 test("settings select multiple configured metadata providers", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const manifest = JSON.parse(await readFile(new URL("../extensions/CompleteTheCove/extension.json", import.meta.url), "utf8"));
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("../src/CompleteTheCove/extension.json", import.meta.url), "utf8"));
   const declaration = source.match(/function normalizeProviderEndpoint\(endpoint\) \{[\s\S]*?\n\}/)?.[0];
 
   assert.ok(manifest.settings.some((setting) => setting.name === "selected_metadata_endpoints"));
@@ -294,8 +294,8 @@ test("settings select multiple configured metadata providers", async () => {
 });
 
 test("refresh controls use a split button for all or one enabled provider", async () => {
-  const source = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const stylesheet = await readFile(new URL("../extensions/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
   assert.match(source, /function RefreshSplitButton/);
   assert.match(source, /providers\.filter\(\(provider\) => provider\.enabled === true\)/);

@@ -1,0 +1,11 @@
+{
+  "id": "complete-the-cove",
+  "name": "CompleteTheCove",
+  "tagPrefix": "complete-the-cove/",
+  "solution": "CompleteTheCove.slnx",
+  "project": "src/CompleteTheCove/CompleteTheCove.csproj",
+  "manifest": "src/CompleteTheCove/extension.json",
+  "readme": "README.md",
+  "ui": "src/CompleteTheCove/ui",
+  "uiTest": "tests/CompleteTheCove.Ui.Tests.mjs"
+}

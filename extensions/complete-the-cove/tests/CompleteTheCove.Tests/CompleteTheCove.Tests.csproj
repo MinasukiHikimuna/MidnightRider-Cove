@@ -13,6 +13,6 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../extensions/CompleteTheCove/CompleteTheCove.csproj" />
+    <ProjectReference Include="../../src/CompleteTheCove/CompleteTheCove.csproj" />
   </ItemGroup>
 </Project>

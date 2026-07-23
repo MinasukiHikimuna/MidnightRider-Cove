@@ -14,153 +14,117 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  select-extension:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.catalog.outputs.matrix }}
+      matrix: ${{ steps.extensions.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
-      - name: Validate extension catalog and manifests
-        run: node scripts/validate-extension-repo.mjs
-      - name: Validate release tag
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Select extension packages
+        id: extensions
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const tag = process.env.GITHUB_REF_NAME;
-          const catalog = JSON.parse(fs.readFileSync('extensions/catalog.json', 'utf8'));
-          const matches = catalog.extensions.filter(entry => tag.startsWith(entry.tagPrefix));
-          const supportedTags = catalog.extensions.map(entry => `${entry.tagPrefix}v1.0.0`).sort();
+          const path = require('path');
 
-          if (matches.length !== 1) {
-            console.error(`ERROR: Release tag '${tag}' does not match exactly one extension tag prefix.`);
-            console.error('Use the lowercase tagPrefix from extensions/catalog.json, for example:');
-            for (const supportedTag of supportedTags) console.error(`  - ${supportedTag}`);
-            process.exit(1);
+          const root = 'extensions';
+          const entries = fs.readdirSync(root, { withFileTypes: true })
+            .filter(entry => entry.isDirectory())
+            .map(entry => ({ directory: entry.name, descriptor: path.join(root, entry.name, 'release.json') }))
+            .filter(entry => fs.existsSync(entry.descriptor))
+            .map(entry => ({ ...JSON.parse(fs.readFileSync(entry.descriptor, 'utf8')), path: path.join(root, entry.directory) }));
+
+          const required = ['id', 'name', 'tagPrefix', 'solution', 'project', 'manifest', 'readme', 'ui'];
+          for (const entry of entries) {
+            for (const field of required) {
+              if (!entry[field]) throw new Error(`${entry.path}/release.json is missing ${field}`);
+            }
+            for (const field of ['solution', 'project', 'manifest', 'readme', 'ui']) {
+              if (!fs.existsSync(path.join(entry.path, entry[field]))) {
+                throw new Error(`${entry.path}/release.json references a missing ${field}: ${entry[field]}`);
+              }
+            }
           }
 
-          const extension = matches[0];
-          const versionTag = tag.slice(extension.tagPrefix.length);
-          if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(versionTag)) {
-            console.error(`ERROR: Release tag '${tag}' has invalid version '${versionTag}'. Expected a semantic version like '${extension.tagPrefix}v1.0.0'.`);
-            process.exit(1);
-          }
+          if (entries.length === 0) throw new Error('No extension release descriptors found.');
 
-          const releaseVersion = versionTag.slice(1);
-          const manifestPath = `${extension.path}/extension.json`;
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          if (manifest.version !== releaseVersion) {
-            console.error(`ERROR: Release tag version ${releaseVersion} does not match ${manifestPath} version ${manifest.version}.`);
-            process.exit(1);
-          }
-
-          console.log(`Release tag '${tag}' targets ${extension.name} (${extension.id}) version ${releaseVersion}.`);
-          NODE
-      - name: Build extension matrix
-        id: catalog
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const catalog = JSON.parse(fs.readFileSync('extensions/catalog.json', 'utf8'));
-          let extensions = catalog.extensions;
-
+          let selected = entries;
           if (process.env.GITHUB_EVENT_NAME !== 'pull_request') {
             const tag = process.env.GITHUB_REF_NAME;
-            extensions = extensions.filter(entry => tag.startsWith(entry.tagPrefix));
+            selected = entries.filter(entry => tag.startsWith(entry.tagPrefix));
+            if (selected.length !== 1) throw new Error(`Release tag '${tag}' must match exactly one extension tag prefix.`);
+
+            const version = tag.slice(selected[0].tagPrefix.length);
+            if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+              throw new Error(`Release tag '${tag}' has invalid version '${version}'.`);
+            }
+
+            const manifest = JSON.parse(fs.readFileSync(path.join(selected[0].path, selected[0].manifest), 'utf8'));
+            if (manifest.id !== selected[0].id) throw new Error(`${selected[0].path}: manifest id '${manifest.id}' does not match '${selected[0].id}'.`);
+            if (manifest.version !== version.slice(1)) {
+              throw new Error(`${selected[0].path}: manifest version '${manifest.version}' does not match release version '${version.slice(1)}'.`);
+            }
           }
 
-          if (extensions.length === 0) {
-            console.error(`ERROR: No extension matches release tag '${process.env.GITHUB_REF_NAME}'.`);
-            process.exit(1);
-          }
-
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ extension: extensions })}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ extension: selected })}\n`);
           NODE
 
   build:
-    needs: validate
+    needs: select-extension
     runs-on: ubuntu-latest
     strategy:
-      matrix: ${{ fromJson(needs.validate.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.select-extension.outputs.matrix) }}
     steps:
-      - name: Check if this extension was tagged
-        id: check
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "match=true" >> "$GITHUB_OUTPUT"
-            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-            if [[ "$TAG" == "${{ matrix.extension.tagPrefix }}"* ]]; then
-              echo "match=true" >> "$GITHUB_OUTPUT"
-              echo "version=${TAG#${{ matrix.extension.tagPrefix }}v}" >> "$GITHUB_OUTPUT"
-            else
-              echo "match=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
       - uses: actions/checkout@v6
-        if: steps.check.outputs.match == 'true'
-
       - name: Setup .NET
-        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "value=0.0.0" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#${{ matrix.extension.tagPrefix }}v}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Restore
-        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: dotnet restore HashTheCove.slnx --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
-
+        run: dotnet restore ${{ matrix.extension.path }}/${{ matrix.extension.solution }} --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
       - name: Test
-        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: dotnet test HashTheCove.slnx --configuration Release --no-restore --property:Version=${{ steps.check.outputs.version }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
-
+        run: dotnet test ${{ matrix.extension.path }}/${{ matrix.extension.solution }} --configuration Release --no-restore --property:Version=${{ steps.version.outputs.value }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
+      - name: Test UI
+        if: matrix.extension.uiTest
+        run: node --test ${{ matrix.extension.path }}/${{ matrix.extension.uiTest }}
       - name: Publish
-        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: dotnet publish ${{ matrix.extension.path }} --configuration Release --output artifacts/publish/${{ matrix.extension.name }} --no-restore --property:Version=${{ steps.check.outputs.version }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
-
-      - name: Create package root
-        if: steps.check.outputs.match == 'true'
-        run: mkdir -p artifacts/${{ matrix.extension.name }}
-
-      - name: Copy extension.json
-        if: steps.check.outputs.match == 'true'
-        run: cp ${{ matrix.extension.path }}/extension.json artifacts/${{ matrix.extension.name }}/
-
-      - name: Assemble native package files
-        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
+        run: dotnet publish ${{ matrix.extension.path }}/${{ matrix.extension.project }} --configuration Release --output artifacts/publish/${{ matrix.extension.name }} --no-build --property:Version=${{ steps.version.outputs.value }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
+      - name: Assemble package
+        shell: bash
         run: |
+          mkdir -p artifacts/${{ matrix.extension.name }}
+          cp ${{ matrix.extension.path }}/${{ matrix.extension.manifest }} artifacts/${{ matrix.extension.name }}/extension.json
+          cp ${{ matrix.extension.path }}/${{ matrix.extension.readme }} artifacts/${{ matrix.extension.name }}/README.md
+          cp ${{ matrix.extension.path }}/LICENSE artifacts/${{ matrix.extension.name }}/LICENSE
           cp artifacts/publish/${{ matrix.extension.name }}/${{ matrix.extension.name }}.dll artifacts/${{ matrix.extension.name }}/
-          cp README.md LICENSE artifacts/${{ matrix.extension.name }}/
-          cp -R ${{ matrix.extension.path }}/ui artifacts/${{ matrix.extension.name }}/
-
-      - name: Validate extension UI module
-        if: steps.check.outputs.match == 'true' && !matrix.extension.manifestOnly
-        run: node --check ${{ matrix.extension.path }}/ui/${{ matrix.extension.name }}.js
-
-      - name: Stamp packaged extension.json version
-        if: steps.check.outputs.match == 'true'
+          if [[ -d "${{ matrix.extension.path }}/${{ matrix.extension.ui }}" ]]; then
+            cp -R ${{ matrix.extension.path }}/${{ matrix.extension.ui }} artifacts/${{ matrix.extension.name }}/ui
+          fi
+      - name: Stamp packaged manifest version
         run: |
-          node -e "const fs=require('fs'); const file='artifacts/${{ matrix.extension.name }}/extension.json'; const json=JSON.parse(fs.readFileSync(file,'utf8')); json.version='${{ steps.check.outputs.version }}'; fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');"
-
+          node -e "const fs=require('fs'); const file='artifacts/${{ matrix.extension.name }}/extension.json'; const json=JSON.parse(fs.readFileSync(file,'utf8')); json.version='${{ steps.version.outputs.value }}'; fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');"
       - name: Validate assembled package
-        if: steps.check.outputs.match == 'true'
-        run: node scripts/validate-extension-package.mjs artifacts/${{ matrix.extension.name }} ${{ steps.check.outputs.version }}
-
+        run: node ${{ matrix.extension.path }}/scripts/validate-extension-package.mjs artifacts/${{ matrix.extension.name }} ${{ steps.version.outputs.value }} ${{ matrix.extension.id }}
       - name: Package
-        if: steps.check.outputs.match == 'true' && github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           cd artifacts/${{ matrix.extension.name }}
-          zip -r ../../${{ matrix.extension.id }}-${{ steps.check.outputs.version }}.zip .
+          zip -r ../../${{ matrix.extension.id }}-${{ steps.version.outputs.value }}.zip .
           cd ../..
-          sha256sum ${{ matrix.extension.id }}-${{ steps.check.outputs.version }}.zip > ${{ matrix.extension.id }}-${{ steps.check.outputs.version }}.zip.sha256
-
+          sha256sum ${{ matrix.extension.id }}-${{ steps.version.outputs.value }}.zip > ${{ matrix.extension.id }}-${{ steps.version.outputs.value }}.zip.sha256
       - name: Upload artifact
-        if: steps.check.outputs.match == 'true' && github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.extension.id }}

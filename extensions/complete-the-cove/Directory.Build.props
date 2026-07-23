@@ -8,7 +8,7 @@
     <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
     <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>
-    <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">$(MSBuildThisFileDirectory)..\cove</CoveSourceRoot>
+    <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">$(MSBuildThisFileDirectory)..\..\..\cove</CoveSourceRoot>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj')">true</UseLocalCoveSource>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == ''">false</UseLocalCoveSource>
     <UseLocalCoveCore Condition="'$(UseLocalCoveCore)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Core\Cove.Core.csproj')">true</UseLocalCoveCore>
