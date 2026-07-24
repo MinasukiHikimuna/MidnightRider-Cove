@@ -92,7 +92,7 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
         {
             for (var page = 1; ; page++)
             {
-                var pageResult = await QueryScenesAsync(target.EntityType, id, page, ct);
+                var pageResult = await QueryVideosAsync(target.EntityType, id, page, ct);
                 foreach (var video in pageResult.Items)
                     results.TryAdd(video.RemoteIds[0].Normalized, video);
                 if (pageResult.Items.Count == 0 || pageResult.Items.Count < 25) break;
@@ -108,7 +108,7 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
         return new[] { id }.Concat(doc.RootElement.GetProperty("data").GetProperty("findStudio").GetProperty("child_studios").EnumerateArray().Select(x => x.GetProperty("id").GetString()!)).ToArray();
     }
 
-    private async Task<(List<SourceVideo> Items, int Count)> QueryScenesAsync(CompletionTargetType mode, string id, int page, CancellationToken ct)
+    private async Task<(List<SourceVideo> Items, int Count)> QueryVideosAsync(CompletionTargetType mode, string id, int page, CancellationToken ct)
     {
         var field = mode switch { CompletionTargetType.Performer => "performers", CompletionTargetType.Studio => "studios", _ => "tags" };
         var query = $$"""
@@ -119,28 +119,28 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
           """;
         using var doc = await SendAsync(query, new { ids = new[] { id }, page }, ct);
         var root = doc.RootElement.GetProperty("data").GetProperty("queryScenes");
-        var items = root.GetProperty("scenes").EnumerateArray().Select(scene => MapVideo(scene, _endpoint)).ToList();
+        var items = root.GetProperty("scenes").EnumerateArray().Select(video => MapVideo(video, _endpoint)).ToList();
         return (items, root.GetProperty("count").GetInt32());
     }
 
-    public static SourceVideo MapVideo(JsonElement scene, string endpoint)
+    public static SourceVideo MapVideo(JsonElement video, string endpoint)
     {
-        var remoteId = scene.GetProperty("id").GetString()!;
+        var remoteId = video.GetProperty("id").GetString()!;
         SourceStudio? studio = null;
-        if (scene.TryGetProperty("studio", out var studioJson) && studioJson.ValueKind == JsonValueKind.Object)
+        if (video.TryGetProperty("studio", out var studioJson) && studioJson.ValueKind == JsonValueKind.Object)
         {
             SourceStudio? parent = null;
             if (studioJson.TryGetProperty("parent", out var parentJson) && parentJson.ValueKind == JsonValueKind.Object)
                 parent = new(0, parentJson.GetProperty("name").GetString()!, false, null, false, [], [], [new(endpoint, parentJson.GetProperty("id").GetString()!)]);
             studio = new(0, studioJson.GetProperty("name").GetString()!, false, null, false, [], [], [new(endpoint, studioJson.GetProperty("id").GetString()!)], parent);
         }
-        var performers = scene.GetProperty("performers").EnumerateArray().Select(x => x.GetProperty("performer")).Where(x => x.ValueKind == JsonValueKind.Object).Select(x =>
+        var performers = video.GetProperty("performers").EnumerateArray().Select(x => x.GetProperty("performer")).Where(x => x.ValueKind == JsonValueKind.Object).Select(x =>
             new SourcePerformer(0, x.GetProperty("name").GetString()!, Text(x, "disambiguation"), Text(x, "gender"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], Strings(x, "aliases"), [new(endpoint, x.GetProperty("id").GetString()!)])).ToArray();
-        var tags = scene.GetProperty("tags").EnumerateArray().Select(x => new SourceTag(0, x.GetProperty("name").GetString()!, null, null, false, [], [new(endpoint, x.GetProperty("id").GetString()!)], false)).ToArray();
-        var coverUrl = scene.TryGetProperty("images", out var images) && images.ValueKind == JsonValueKind.Array
+        var tags = video.GetProperty("tags").EnumerateArray().Select(x => new SourceTag(0, x.GetProperty("name").GetString()!, null, null, false, [], [new(endpoint, x.GetProperty("id").GetString()!)], false)).ToArray();
+        var coverUrl = video.TryGetProperty("images", out var images) && images.ValueKind == JsonValueKind.Array
             ? images.EnumerateArray().Select(x => Text(x, "url")).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) : null;
-        return new SourceVideo(0, Text(scene, "title"), Text(scene, "code"), Text(scene, "details"), null, Text(scene, "release_date"), false, false, null,
-            scene.GetProperty("urls").EnumerateArray().Select(x => x.GetProperty("url").GetString()!).ToArray(), [new(endpoint, remoteId)], studio, tags, performers, coverUrl);
+        return new SourceVideo(0, Text(video, "title"), Text(video, "code"), Text(video, "details"), null, Text(video, "release_date"), false, false, null,
+            video.GetProperty("urls").EnumerateArray().Select(x => x.GetProperty("url").GetString()!).ToArray(), [new(endpoint, remoteId)], studio, tags, performers, coverUrl);
     }
 
     private async Task<JsonDocument> SendAsync(string query, object variables, CancellationToken ct)

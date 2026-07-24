@@ -28,7 +28,7 @@ test("accepts successful extension API responses with empty bodies", async () =>
 
 test("uses Cove's canonical detail-list pagination", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const declarations = source.match(/function clampCatalogPage\(page, totalCount, perPage\) \{[\s\S]*?(?=\n\nfunction SceneGrid)/)?.[0];
+  const declarations = source.match(/function clampCatalogPage\(page, totalCount, perPage\) \{[\s\S]*?(?=\n\nfunction VideoGrid)/)?.[0];
 
   assert.match(source, /import \{[^}]*DetailListPagination[^}]*\} from "@cove\/runtime\/components"/);
   assert.match(source, /h\(DetailListPagination,/);
@@ -44,7 +44,7 @@ test("uses Cove's canonical detail-list pagination", async () => {
   assert.match(source, /setData\(\{ \.\.\.value, query: requestQuery \}\)/);
 });
 
-test("renders matching pagination above and below the scene list", async () => {
+test("renders matching pagination above and below the video list", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const paginationCalls = source.match(/h\(DetailListPagination,/g) || [];
 
@@ -86,15 +86,15 @@ test("declares a scoped stylesheet for the catalog controls and cards", async ()
   assert.ok(selectorLines.every((line) => line.startsWith(".complete-the-cove-") || line.startsWith("@media")), "stylesheet selectors must remain extension-scoped");
 });
 
-test("mirrors Cove's native video-card layout with missing-scene data", async () => {
+test("mirrors Cove's native video-card layout with missing-video data", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
   assert.match(source, /complete-the-cove-card-preview card-media/);
   assert.match(source, /complete-the-cove-performer-badge/);
-  assert.match(source, /scene\.details \? h\("p"/);
+  assert.match(source, /video\.details \? h\("p"/);
   assert.match(source, /complete-the-cove-card-popovers/);
-  assert.match(source, /function SceneMetadataPopover/);
+  assert.match(source, /function VideoMetadataPopover/);
   assert.match(source, /createPortal\(/);
   assert.match(source, /h\("a", \{[\s\S]*complete-the-cove-card-link/);
   assert.match(source, /aria-expanded/);
@@ -115,7 +115,7 @@ test("mirrors Cove's native video-card layout with missing-scene data", async ()
   assert.match(source, /performers\.length/);
   assert.match(source, /tags\.length/);
   assert.match(source, /function providerLabel/);
-  assert.match(source, /providerLabel\(scene\.remoteEndpoint\)/);
+  assert.match(source, /providerLabel\(video\.remoteEndpoint\)/);
   assert.doesNotMatch(source, /complete-the-cove-card-tags/);
   assert.match(stylesheet, /\.complete-the-cove-card-body[\s\S]*padding: 0\.5rem 0\.625rem/);
   assert.match(stylesheet, /\.complete-the-cove-card-popovers[\s\S]*min-height: 28px/);
@@ -177,8 +177,8 @@ test("renders provider-specific completion only for successfully measured provid
   assert.match(source, /function ProviderProgress/);
   assert.match(source, /providers\.map/);
   assert.match(source, /Refresh to calculate progress/);
-  assert.match(source, /No eligible scenes/);
-  assert.match(source, /Math\.round\(\(provider\.ownedSceneCount \/ provider\.eligibleSceneCount\) \* 100\)/);
+  assert.match(source, /No eligible videos/);
+  assert.match(source, /Math\.round\(\(provider\.ownedVideoCount \/ provider\.eligibleVideoCount\) \* 100\)/);
   assert.match(source, /provider\.lastRefreshError/);
   assert.equal((source.match(/h\(ProviderProgress,/g) || []).length, 3);
   assert.match(stylesheet, /\.complete-the-cove-progress-bar/);
@@ -194,16 +194,27 @@ test("keeps tracked target names readable and actions below content on mobile", 
   assert.match(mobile, /\.complete-the-cove-target-actions\s*\{[\s\S]*?flex-direction: row/);
 });
 
-test("marks missing covers without reusing the cover as a blurred backdrop", async () => {
+test("uses Cove video terminology and reserves the missing-cover ribbon for detail", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
+  assert.match(source, /"Missing Videos"/);
+  assert.match(source, /"Remote videos missing from this Cove/);
+  assert.match(source, /"Search missing videos"/);
+  assert.match(source, /"Show ignored videos"/);
+  assert.match(source, /"No missing videos match this view."/);
+  assert.match(source, /\/missing-videos/);
+  assert.match(source, /\/missing-video\//);
+  assert.match(source, /`\$\{API\}\/videos/);
+  assert.match(source, /function LegacyMissingVideosPage/);
+  assert.match(source, /replaceUrl\(`\/missing-videos\$\{window\.location\.search\}`\)/);
+  assert.match(source, /function LegacyMissingVideoDetailPage/);
+  assert.match(source, /replaceUrl\(`\/missing-video\/\$\{id\}\$\{window\.location\.search\}`\)/);
   assert.match(source, /function MissingBanner/);
-  assert.equal((source.match(/h\(MissingBanner/g) || []).length, 2);
+  assert.equal((source.match(/h\(MissingBanner/g) || []).length, 1);
   assert.doesNotMatch(source, /key: "blur"/);
   assert.doesNotMatch(source, /blur-2xl/);
   assert.match(stylesheet, /\.complete-the-cove-missing-banner/);
-  assert.match(stylesheet, /background: var\(--color-accent\)/);
 });
 
 test("parses and writes catalog URLs without losing unrelated parameters", async () => {
@@ -212,41 +223,41 @@ test("parses and writes catalog URLs without losing unrelated parameters", async
   assert.ok(declarations, "catalog URL helpers should be present");
   let pushedUrl = "";
   const window = {
-    location: { pathname: "/missing-scenes", search: "?view=tracked&targetType=performer&targetId=42&keep=yes" },
+    location: { pathname: "/missing-videos", search: "?view=tracked&targetType=performer&targetId=42&keep=yes" },
     history: { pushState: (_state, _title, url) => { pushedUrl = url; } },
   };
   const helpers = Function("window", `"use strict"; ${declarations}; return { readCatalogLocation, writeCatalogLocation };`)(window);
 
   assert.deepEqual(helpers.readCatalogLocation(), { view: "tracked", targetType: "performer", targetId: 42 });
-  helpers.writeCatalogLocation({ view: "scenes", targetType: "tag", targetId: 9 });
-  assert.equal(pushedUrl, "/missing-scenes?keep=yes&targetType=tag&targetId=9");
+  helpers.writeCatalogLocation({ view: "videos", targetType: "tag", targetId: 9 });
+  assert.equal(pushedUrl, "/missing-videos?keep=yes&targetType=tag&targetId=9");
 
   pushedUrl = "";
   window.location.search = "?view=tracked&targetType=performer&targetId=42&keep=yes";
   helpers.writeCatalogLocation({ view: "tracked", targetType: null, targetId: null });
-  assert.equal(pushedUrl, "/missing-scenes?keep=yes&view=tracked");
+  assert.equal(pushedUrl, "/missing-videos?keep=yes&view=tracked");
   window.location.search = "?keep=yes&view=tracked";
   pushedUrl = "";
   helpers.writeCatalogLocation({ view: "tracked", targetType: null, targetId: null });
   assert.equal(pushedUrl, "", "selecting the active catalog view should not add history");
 
   window.location.search = "?targetType=video&targetId=-2";
-  assert.deepEqual(helpers.readCatalogLocation(), { view: "scenes", targetType: null, targetId: null });
+  assert.deepEqual(helpers.readCatalogLocation(), { view: "videos", targetType: null, targetId: null });
 });
 
-test("persists missing-scene catalog filters in the URL", async () => {
+test("persists missing-video catalog filters in the URL", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/const DEFAULT_CATALOG_FILTERS[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
   assert.ok(declarations, "catalog filter URL helpers should be present");
   let replacedUrl = "";
   const window = {
     location: {
-      pathname: "/missing-scenes",
+      pathname: "/missing-videos",
       search: "?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performerMode=all&performer=remote%7C7&performer=remote%7C17&excludePerformer=remote%7C27&studio=remote%7C8&includeSubstudios=true&tagMode=not-null&excludeTag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3",
     },
     history: { replaceState: (_state, _title, url) => { replacedUrl = url; } },
   };
-  const helpers = Function("window", `"use strict"; ${declarations}; return { readCatalogFilters, writeCatalogFilters, catalogQueryString, missingSceneDetailUrl, missingScenesCatalogUrl };`)(window);
+  const helpers = Function("window", `"use strict"; ${declarations}; return { readCatalogFilters, writeCatalogFilters, catalogQueryString, missingVideoDetailUrl, missingVideosCatalogUrl };`)(window);
 
   assert.deepEqual(helpers.readCatalogFilters(), {
     q: "Crystal",
@@ -267,8 +278,8 @@ test("persists missing-scene catalog filters in the URL", async () => {
     page: 3,
   });
   assert.match(helpers.catalogQueryString(), /performer=remote%7C7&performer=remote%7C17/);
-  assert.match(helpers.missingSceneDetailUrl(17), /^\/missing-scene\/17\?keep=yes&/);
-  assert.match(helpers.missingScenesCatalogUrl(), /^\/missing-scenes\?keep=yes&/);
+  assert.match(helpers.missingVideoDetailUrl(17), /^\/missing-video\/17\?keep=yes&/);
+  assert.match(helpers.missingVideosCatalogUrl(), /^\/missing-videos\?keep=yes&/);
 
   helpers.writeCatalogFilters({
     q: "", provider: "",
@@ -277,10 +288,10 @@ test("persists missing-scene catalog filters in the URL", async () => {
     tag: [], excludeTag: [], tagMode: "any",
     showIgnored: false, sort: "release", direction: "desc", page: 1,
   });
-  assert.equal(replacedUrl, "/missing-scenes?keep=yes", "default values should be omitted without losing unrelated parameters");
+  assert.equal(replacedUrl, "/missing-videos?keep=yes", "default values should be omitted without losing unrelated parameters");
 
   window.location.pathname = "/performer/42";
-  window.location.search = "?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title";
+  window.location.search = "?tab=ext%3Amissing-videos&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title";
   assert.equal(helpers.readCatalogFilters().q, "test", "scoped tabs must read extension-owned parameters");
   replacedUrl = "";
   helpers.writeCatalogFilters({
@@ -290,15 +301,15 @@ test("persists missing-scene catalog filters in the URL", async () => {
     tag: [], excludeTag: [], tagMode: "any",
     showIgnored: false, sort: "title", direction: "desc", page: 1,
   });
-  assert.equal(replacedUrl, "/performer/42?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=changed&ctcSort=title");
-  const scopedDetailUrl = helpers.missingSceneDetailUrl(17);
-  assert.equal(scopedDetailUrl, "/missing-scene/17?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title&ctcReturnTo=%2Fperformer%2F42");
-  window.location.pathname = "/missing-scene/17";
+  assert.equal(replacedUrl, "/performer/42?tab=ext%3Amissing-videos&q=host-search&view=host-view&returnTo=host-return&ctcQ=changed&ctcSort=title");
+  const scopedDetailUrl = helpers.missingVideoDetailUrl(17);
+  assert.equal(scopedDetailUrl, "/missing-video/17?tab=ext%3Amissing-videos&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title&ctcReturnTo=%2Fperformer%2F42");
+  window.location.pathname = "/missing-video/17";
   window.location.search = scopedDetailUrl.slice(scopedDetailUrl.indexOf("?"));
-  assert.equal(helpers.missingScenesCatalogUrl(), "/performer/42?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title");
+  assert.equal(helpers.missingVideosCatalogUrl(), "/performer/42?tab=ext%3Amissing-videos&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title");
   for (const unsafeReturnTo of ["https://evil.test/path", "//evil.test/path", "/performer/42/../43", "/performer/not-a-number"]) {
     window.location.search = `?ctcQ=test&ctcReturnTo=${encodeURIComponent(unsafeReturnTo)}`;
-    assert.equal(helpers.missingScenesCatalogUrl(), "/missing-scenes?ctcQ=test", `must reject unsafe return path ${unsafeReturnTo}`);
+    assert.equal(helpers.missingVideosCatalogUrl(), "/missing-videos?ctcQ=test", `must reject unsafe return path ${unsafeReturnTo}`);
   }
 
   window.location.search = "?q=test&showIgnored=maybe&sort=unknown&direction=sideways&page=-2";
@@ -311,13 +322,13 @@ test("persists missing-scene catalog filters in the URL", async () => {
   });
 });
 
-test("carries the catalog query through missing-scene detail navigation", async () => {
+test("carries the catalog query through missing-video detail navigation", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
-  assert.match(source, /navigateUrl\(missingSceneDetailUrl\(scene\.id\)\)/);
-  assert.match(source, /navigateUrl\(missingScenesCatalogUrl\(\)\)/);
-  assert.doesNotMatch(source, /else onNavigate\(\{ page: "missing-scene", id: scene\.id \}\)/);
-  assert.doesNotMatch(source, /else onNavigate\(\{ page: "missing-scenes" \}\)/);
+  assert.match(source, /navigateUrl\(missingVideoDetailUrl\(video\.id\)\)/);
+  assert.match(source, /navigateUrl\(missingVideosCatalogUrl\(\)\)/);
+  assert.doesNotMatch(source, /else onNavigate\(\{ page: "missing-video", id: video\.id \}\)/);
+  assert.doesNotMatch(source, /else onNavigate\(\{ page: "missing-videos" \}\)/);
 });
 
 test("URL-backs catalog filters in scoped entity tabs", async () => {
@@ -328,29 +339,38 @@ test("URL-backs catalog filters in scoped entity tabs", async () => {
   assert.match(source, /ctcReturnTo/);
 });
 
-test("filters scenes by provider and renders linked native-like detail entities", async () => {
+test("normalizes legacy entity-tab bookmarks to the video tab key", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+
+  assert.match(source, /params\.get\("tab"\) === "ext:missing-scenes"/);
+  assert.match(source, /params\.set\("tab", "ext:missing-videos"\)/);
+  assert.match(source, /normalizeLegacyTabLocation\(\);/);
+  assert.match(source, /normalizeLegacyTabParams\(new URLSearchParams\(catalogQueryString\(\)\)\)/);
+});
+
+test("filters videos by provider and renders linked native-like detail entities", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   assert.match(source, /"aria-label": "All providers"/);
-  assert.match(source, /Open \$\{providerLabel\(scene\.remoteEndpoint\)\} metadata page/);
+  assert.match(source, /Open \$\{providerLabel\(video\.remoteEndpoint\)\} metadata page/);
   assert.match(source, /rounded-full border border-border bg-card px-3 py-1 text-xs text-accent/);
-  assert.match(source, /scene\.coveStudioId/);
+  assert.match(source, /video\.coveStudioId/);
   assert.match(source, /tag\.coveTagId/);
   assert.match(source, /performerImageUrl\(performer\)/);
   assert.match(source, /PerformerTile/);
   assert.match(source, /TagBadge/);
   assert.match(source, /headerImage/);
-  assert.match(source, /\/api\/studios\/\$\{scene\.coveStudioId\}\/image/);
+  assert.match(source, /\/api\/studios\/\$\{video\.coveStudioId\}\/image/);
 });
 
-test("hides ignored scenes by default and supports showing and restoring them", async () => {
+test("hides ignored videos by default and supports showing and restoring them", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
   assert.match(source, /showIgnored: false/);
-  assert.match(source, /Show ignored scenes/);
+  assert.match(source, /Show ignored videos/);
   assert.match(source, /showIgnored=\$\{filters\.showIgnored\}/);
-  assert.match(source, /method: scene\.isIgnored \? "DELETE" : "POST"/);
-  assert.match(source, /scene\.isIgnored \? "Unignore" : "Ignore"/);
-  assert.match(source, /scene\.isIgnored \? Eye : EyeOff/);
+  assert.match(source, /method: video\.isIgnored \? "DELETE" : "POST"/);
+  assert.match(source, /video\.isIgnored \? "Unignore" : "Ignore"/);
+  assert.match(source, /video\.isIgnored \? Eye : EyeOff/);
   assert.match(source, /More catalog options/);
   assert.match(source, /h\(MoreHorizontal,/);
 });

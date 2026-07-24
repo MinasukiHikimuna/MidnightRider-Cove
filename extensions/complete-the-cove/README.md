@@ -1,17 +1,17 @@
 # Complete the Cove
 
-This extension keeps a catalog of metadata-server scenes that are missing from one Cove instance. It does not create Cove videos. Select a performer, studio, or tag from that entity's **Missing Scenes** tab, then run a refresh there or from the top-level **Missing Scenes** page. The main **Refresh** action refreshes every provider enabled for Complete the Cove; use its arrow menu to refresh only one enabled provider.
+This extension keeps a catalog of metadata-server videos that are missing from one Cove instance. It does not create Cove videos. Select a performer, studio, or tag from that entity's **Missing Videos** tab, then run a refresh there or from the top-level **Missing Videos** page. The main **Refresh** action refreshes every provider enabled for Complete the Cove; use its arrow menu to refresh only one enabled provider.
 
 ## Behavioral mapping
 
 - A selected performer maps independently to each supported metadata server for which it has a remote ID.
-- A selected studio maps to scenes from that studio and its direct child studios.
-- A selected tag maps to scenes containing that tag's provider-specific remote ID.
-- Cove `VideoRemoteId` rows for each configured provider determine which scenes already exist locally.
-- Missing scene metadata, relationships, selection links, refresh state, and cover blob IDs live in extension-owned tables. Cover bytes live in Cove's extension blob store.
-- Successful refreshes reconcile the selected entity: new missing scenes are added, scenes now present in Cove are removed, and scenes shared by another selection remain.
-- Individual missing scenes can be ignored from their detail page. Ignored scenes remain hidden across catalog refreshes until **Show ignored scenes** is enabled and the scene is unignored.
-- Missing Scenes URLs preserve search, provider, performer, studio, and tag filters, sorting, page, and the **Show ignored scenes** option in both the top-level catalog and entity tabs. Opening a scene and using **Back to Missing Scenes** restores the originating catalog view, and the URL can be bookmarked or shared.
+- A selected studio maps to videos from that studio and its direct child studios.
+- A selected tag maps to videos containing that tag's provider-specific remote ID.
+- Cove `VideoRemoteId` rows for each configured provider determine which videos already exist locally.
+- Missing video metadata, relationships, selection links, refresh state, and cover blob IDs live in extension-owned tables. Cover bytes live in Cove's extension blob store.
+- Successful refreshes reconcile the selected entity: new missing videos are added, videos now present in Cove are removed, and videos shared by another selection remain.
+- Individual missing videos can be ignored from their detail page. Ignored videos remain hidden across catalog refreshes until **Show ignored videos** is enabled and the video is unignored.
+- Missing Videos URLs preserve search, provider, performer, studio, and tag filters, sorting, page, and the **Show ignored videos** option in both the top-level catalog and entity tabs. Opening a video and using **Back to Missing Videos** restores the originating catalog view, and the URL can be bookmarked or shared.
 - Exact, case-insensitive tag names configured in `excluded_tags` are omitted.
 
 ## Intentionally unsupported legacy behavior

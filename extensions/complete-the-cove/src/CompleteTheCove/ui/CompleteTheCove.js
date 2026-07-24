@@ -35,11 +35,11 @@ function normalizeProviderEndpoint(endpoint) {
   catch { return endpoint.trim().replace(/\/$/, ""); }
 }
 
-function remoteSceneUrl(scene) {
+function remoteVideoUrl(video) {
   try {
-    const url = new URL(scene.remoteEndpoint);
-    if (url.hostname.includes("stashdb.org")) return `https://stashdb.org/scenes/${scene.remoteId}`;
-    if (url.hostname.includes("theporndb.net")) return `https://theporndb.net/scenes/${scene.remoteId}`;
+    const url = new URL(video.remoteEndpoint);
+    if (url.hostname.includes("stashdb.org")) return `https://stashdb.org/scenes/${video.remoteId}`;
+    if (url.hostname.includes("theporndb.net")) return `https://theporndb.net/scenes/${video.remoteId}`;
   } catch { /* ignore malformed provider endpoints */ }
   return null;
 }
@@ -136,23 +136,28 @@ function catalogApiQuery(filters, scope) {
 
 function catalogQueryString() {
   const params = new URLSearchParams(window.location.search);
-  if (window.location.pathname === "/missing-scenes") params.delete("view");
+  if (window.location.pathname === "/missing-videos") params.delete("view");
   return params.toString();
 }
 
-function missingSceneDetailUrl(sceneId) {
+function normalizeLegacyTabParams(params) {
+  if (params.get("tab") === "ext:missing-scenes") params.set("tab", "ext:missing-videos");
+  return params;
+}
+
+function missingVideoDetailUrl(videoId) {
   const params = new URLSearchParams(catalogQueryString());
   params.delete("ctcReturnTo");
   if (/^\/(performer|studio|tag)\/\d+$/.test(window.location.pathname)) params.set("ctcReturnTo", window.location.pathname);
   const query = params.toString();
-  return `/missing-scene/${sceneId}${query ? `?${query}` : ""}`;
+  return `/missing-video/${videoId}${query ? `?${query}` : ""}`;
 }
 
-function missingScenesCatalogUrl() {
-  const params = new URLSearchParams(catalogQueryString());
+function missingVideosCatalogUrl() {
+  const params = normalizeLegacyTabParams(new URLSearchParams(catalogQueryString()));
   const returnTo = params.get("ctcReturnTo");
   params.delete("ctcReturnTo");
-  const path = returnTo && /^\/(performer|studio|tag)\/\d+$/.test(returnTo) ? returnTo : "/missing-scenes";
+  const path = returnTo && /^\/(performer|studio|tag)\/\d+$/.test(returnTo) ? returnTo : "/missing-videos";
   const query = params.toString();
   return `${path}${query ? `?${query}` : ""}`;
 }
@@ -162,7 +167,7 @@ function readCatalogLocation() {
   const targetType = ["performer", "studio", "tag"].includes(params.get("targetType")) ? params.get("targetType") : null;
   const parsedTargetId = Number(params.get("targetId"));
   return {
-    view: params.get("view") === "tracked" ? "tracked" : "scenes",
+    view: params.get("view") === "tracked" ? "tracked" : "videos",
     targetType,
     targetId: targetType && Number.isInteger(parsedTargetId) && parsedTargetId > 0 ? parsedTargetId : null,
   };
@@ -172,7 +177,7 @@ function writeCatalogLocation(location) {
   const params = new URLSearchParams(window.location.search);
   params.delete("view"); params.delete("targetType"); params.delete("targetId");
   if (location.view === "tracked") params.set("view", "tracked");
-  if (location.view === "scenes" && location.targetType && location.targetId) {
+  if (location.view === "videos" && location.targetType && location.targetId) {
     params.set("targetType", location.targetType);
     params.set("targetId", String(location.targetId));
   }
@@ -185,6 +190,20 @@ function navigateUrl(url) {
   window.history.pushState(null, "", url);
   window.dispatchEvent(new CustomEvent("cove-locationchange"));
 }
+
+function replaceUrl(url) {
+  window.history.replaceState(null, "", url);
+  window.dispatchEvent(new CustomEvent("cove-locationchange"));
+}
+
+function normalizeLegacyTabLocation() {
+  if (!/^\/(performer|studio|tag)\/\d+$/.test(window.location.pathname)) return;
+  const params = new URLSearchParams(window.location.search);
+  if (normalizeLegacyTabParams(params).toString() === window.location.search.slice(1)) return;
+  replaceUrl(`${window.location.pathname}?${params}`);
+}
+
+normalizeLegacyTabLocation();
 
 function readVideoCardMinWidth() {
   try {
@@ -221,7 +240,7 @@ async function runRefresh(body) {
   }
 }
 
-function SceneMetadataPopover({ Icon, items, label, kind }) {
+function VideoMetadataPopover({ Icon, items, label, kind }) {
   const anchorRef = useRef(null);
   const panelRef = useRef(null);
   const closeTimerRef = useRef(null);
@@ -296,49 +315,48 @@ function SceneMetadataPopover({ Icon, items, label, kind }) {
 }
 
 function MissingBanner() {
-  return h("div", { className: "complete-the-cove-missing-banner", "aria-label": "Missing scene" }, "MISSING");
+  return h("div", { className: "complete-the-cove-missing-banner", "aria-label": "Missing video" }, "MISSING");
 }
 
-function SceneCard({ scene, onNavigate }) {
-  const performers = scene.performers || [];
-  const tags = scene.tags || [];
-  const title = scene.title || "Untitled scene";
-  const openScene = (event) => {
+function MissingVideoCard({ video, onNavigate }) {
+  const performers = video.performers || [];
+  const tags = video.tags || [];
+  const title = video.title || "Untitled video";
+  const openVideo = (event) => {
     event?.preventDefault();
-    navigateUrl(missingSceneDetailUrl(scene.id));
+    navigateUrl(missingVideoDetailUrl(video.id));
   };
   return h("div", {
     className: "complete-the-cove-card video-card group relative flex h-full flex-col overflow-hidden rounded border border-border bg-card text-left",
   }, [
     h("a", {
       key: "link",
-      href: missingSceneDetailUrl(scene.id),
-      onClick: openScene,
+      href: missingVideoDetailUrl(video.id),
+      onClick: openVideo,
       className: "complete-the-cove-card-link absolute inset-0 z-[1] rounded",
-      "aria-label": `Open missing scene ${title}`,
+      "aria-label": `Open missing video ${title}`,
     }),
     h("div", { key: "content", className: "contents" }, [
     h("div", { key: "image", className: "complete-the-cove-card-preview card-media relative aspect-video overflow-hidden bg-black" }, [
-      scene.coverUrl
-        ? h("img", { key: "cover", src: scene.coverUrl, alt: `Cover for ${title}`, loading: "lazy", className: "complete-the-cove-card-preview-image h-full w-full object-cover" })
+      video.coverUrl
+        ? h("img", { key: "cover", src: video.coverUrl, alt: `Cover for ${title}`, loading: "lazy", className: "complete-the-cove-card-preview-image h-full w-full object-cover" })
         : h("div", { key: "placeholder", className: "flex h-full items-center justify-center text-muted" }, h(Puzzle, { className: "h-8 w-8" })),
-      h(MissingBanner, { key: "missing" }),
     ]),
     h("div", { key: "body", className: "complete-the-cove-card-body card-body flex min-h-0 flex-1 flex-col gap-1.5 border-t border-border/50 px-2.5 pb-2 pt-2" }, [
       h("div", { key: "heading" }, [
         h("p", { key: "title", className: "complete-the-cove-card-title card-title line-clamp-2 font-semibold leading-snug text-foreground", title }, title),
-        h("div", { key: "meta", className: "complete-the-cove-card-meta mt-1 flex items-center gap-2 text-muted" }, [h("span", { key: "provider" }, providerLabel(scene.remoteEndpoint)), scene.releaseDate ? h("span", { key: "date" }, scene.releaseDate) : null, scene.studioName ? h("span", { key: "studio", className: "truncate" }, scene.studioName) : null]),
+        h("div", { key: "meta", className: "complete-the-cove-card-meta mt-1 flex items-center gap-2 text-muted" }, [h("span", { key: "provider" }, providerLabel(video.remoteEndpoint)), video.releaseDate ? h("span", { key: "date" }, video.releaseDate) : null, video.studioName ? h("span", { key: "studio", className: "truncate" }, video.studioName) : null]),
       ]),
       performers.length ? h("div", { key: "performers", className: "complete-the-cove-card-performers relative flex flex-wrap items-center gap-1.5 overflow-hidden" }, [
         ...performers.slice(0, 4).map((performer) => h("span", { key: performer.remoteId, className: "complete-the-cove-performer-badge flex min-w-0 items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-0.5" }, [performerImageUrl(performer) ? h("span", { key: "portrait", className: "complete-the-cove-performer-badge-portrait" }, [h("img", { key: "image", src: performerImageUrl(performer), alt: "", loading: "lazy", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.nextElementSibling.style.display = "block"; } }), h(Users, { key: "fallback", className: "complete-the-cove-performer-badge-fallback h-3.5 w-3.5 text-muted" })]) : h(Users, { key: "icon", className: "h-3.5 w-3.5 shrink-0 text-muted" }), h("span", { key: "name", className: "max-w-[80px] truncate text-[10px] text-secondary" }, performer.name)])),
         performers.length > 4 ? h("span", { key: "more", className: "text-[10px] text-muted" }, `+${performers.length - 4}`) : null,
       ]) : null,
-      scene.details ? h("p", { key: "details", className: "complete-the-cove-card-details line-clamp-2 text-xs leading-snug text-secondary" }, scene.details) : null,
+      video.details ? h("p", { key: "details", className: "complete-the-cove-card-details line-clamp-2 text-xs leading-snug text-secondary" }, video.details) : null,
     ]),
     h("hr", { key: "divider", className: "my-0 border-border/50" }),
     h("div", { key: "popovers", className: "complete-the-cove-card-popovers card-popovers relative z-10 flex min-h-[28px] flex-wrap items-center justify-center gap-1 rounded-b px-2 py-1.5" }, performers.length || tags.length ? [
-      performers.length ? h(SceneMetadataPopover, { key: "performer-count", Icon: Users, label: "Performers", kind: "performers", items: performers }) : null,
-      tags.length ? h(SceneMetadataPopover, { key: "tag-count", Icon: Tags, label: "Tags", kind: "tags", items: tags }) : null,
+      performers.length ? h(VideoMetadataPopover, { key: "performer-count", Icon: Users, label: "Performers", kind: "performers", items: performers }) : null,
+      tags.length ? h(VideoMetadataPopover, { key: "tag-count", Icon: Tags, label: "Tags", kind: "tags", items: tags }) : null,
     ] : h("span", { className: "select-none text-[10px] text-muted/30" }, " ")),
     ]),
   ]);
@@ -457,7 +475,7 @@ function CatalogFilterPanel({ open, filters, facets, onApply, onClose }) {
   }));
   return createPortal(h("div", { className: "complete-the-cove-filter-backdrop", onMouseDown: (event) => { if (event.target === event.currentTarget) onClose(); } }, h("div", { className: "complete-the-cove-filter-panel", role: "dialog", "aria-modal": true, "aria-labelledby": "complete-the-cove-filter-title" }, [
     h("header", { key: "header", className: "complete-the-cove-filter-header" }, [
-      h("div", { key: "copy" }, [h("h2", { key: "title", id: "complete-the-cove-filter-title", className: "text-lg font-semibold" }, "Filter Missing Scenes"), h("p", { key: "help", className: "text-xs text-muted" }, "Criteria are combined together. Included values follow each criterion's matching mode; excluded values never match.")]),
+      h("div", { key: "copy" }, [h("h2", { key: "title", id: "complete-the-cove-filter-title", className: "text-lg font-semibold" }, "Filter Missing Videos"), h("p", { key: "help", className: "text-xs text-muted" }, "Criteria are combined together. Included values follow each criterion's matching mode; excluded values never match.")]),
       h("button", { key: "close", type: "button", onClick: onClose, className: "complete-the-cove-icon-button text-secondary", title: "Close filters", "aria-label": "Close filters" }, h(X, { className: "h-4 w-4" })),
     ]),
     h("div", { key: "body", className: "complete-the-cove-filter-body" }, [
@@ -493,17 +511,17 @@ function CatalogControls({ filters, setFilters, facets, refresh, refreshing, pro
     h("span", { key: "count", className: "complete-the-cove-count text-muted" }, total > 0 ? `${start}–${end} of ${total.toLocaleString()}` : "0 items"),
     h("form", { key: "search", className: "complete-the-cove-search", onSubmit: (event) => { event.preventDefault(); setFilters((current) => ({ ...current, q: searchText.trim(), page: 1 })); } }, [
       h(Search, { key: "icon", className: "complete-the-cove-search-icon text-muted" }),
-      h("input", { key: "input", type: "text", value: searchText, onChange: (event) => setSearchText(event.target.value), onKeyDown: (event) => { if (event.key === "Escape" && searchText) clearSearch(); }, placeholder: "Search missing scenes...", "aria-label": "Search missing scenes", className: "complete-the-cove-search-input border border-border bg-card/70 text-foreground placeholder:text-muted" }),
+      h("input", { key: "input", type: "text", value: searchText, onChange: (event) => setSearchText(event.target.value), onKeyDown: (event) => { if (event.key === "Escape" && searchText) clearSearch(); }, placeholder: "Search missing videos...", "aria-label": "Search missing videos", className: "complete-the-cove-search-input border border-border bg-card/70 text-foreground placeholder:text-muted" }),
       searchText ? h("button", { key: "clear", type: "button", onClick: clearSearch, className: "complete-the-cove-search-clear text-muted", title: "Clear search", "aria-label": "Clear search" }, h(X, { className: "h-3.5 w-3.5" })) : null,
     ]),
     h("select", { key: "provider", "aria-label": "All providers", value: filters.provider, onChange: (event) => setFilters((current) => ({ ...current, provider: event.target.value, page: 1 })), className: "complete-the-cove-select complete-the-cove-provider-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "", value: "" }, "All providers"), ...(facets.providers || []).map((item) => h("option", { key: item.value, value: item.value }, `${providerLabel(item.value)} (${item.count})`))]),
     h("button", { key: "filter", type: "button", onClick: () => setFilterOpen(true), className: `complete-the-cove-filter-trigger ${activeFilterCount ? "complete-the-cove-filter-trigger-active" : ""}`, "aria-haspopup": "dialog" }, [h(MoreHorizontal, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Filter"), activeFilterCount ? h("span", { key: "count", className: "complete-the-cove-filter-trigger-count" }, String(activeFilterCount)) : null]),
     h("details", { key: "options", className: "relative" }, [
       h("summary", { key: "trigger", title: "More catalog options", "aria-label": "More catalog options", className: "complete-the-cove-icon-button flex cursor-pointer list-none items-center justify-center text-secondary [&::-webkit-details-marker]:hidden" }, h(MoreHorizontal, { className: "h-4 w-4" })),
-      h("div", { key: "menu", className: "absolute right-0 top-full z-20 mt-1 min-w-48 rounded-md border border-border bg-card p-2 shadow-lg" }, h("label", { className: "flex cursor-pointer items-center gap-2 whitespace-nowrap px-2 py-1.5 text-sm text-secondary" }, [h("input", { key: "input", type: "checkbox", checked: filters.showIgnored, onChange: (event) => setFilters((current) => ({ ...current, showIgnored: event.target.checked, page: 1 })) }), h(EyeOff, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Show ignored scenes")]))
+      h("div", { key: "menu", className: "absolute right-0 top-full z-20 mt-1 min-w-48 rounded-md border border-border bg-card p-2 shadow-lg" }, h("label", { className: "flex cursor-pointer items-center gap-2 whitespace-nowrap px-2 py-1.5 text-sm text-secondary" }, [h("input", { key: "input", type: "checkbox", checked: filters.showIgnored, onChange: (event) => setFilters((current) => ({ ...current, showIgnored: event.target.checked, page: 1 })) }), h(EyeOff, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Show ignored videos")]))
     ]),
     h("div", { key: "sort", className: "complete-the-cove-sort" }, [
-      h("select", { key: "field", "aria-label": "Sort missing scenes", value: filters.sort, onChange: (event) => setFilters((current) => ({ ...current, sort: event.target.value, page: 1 })), className: "complete-the-cove-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "release", value: "release" }, "Release date"), h("option", { key: "title", value: "title" }, "Title")]),
+      h("select", { key: "field", "aria-label": "Sort missing videos", value: filters.sort, onChange: (event) => setFilters((current) => ({ ...current, sort: event.target.value, page: 1 })), className: "complete-the-cove-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "release", value: "release" }, "Release date"), h("option", { key: "title", value: "title" }, "Title")]),
       h("button", { key: "direction", type: "button", onClick: () => setFilters((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc", page: 1 })), className: "complete-the-cove-icon-button text-secondary", title: filters.direction === "asc" ? "Ascending" : "Descending", "aria-label": filters.direction === "asc" ? "Ascending" : "Descending" }, filters.direction === "desc" ? h(ArrowDown, { className: "h-3.5 w-3.5" }) : h(ArrowUp, { className: "h-3.5 w-3.5" })),
     ]),
     refresh ? h(RefreshSplitButton, { key: "refresh", providers, refresh, refreshing }) : null,
@@ -521,7 +539,7 @@ function clampCatalogFilters(filters, data, currentQuery) {
   return page === filters.page ? filters : { ...filters, page };
 }
 
-function SceneGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
+function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
   const [cardMinWidth] = useState(readVideoCardMinWidth);
   const [filters, setFilters] = useState(readCatalogFilters);
   const [data, setData] = useState({ items: [], total: null, page: 1, perPage: 24 });
@@ -537,7 +555,7 @@ function SceneGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   const query = useMemo(() => catalogApiQuery(filters, scope), [filters, scope?.type, scope?.entityId]);
-  useEffect(() => { let cancelled = false; const requestQuery = query; request(`${API}/scenes?${requestQuery}`).then((value) => { if (!cancelled) { setData({ ...value, query: requestQuery }); setError(""); } }).catch((err) => !cancelled && setError(err.message)); return () => { cancelled = true; }; }, [query, reloadVersion]);
+  useEffect(() => { let cancelled = false; const requestQuery = query; request(`${API}/videos?${requestQuery}`).then((value) => { if (!cancelled) { setData({ ...value, query: requestQuery }); setError(""); } }).catch((err) => !cancelled && setError(err.message)); return () => { cancelled = true; }; }, [query, reloadVersion]);
   useEffect(() => { request(`${API}/facets?showIgnored=${filters.showIgnored}`).then(setFacets).catch(() => {}); }, [filters.showIgnored, reloadVersion]);
   useEffect(() => { request(`${API}/providers`).then(setProviders).catch(() => {}); }, []);
   useEffect(() => {
@@ -556,8 +574,8 @@ function SceneGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
     h(CatalogControls, { key: "controls", filters, setFilters, facets, providers, refresh: allowRefresh ? refresh : null, refreshing, total: data.total || 0, perPage: data.perPage }),
     data.total == null ? null : h(DetailListPagination, { key: "pagination-top", filter: { ...filters, perPage: data.perPage }, onFilterChange: setFilters, totalCount: data.total }),
     error ? h("div", { key: "error", className: "complete-the-cove-content mb-4 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200" }, error) : null,
-    data.items.length ? h("div", { key: "grid", className: "complete-the-cove-content complete-the-cove-grid", style: { "--card-min-width": `${cardMinWidth}px` } }, data.items.map((scene) => h(SceneCard, { key: scene.id, scene, onNavigate })))
-      : h("div", { key: "empty", className: "complete-the-cove-content rounded-lg border border-dashed border-border p-12 text-center text-secondary" }, "No missing scenes match this view."),
+    data.items.length ? h("div", { key: "grid", className: "complete-the-cove-content complete-the-cove-grid", style: { "--card-min-width": `${cardMinWidth}px` } }, data.items.map((video) => h(MissingVideoCard, { key: video.id, video, onNavigate })))
+      : h("div", { key: "empty", className: "complete-the-cove-content rounded-lg border border-dashed border-border p-12 text-center text-secondary" }, "No missing videos match this view."),
     data.total == null ? null : h(DetailListPagination, { key: "pagination-bottom", filter: { ...filters, perPage: data.perPage }, onFilterChange: setFilters, totalCount: data.total }),
   ]);
 }
@@ -565,12 +583,12 @@ function SceneGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
 function ProviderProgress({ providers = [] }) {
   if (!providers.length) return h("div", { className: "complete-the-cove-progress-empty text-muted" }, "Refresh to calculate progress");
   return h("div", { className: "complete-the-cove-progress-list" }, providers.map((provider) => {
-    const percentage = provider.eligibleSceneCount > 0
-      ? Math.round((provider.ownedSceneCount / provider.eligibleSceneCount) * 100)
+    const percentage = provider.eligibleVideoCount > 0
+      ? Math.round((provider.ownedVideoCount / provider.eligibleVideoCount) * 100)
       : null;
     const detail = percentage === null
-      ? "No eligible scenes"
-      : `${provider.ownedSceneCount.toLocaleString()} of ${provider.eligibleSceneCount.toLocaleString()} owned`;
+      ? "No eligible videos"
+      : `${provider.ownedVideoCount.toLocaleString()} of ${provider.eligibleVideoCount.toLocaleString()} owned`;
     return h("div", { key: provider.endpoint, className: `complete-the-cove-progress ${provider.lastRefreshError ? "complete-the-cove-progress-stale" : ""}`, title: provider.lastRefreshError || `Last measured ${formatDateTime(provider.lastSuccessfulRefreshAt)}` }, [
       h("div", { key: "heading", className: "complete-the-cove-progress-heading" }, [
         h("span", { key: "provider", className: "font-medium" }, providerLabel(provider.endpoint)),
@@ -593,7 +611,7 @@ function TargetRow({ target, providers, refreshKey, onRefresh, onOpen, onUntrack
   return h("div", { className: "complete-the-cove-target-row border-border bg-card" }, [
     h("button", { key: "main", type: "button", onClick: () => onOpen(target), className: "complete-the-cove-target-main text-left" }, [
       h("span", { key: "name", className: "complete-the-cove-target-name font-medium text-foreground" }, target.displayName),
-      h("span", { key: "count", className: "complete-the-cove-target-count text-accent" }, `${target.missingSceneCount.toLocaleString()} missing ${target.missingSceneCount === 1 ? "scene" : "scenes"}`),
+      h("span", { key: "count", className: "complete-the-cove-target-count text-accent" }, `${target.missingVideoCount.toLocaleString()} missing ${target.missingVideoCount === 1 ? "video" : "videos"}`),
       h("span", { key: "tracked", className: "complete-the-cove-target-meta text-muted" }, `Tracked ${formatDate(target.selectedAt)}`),
       h("span", { key: "refresh-state", className: `complete-the-cove-target-meta ${target.lastRefreshError ? "text-amber-300" : "text-muted"}` }, target.lastRefreshError || (target.lastRefreshAt ? `Last refreshed ${formatDateTime(target.lastRefreshAt)}` : "Not refreshed yet")),
       h(ProviderProgress, { key: "progress", providers: target.providers }),
@@ -642,7 +660,7 @@ function TrackedRecordsView({ overview, loading, error, reload, onOpen }) {
       h("div", { key: "search", className: "complete-the-cove-search" }, [h(Search, { key: "icon", className: "complete-the-cove-search-icon text-muted" }), h("input", { key: "input", value: searchText, onChange: (event) => setSearchText(event.target.value), onKeyDown: (event) => { if (event.key === "Escape") setSearchText(""); }, placeholder: "Search tracked records...", "aria-label": "Search tracked records", className: "complete-the-cove-search-input border border-border bg-input text-foreground placeholder:text-muted" }), searchText ? h("button", { key: "clear", type: "button", onClick: () => setSearchText(""), className: "complete-the-cove-search-clear text-muted", title: "Clear search", "aria-label": "Clear search" }, h(X, { className: "h-3.5 w-3.5" })) : null]),
     ]),
     actionError ? h("div", { key: "action-error", className: "mb-4 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200" }, actionError) : null,
-    overview.totals.all === 0 ? h("div", { key: "empty", className: "complete-the-cove-overview-state text-secondary" }, "No records are tracked yet. Track a performer, studio, or tag from its Missing Scenes tab.") : null,
+    overview.totals.all === 0 ? h("div", { key: "empty", className: "complete-the-cove-overview-state text-secondary" }, "No records are tracked yet. Track a performer, studio, or tag from its Missing Videos tab.") : null,
     overview.totals.all > 0 && visibleItems.length === 0 ? h("div", { key: "no-results", className: "mb-4 rounded-lg border border-dashed border-border p-8 text-center text-secondary" }, "No tracked records match this search.") : null,
     ...TARGET_SECTIONS.map(({ type, label, Icon }) => {
       const items = visibleItems.filter((target) => target.type === type);
@@ -652,11 +670,11 @@ function TrackedRecordsView({ overview, loading, error, reload, onOpen }) {
         items.length ? h("div", { key: "rows", className: "complete-the-cove-target-rows" }, items.map((target) => h(TargetRow, { key: `${target.type}:${target.entityId}`, target, providers, refreshKey, onRefresh: refresh, onOpen, onUntrack: (item) => { setUntrackError(""); setPendingUntrack(item); } }))) : h("div", { key: "empty", className: "complete-the-cove-target-empty border-border text-muted" }, query && total ? "No matches in this section." : `No tracked ${label.toLocaleLowerCase()}.`),
       ]);
     }),
-    h(ConfirmDialog, { key: "confirm", open: Boolean(pendingUntrack), title: pendingUntrack ? `Stop tracking ${pendingUntrack.displayName}?` : "Stop tracking?", message: "Missing scenes linked only to this record will be removed from the catalog.", confirmLabel: "Stop tracking", onConfirm: untrack, onCancel: () => { if (!untracking) { setPendingUntrack(null); setUntrackError(""); } }, isPending: untracking, errorMessage: untrackError }),
+    h(ConfirmDialog, { key: "confirm", open: Boolean(pendingUntrack), title: pendingUntrack ? `Stop tracking ${pendingUntrack.displayName}?` : "Stop tracking?", message: "Missing videos linked only to this record will be removed from the catalog.", confirmLabel: "Stop tracking", onConfirm: untrack, onCancel: () => { if (!untracking) { setPendingUntrack(null); setUntrackError(""); } }, isPending: untracking, errorMessage: untrackError }),
   ]);
 }
 
-function MissingScenesPage({ onNavigate }) {
+function MissingVideosPage({ onNavigate }) {
   const [location, setLocation] = useState(readCatalogLocation);
   const [overview, setOverview] = useState({ items: [], totals: { all: 0, performer: 0, studio: 0, tag: 0 } });
   const [overviewLoading, setOverviewLoading] = useState(true);
@@ -672,25 +690,25 @@ function MissingScenesPage({ onNavigate }) {
   const navigateCatalog = (next) => { writeCatalogLocation(next); setLocation(next); };
   const selectedTarget = location.targetType && location.targetId ? overview.items.find((target) => target.type === location.targetType && target.entityId === location.targetId) : null;
   const scope = location.targetType && location.targetId ? { type: location.targetType, entityId: location.targetId } : null;
-  const activeTabId = location.view === "tracked" ? "complete-the-cove-tab-tracked" : "complete-the-cove-tab-scenes";
+  const activeTabId = location.view === "tracked" ? "complete-the-cove-tab-tracked" : "complete-the-cove-tab-videos";
   const handleTabKey = (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const nextView = event.key === "Home" ? "scenes" : event.key === "End" ? "tracked" : location.view === "scenes" ? "tracked" : "scenes";
+    const nextView = event.key === "Home" ? "videos" : event.key === "End" ? "tracked" : location.view === "videos" ? "tracked" : "videos";
     navigateCatalog({ view: nextView, targetType: null, targetId: null });
     window.requestAnimationFrame(() => document.getElementById(`complete-the-cove-tab-${nextView}`)?.focus());
   };
   return h("div", { className: "mx-auto max-w-[1800px]" }, [
-    h("div", { key: "header", className: "mb-3" }, [h("h1", { key: "title", className: "text-2xl font-semibold" }, "Missing Scenes"), h("p", { key: "description", className: "mt-1 text-sm text-secondary" }, "Remote scenes missing from this Cove for your tracked performers, studios, and tags.")]),
-    h("div", { key: "tabs", className: "complete-the-cove-tabs border-border", role: "tablist", "aria-label": "Missing Scenes views" }, [
-      h("button", { key: "scenes", id: "complete-the-cove-tab-scenes", type: "button", role: "tab", "aria-selected": location.view === "scenes", "aria-controls": "complete-the-cove-panel", tabIndex: location.view === "scenes" ? 0 : -1, onKeyDown: handleTabKey, onClick: () => navigateCatalog({ view: "scenes", targetType: null, targetId: null }), className: `complete-the-cove-tab ${location.view === "scenes" ? "complete-the-cove-tab-active" : ""}` }, "Missing Scenes"),
+    h("div", { key: "header", className: "mb-3" }, [h("h1", { key: "title", className: "text-2xl font-semibold" }, "Missing Videos"), h("p", { key: "description", className: "mt-1 text-sm text-secondary" }, "Remote videos missing from this Cove for your tracked performers, studios, and tags.")]),
+    h("div", { key: "tabs", className: "complete-the-cove-tabs border-border", role: "tablist", "aria-label": "Missing Videos views" }, [
+      h("button", { key: "videos", id: "complete-the-cove-tab-videos", type: "button", role: "tab", "aria-selected": location.view === "videos", "aria-controls": "complete-the-cove-panel", tabIndex: location.view === "videos" ? 0 : -1, onKeyDown: handleTabKey, onClick: () => navigateCatalog({ view: "videos", targetType: null, targetId: null }), className: `complete-the-cove-tab ${location.view === "videos" ? "complete-the-cove-tab-active" : ""}` }, "Missing Videos"),
       h("button", { key: "tracked", id: "complete-the-cove-tab-tracked", type: "button", role: "tab", "aria-selected": location.view === "tracked", "aria-controls": "complete-the-cove-panel", tabIndex: location.view === "tracked" ? 0 : -1, onKeyDown: handleTabKey, onClick: () => navigateCatalog({ view: "tracked", targetType: null, targetId: null }), className: `complete-the-cove-tab ${location.view === "tracked" ? "complete-the-cove-tab-active" : ""}` }, ["Tracked", !overviewLoading ? h("span", { key: "count", className: "complete-the-cove-tab-count" }, overview.totals.all.toLocaleString()) : null]),
     ]),
     h("div", { key: "content", id: "complete-the-cove-panel", role: "tabpanel", "aria-labelledby": activeTabId, className: "complete-the-cove-panel" }, location.view === "tracked"
-      ? h(TrackedRecordsView, { overview, loading: overviewLoading, error: overviewError, reload: loadOverview, onOpen: (target) => navigateCatalog({ view: "scenes", targetType: target.type, targetId: target.entityId }) })
+      ? h(TrackedRecordsView, { overview, loading: overviewLoading, error: overviewError, reload: loadOverview, onOpen: (target) => navigateCatalog({ view: "videos", targetType: target.type, targetId: target.entityId }) })
       : h("div", null, [
-        scope ? h("div", { key: "scope", className: `complete-the-cove-scope ${selectedTarget || overviewLoading ? "border-accent/40 bg-accent/10" : "border-amber-500/40 bg-amber-500/10"}` }, [h("div", { key: "copy", className: "min-w-0 flex-1" }, [h("div", { key: "title", className: "text-sm font-medium" }, overviewLoading ? "Loading tracked record..." : overviewError ? "Could not load tracked record details" : selectedTarget ? `Missing scenes for ${selectedTarget.displayName}` : "Tracked record is no longer available"), h("div", { key: "detail", className: "text-xs text-secondary" }, overviewLoading ? "The scene catalog remains scoped to this record." : overviewError ? `${overviewError} The scene catalog remains scoped.` : selectedTarget ? `${selectedTarget.missingSceneCount.toLocaleString()} linked ${selectedTarget.missingSceneCount === 1 ? "scene" : "scenes"}` : "No scenes should remain linked to this record."), selectedTarget ? h(ProviderProgress, { key: "progress", providers: selectedTarget.providers }) : null]), h("button", { key: "clear", type: "button", onClick: () => navigateCatalog({ view: "scenes", targetType: null, targetId: null }), className: "rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, "Show all")]) : null,
-        h(SceneGrid, { key: scope ? `${scope.type}:${scope.entityId}` : "all", scope, onNavigate, onRefreshed: loadOverview }),
+        scope ? h("div", { key: "scope", className: `complete-the-cove-scope ${selectedTarget || overviewLoading ? "border-accent/40 bg-accent/10" : "border-amber-500/40 bg-amber-500/10"}` }, [h("div", { key: "copy", className: "min-w-0 flex-1" }, [h("div", { key: "title", className: "text-sm font-medium" }, overviewLoading ? "Loading tracked record..." : overviewError ? "Could not load tracked record details" : selectedTarget ? `Missing videos for ${selectedTarget.displayName}` : "Tracked record is no longer available"), h("div", { key: "detail", className: "text-xs text-secondary" }, overviewLoading ? "The video catalog remains scoped to this record." : overviewError ? `${overviewError} The video catalog remains scoped.` : selectedTarget ? `${selectedTarget.missingVideoCount.toLocaleString()} linked ${selectedTarget.missingVideoCount === 1 ? "video" : "videos"}` : "No videos should remain linked to this record."), selectedTarget ? h(ProviderProgress, { key: "progress", providers: selectedTarget.providers }) : null]), h("button", { key: "clear", type: "button", onClick: () => navigateCatalog({ view: "videos", targetType: null, targetId: null }), className: "rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, "Show all")]) : null,
+        h(VideoGrid, { key: scope ? `${scope.type}:${scope.entityId}` : "all", scope, onNavigate, onRefreshed: loadOverview }),
       ])),
   ]);
 }
@@ -702,38 +720,51 @@ function EntityTab({ entityId, type, onNavigate }) {
   useEffect(() => { load(); }, [url]);
   async function toggle() { setBusy(true); setError(""); try { await request(url, { method: state?.tracked ? "DELETE" : "POST", body: state?.tracked ? undefined : "{}" }); await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } }
   if (!state) return h("p", { className: "text-sm text-secondary" }, error || "Loading completion status...");
-  if (!state.tracked) return h("div", { className: "rounded-lg border border-border bg-card p-6 text-center" }, [h(Puzzle, { key: "icon", className: "mx-auto h-8 w-8 text-accent" }), h("h3", { key: "title", className: "mt-3 text-lg font-semibold" }, "Track missing scenes"), h("p", { key: "help", className: "mx-auto mt-1 max-w-lg text-sm text-secondary" }, "Track this entity across each configured metadata provider where it has a remote identity."), error ? h("p", { key: "error", className: "mt-3 text-sm text-red-300" }, error) : null, h("button", { key: "track", disabled: busy, onClick: toggle, className: "mt-4 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" }, busy ? "Tracking..." : "Track this entity")]);
-  return h("div", null, [h("div", { key: "status", className: "mb-4 rounded-lg border border-border bg-card p-3" }, [h("div", { key: "heading", className: "flex flex-wrap items-center justify-between gap-3" }, [h("div", { key: "copy" }, [h("div", { key: "title", className: "inline-flex items-center gap-2 text-sm font-medium" }, [state.tracked.lastRefreshError ? h(AlertTriangle, { key: "status-icon", className: "h-4 w-4 text-amber-400" }) : h(Check, { key: "status-icon", className: "h-4 w-4 text-green-400" }), "Tracked for completion"]), h("div", { key: "detail", className: "text-xs text-secondary" }, state.tracked.lastRefreshError || (state.tracked.lastRefreshAt ? `Last refreshed ${formatDateTime(state.tracked.lastRefreshAt)}` : "Not refreshed yet"))]), h("button", { key: "untrack", disabled: busy, onClick: toggle, className: "inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, [h(X, { key: "icon", className: "h-4 w-4" }), "Untrack"])]), h(ProviderProgress, { key: "progress", providers: state.tracked.providers })]), h(SceneGrid, { key: "grid", scope: { type, entityId }, onNavigate })]);
+  if (!state.tracked) return h("div", { className: "rounded-lg border border-border bg-card p-6 text-center" }, [h(Puzzle, { key: "icon", className: "mx-auto h-8 w-8 text-accent" }), h("h3", { key: "title", className: "mt-3 text-lg font-semibold" }, "Track missing videos"), h("p", { key: "help", className: "mx-auto mt-1 max-w-lg text-sm text-secondary" }, "Track this entity across each configured metadata provider where it has a remote identity."), error ? h("p", { key: "error", className: "mt-3 text-sm text-red-300" }, error) : null, h("button", { key: "track", disabled: busy, onClick: toggle, className: "mt-4 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" }, busy ? "Tracking..." : "Track this entity")]);
+  return h("div", null, [h("div", { key: "status", className: "mb-4 rounded-lg border border-border bg-card p-3" }, [h("div", { key: "heading", className: "flex flex-wrap items-center justify-between gap-3" }, [h("div", { key: "copy" }, [h("div", { key: "title", className: "inline-flex items-center gap-2 text-sm font-medium" }, [state.tracked.lastRefreshError ? h(AlertTriangle, { key: "status-icon", className: "h-4 w-4 text-amber-400" }) : h(Check, { key: "status-icon", className: "h-4 w-4 text-green-400" }), "Tracked for completion"]), h("div", { key: "detail", className: "text-xs text-secondary" }, state.tracked.lastRefreshError || (state.tracked.lastRefreshAt ? `Last refreshed ${formatDateTime(state.tracked.lastRefreshAt)}` : "Not refreshed yet"))]), h("button", { key: "untrack", disabled: busy, onClick: toggle, className: "inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, [h(X, { key: "icon", className: "h-4 w-4" }), "Untrack"])]), h(ProviderProgress, { key: "progress", providers: state.tracked.providers })]), h(VideoGrid, { key: "grid", scope: { type, entityId }, onNavigate })]);
 }
 
-function MissingSceneDetailPage({ id, onNavigate }) {
-  const [scene, setScene] = useState(null); const [error, setError] = useState("");
+function MissingVideoDetailPage({ id, onNavigate }) {
+  const [video, setVideo] = useState(null); const [error, setError] = useState("");
   const [ignoreBusy, setIgnoreBusy] = useState(false); const [ignoreError, setIgnoreError] = useState("");
-  useEffect(() => { request(`${API}/scenes/${id}`).then(setScene).catch((err) => setError(err.message)); }, [id]);
+  useEffect(() => { request(`${API}/videos/${id}`).then(setVideo).catch((err) => setError(err.message)); }, [id]);
   async function toggleIgnored() {
     setIgnoreBusy(true); setIgnoreError("");
     try {
-      await request(`${API}/scenes/${id}/ignore`, { method: scene.isIgnored ? "DELETE" : "POST" });
-      setScene((current) => ({ ...current, isIgnored: !current.isIgnored }));
+      await request(`${API}/videos/${id}/ignore`, { method: video.isIgnored ? "DELETE" : "POST" });
+      setVideo((current) => ({ ...current, isIgnored: !current.isIgnored }));
     } catch (err) { setIgnoreError(err.message); } finally { setIgnoreBusy(false); }
   }
-  const media = scene?.coverUrl ? h("div", { className: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black" }, [h("img", { key: "cover", src: scene.coverUrl, alt: `Cover for ${scene.title || "Untitled scene"}`, className: "relative h-full w-full object-contain" }), h(MissingBanner, { key: "missing" })]) : h("div", { className: "flex h-full w-full items-center justify-center bg-black text-muted" }, "No cover available");
-  const sourceUrl = scene ? remoteSceneUrl(scene) : null;
-  const metadataRows = scene ? [["Created", formatDate(scene.createdAt)], ["Updated", formatDate(scene.updatedAt)], ["Studio Code", scene.code]].filter((x) => x[1]) : [];
-  const studioImageUrl = scene?.coveStudioId ? `/api/studios/${scene.coveStudioId}/image?max=640` : null;
-  const headerImage = studioImageUrl ? h("button", { type: "button", onClick: () => onNavigate({ page: "studio", id: scene.coveStudioId }), className: "block", title: scene.studioName || "Studio" }, h("img", { src: studioImageUrl, alt: scene.studioName || "Studio", className: "h-20 w-auto max-w-full object-contain", onError: (event) => { event.currentTarget.style.display = "none"; } })) : null;
-  const subtitle = scene ? h("div", { className: "flex flex-wrap items-start gap-4 text-sm text-secondary" }, h("div", { className: "flex min-w-0 flex-1 flex-col gap-1" }, [scene.releaseDate ? h("span", { key: "date" }, scene.releaseDate) : null, scene.studioName ? h(scene.coveStudioId ? "button" : "span", { key: "studio", type: scene.coveStudioId ? "button" : undefined, onClick: scene.coveStudioId ? () => onNavigate({ page: "studio", id: scene.coveStudioId }) : undefined, className: scene.coveStudioId ? "w-fit font-medium text-accent hover:underline" : "w-fit font-medium" }, scene.studioName) : null, scene.code ? h("span", { key: "code" }, `Code ${scene.code}`) : null])) : undefined;
-  const content = scene ? h("div", { className: "space-y-4" }, [
-    h("div", { key: "ignore", className: "flex flex-wrap items-center gap-3" }, [h("button", { key: "button", type: "button", disabled: ignoreBusy, onClick: toggleIgnored, className: "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground disabled:opacity-60" }, [h(scene.isIgnored ? Eye : EyeOff, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, ignoreBusy ? "Saving..." : scene.isIgnored ? "Unignore" : "Ignore")]), ignoreError ? h("span", { key: "error", className: "text-sm text-red-300" }, ignoreError) : null]),
+  const media = video?.coverUrl ? h("div", { className: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black" }, [
+    h("img", { key: "cover", src: video.coverUrl, alt: `Cover for ${video.title || "Untitled video"}`, className: "relative h-full w-full object-contain" }),
+    h(MissingBanner, { key: "missing" }),
+  ]) : h("div", { className: "flex h-full w-full items-center justify-center bg-black text-muted" }, "No cover available");
+  const sourceUrl = video ? remoteVideoUrl(video) : null;
+  const metadataRows = video ? [["Created", formatDate(video.createdAt)], ["Updated", formatDate(video.updatedAt)], ["Studio Code", video.code]].filter((x) => x[1]) : [];
+  const studioImageUrl = video?.coveStudioId ? `/api/studios/${video.coveStudioId}/image?max=640` : null;
+  const headerImage = studioImageUrl ? h("button", { type: "button", onClick: () => onNavigate({ page: "studio", id: video.coveStudioId }), className: "block", title: video.studioName || "Studio" }, h("img", { src: studioImageUrl, alt: video.studioName || "Studio", className: "h-20 w-auto max-w-full object-contain", onError: (event) => { event.currentTarget.style.display = "none"; } })) : null;
+  const subtitle = video ? h("div", { className: "flex flex-wrap items-start gap-4 text-sm text-secondary" }, h("div", { className: "flex min-w-0 flex-1 flex-col gap-1" }, [video.releaseDate ? h("span", { key: "date" }, video.releaseDate) : null, video.studioName ? h(video.coveStudioId ? "button" : "span", { key: "studio", type: video.coveStudioId ? "button" : undefined, onClick: video.coveStudioId ? () => onNavigate({ page: "studio", id: video.coveStudioId }) : undefined, className: video.coveStudioId ? "w-fit font-medium text-accent hover:underline" : "w-fit font-medium" }, video.studioName) : null, video.code ? h("span", { key: "code" }, `Code ${video.code}`) : null])) : undefined;
+  const content = video ? h("div", { className: "space-y-4" }, [
+    h("div", { key: "ignore", className: "flex flex-wrap items-center gap-3" }, [h("button", { key: "button", type: "button", disabled: ignoreBusy, onClick: toggleIgnored, className: "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground disabled:opacity-60" }, [h(video.isIgnored ? Eye : EyeOff, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, ignoreBusy ? "Saving..." : video.isIgnored ? "Unignore" : "Ignore")]), ignoreError ? h("span", { key: "error", className: "text-sm text-red-300" }, ignoreError) : null]),
     h("dl", { key: "metadata", className: "grid gap-y-1.5 text-sm", style: { gridTemplateColumns: "auto 1fr" } }, metadataRows.flatMap(([label, value]) => [h("dt", { key: `${label}-l`, className: "pr-3 text-muted" }, label), h("dd", { key: `${label}-v`, className: "text-foreground" }, value)])),
-    scene.details ? h("p", { key: "details", className: "whitespace-pre-wrap text-sm text-foreground" }, scene.details) : null,
-    scene.tags?.length ? h("section", { key: "tags" }, [h("h6", { className: "mb-2 text-sm text-muted" }, "Tags"), h("div", { className: "flex flex-wrap gap-1.5" }, scene.tags.map((tag) => h(TagBadge, { key: tag.remoteId, name: tag.name, tag: tag.coveTagId ? { id: tag.coveTagId, name: tag.name } : undefined, onClick: tag.coveTagId ? () => onNavigate({ page: "tag", id: tag.coveTagId }) : undefined })))]) : null,
-    scene.performers?.length ? h("section", { key: "performers" }, [h("h6", { className: "mb-2 text-sm text-muted" }, `Performer${scene.performers.length > 1 ? "s" : ""}`), h("div", { className: scene.performers.length > 1 ? "grid grid-cols-2 gap-3" : "grid max-w-[220px] gap-3" }, scene.performers.map((performer) => performer.covePerformerId ? h(PerformerTile, { key: performer.remoteId, performer: { id: performer.covePerformerId, name: performer.name, imagePath: performerImageUrl(performer) }, onClick: () => onNavigate({ page: "performer", id: performer.covePerformerId }), onNavigate }) : h("div", { key: performer.remoteId, className: "rounded border border-border bg-card p-3 text-sm" }, performer.name)))]) : null,
-    sourceUrl || scene.urls?.length ? h("section", { key: "links" }, [h("h6", { className: "mb-2 text-sm text-muted" }, "URLs"), h("div", { className: "space-y-2" }, [sourceUrl ? h("div", { key: "metadata", className: "flex flex-wrap gap-2" }, h("a", { href: sourceUrl, target: "_blank", rel: "noopener noreferrer", title: `Open ${providerLabel(scene.remoteEndpoint)} metadata page`, "aria-label": `Open ${providerLabel(scene.remoteEndpoint)} metadata page`, className: "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-accent transition hover:border-accent/60 hover:text-accent-hover" }, [h(ExternalLink, { key: "icon", className: "h-3 w-3" }), h("span", { key: "label" }, providerLabel(scene.remoteEndpoint))])) : null, scene.urls?.length ? h("div", { key: "urls", className: "space-y-1" }, scene.urls.map((url) => h("a", { key: url, href: url, target: "_blank", rel: "noopener noreferrer", className: "block break-all text-sm text-accent hover:underline" }, url))) : null])]) : null,
+    video.details ? h("p", { key: "details", className: "whitespace-pre-wrap text-sm text-foreground" }, video.details) : null,
+    video.tags?.length ? h("section", { key: "tags" }, [h("h6", { className: "mb-2 text-sm text-muted" }, "Tags"), h("div", { className: "flex flex-wrap gap-1.5" }, video.tags.map((tag) => h(TagBadge, { key: tag.remoteId, name: tag.name, tag: tag.coveTagId ? { id: tag.coveTagId, name: tag.name } : undefined, onClick: tag.coveTagId ? () => onNavigate({ page: "tag", id: tag.coveTagId }) : undefined })))]) : null,
+    video.performers?.length ? h("section", { key: "performers" }, [h("h6", { className: "mb-2 text-sm text-muted" }, `Performer${video.performers.length > 1 ? "s" : ""}`), h("div", { className: video.performers.length > 1 ? "grid grid-cols-2 gap-3" : "grid max-w-[220px] gap-3" }, video.performers.map((performer) => performer.covePerformerId ? h(PerformerTile, { key: performer.remoteId, performer: { id: performer.covePerformerId, name: performer.name, imagePath: performerImageUrl(performer) }, onClick: () => onNavigate({ page: "performer", id: performer.covePerformerId }), onNavigate }) : h("div", { key: performer.remoteId, className: "rounded border border-border bg-card p-3 text-sm" }, performer.name)))]) : null,
+    sourceUrl || video.urls?.length ? h("section", { key: "links" }, [h("h6", { className: "mb-2 text-sm text-muted" }, "URLs"), h("div", { className: "space-y-2" }, [sourceUrl ? h("div", { key: "metadata", className: "flex flex-wrap gap-2" }, h("a", { href: sourceUrl, target: "_blank", rel: "noopener noreferrer", title: `Open ${providerLabel(video.remoteEndpoint)} metadata page`, "aria-label": `Open ${providerLabel(video.remoteEndpoint)} metadata page`, className: "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-accent transition hover:border-accent/60 hover:text-accent-hover" }, [h(ExternalLink, { key: "icon", className: "h-3 w-3" }), h("span", { key: "label" }, providerLabel(video.remoteEndpoint))])) : null, video.urls?.length ? h("div", { key: "urls", className: "space-y-1" }, video.urls.map((url) => h("a", { key: url, href: url, target: "_blank", rel: "noopener noreferrer", className: "block break-all text-sm text-accent hover:underline" }, url))) : null])]) : null,
   ]) : null;
-  return h(MediaDetailLayout, { title: scene?.title || "Missing scene", headerImage, subtitle, backLabel: "Back to Missing Scenes", onGoBack: () => {
-    navigateUrl(missingScenesCatalogUrl());
-  }, media, mediaFullBleed: true, isLoading: !scene && !error, error }, content);
+  return h(MediaDetailLayout, { title: video?.title || "Missing video", headerImage, subtitle, backLabel: "Back to Missing Videos", onGoBack: () => {
+    navigateUrl(missingVideosCatalogUrl());
+  }, media, mediaFullBleed: true, isLoading: !video && !error, error }, content);
+}
+
+function LegacyMissingVideosPage() {
+  useEffect(() => { replaceUrl(`/missing-videos${window.location.search}`); }, []);
+  return null;
+}
+
+function LegacyMissingVideoDetailPage({ id }) {
+  useEffect(() => { replaceUrl(`/missing-video/${id}${window.location.search}`); }, [id]);
+  return null;
 }
 
 function CompleteTheCoveSettings() {
@@ -745,9 +776,9 @@ function CompleteTheCoveSettings() {
 }
 
 export default { components: {
-  MissingScenesPage, MissingSceneDetailPage,
-  MissingPerformerScenesTab: (props) => h(EntityTab, { ...props, type: "performer" }),
-  MissingStudioScenesTab: (props) => h(EntityTab, { ...props, type: "studio" }),
-  MissingTagScenesTab: (props) => h(EntityTab, { ...props, type: "tag" }),
+  MissingVideosPage, MissingVideoDetailPage, LegacyMissingVideosPage, LegacyMissingVideoDetailPage,
+  MissingPerformerVideosTab: (props) => h(EntityTab, { ...props, type: "performer" }),
+  MissingStudioVideosTab: (props) => h(EntityTab, { ...props, type: "studio" }),
+  MissingTagVideosTab: (props) => h(EntityTab, { ...props, type: "tag" }),
   CompleteTheCoveSettings,
 } };

@@ -21,11 +21,11 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     private static readonly TargetSurface[] TargetSurfaces =
     [
         new("performer", CompletionTargetType.Performer, EntityKinds.Performer,
-            Permissions.PerformersRead, "MissingPerformerScenesTab"),
+            Permissions.PerformersRead, "MissingPerformerVideosTab"),
         new("studio", CompletionTargetType.Studio, EntityKinds.Studio,
-            Permissions.StudiosRead, "MissingStudioScenesTab"),
+            Permissions.StudiosRead, "MissingStudioVideosTab"),
         new("tag", CompletionTargetType.Tag, EntityKinds.Tag,
-            Permissions.TagsRead, "MissingTagScenesTab"),
+            Permissions.TagsRead, "MissingTagVideosTab"),
     ];
 
     private IServiceScopeFactory? _scopes;
@@ -35,10 +35,14 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     public override UIManifest GetUIManifest()
     {
         var manifest = ManifestBuilder()
-            .AddPage(new UIPageDefinition("missing-scenes", "Complete the Cove", "puzzle", ShowInNav: true, NavOrder: 65,
-                RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "MissingScenesPage"))
-            .AddPage(new UIPageDefinition("missing-scene", "Missing Scene", ShowInNav: false,
-                RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "MissingSceneDetailPage"));
+            .AddPage(new UIPageDefinition("missing-videos", "Complete the Cove", "puzzle", ShowInNav: true, NavOrder: 65,
+                RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "MissingVideosPage"))
+            .AddPage(new UIPageDefinition("missing-video", "Missing Video", ShowInNav: false,
+                RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "MissingVideoDetailPage"))
+            .AddPage(new UIPageDefinition("missing-scenes", "Missing Videos", ShowInNav: false,
+                RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "LegacyMissingVideosPage"))
+            .AddPage(new UIPageDefinition("missing-scene", "Missing Video", ShowInNav: false,
+                RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "LegacyMissingVideoDetailPage"));
         foreach (var target in TargetSurfaces)
         {
             manifest.AddTab(CreateTab(target));
@@ -46,13 +50,13 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
 
         return manifest
             .AddSettingsTab("extensions/complete-the-cove", "Complete the Cove", order: 125, icon: "puzzle",
-                description: "Configure discovery exclusions for the missing-scene catalog.")
+                description: "Configure discovery exclusions for the missing-video catalog.")
             .AddSettingsSection("extensions/complete-the-cove", "Complete the Cove", "CompleteTheCoveSettings")
             .Build();
     }
 
     private static UITabContribution CreateTab(TargetSurface target) => new(
-        "missing-scenes", "Missing Scenes", target.RouteType, "complete-the-cove", target.ComponentName, 85,
+        "missing-videos", "Missing Videos", target.RouteType, "complete-the-cove", target.ComponentName, 85,
         $"/api/plugins/complete-the-cove/targets/{target.RouteType}/{{entityId}}/count", "puzzle")
     { RequiredPermissions = [Permissions.ExtensionsConfigure, target.ReadPermission] };
 
@@ -67,8 +71,8 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     }
 
     protected override void DefineJobs() => Job(
-        "refresh-catalog", "Refresh Missing Scenes", RunRefreshAsync,
-        "Refresh the extension-owned catalog of remote scenes missing from this Cove.",
+        "refresh-catalog", "Refresh Missing Videos", RunRefreshAsync,
+        "Refresh the extension-owned catalog of remote videos missing from this Cove.",
         supportsParameters: true, showInTaskList: true);
 
     private async Task RunRefreshAsync(IReadOnlyDictionary<string, string>? parameters, Cove.Plugins.IJobProgress progress, CancellationToken ct)
@@ -194,38 +198,38 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             entity.HasIndex(x => new { x.EntityType, x.EntityId, x.RemoteEndpoint }).IsUnique();
             entity.Property(x => x.EntityType).HasConversion<int>();
         });
-        builder.Entity<CompletionScene>(entity =>
+        builder.Entity<CompletionVideo>(entity =>
         {
-            entity.ToTable("complete_the_cove_scenes");
+            entity.ToTable("complete_the_cove_videos");
             entity.HasIndex(x => new { x.RemoteEndpoint, x.RemoteId }).IsUnique();
             entity.HasIndex(x => x.CoveStudioId);
         });
-        builder.Entity<CompletionSceneTarget>(entity =>
+        builder.Entity<CompletionVideoTarget>(entity =>
         {
-            entity.ToTable("complete_the_cove_scene_targets");
-            entity.HasKey(x => new { x.SceneId, x.TargetId });
-            entity.HasOne(x => x.Scene).WithMany(x => x.Targets).HasForeignKey(x => x.SceneId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(x => x.Target).WithMany(x => x.Scenes).HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Cascade);
+            entity.ToTable("complete_the_cove_video_targets");
+            entity.HasKey(x => new { x.VideoId, x.TargetId });
+            entity.HasOne(x => x.Video).WithMany(x => x.Targets).HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Target).WithMany(x => x.Videos).HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Cascade);
         });
-        builder.Entity<CompletionScenePerformer>(entity =>
+        builder.Entity<CompletionVideoPerformer>(entity =>
         {
-            entity.ToTable("complete_the_cove_scene_performers");
-            entity.HasOne(x => x.Scene).WithMany(x => x.Performers).HasForeignKey(x => x.SceneId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.SceneId, x.RemoteId }).IsUnique();
+            entity.ToTable("complete_the_cove_video_performers");
+            entity.HasOne(x => x.Video).WithMany(x => x.Performers).HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.VideoId, x.RemoteId }).IsUnique();
             entity.HasIndex(x => x.CovePerformerId);
         });
-        builder.Entity<CompletionSceneTag>(entity =>
+        builder.Entity<CompletionVideoTag>(entity =>
         {
-            entity.ToTable("complete_the_cove_scene_tags");
-            entity.HasOne(x => x.Scene).WithMany(x => x.Tags).HasForeignKey(x => x.SceneId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.SceneId, x.RemoteId }).IsUnique();
+            entity.ToTable("complete_the_cove_video_tags");
+            entity.HasOne(x => x.Video).WithMany(x => x.Tags).HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.VideoId, x.RemoteId }).IsUnique();
             entity.HasIndex(x => x.CoveTagId);
         });
-        builder.Entity<CompletionSceneUrl>(entity =>
+        builder.Entity<CompletionVideoUrl>(entity =>
         {
-            entity.ToTable("complete_the_cove_scene_urls");
-            entity.HasOne(x => x.Scene).WithMany(x => x.Urls).HasForeignKey(x => x.SceneId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.SceneId, x.Url }).IsUnique();
+            entity.ToTable("complete_the_cove_video_urls");
+            entity.HasOne(x => x.Video).WithMany(x => x.Urls).HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.VideoId, x.Url }).IsUnique();
         });
     }
 
@@ -320,12 +324,84 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
           ADD COLUMN IF NOT EXISTS "EligibleSceneCount" integer NULL,
           ADD COLUMN IF NOT EXISTS "OwnedSceneCount" integer NULL;
         """);
+        Migration("010_video_terminology", """
+        ALTER TABLE complete_the_cove_scenes RENAME TO complete_the_cove_videos;
+        ALTER TABLE complete_the_cove_scene_targets RENAME TO complete_the_cove_video_targets;
+        ALTER TABLE complete_the_cove_scene_performers RENAME TO complete_the_cove_video_performers;
+        ALTER TABLE complete_the_cove_scene_tags RENAME TO complete_the_cove_video_tags;
+        ALTER TABLE complete_the_cove_scene_urls RENAME TO complete_the_cove_video_urls;
+
+        ALTER TABLE complete_the_cove_video_targets RENAME COLUMN "SceneId" TO "VideoId";
+        ALTER TABLE complete_the_cove_video_performers RENAME COLUMN "SceneId" TO "VideoId";
+        ALTER TABLE complete_the_cove_video_tags RENAME COLUMN "SceneId" TO "VideoId";
+        ALTER TABLE complete_the_cove_video_urls RENAME COLUMN "SceneId" TO "VideoId";
+        ALTER TABLE complete_the_cove_targets RENAME COLUMN "EligibleSceneCount" TO "EligibleVideoCount";
+        ALTER TABLE complete_the_cove_targets RENAME COLUMN "OwnedSceneCount" TO "OwnedVideoCount";
+
+        DO $$
+        DECLARE item record;
+        DECLARE sequence_name text;
+        BEGIN
+          FOR item IN
+            SELECT * FROM (VALUES
+              ('complete_the_cove_videos', 'complete_the_cove_videos_Id_seq'),
+              ('complete_the_cove_video_performers', 'complete_the_cove_video_performers_Id_seq'),
+              ('complete_the_cove_video_tags', 'complete_the_cove_video_tags_Id_seq'),
+              ('complete_the_cove_video_urls', 'complete_the_cove_video_urls_Id_seq'))
+              AS sequences(table_name, new_name)
+          LOOP
+            sequence_name := pg_get_serial_sequence(item.table_name, 'Id');
+            IF sequence_name IS NOT NULL THEN
+              EXECUTE format('ALTER SEQUENCE %s RENAME TO %I', sequence_name, item.new_name);
+            END IF;
+          END LOOP;
+        END $$;
+
+        DO $$
+        DECLARE item record;
+        DECLARE renamed text;
+        BEGIN
+          FOR item IN
+            SELECT conrelid::regclass AS table_name, conname
+            FROM pg_constraint
+            WHERE conrelid IN (
+              'complete_the_cove_videos'::regclass,
+              'complete_the_cove_video_targets'::regclass,
+              'complete_the_cove_video_performers'::regclass,
+              'complete_the_cove_video_tags'::regclass,
+              'complete_the_cove_video_urls'::regclass)
+          LOOP
+            renamed := replace(replace(replace(replace(
+              item.conname,
+              'complete_the_stash_scenes', 'complete_the_cove_videos'),
+              'complete_the_stash_scene', 'complete_the_cove_video'),
+              'SceneId', 'VideoId'),
+              'scene', 'video');
+            IF renamed <> item.conname THEN
+              EXECUTE format('ALTER TABLE %s RENAME CONSTRAINT %I TO %I',
+                item.table_name, item.conname, renamed);
+            END IF;
+          END LOOP;
+        END $$;
+
+        ALTER INDEX IF EXISTS ix_complete_the_cove_scene_release RENAME TO ix_complete_the_cove_video_release;
+        ALTER INDEX IF EXISTS ix_complete_the_cove_scene_studio RENAME TO ix_complete_the_cove_video_studio;
+        ALTER INDEX IF EXISTS ix_complete_the_cove_scene_ignored RENAME TO ix_complete_the_cove_video_ignored;
+        ALTER INDEX IF EXISTS ix_complete_the_cove_scene_studio_cove_id RENAME TO ix_complete_the_cove_video_studio_cove_id;
+        ALTER INDEX IF EXISTS ix_complete_the_cove_scene_performer_cove_id RENAME TO ix_complete_the_cove_video_performer_cove_id;
+        ALTER INDEX IF EXISTS ix_complete_the_cove_scene_tag_cove_id RENAME TO ix_complete_the_cove_video_tag_cove_id;
+        """);
     }
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/plugins/complete-the-cove/scenes", ListScenes).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/scenes/{id:int}", GetScene).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/complete-the-cove/videos", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/complete-the-cove/videos/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapPost("/api/plugins/complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapDelete("/api/plugins/complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/complete-the-cove/videos/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/complete-the-cove/scenes", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/complete-the-cove/scenes/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapPost("/api/plugins/complete-the-cove/scenes/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapDelete("/api/plugins/complete-the-cove/scenes/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/complete-the-cove/scenes/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
@@ -368,11 +444,11 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             .RequireCovePermission(Permissions.ExtensionsConfigure, target.ReadPermission)
             .RequireCoveEntityAccess(target.EntityKind, "entityId", target.ReadPermission);
 
-    private static async Task<IResult> ListScenes(HttpRequest request, DbContext db, CancellationToken ct)
+    private static async Task<IResult> ListVideos(HttpRequest request, DbContext db, CancellationToken ct)
     {
         var page = Math.Max(1, ParseInt(request.Query["page"], 1));
         var perPage = Math.Clamp(ParseInt(request.Query["perPage"], 24), 1, 96);
-        var query = db.Set<CompletionScene>().AsNoTracking().Where(x => x.Targets.Any());
+        var query = db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any());
         var showIgnored = bool.TryParse(request.Query["showIgnored"], out var parsedShowIgnored) && parsedShowIgnored;
         if (!showIgnored) query = query.Where(x => !x.IsIgnored);
         var q = request.Query["q"].ToString().Trim().ToLowerInvariant();
@@ -380,7 +456,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             || (x.StudioName ?? "").ToLower().Contains(q) || x.Performers.Any(p => p.Name.ToLower().Contains(q)) || x.Tags.Any(t => t.Name.ToLower().Contains(q)));
         var provider = request.Query["provider"].ToString();
         if (provider.Length > 0) query = query.Where(x => x.RemoteEndpoint == provider);
-        query = SceneCatalogFilter.Apply(request, query);
+        query = VideoCatalogFilter.Apply(request, query);
         if (Enum.TryParse<CompletionTargetType>(request.Query["targetType"], true, out var targetType) && int.TryParse(request.Query["targetId"], out var targetId))
             query = query.Where(x => x.Targets.Any(t => t.Target!.EntityType == targetType && t.Target.EntityId == targetId));
         var total = await query.CountAsync(ct);
@@ -390,7 +466,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         var items = await query.Skip((page - 1) * perPage).Take(perPage).Select(x => new
         {
             x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId, x.RemoteEndpoint, x.IsIgnored,
-            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/complete-the-cove/scenes/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
+            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
             performers = x.Performers.OrderBy(p => p.Name).Select(p => new
             {
                 p.RemoteId,
@@ -403,13 +479,13 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         return Results.Ok(new { items, total, page, perPage });
     }
 
-    private static async Task<IResult> GetScene(int id, DbContext db, CancellationToken ct)
+    private static async Task<IResult> GetVideo(int id, DbContext db, CancellationToken ct)
     {
-        var scene = await db.Set<CompletionScene>().AsNoTracking().Where(x => x.Id == id).Select(x => new
+        var video = await db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Id == id).Select(x => new
         {
             x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId,
             x.ParentStudioName, x.ParentStudioRemoteId, x.RemoteEndpoint, x.RemoteId, x.CoverError, x.IsIgnored, x.CreatedAt, x.UpdatedAt,
-            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/complete-the-cove/scenes/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
+            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
             performers = x.Performers.OrderBy(p => p.Name).Select(p => new
             {
                 p.RemoteId,
@@ -421,12 +497,12 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             urls = x.Urls.Select(u => u.Url),
             targets = x.Targets.Select(t => new { type = t.Target!.EntityType.ToString().ToLower(), t.Target.EntityId, t.Target.DisplayName }),
         }).FirstOrDefaultAsync(ct);
-        return scene is null ? Results.NotFound() : Results.Ok(scene);
+        return video is null ? Results.NotFound() : Results.Ok(video);
     }
 
     private static async Task<IResult> GetCover(int id, DbContext db, IBlobService blobs, CancellationToken ct)
     {
-        var blobId = await db.Set<CompletionScene>().AsNoTracking().Where(x => x.Id == id).Select(x => x.CoverBlobId).FirstOrDefaultAsync(ct);
+        var blobId = await db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Id == id).Select(x => x.CoverBlobId).FirstOrDefaultAsync(ct);
         if (string.IsNullOrWhiteSpace(blobId)) return Results.NotFound();
         var blob = await blobs.GetBlobAsync(blobId, ct);
         return blob is null ? Results.NotFound() : Results.Stream(blob.Value.Stream, blob.Value.ContentType, enableRangeProcessing: blob.Value.Stream.CanSeek);
@@ -435,13 +511,13 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     private static async Task<IResult> GetFacets(HttpRequest request, DbContext db, CancellationToken ct)
     {
         var showIgnored = bool.TryParse(request.Query["showIgnored"], out var parsedShowIgnored) && parsedShowIgnored;
-        var scenes = db.Set<CompletionScene>().AsNoTracking().Where(x => x.Targets.Any() && (showIgnored || !x.IsIgnored));
+        var videos = db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any() && (showIgnored || !x.IsIgnored));
         return Results.Ok(new
         {
-            providers = await scenes.GroupBy(x => x.RemoteEndpoint).Select(x => new { value = x.Key, name = x.Key, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
-            performers = await db.Set<CompletionScenePerformer>().AsNoTracking().Where(x => x.Scene!.Targets.Any() && (showIgnored || !x.Scene.IsIgnored)).GroupBy(x => new { x.Scene!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
-            studios = await scenes.Where(x => x.StudioRemoteId != null).GroupBy(x => new { x.RemoteEndpoint, x.StudioRemoteId, x.StudioName }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.StudioRemoteId, name = x.Key.StudioName, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
-            tags = await db.Set<CompletionSceneTag>().AsNoTracking().Where(x => x.Scene!.Targets.Any() && (showIgnored || !x.Scene.IsIgnored)).GroupBy(x => new { x.Scene!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
+            providers = await videos.GroupBy(x => x.RemoteEndpoint).Select(x => new { value = x.Key, name = x.Key, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
+            performers = await db.Set<CompletionVideoPerformer>().AsNoTracking().Where(x => x.Video!.Targets.Any() && (showIgnored || !x.Video.IsIgnored)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
+            studios = await videos.Where(x => x.StudioRemoteId != null).GroupBy(x => new { x.RemoteEndpoint, x.StudioRemoteId, x.StudioName }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.StudioRemoteId, name = x.Key.StudioName, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
+            tags = await db.Set<CompletionVideoTag>().AsNoTracking().Where(x => x.Video!.Targets.Any() && (showIgnored || !x.Video.IsIgnored)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
         });
     }
 
@@ -463,7 +539,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     private static async Task<IResult> GetTarget(CompletionTargetType type, int entityId, CompletionCatalog catalog, CancellationToken ct) =>
         Results.Ok(new { tracked = await catalog.GetTargetOverviewItemAsync(type, entityId, ct) });
     private static async Task<IResult> CountTarget(CompletionTargetType type, int entityId, DbContext db, CancellationToken ct) =>
-        Results.Ok(new { count = await db.Set<CompletionScene>().CountAsync(x => !x.IsIgnored && x.Targets.Any(t => t.Target!.EntityType == type && t.Target.EntityId == entityId), ct) });
+        Results.Ok(new { count = await db.Set<CompletionVideo>().CountAsync(x => !x.IsIgnored && x.Targets.Any(t => t.Target!.EntityType == type && t.Target.EntityId == entityId), ct) });
     private static async Task<IResult> Track(CompletionTargetType type, int entityId, CompletionCatalog catalog, CoveConfiguration configuration, CancellationToken ct)
     {
         var settings = CompleteSettings.From(configuration);

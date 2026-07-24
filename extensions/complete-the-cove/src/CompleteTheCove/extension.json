@@ -2,7 +2,7 @@
   "id": "complete-the-cove",
   "name": "Complete the Cove",
   "version": "1.0.0",
-  "description": "Builds a native catalog of remote scenes missing from this Cove for selected performers, studios, and tags.",
+  "description": "Builds a native catalog of remote videos missing from this Cove for selected performers, studios, and tags.",
   "author": "MidnightRider",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
   "categories": [
@@ -25,7 +25,7 @@
       "name": "excluded_tags",
       "type": "STRING",
       "displayName": "Excluded remote tags",
-      "description": "Comma-separated metadata-server tag names to omit from the missing-scene catalog."
+      "description": "Comma-separated metadata-server tag names to omit from the missing-video catalog."
     }
   ],
   "permissions": {

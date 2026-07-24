@@ -26,8 +26,11 @@ public sealed class CompletionCatalogTests
             Version = "1.0.0"
         });
         var manifest = extension.GetUIManifest();
-        Assert.Contains(manifest.Pages, x => x.Route == "missing-scenes" && x.Label == "Complete the Cove" && x.ShowInNav);
-        Assert.Contains(manifest.Pages, x => x.Route == "missing-scene" && !x.ShowInNav);
+        Assert.Contains(manifest.Pages, x => x.Route == "missing-videos" && x.Label == "Complete the Cove" && x.ShowInNav);
+        Assert.Contains(manifest.Pages, x => x.Route == "missing-video" && x.Label == "Missing Video" && !x.ShowInNav);
+        Assert.Contains(manifest.Pages, x => x.Route == "missing-scenes" && !x.ShowInNav && x.ComponentName == "LegacyMissingVideosPage");
+        Assert.Contains(manifest.Pages, x => x.Route == "missing-scene" && !x.ShowInNav && x.ComponentName == "LegacyMissingVideoDetailPage");
+        Assert.All(manifest.Tabs, tab => Assert.Equal("Missing Videos", tab.Label));
         Assert.Equal(["performer", "studio", "tag"], manifest.Tabs.Select(x => x.PageType).ToArray());
         Assert.Collection(manifest.Tabs,
             tab => Assert.Equal(["extensions.configure", "performers.read"], Assert.IsType<string[]>(tab.RequiredPermissions)),
@@ -52,6 +55,34 @@ public sealed class CompletionCatalogTests
         AssertTargetEndpointPolicy(endpoints, "performer", EntityKinds.Performer, Permissions.PerformersRead);
         AssertTargetEndpointPolicy(endpoints, "studio", EntityKinds.Studio, Permissions.StudiosRead);
         AssertTargetEndpointPolicy(endpoints, "tag", EntityKinds.Tag, Permissions.TagsRead);
+    }
+
+    [Fact]
+    public async Task Legacy_scene_api_aliases_keep_the_video_endpoint_permission()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton<CoveConfiguration>();
+        builder.Services.AddSingleton<IBlobService, BlobStub>();
+        builder.Services.AddSingleton<IJobService, JobServiceStub>();
+        builder.Services.AddScoped<DbContext>(_ => CreateDb());
+        builder.Services.AddScoped<CompletionCatalog>();
+        await using var app = builder.Build();
+        var endpoints = new ExtensionEndpointDataSource(app, "complete-the-cove", app.Services);
+
+        new CompleteTheCoveExtension().MapEndpoints(endpoints);
+
+        var aliases = endpoints.Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith(
+                "/api/plugins/complete-the-cove/scenes",
+                StringComparison.Ordinal) == true)
+            .ToArray();
+        Assert.Equal(5, aliases.Length);
+        Assert.All(aliases, endpoint =>
+        {
+            var permission = Assert.Single(endpoint.Metadata.OfType<CovePermissionRequirementMetadata>());
+            Assert.Equal([Permissions.ExtensionsConfigure], permission.Permissions);
+        });
     }
 
     [Fact]
@@ -124,17 +155,44 @@ public sealed class CompletionCatalogTests
         using var db = CreateDb();
         var tableNames = new[]
         {
-            typeof(CompletionTarget), typeof(CompletionScene), typeof(CompletionSceneTarget),
-            typeof(CompletionScenePerformer), typeof(CompletionSceneTag), typeof(CompletionSceneUrl)
+            typeof(CompletionTarget), typeof(CompletionVideo), typeof(CompletionVideoTarget),
+            typeof(CompletionVideoPerformer), typeof(CompletionVideoTag), typeof(CompletionVideoUrl)
         }.Select(type => db.Model.FindEntityType(type)?.GetTableName() ?? "").ToArray();
 
         Assert.Equal([
-            "complete_the_cove_targets", "complete_the_cove_scenes", "complete_the_cove_scene_targets",
-            "complete_the_cove_scene_performers", "complete_the_cove_scene_tags", "complete_the_cove_scene_urls"
+            "complete_the_cove_targets", "complete_the_cove_videos", "complete_the_cove_video_targets",
+            "complete_the_cove_video_performers", "complete_the_cove_video_tags", "complete_the_cove_video_urls"
         ], tableNames);
         Assert.DoesNotContain(tableNames, name => name?.Contains("stash", StringComparison.OrdinalIgnoreCase) == true);
         var target = db.Model.FindEntityType(typeof(CompletionTarget))!;
         Assert.Contains(target.GetIndexes(), index => index.IsUnique && index.Properties.Select(property => property.Name).SequenceEqual(["EntityType", "EntityId", "RemoteEndpoint"]));
+    }
+
+    [Fact]
+    public void Video_terminology_migration_preserves_history_and_renames_owned_sequences()
+    {
+        var migrations = new CompleteTheCoveExtension().GetMigrations();
+
+        Assert.Equal([
+            "001_single_cove_catalog",
+            "002_local_performer_links",
+            "003_normalize_local_performer_links",
+            "004_multi_source_targets",
+            "005_remove_legacy_single_source_constraint",
+            "006_local_tag_studio_links",
+            "007_backfill_local_tag_studio_links",
+            "008_ignored_scenes",
+            "009_provider_completion_progress",
+            "010_video_terminology",
+        ], migrations.Select(migration => migration.Name).ToArray());
+
+        var migration = Assert.Single(migrations, migration => migration.Name == "010_video_terminology").UpSql;
+        Assert.Contains("complete_the_cove_scenes RENAME TO complete_the_cove_videos", migration);
+        Assert.Contains("pg_get_serial_sequence", migration);
+        Assert.Contains("complete_the_cove_videos_Id_seq", migration);
+        Assert.Contains("complete_the_cove_video_performers_Id_seq", migration);
+        Assert.Contains("complete_the_cove_video_tags_Id_seq", migration);
+        Assert.Contains("complete_the_cove_video_urls_Id_seq", migration);
     }
 
     [Fact]
@@ -254,9 +312,9 @@ public sealed class CompletionCatalogTests
                 return JsonResponse("""{"data":{"queryScenes":{"count":0,"scenes":[]}}}""");
             }));
 
-        var scenes = await client.DiscoverAsync(Target(1, "performer-1"), default);
+        var videos = await client.DiscoverAsync(Target(1, "performer-1"), default);
 
-        Assert.Empty(scenes);
+        Assert.Empty(videos);
         Assert.Equal(HttpMethod.Post, sent!.Method);
         Assert.Equal("https://stashdb.org/graphql", sent.RequestUri!.ToString());
         Assert.Equal("secret", Assert.Single(sent.Headers.GetValues("ApiKey")));
@@ -283,19 +341,19 @@ public sealed class CompletionCatalogTests
                 """);
             }));
 
-        var scene = Assert.Single(await client.DiscoverAsync(Target(1, "performer-1"), default));
+        var video = Assert.Single(await client.DiscoverAsync(Target(1, "performer-1"), default));
 
         Assert.Equal(HttpMethod.Get, sent!.Method);
         Assert.Equal("https://api.theporndb.net/performers/performer-1/scenes?page=1&per_page=25", sent.RequestUri!.ToString());
         Assert.Equal("Bearer", sent.Headers.Authorization?.Scheme);
         Assert.Equal("secret", sent.Headers.Authorization?.Parameter);
-        Assert.Equal("scene-1", Assert.Single(scene.RemoteIds).RemoteId);
-        Assert.Equal("https://theporndb.net/graphql", Assert.Single(scene.RemoteIds).Endpoint);
-        Assert.Equal("https://theporndb.net/cover.jpg", scene.CoverUrl);
-        Assert.Equal("Parent", scene.Studio?.Parent?.Name);
-        Assert.Equal("Performer", Assert.Single(scene.Performers).Name);
-        Assert.Equal("Alias", Assert.Single(Assert.Single(scene.Performers).Aliases));
-        Assert.Equal("Tag", Assert.Single(scene.Tags).Name);
+        Assert.Equal("scene-1", Assert.Single(video.RemoteIds).RemoteId);
+        Assert.Equal("https://theporndb.net/graphql", Assert.Single(video.RemoteIds).Endpoint);
+        Assert.Equal("https://theporndb.net/cover.jpg", video.CoverUrl);
+        Assert.Equal("Parent", video.Studio?.Parent?.Name);
+        Assert.Equal("Performer", Assert.Single(video.Performers).Name);
+        Assert.Equal("Alias", Assert.Single(Assert.Single(video.Performers).Aliases));
+        Assert.Equal("Tag", Assert.Single(video.Tags).Name);
     }
 
     [Fact]
@@ -323,7 +381,7 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
-    public async Task Tpdb_client_resolves_stashbox_tag_before_querying_scenes()
+    public async Task Tpdb_client_resolves_stashbox_tag_before_querying_videos()
     {
         var sent = new List<Uri>();
         using var client = new TpdbDiscoveryClient(
@@ -384,12 +442,12 @@ public sealed class CompletionCatalogTests
          "performers":[{"performer":{"id":"performer-1","name":"Performer","disambiguation":"One","gender":"FEMALE","aliases":[]}}],
          "tags":[{"id":"tag-1","name":"Tag"}],"images":[{"url":"https://stashdb.org/cover.jpg"}]}
         """);
-        var scene = StashBoxDiscoveryClient.MapVideo(document.RootElement, "https://stashdb.org/graphql");
-        Assert.Equal("https://stashdb.org/cover.jpg", scene.CoverUrl);
-        Assert.Equal("Parent", scene.Studio?.Parent?.Name);
-        Assert.Equal("Performer", Assert.Single(scene.Performers).Name);
-        Assert.Equal("Tag", Assert.Single(scene.Tags).Name);
-        Assert.Equal("https://example.test/scene", Assert.Single(scene.Urls));
+        var video = StashBoxDiscoveryClient.MapVideo(document.RootElement, "https://stashdb.org/graphql");
+        Assert.Equal("https://stashdb.org/cover.jpg", video.CoverUrl);
+        Assert.Equal("Parent", video.Studio?.Parent?.Name);
+        Assert.Equal("Performer", Assert.Single(video.Performers).Name);
+        Assert.Equal("Tag", Assert.Single(video.Tags).Name);
+        Assert.Equal("https://example.test/scene", Assert.Single(video.Urls));
     }
 
     [Fact]
@@ -398,18 +456,18 @@ public sealed class CompletionCatalogTests
         await using var db = CreateDb();
         var target = Target(1, "one"); db.Add(target); await db.SaveChangesAsync();
         var catalog = Catalog(db);
-        var scene = Scene("scene-1");
-        var discovery = new FakeDiscovery(scene);
+        var video = Video("video-1");
+        var discovery = new FakeDiscovery(video);
 
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
         Assert.Null((await db.Set<CompletionTarget>().SingleAsync()).LastRefreshError);
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
 
-        Assert.Single(await db.Set<CompletionScene>().ToListAsync());
-        Assert.Single(await db.Set<CompletionSceneTarget>().ToListAsync());
-        Assert.Null(Assert.Single(await db.Set<CompletionScenePerformer>().ToListAsync()).CovePerformerId);
-        Assert.Single(await db.Set<CompletionSceneTag>().ToListAsync());
-        Assert.Single(await db.Set<CompletionSceneUrl>().ToListAsync());
+        Assert.Single(await db.Set<CompletionVideo>().ToListAsync());
+        Assert.Single(await db.Set<CompletionVideoTarget>().ToListAsync());
+        Assert.Null(Assert.Single(await db.Set<CompletionVideoPerformer>().ToListAsync()).CovePerformerId);
+        Assert.Single(await db.Set<CompletionVideoTag>().ToListAsync());
+        Assert.Single(await db.Set<CompletionVideoUrl>().ToListAsync());
     }
 
     [Fact]
@@ -426,14 +484,14 @@ public sealed class CompletionCatalogTests
 
         var discovering = Assert.Single(progress.Reports);
         Assert.InRange(discovering.Percent, 0.01, 0.99);
-        Assert.Equal("Discovering scenes for performer Target 1 (1/1)...", discovering.Message);
+        Assert.Equal("Discovering videos for performer Target 1 (1/1)...", discovering.Message);
 
-        discovery.Complete([Scene("scene-1")]);
+        discovery.Complete([Video("video-1")]);
         await refresh;
 
         Assert.Contains(progress.Reports, report => report.Percent > discovering.Percent
             && report.Percent < 1
-            && report.Message == "Reconciling performer Target 1 (1/1; 1 scenes found)...");
+            && report.Message == "Reconciling performer Target 1 (1/1; 1 video found)...");
         Assert.Equal(1, progress.Reports[^1].Percent);
     }
 
@@ -481,28 +539,28 @@ public sealed class CompletionCatalogTests
         });
         await db.SaveChangesAsync();
 
-        await Catalog(db).RefreshAsync(new FakeDiscovery(Scene("linked")), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+        await Catalog(db).RefreshAsync(new FakeDiscovery(Video("linked")), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
 
-        Assert.Equal(42, Assert.Single(await db.Set<CompletionScenePerformer>().ToListAsync()).CovePerformerId);
+        Assert.Equal(42, Assert.Single(await db.Set<CompletionVideoPerformer>().ToListAsync()).CovePerformerId);
     }
 
     [Fact]
-    public async Task Shared_scene_survives_untracking_until_last_target_is_removed()
+    public async Task Shared_video_survives_untracking_until_last_target_is_removed()
     {
         await using var db = CreateDb();
         db.AddRange(Target(1, "one"), Target(2, "two")); await db.SaveChangesAsync();
         var catalog = Catalog(db);
-        await catalog.RefreshAsync(new FakeDiscovery(Scene("shared")), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
-        Assert.Equal(2, await db.Set<CompletionSceneTarget>().CountAsync());
+        await catalog.RefreshAsync(new FakeDiscovery(Video("shared")), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+        Assert.Equal(2, await db.Set<CompletionVideoTarget>().CountAsync());
 
         await catalog.UntrackAsync(CompletionTargetType.Performer, 1, default);
-        Assert.Single(await db.Set<CompletionScene>().ToListAsync());
+        Assert.Single(await db.Set<CompletionVideo>().ToListAsync());
         await catalog.UntrackAsync(CompletionTargetType.Performer, 2, default);
-        Assert.Empty(await db.Set<CompletionScene>().ToListAsync());
+        Assert.Empty(await db.Set<CompletionVideo>().ToListAsync());
     }
 
     [Fact]
-    public async Task Target_overview_groups_types_orders_names_and_counts_shared_scenes()
+    public async Task Target_overview_groups_types_orders_names_and_counts_shared_videos()
     {
         await using var db = CreateDb();
         var laterPerformer = Target(1, "one"); laterPerformer.DisplayName = "Zulu";
@@ -511,14 +569,14 @@ public sealed class CompletionCatalogTests
         var tag = Target(4, "four"); tag.EntityType = CompletionTargetType.Tag; tag.DisplayName = "Tag";
         db.AddRange(laterPerformer, earlierPerformer, studio, tag);
         await db.SaveChangesAsync();
-        var shared = new CompletionScene
+        var shared = new CompletionVideo
         {
             RemoteEndpoint = "https://stashdb.org/graphql", RemoteId = "shared", Title = "Shared"
         };
         db.Add(shared);
         db.AddRange(
-            new CompletionSceneTarget { Scene = shared, Target = laterPerformer },
-            new CompletionSceneTarget { Scene = shared, Target = studio });
+            new CompletionVideoTarget { Video = shared, Target = laterPerformer },
+            new CompletionVideoTarget { Video = shared, Target = studio });
         await db.SaveChangesAsync();
 
         var result = await Catalog(db).GetTargetOverviewAsync(default);
@@ -529,11 +587,11 @@ public sealed class CompletionCatalogTests
         Assert.Equal(1, result.Totals.Tag);
         Assert.Equal(["alpha", "Zulu", "Studio", "Tag"], result.Items.Select(x => x.DisplayName).ToArray());
         Assert.Equal(["performer", "performer", "studio", "tag"], result.Items.Select(x => x.Type).ToArray());
-        Assert.Equal([0, 1, 1, 0], result.Items.Select(x => x.MissingSceneCount).ToArray());
+        Assert.Equal([0, 1, 1, 0], result.Items.Select(x => x.MissingVideoCount).ToArray());
     }
 
     [Fact]
-    public async Task Refresh_persists_provider_specific_completion_from_eligible_scenes()
+    public async Task Refresh_persists_provider_specific_completion_from_eligible_videos()
     {
         await using var db = CreateDb();
         db.Add(Target(1, "one"));
@@ -544,7 +602,7 @@ public sealed class CompletionCatalogTests
             RemoteId = "owned"
         });
         await db.SaveChangesAsync();
-        var excluded = Scene("excluded") with
+        var excluded = Video("excluded") with
         {
             Tags =
             [
@@ -554,18 +612,18 @@ public sealed class CompletionCatalogTests
         };
 
         await Catalog(db).RefreshAsync(
-            new FakeDiscovery(Scene("owned"), Scene("missing"), excluded, Scene("missing")),
+            new FakeDiscovery(Video("owned"), Video("missing"), excluded, Video("missing")),
             new CompleteSettings(new HashSet<string>(["Excluded"], StringComparer.OrdinalIgnoreCase)),
             null, null, new ProgressStub(), default);
 
         var target = await db.Set<CompletionTarget>().SingleAsync();
-        Assert.Equal(2, target.EligibleSceneCount);
-        Assert.Equal(1, target.OwnedSceneCount);
+        Assert.Equal(2, target.EligibleVideoCount);
+        Assert.Equal(1, target.OwnedVideoCount);
         Assert.NotNull(target.LastSuccessfulRefreshAt);
         var progress = Assert.Single(Assert.Single((await Catalog(db).GetTargetOverviewAsync(default)).Items).Providers);
         Assert.Equal("https://stashdb.org/graphql", progress.Endpoint);
-        Assert.Equal(2, progress.EligibleSceneCount);
-        Assert.Equal(1, progress.OwnedSceneCount);
+        Assert.Equal(2, progress.EligibleVideoCount);
+        Assert.Equal(1, progress.OwnedVideoCount);
     }
 
     [Fact]
@@ -573,8 +631,8 @@ public sealed class CompletionCatalogTests
     {
         await using var db = CreateDb();
         var refreshed = Target(1, "one");
-        refreshed.EligibleSceneCount = 20;
-        refreshed.OwnedSceneCount = 19;
+        refreshed.EligibleVideoCount = 20;
+        refreshed.OwnedVideoCount = 19;
         refreshed.LastSuccessfulRefreshAt = new DateTime(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc);
         var unrefreshed = Target(1, "two");
         unrefreshed.RemoteEndpoint = "https://theporndb.net/graphql";
@@ -585,8 +643,8 @@ public sealed class CompletionCatalogTests
 
         var progress = Assert.Single(item.Providers);
         Assert.Equal("https://stashdb.org/graphql", progress.Endpoint);
-        Assert.Equal(19, progress.OwnedSceneCount);
-        Assert.Equal(20, progress.EligibleSceneCount);
+        Assert.Equal(19, progress.OwnedVideoCount);
+        Assert.Equal(20, progress.EligibleVideoCount);
     }
 
     [Fact]
@@ -597,7 +655,7 @@ public sealed class CompletionCatalogTests
         await db.SaveChangesAsync();
         var catalog = Catalog(db);
         await catalog.RefreshAsync(
-            new FakeDiscovery(Scene("missing")),
+            new FakeDiscovery(Video("missing")),
             new CompleteSettings(new HashSet<string>()),
             null, null, new ProgressStub(), default);
         var first = await db.Set<CompletionTarget>().SingleAsync();
@@ -610,8 +668,8 @@ public sealed class CompletionCatalogTests
 
         var target = await db.Set<CompletionTarget>().SingleAsync();
         Assert.Equal(successfulAt, target.LastSuccessfulRefreshAt);
-        Assert.Equal(1, target.EligibleSceneCount);
-        Assert.Equal(0, target.OwnedSceneCount);
+        Assert.Equal(1, target.EligibleVideoCount);
+        Assert.Equal(0, target.OwnedVideoCount);
         Assert.NotNull(target.LastRefreshError);
         var progress = Assert.Single(Assert.Single((await catalog.GetTargetOverviewAsync(default)).Items).Providers);
         Assert.Equal(target.LastRefreshError, progress.LastRefreshError);
@@ -625,44 +683,44 @@ public sealed class CompletionCatalogTests
         await db.SaveChangesAsync();
         var catalog = Catalog(db);
         await catalog.RefreshAsync(
-            new FakeDiscovery(Scene("first")),
+            new FakeDiscovery(Video("first")),
             new CompleteSettings(new HashSet<string>()),
             null, null, new ProgressStub(), default);
         var successfulAt = (await db.Set<CompletionTarget>().SingleAsync()).LastSuccessfulRefreshAt;
-        var invalid = Scene("invalid") with { Performers = null! };
+        var invalid = Video("invalid") with { Performers = null! };
 
         await catalog.RefreshAsync(
-            new FakeDiscovery(Scene("second"), invalid),
+            new FakeDiscovery(Video("second"), invalid),
             new CompleteSettings(new HashSet<string>()),
             null, null, new ProgressStub(), default);
 
         var target = await db.Set<CompletionTarget>().SingleAsync();
         Assert.Equal(successfulAt, target.LastSuccessfulRefreshAt);
-        Assert.Equal(1, target.EligibleSceneCount);
-        Assert.Equal(0, target.OwnedSceneCount);
+        Assert.Equal(1, target.EligibleVideoCount);
+        Assert.Equal(0, target.OwnedVideoCount);
         Assert.NotNull(target.LastRefreshError);
     }
 
     [Fact]
-    public async Task Scene_filters_support_any_all_exclusions_and_cross_criterion_and()
+    public async Task Video_filters_support_any_all_exclusions_and_cross_criterion_and()
     {
         await using var db = CreateDb();
         db.AddRange(
-            FilterScene("both", ["p1", "p2"], ["t1", "t2"]),
-            FilterScene("first", ["p1"], ["t1"]),
-            FilterScene("second", ["p2"], ["t2"]));
+            FilterVideo("both", ["p1", "p2"], ["t1", "t2"]),
+            FilterVideo("first", ["p1"], ["t1"]),
+            FilterVideo("second", ["p2"], ["t2"]));
         await db.SaveChangesAsync();
 
-        var allPerformers = await ApplySceneFilters(db,
+        var allPerformers = await ApplyVideoFilters(db,
             ("performerMode", "all"),
             ("performer", Facet("p1")),
             ("performer", Facet("p2")));
-        var includedAndExcludedTags = await ApplySceneFilters(db,
+        var includedAndExcludedTags = await ApplyVideoFilters(db,
             ("tagMode", "any"),
             ("tag", Facet("t1")),
             ("tag", Facet("t2")),
             ("excludeTag", Facet("t2")));
-        var combinedCriteria = await ApplySceneFilters(db,
+        var combinedCriteria = await ApplyVideoFilters(db,
             ("performer", Facet("p1")),
             ("tag", Facet("t2")));
 
@@ -672,23 +730,23 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
-    public async Task Scene_filters_support_null_modes_and_sub_studios()
+    public async Task Video_filters_support_null_modes_and_sub_studios()
     {
         await using var db = CreateDb();
         db.AddRange(
-            FilterScene("parent-match", [], [], "child", "parent"),
-            FilterScene("direct-match", [], [], "parent"),
-            FilterScene("other", [], [], "other"),
-            FilterScene("no-studio", [], []));
+            FilterVideo("parent-match", [], [], "child", "parent"),
+            FilterVideo("direct-match", [], [], "parent"),
+            FilterVideo("other", [], [], "other"),
+            FilterVideo("no-studio", [], []));
         await db.SaveChangesAsync();
 
-        var withParent = await ApplySceneFilters(db,
+        var withParent = await ApplyVideoFilters(db,
             ("studio", Facet("parent")),
             ("includeSubstudios", "true"));
-        var withoutParent = await ApplySceneFilters(db,
+        var withoutParent = await ApplyVideoFilters(db,
             ("studio", Facet("parent")));
-        var noStudio = await ApplySceneFilters(db, ("studioMode", "null"));
-        var hasStudio = await ApplySceneFilters(db, ("studioMode", "not-null"));
+        var noStudio = await ApplyVideoFilters(db, ("studioMode", "null"));
+        var hasStudio = await ApplyVideoFilters(db, ("studioMode", "not-null"));
 
         Assert.Equal(["direct-match", "parent-match"], withParent);
         Assert.Equal(["direct-match"], withoutParent);
@@ -697,62 +755,62 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
-    public async Task Excluded_scene_is_removed_on_successful_reconciliation()
+    public async Task Excluded_video_is_removed_on_successful_reconciliation()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
-        var catalog = Catalog(db); var discovery = new FakeDiscovery(Scene("excluded"));
+        var catalog = Catalog(db); var discovery = new FakeDiscovery(Video("excluded"));
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>(["Tag"], StringComparer.OrdinalIgnoreCase)), null, null, new ProgressStub(), default);
-        Assert.Empty(await db.Set<CompletionScene>().ToListAsync());
+        Assert.Empty(await db.Set<CompletionVideo>().ToListAsync());
     }
 
     [Fact]
-    public async Task Ignored_scene_remains_ignored_across_refresh_and_can_be_unignored()
+    public async Task Ignored_video_remains_ignored_across_refresh_and_can_be_unignored()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
-        var catalog = Catalog(db); var discovery = new FakeDiscovery(Scene("ignored"));
+        var catalog = Catalog(db); var discovery = new FakeDiscovery(Video("ignored"));
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
-        var sceneId = await db.Set<CompletionScene>().Select(x => x.Id).SingleAsync();
+        var videoId = await db.Set<CompletionVideo>().Select(x => x.Id).SingleAsync();
 
-        Assert.True(await catalog.SetIgnoredAsync(sceneId, true, default));
+        Assert.True(await catalog.SetIgnoredAsync(videoId, true, default));
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
-        Assert.True((await db.Set<CompletionScene>().SingleAsync()).IsIgnored);
+        Assert.True((await db.Set<CompletionVideo>().SingleAsync()).IsIgnored);
         await catalog.RefreshAsync(new FakeDiscovery(), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
-        Assert.True((await db.Set<CompletionScene>().SingleAsync()).IsIgnored);
+        Assert.True((await db.Set<CompletionVideo>().SingleAsync()).IsIgnored);
 
-        Assert.True(await catalog.SetIgnoredAsync(sceneId, false, default));
-        Assert.False((await db.Set<CompletionScene>().SingleAsync()).IsIgnored);
-        Assert.False(await catalog.SetIgnoredAsync(sceneId + 1, true, default));
+        Assert.True(await catalog.SetIgnoredAsync(videoId, false, default));
+        Assert.False((await db.Set<CompletionVideo>().SingleAsync()).IsIgnored);
+        Assert.False(await catalog.SetIgnoredAsync(videoId + 1, true, default));
     }
 
     [Fact]
-    public async Task Ignored_scene_is_removed_when_it_becomes_owned()
+    public async Task Ignored_video_is_removed_when_it_becomes_owned()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
-        var catalog = Catalog(db); var discovery = new FakeDiscovery(Scene("owned-after-ignore"));
+        var catalog = Catalog(db); var discovery = new FakeDiscovery(Video("owned-after-ignore"));
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
-        var sceneId = await db.Set<CompletionScene>().Select(x => x.Id).SingleAsync();
-        await catalog.SetIgnoredAsync(sceneId, true, default);
+        var videoId = await db.Set<CompletionVideo>().Select(x => x.Id).SingleAsync();
+        await catalog.SetIgnoredAsync(videoId, true, default);
         db.Add(new Cove.Core.Entities.VideoRemoteId { VideoId = 42, Endpoint = "https://stashdb.org/graphql", RemoteId = "owned-after-ignore" });
         await db.SaveChangesAsync();
 
         await catalog.RefreshAsync(new FakeDiscovery(), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
 
-        Assert.Empty(await db.Set<CompletionScene>().ToListAsync());
+        Assert.Empty(await db.Set<CompletionVideo>().ToListAsync());
     }
 
     [Fact]
-    public async Task Ignored_scene_is_removed_when_it_becomes_excluded()
+    public async Task Ignored_video_is_removed_when_it_becomes_excluded()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
-        var catalog = Catalog(db); var discovery = new FakeDiscovery(Scene("excluded-after-ignore"));
+        var catalog = Catalog(db); var discovery = new FakeDiscovery(Video("excluded-after-ignore"));
         await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
-        var sceneId = await db.Set<CompletionScene>().Select(x => x.Id).SingleAsync();
-        await catalog.SetIgnoredAsync(sceneId, true, default);
+        var videoId = await db.Set<CompletionVideo>().Select(x => x.Id).SingleAsync();
+        await catalog.SetIgnoredAsync(videoId, true, default);
 
         await catalog.RefreshAsync(new FakeDiscovery(), new CompleteSettings(new HashSet<string>(["Tag"], StringComparer.OrdinalIgnoreCase)), null, null, new ProgressStub(), default);
 
-        Assert.Empty(await db.Set<CompletionScene>().ToListAsync());
+        Assert.Empty(await db.Set<CompletionVideo>().ToListAsync());
     }
 
     [Fact]
@@ -791,12 +849,12 @@ public sealed class CompletionCatalogTests
         return extension;
     }
     private static CompletionTarget Target(int id, string remoteId) => new() { EntityType = CompletionTargetType.Performer, EntityId = id, DisplayName = $"Target {id}", RemoteEndpoint = "https://stashdb.org/graphql", RemoteId = remoteId };
-    private static SourceVideo Scene(string id) => new(0, "Scene", "CODE", "Details", null, "2026-01-02", false, false, null,
-        ["https://example.test/scene"], [new RemoteKey("https://stashdb.org/graphql", id)],
+    private static SourceVideo Video(string id) => new(0, "Video", "CODE", "Details", null, "2026-01-02", false, false, null,
+        ["https://example.test/video"], [new RemoteKey("https://stashdb.org/graphql", id)],
         new SourceStudio(0, "Studio", false, null, false, [], [], [new RemoteKey("https://stashdb.org/graphql", "studio")]),
         [new SourceTag(0, "Tag", null, null, false, [], [new RemoteKey("https://stashdb.org/graphql", "tag")], false)],
         [new SourcePerformer(0, "Performer", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], [], [new RemoteKey("https://stashdb.org/graphql", "performer")])]);
-    private static CompletionScene FilterScene(
+    private static CompletionVideo FilterVideo(
         string id,
         IReadOnlyList<string> performerIds,
         IReadOnlyList<string> tagIds,
@@ -808,28 +866,28 @@ public sealed class CompletionCatalogTests
             Title = id,
             StudioRemoteId = studioId,
             ParentStudioRemoteId = parentStudioId,
-            Performers = performerIds.Select(remoteId => new CompletionScenePerformer
+            Performers = performerIds.Select(remoteId => new CompletionVideoPerformer
             {
                 RemoteId = remoteId,
                 Name = remoteId
             }).ToList(),
-            Tags = tagIds.Select(remoteId => new CompletionSceneTag
+            Tags = tagIds.Select(remoteId => new CompletionVideoTag
             {
                 RemoteId = remoteId,
                 Name = remoteId
             }).ToList()
         };
     private static string Facet(string remoteId) => $"https://stashdb.org/graphql|{remoteId}";
-    private static async Task<string[]> ApplySceneFilters(
+    private static async Task<string[]> ApplyVideoFilters(
         TestDb db,
         params (string Key, string Value)[] values)
     {
         var context = new DefaultHttpContext();
         context.Request.QueryString = QueryString.Create(
             values.Select(value => new KeyValuePair<string, string?>(value.Key, value.Value)));
-        return await SceneCatalogFilter.Apply(context.Request, db.Set<CompletionScene>())
-            .OrderBy(scene => scene.RemoteId)
-            .Select(scene => scene.RemoteId)
+        return await VideoCatalogFilter.Apply(context.Request, db.Set<CompletionVideo>())
+            .OrderBy(video => video.RemoteId)
+            .Select(video => video.RemoteId)
             .ToArrayAsync();
     }
 
@@ -860,10 +918,10 @@ public sealed class CompletionCatalogTests
             });
         }
     }
-    private sealed class FakeDiscovery(params SourceVideo[] scenes) : ICompletionDiscovery
+    private sealed class FakeDiscovery(params SourceVideo[] videos) : ICompletionDiscovery
     {
         public string Endpoint => "https://stashdb.org/graphql";
-        public Task<IReadOnlyList<SourceVideo>> DiscoverAsync(CompletionTarget target, CancellationToken ct) => Task.FromResult<IReadOnlyList<SourceVideo>>(scenes);
+        public Task<IReadOnlyList<SourceVideo>> DiscoverAsync(CompletionTarget target, CancellationToken ct) => Task.FromResult<IReadOnlyList<SourceVideo>>(videos);
     }
     private sealed class ThrowingDiscovery : ICompletionDiscovery
     {
@@ -881,7 +939,7 @@ public sealed class CompletionCatalogTests
             Started.TrySetResult();
             return _completion.Task.WaitAsync(ct);
         }
-        public void Complete(IReadOnlyList<SourceVideo> scenes) => _completion.TrySetResult(scenes);
+        public void Complete(IReadOnlyList<SourceVideo> videos) => _completion.TrySetResult(videos);
     }
     private sealed class BlobStub : IBlobService
     {

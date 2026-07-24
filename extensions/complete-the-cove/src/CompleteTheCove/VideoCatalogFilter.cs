@@ -3,28 +3,28 @@ using Microsoft.AspNetCore.Http;
 
 namespace CompleteTheCove;
 
-internal static class SceneCatalogFilter
+internal static class VideoCatalogFilter
 {
-    public static IQueryable<CompletionScene> Apply(
+    public static IQueryable<CompletionVideo> Apply(
         HttpRequest request,
-        IQueryable<CompletionScene> query)
+        IQueryable<CompletionVideo> query)
     {
         query = ApplyFacet(
             query,
             ParseValues(request.Query["performer"]),
             ParseValues(request.Query["excludePerformer"]),
             ParseMode(request.Query["performerMode"]),
-            scene => scene.Performers.Any(),
-            value => scene => scene.RemoteEndpoint == value.Endpoint
-                && scene.Performers.Any(performer => performer.RemoteId == value.RemoteId));
+            video => video.Performers.Any(),
+            value => video => video.RemoteEndpoint == value.Endpoint
+                && video.Performers.Any(performer => performer.RemoteId == value.RemoteId));
         query = ApplyFacet(
             query,
             ParseValues(request.Query["tag"]),
             ParseValues(request.Query["excludeTag"]),
             ParseMode(request.Query["tagMode"]),
-            scene => scene.Tags.Any(),
-            value => scene => scene.RemoteEndpoint == value.Endpoint
-                && scene.Tags.Any(tag => tag.RemoteId == value.RemoteId));
+            video => video.Tags.Any(),
+            value => video => video.RemoteEndpoint == value.Endpoint
+                && video.Tags.Any(tag => tag.RemoteId == value.RemoteId));
 
         var includeSubstudios = bool.TryParse(
             request.Query["includeSubstudios"],
@@ -34,23 +34,23 @@ internal static class SceneCatalogFilter
             ParseValues(request.Query["studio"]),
             ParseValues(request.Query["excludeStudio"]),
             ParseMode(request.Query["studioMode"]),
-            scene => scene.StudioRemoteId != null,
+            video => video.StudioRemoteId != null,
             value => includeSubstudios
-                ? scene => scene.RemoteEndpoint == value.Endpoint
-                    && (scene.StudioRemoteId == value.RemoteId
-                        || scene.ParentStudioRemoteId == value.RemoteId)
-                : scene => scene.RemoteEndpoint == value.Endpoint
-                    && scene.StudioRemoteId == value.RemoteId);
+                ? video => video.RemoteEndpoint == value.Endpoint
+                    && (video.StudioRemoteId == value.RemoteId
+                        || video.ParentStudioRemoteId == value.RemoteId)
+                : video => video.RemoteEndpoint == value.Endpoint
+                    && video.StudioRemoteId == value.RemoteId);
         return query;
     }
 
-    private static IQueryable<CompletionScene> ApplyFacet(
-        IQueryable<CompletionScene> query,
+    private static IQueryable<CompletionVideo> ApplyFacet(
+        IQueryable<CompletionVideo> query,
         IReadOnlyList<FacetValue> includes,
         IReadOnlyList<FacetValue> excludes,
         FacetMode mode,
-        Expression<Func<CompletionScene, bool>> hasValue,
-        Func<FacetValue, Expression<Func<CompletionScene, bool>>> matches)
+        Expression<Func<CompletionVideo, bool>> hasValue,
+        Func<FacetValue, Expression<Func<CompletionVideo, bool>>> matches)
     {
         query = mode switch
         {
@@ -94,20 +94,20 @@ internal static class SceneCatalogFilter
             _ => FacetMode.Any,
         };
 
-    private static Expression<Func<CompletionScene, bool>> Or(
-        IEnumerable<Expression<Func<CompletionScene, bool>>> predicates)
+    private static Expression<Func<CompletionVideo, bool>> Or(
+        IEnumerable<Expression<Func<CompletionVideo, bool>>> predicates)
     {
-        var parameter = Expression.Parameter(typeof(CompletionScene), "scene");
+        var parameter = Expression.Parameter(typeof(CompletionVideo), "video");
         var body = predicates
             .Select(predicate => new ParameterReplacer(predicate.Parameters[0], parameter)
                 .Visit(predicate.Body)!)
             .Aggregate(Expression.OrElse);
-        return Expression.Lambda<Func<CompletionScene, bool>>(body, parameter);
+        return Expression.Lambda<Func<CompletionVideo, bool>>(body, parameter);
     }
 
-    private static Expression<Func<CompletionScene, bool>> Not(
-        Expression<Func<CompletionScene, bool>> predicate) =>
-        Expression.Lambda<Func<CompletionScene, bool>>(
+    private static Expression<Func<CompletionVideo, bool>> Not(
+        Expression<Func<CompletionVideo, bool>> predicate) =>
+        Expression.Lambda<Func<CompletionVideo, bool>>(
             Expression.Not(predicate.Body),
             predicate.Parameters);
 

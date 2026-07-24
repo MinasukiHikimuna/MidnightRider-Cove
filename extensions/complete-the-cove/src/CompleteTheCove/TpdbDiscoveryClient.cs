@@ -37,7 +37,7 @@ public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
                 ? $"performers/{Escape(target.RemoteId)}/scenes"
                 : $"sites/{Escape(target.RemoteId)}/scenes";
         }
-        return await QueryScenesAsync(path, ct);
+        return await QueryVideosAsync(path, ct);
     }
 
     private async Task<string> ResolveTagIdAsync(string remoteId, string name, CancellationToken ct)
@@ -62,7 +62,7 @@ public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
             : id;
     }
 
-    private async Task<IReadOnlyList<SourceVideo>> QueryScenesAsync(string path, CancellationToken ct)
+    private async Task<IReadOnlyList<SourceVideo>> QueryVideosAsync(string path, CancellationToken ct)
     {
         var results = new Dictionary<string, SourceVideo>(StringComparer.Ordinal);
         for (var page = 1; ; page++)
@@ -75,10 +75,10 @@ public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var root = document.RootElement;
             if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-                throw new InvalidOperationException("TPDB returned an invalid scene response.");
+                throw new InvalidOperationException("TPDB returned an invalid video response.");
 
-            foreach (var scene in data.EnumerateArray().Select(MapVideo))
-                results.TryAdd(scene.RemoteIds[0].Normalized, scene);
+            foreach (var video in data.EnumerateArray().Select(MapVideo))
+                results.TryAdd(video.RemoteIds[0].Normalized, video);
 
             if (IsLastPage(root, data.GetArrayLength(), page))
                 break;
@@ -86,19 +86,19 @@ public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
         return results.Values.ToArray();
     }
 
-    private SourceVideo MapVideo(JsonElement scene)
+    private SourceVideo MapVideo(JsonElement video)
     {
-        var remoteId = Scalar(scene, "id") ?? throw new InvalidOperationException("TPDB returned a scene without an id.");
-        var studio = scene.TryGetProperty("site", out var site) && site.ValueKind == JsonValueKind.Object ? MapStudio(site) : null;
-        var performers = Array(scene, "performers").Select(MapPerformer).Where(x => x is not null).Cast<SourcePerformer>().ToArray();
-        var tags = Array(scene, "tags").Select(MapTag).Where(x => x is not null).Cast<SourceTag>().ToArray();
+        var remoteId = Scalar(video, "id") ?? throw new InvalidOperationException("TPDB returned a video without an id.");
+        var studio = video.TryGetProperty("site", out var site) && site.ValueKind == JsonValueKind.Object ? MapStudio(site) : null;
+        var performers = Array(video, "performers").Select(MapPerformer).Where(x => x is not null).Cast<SourcePerformer>().ToArray();
+        var tags = Array(video, "tags").Select(MapTag).Where(x => x is not null).Cast<SourceTag>().ToArray();
         var urls = new List<string>();
-        AddUrl(urls, Text(scene, "url"));
-        if (scene.TryGetProperty("links", out var links) && links.ValueKind == JsonValueKind.Object)
+        AddUrl(urls, Text(video, "url"));
+        if (video.TryGetProperty("links", out var links) && links.ValueKind == JsonValueKind.Object)
             foreach (var link in links.EnumerateObject()) AddUrl(urls, link.Value.ValueKind == JsonValueKind.String ? link.Value.GetString() : null);
 
-        return new SourceVideo(0, Text(scene, "title"), Text(scene, "external_id") ?? Text(scene, "sku"), Text(scene, "description"), null,
-            Text(scene, "date"), false, false, null, urls, [new(_endpoint, remoteId)], studio, tags, performers, CoverUrl(scene));
+        return new SourceVideo(0, Text(video, "title"), Text(video, "external_id") ?? Text(video, "sku"), Text(video, "description"), null,
+            Text(video, "date"), false, false, null, urls, [new(_endpoint, remoteId)], studio, tags, performers, CoverUrl(video));
     }
 
     private SourceStudio? MapStudio(JsonElement site)
@@ -149,11 +149,11 @@ public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
         return last.HasValue ? current >= last.Value : itemCount < PageSize;
     }
 
-    private static string? CoverUrl(JsonElement scene)
+    private static string? CoverUrl(JsonElement video)
     {
-        var background = Object(scene, "background");
+        var background = Object(video, "background");
         return (background is { } value ? Text(value, "full") : null)
-            ?? Text(scene, "image") ?? Text(scene, "back_image") ?? Text(scene, "poster_image") ?? Text(scene, "poster");
+            ?? Text(video, "image") ?? Text(video, "back_image") ?? Text(video, "poster_image") ?? Text(video, "poster");
     }
 
     private static JsonElement? Object(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Object ? item : null;

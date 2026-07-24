@@ -33,10 +33,10 @@ public sealed record SourceVideo(
 public sealed record RefreshTotals(int Targets, int Examined, int Missing, int Removed, int Failed);
 public sealed record CompletionProviderProgress(
     string Endpoint, DateTime LastSuccessfulRefreshAt, DateTime? LastRefreshAt,
-    string? LastRefreshError, int EligibleSceneCount, int OwnedSceneCount);
+    string? LastRefreshError, int EligibleVideoCount, int OwnedVideoCount);
 public sealed record CompletionTargetOverviewItem(
     string Type, int EntityId, string DisplayName, DateTime SelectedAt,
-    DateTime? LastRefreshAt, string? LastRefreshError, int MissingSceneCount,
+    DateTime? LastRefreshAt, string? LastRefreshError, int MissingVideoCount,
     IReadOnlyList<CompletionProviderProgress> Providers);
 public sealed record CompletionTargetOverviewTotals(int All, int Performer, int Studio, int Tag);
 public sealed record CompletionTargetOverview(
@@ -55,12 +55,12 @@ public sealed class CompletionTarget
     public DateTime? LastRefreshAt { get; set; }
     public string? LastRefreshError { get; set; }
     public DateTime? LastSuccessfulRefreshAt { get; set; }
-    public int? EligibleSceneCount { get; set; }
-    public int? OwnedSceneCount { get; set; }
-    public List<CompletionSceneTarget> Scenes { get; set; } = [];
+    public int? EligibleVideoCount { get; set; }
+    public int? OwnedVideoCount { get; set; }
+    public List<CompletionVideoTarget> Videos { get; set; } = [];
 }
 
-public sealed class CompletionScene
+public sealed class CompletionVideo
 {
     public int Id { get; set; }
     public required string RemoteEndpoint { get; set; }
@@ -80,45 +80,45 @@ public sealed class CompletionScene
     public bool IsIgnored { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-    public List<CompletionSceneTarget> Targets { get; set; } = [];
-    public List<CompletionScenePerformer> Performers { get; set; } = [];
-    public List<CompletionSceneTag> Tags { get; set; } = [];
-    public List<CompletionSceneUrl> Urls { get; set; } = [];
+    public List<CompletionVideoTarget> Targets { get; set; } = [];
+    public List<CompletionVideoPerformer> Performers { get; set; } = [];
+    public List<CompletionVideoTag> Tags { get; set; } = [];
+    public List<CompletionVideoUrl> Urls { get; set; } = [];
 }
 
-public sealed class CompletionSceneTarget
+public sealed class CompletionVideoTarget
 {
-    public int SceneId { get; set; }
-    public CompletionScene? Scene { get; set; }
+    public int VideoId { get; set; }
+    public CompletionVideo? Video { get; set; }
     public int TargetId { get; set; }
     public CompletionTarget? Target { get; set; }
 }
 
-public sealed class CompletionScenePerformer
+public sealed class CompletionVideoPerformer
 {
     public int Id { get; set; }
-    public int SceneId { get; set; }
-    public CompletionScene? Scene { get; set; }
+    public int VideoId { get; set; }
+    public CompletionVideo? Video { get; set; }
     public required string RemoteId { get; set; }
     public int? CovePerformerId { get; set; }
     public required string Name { get; set; }
     public string? Disambiguation { get; set; }
 }
 
-public sealed class CompletionSceneTag
+public sealed class CompletionVideoTag
 {
     public int Id { get; set; }
-    public int SceneId { get; set; }
-    public CompletionScene? Scene { get; set; }
+    public int VideoId { get; set; }
+    public CompletionVideo? Video { get; set; }
     public required string RemoteId { get; set; }
     public int? CoveTagId { get; set; }
     public required string Name { get; set; }
 }
 
-public sealed class CompletionSceneUrl
+public sealed class CompletionVideoUrl
 {
     public int Id { get; set; }
-    public int SceneId { get; set; }
-    public CompletionScene? Scene { get; set; }
+    public int VideoId { get; set; }
+    public CompletionVideo? Video { get; set; }
     public required string Url { get; set; }
 }
