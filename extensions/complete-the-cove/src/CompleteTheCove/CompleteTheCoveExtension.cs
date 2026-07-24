@@ -379,13 +379,8 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         if (q.Length > 0) query = query.Where(x => (x.Title ?? "").ToLower().Contains(q) || (x.Code ?? "").ToLower().Contains(q)
             || (x.StudioName ?? "").ToLower().Contains(q) || x.Performers.Any(p => p.Name.ToLower().Contains(q)) || x.Tags.Any(t => t.Name.ToLower().Contains(q)));
         var provider = request.Query["provider"].ToString();
-        var performer = ParseFacet(request.Query["performer"]);
-        var studio = ParseFacet(request.Query["studio"]);
-        var tag = ParseFacet(request.Query["tag"]);
         if (provider.Length > 0) query = query.Where(x => x.RemoteEndpoint == provider);
-        if (performer is not null) query = query.Where(x => x.RemoteEndpoint == performer.Value.Endpoint && x.Performers.Any(p => p.RemoteId == performer.Value.RemoteId));
-        if (studio is not null) query = query.Where(x => x.RemoteEndpoint == studio.Value.Endpoint && x.StudioRemoteId == studio.Value.RemoteId);
-        if (tag is not null) query = query.Where(x => x.RemoteEndpoint == tag.Value.Endpoint && x.Tags.Any(t => t.RemoteId == tag.Value.RemoteId));
+        query = SceneCatalogFilter.Apply(request, query);
         if (Enum.TryParse<CompletionTargetType>(request.Query["targetType"], true, out var targetType) && int.TryParse(request.Query["targetId"], out var targetId))
             query = query.Where(x => x.Targets.Any(t => t.Target!.EntityType == targetType && t.Target.EntityId == targetId));
         var total = await query.CountAsync(ct);
@@ -448,15 +443,6 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             studios = await scenes.Where(x => x.StudioRemoteId != null).GroupBy(x => new { x.RemoteEndpoint, x.StudioRemoteId, x.StudioName }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.StudioRemoteId, name = x.Key.StudioName, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
             tags = await db.Set<CompletionSceneTag>().AsNoTracking().Where(x => x.Scene!.Targets.Any() && (showIgnored || !x.Scene.IsIgnored)).GroupBy(x => new { x.Scene!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
         });
-    }
-
-    private static (string Endpoint, string RemoteId)? ParseFacet(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return null;
-        var separator = value.IndexOf('|');
-        return separator <= 0 || separator == value.Length - 1
-            ? null
-            : (value[..separator], value[(separator + 1)..]);
     }
 
     private static async Task<IResult> GetTargets(CompletionCatalog catalog, CancellationToken ct) => Results.Ok(await catalog.GetTargetOverviewAsync(ct));

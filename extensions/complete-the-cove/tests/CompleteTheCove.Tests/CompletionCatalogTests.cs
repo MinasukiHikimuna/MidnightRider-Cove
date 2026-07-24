@@ -618,6 +618,59 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task Scene_filters_support_any_all_exclusions_and_cross_criterion_and()
+    {
+        await using var db = CreateDb();
+        db.AddRange(
+            FilterScene("both", ["p1", "p2"], ["t1", "t2"]),
+            FilterScene("first", ["p1"], ["t1"]),
+            FilterScene("second", ["p2"], ["t2"]));
+        await db.SaveChangesAsync();
+
+        var allPerformers = await ApplySceneFilters(db,
+            ("performerMode", "all"),
+            ("performer", Facet("p1")),
+            ("performer", Facet("p2")));
+        var includedAndExcludedTags = await ApplySceneFilters(db,
+            ("tagMode", "any"),
+            ("tag", Facet("t1")),
+            ("tag", Facet("t2")),
+            ("excludeTag", Facet("t2")));
+        var combinedCriteria = await ApplySceneFilters(db,
+            ("performer", Facet("p1")),
+            ("tag", Facet("t2")));
+
+        Assert.Equal(["both"], allPerformers);
+        Assert.Equal(["first"], includedAndExcludedTags);
+        Assert.Equal(["both"], combinedCriteria);
+    }
+
+    [Fact]
+    public async Task Scene_filters_support_null_modes_and_sub_studios()
+    {
+        await using var db = CreateDb();
+        db.AddRange(
+            FilterScene("parent-match", [], [], "child", "parent"),
+            FilterScene("direct-match", [], [], "parent"),
+            FilterScene("other", [], [], "other"),
+            FilterScene("no-studio", [], []));
+        await db.SaveChangesAsync();
+
+        var withParent = await ApplySceneFilters(db,
+            ("studio", Facet("parent")),
+            ("includeSubstudios", "true"));
+        var withoutParent = await ApplySceneFilters(db,
+            ("studio", Facet("parent")));
+        var noStudio = await ApplySceneFilters(db, ("studioMode", "null"));
+        var hasStudio = await ApplySceneFilters(db, ("studioMode", "not-null"));
+
+        Assert.Equal(["direct-match", "parent-match"], withParent);
+        Assert.Equal(["direct-match"], withoutParent);
+        Assert.Equal(["no-studio"], noStudio);
+        Assert.Equal(["direct-match", "other", "parent-match"], hasStudio);
+    }
+
+    [Fact]
     public async Task Excluded_scene_is_removed_on_successful_reconciliation()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
@@ -717,6 +770,42 @@ public sealed class CompletionCatalogTests
         new SourceStudio(0, "Studio", false, null, false, [], [], [new RemoteKey("https://stashdb.org/graphql", "studio")]),
         [new SourceTag(0, "Tag", null, null, false, [], [new RemoteKey("https://stashdb.org/graphql", "tag")], false)],
         [new SourcePerformer(0, "Performer", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], [], [new RemoteKey("https://stashdb.org/graphql", "performer")])]);
+    private static CompletionScene FilterScene(
+        string id,
+        IReadOnlyList<string> performerIds,
+        IReadOnlyList<string> tagIds,
+        string? studioId = null,
+        string? parentStudioId = null) => new()
+        {
+            RemoteEndpoint = "https://stashdb.org/graphql",
+            RemoteId = id,
+            Title = id,
+            StudioRemoteId = studioId,
+            ParentStudioRemoteId = parentStudioId,
+            Performers = performerIds.Select(remoteId => new CompletionScenePerformer
+            {
+                RemoteId = remoteId,
+                Name = remoteId
+            }).ToList(),
+            Tags = tagIds.Select(remoteId => new CompletionSceneTag
+            {
+                RemoteId = remoteId,
+                Name = remoteId
+            }).ToList()
+        };
+    private static string Facet(string remoteId) => $"https://stashdb.org/graphql|{remoteId}";
+    private static async Task<string[]> ApplySceneFilters(
+        TestDb db,
+        params (string Key, string Value)[] values)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = QueryString.Create(
+            values.Select(value => new KeyValuePair<string, string?>(value.Key, value.Value)));
+        return await SceneCatalogFilter.Apply(context.Request, db.Set<CompletionScene>())
+            .OrderBy(scene => scene.RemoteId)
+            .Select(scene => scene.RemoteId)
+            .ToArrayAsync();
+    }
 
     private sealed class TestDb(DbContextOptions options) : DbContext(options)
     {
