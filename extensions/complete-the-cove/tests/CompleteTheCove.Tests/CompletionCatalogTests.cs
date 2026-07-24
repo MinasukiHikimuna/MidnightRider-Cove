@@ -533,6 +533,91 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task Refresh_persists_provider_specific_completion_from_eligible_scenes()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        db.Add(new VideoRemoteId
+        {
+            VideoId = 42,
+            Endpoint = "https://stashdb.org/graphql",
+            RemoteId = "owned"
+        });
+        await db.SaveChangesAsync();
+        var excluded = Scene("excluded") with
+        {
+            Tags =
+            [
+                new SourceTag(0, "Excluded", null, null, false, [],
+                    [new RemoteKey("https://stashdb.org/graphql", "excluded-tag")], false)
+            ]
+        };
+
+        await Catalog(db).RefreshAsync(
+            new FakeDiscovery(Scene("owned"), Scene("missing"), excluded, Scene("missing")),
+            new CompleteSettings(new HashSet<string>(["Excluded"], StringComparer.OrdinalIgnoreCase)),
+            null, null, new ProgressStub(), default);
+
+        var target = await db.Set<CompletionTarget>().SingleAsync();
+        Assert.Equal(2, target.EligibleSceneCount);
+        Assert.Equal(1, target.OwnedSceneCount);
+        Assert.NotNull(target.LastSuccessfulRefreshAt);
+        var progress = Assert.Single(Assert.Single((await Catalog(db).GetTargetOverviewAsync(default)).Items).Providers);
+        Assert.Equal("https://stashdb.org/graphql", progress.Endpoint);
+        Assert.Equal(2, progress.EligibleSceneCount);
+        Assert.Equal(1, progress.OwnedSceneCount);
+    }
+
+    [Fact]
+    public async Task Target_overview_omits_unrefreshed_provider_progress()
+    {
+        await using var db = CreateDb();
+        var refreshed = Target(1, "one");
+        refreshed.EligibleSceneCount = 20;
+        refreshed.OwnedSceneCount = 19;
+        refreshed.LastSuccessfulRefreshAt = new DateTime(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc);
+        var unrefreshed = Target(1, "two");
+        unrefreshed.RemoteEndpoint = "https://theporndb.net/graphql";
+        db.AddRange(refreshed, unrefreshed);
+        await db.SaveChangesAsync();
+
+        var item = Assert.Single((await Catalog(db).GetTargetOverviewAsync(default)).Items);
+
+        var progress = Assert.Single(item.Providers);
+        Assert.Equal("https://stashdb.org/graphql", progress.Endpoint);
+        Assert.Equal(19, progress.OwnedSceneCount);
+        Assert.Equal(20, progress.EligibleSceneCount);
+    }
+
+    [Fact]
+    public async Task Failed_refresh_keeps_last_successful_provider_progress()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        await catalog.RefreshAsync(
+            new FakeDiscovery(Scene("missing")),
+            new CompleteSettings(new HashSet<string>()),
+            null, null, new ProgressStub(), default);
+        var first = await db.Set<CompletionTarget>().SingleAsync();
+        var successfulAt = first.LastSuccessfulRefreshAt;
+
+        await catalog.RefreshAsync(
+            new ThrowingDiscovery(),
+            new CompleteSettings(new HashSet<string>()),
+            null, null, new ProgressStub(), default);
+
+        var target = await db.Set<CompletionTarget>().SingleAsync();
+        Assert.Equal(successfulAt, target.LastSuccessfulRefreshAt);
+        Assert.Equal(1, target.EligibleSceneCount);
+        Assert.Equal(0, target.OwnedSceneCount);
+        Assert.NotNull(target.LastRefreshError);
+        var progress = Assert.Single(Assert.Single((await catalog.GetTargetOverviewAsync(default)).Items).Providers);
+        Assert.Equal(target.LastRefreshError, progress.LastRefreshError);
+    }
+
+    [Fact]
     public async Task Excluded_scene_is_removed_on_successful_reconciliation()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
@@ -664,6 +749,12 @@ public sealed class CompletionCatalogTests
     {
         public string Endpoint => "https://stashdb.org/graphql";
         public Task<IReadOnlyList<SourceVideo>> DiscoverAsync(CompletionTarget target, CancellationToken ct) => Task.FromResult<IReadOnlyList<SourceVideo>>(scenes);
+    }
+    private sealed class ThrowingDiscovery : ICompletionDiscovery
+    {
+        public string Endpoint => "https://stashdb.org/graphql";
+        public Task<IReadOnlyList<SourceVideo>> DiscoverAsync(CompletionTarget target, CancellationToken ct) =>
+            throw new InvalidOperationException("Provider unavailable.");
     }
     private sealed class BlockingDiscovery : ICompletionDiscovery
     {

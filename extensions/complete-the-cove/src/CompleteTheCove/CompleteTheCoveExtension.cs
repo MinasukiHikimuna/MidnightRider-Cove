@@ -314,6 +314,12 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         ALTER TABLE complete_the_cove_scenes
           ADD COLUMN IF NOT EXISTS "IsIgnored" boolean NOT NULL DEFAULT false;
         """);
+        Migration("009_provider_completion_progress", """
+        ALTER TABLE complete_the_cove_targets
+          ADD COLUMN IF NOT EXISTS "LastSuccessfulRefreshAt" timestamptz NULL,
+          ADD COLUMN IF NOT EXISTS "EligibleSceneCount" integer NULL,
+          ADD COLUMN IF NOT EXISTS "OwnedSceneCount" integer NULL;
+        """);
     }
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
@@ -469,7 +475,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         }));
     }
     private static async Task<IResult> GetTarget(CompletionTargetType type, int entityId, CompletionCatalog catalog, CancellationToken ct) =>
-        Results.Ok(new { tracked = await catalog.GetTargetAsync(type, entityId, ct) });
+        Results.Ok(new { tracked = await catalog.GetTargetOverviewItemAsync(type, entityId, ct) });
     private static async Task<IResult> CountTarget(CompletionTargetType type, int entityId, DbContext db, CancellationToken ct) =>
         Results.Ok(new { count = await db.Set<CompletionScene>().CountAsync(x => !x.IsIgnored && x.Targets.Any(t => t.Target!.EntityType == type && t.Target.EntityId == entityId), ct) });
     private static async Task<IResult> Track(CompletionTargetType type, int entityId, CompletionCatalog catalog, CoveConfiguration configuration, CancellationToken ct)

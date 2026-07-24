@@ -14,6 +14,13 @@ public sealed class CompletionCatalog(
         await db.Set<CompletionTarget>().AsNoTracking()
             .FirstOrDefaultAsync(x => x.EntityType == type && x.EntityId == entityId, ct);
 
+    public async Task<CompletionTargetOverviewItem?> GetTargetOverviewItemAsync(
+        CompletionTargetType type,
+        int entityId,
+        CancellationToken ct) =>
+        (await GetTargetOverviewAsync(ct)).Items
+            .FirstOrDefault(x => x.Type == type.ToString().ToLowerInvariant() && x.EntityId == entityId);
+
     public async Task<CompletionTargetOverview> GetTargetOverviewAsync(CancellationToken ct)
     {
         var targets = await db.Set<CompletionTarget>().AsNoTracking().Select(x => new
@@ -24,6 +31,10 @@ public sealed class CompletionCatalog(
             x.SelectedAt,
             x.LastRefreshAt,
             x.LastRefreshError,
+            x.RemoteEndpoint,
+            x.LastSuccessfulRefreshAt,
+            x.EligibleSceneCount,
+            x.OwnedSceneCount,
             MissingSceneCount = x.Scenes.Count(scene => !scene.Scene!.IsIgnored),
         }).ToListAsync(ct);
         var items = targets.GroupBy(x => new { x.EntityType, x.EntityId })
@@ -35,12 +46,25 @@ public sealed class CompletionCatalog(
                 LastRefreshAt = group.Max(x => x.LastRefreshAt),
                 LastRefreshError = string.Join("; ", group.Select(x => x.LastRefreshError).Where(x => !string.IsNullOrWhiteSpace(x))),
                 MissingSceneCount = group.Sum(x => x.MissingSceneCount),
+                Providers = group
+                    .Where(x => x.LastSuccessfulRefreshAt.HasValue
+                        && x.EligibleSceneCount.HasValue
+                        && x.OwnedSceneCount.HasValue)
+                    .OrderBy(x => x.RemoteEndpoint, StringComparer.OrdinalIgnoreCase)
+                    .Select(x => new CompletionProviderProgress(
+                        x.RemoteEndpoint,
+                        x.LastSuccessfulRefreshAt!.Value,
+                        x.LastRefreshAt,
+                        x.LastRefreshError,
+                        x.EligibleSceneCount!.Value,
+                        x.OwnedSceneCount!.Value))
+                    .ToList(),
             })
             .OrderBy(x => x.EntityType)
             .ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
             .Select(x => new CompletionTargetOverviewItem(
                 x.EntityType.ToString().ToLowerInvariant(), x.EntityId, x.DisplayName,
-                x.SelectedAt, x.LastRefreshAt, x.LastRefreshError, x.MissingSceneCount))
+                x.SelectedAt, x.LastRefreshAt, x.LastRefreshError, x.MissingSceneCount, x.Providers))
             .ToList();
         return new(items, new(
             items.Count,
@@ -164,6 +188,7 @@ public sealed class CompletionCatalog(
                 totals = await RefreshTargetAsync(target, discovery.Endpoint, discovered, settings, owned, totals, ct);
                 target.LastRefreshAt = DateTime.UtcNow;
                 target.LastRefreshError = null;
+                target.LastSuccessfulRefreshAt = target.LastRefreshAt;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -190,13 +215,23 @@ public sealed class CompletionCatalog(
         var discoveredRemoteIds = discovered.SelectMany(scene => scene.RemoteIds)
             .Where(key => SameProvider(key.Endpoint, endpoint) && !string.IsNullOrWhiteSpace(key.RemoteId))
             .Select(key => key.RemoteId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var missing = discovered.Where(scene =>
-        {
-            var remoteId = scene.RemoteIds.FirstOrDefault()?.RemoteId;
-            return !string.IsNullOrWhiteSpace(remoteId)
-                && !owned.Contains(remoteId)
-                && !scene.Tags.Any(tag => settings.ExcludedTagNames.Contains(tag.Name));
-        }).DistinctBy(scene => scene.RemoteIds[0].RemoteId, StringComparer.OrdinalIgnoreCase).ToList();
+        var eligible = discovered
+            .Select(scene => new
+            {
+                Scene = scene,
+                RemoteId = scene.RemoteIds
+                    .FirstOrDefault(key => SameProvider(key.Endpoint, endpoint))?.RemoteId
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.RemoteId)
+                && !item.Scene.Tags.Any(tag => settings.ExcludedTagNames.Contains(tag.Name)))
+            .DistinctBy(item => item.RemoteId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var missing = eligible
+            .Where(item => !owned.Contains(item.RemoteId!))
+            .Select(item => item.Scene)
+            .ToList();
+        target.EligibleSceneCount = eligible.Count;
+        target.OwnedSceneCount = eligible.Count(item => owned.Contains(item.RemoteId!));
 
         var priorLinks = await db.Set<CompletionSceneTarget>().Include(x => x.Scene).ThenInclude(scene => scene!.Tags)
             .Where(x => x.TargetId == target.Id).ToListAsync(ct);

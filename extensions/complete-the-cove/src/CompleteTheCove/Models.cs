@@ -31,9 +31,13 @@ public sealed record SourceVideo(
     IReadOnlyList<SourcePerformer> Performers, string? CoverUrl = null);
 
 public sealed record RefreshTotals(int Targets, int Examined, int Missing, int Removed, int Failed);
+public sealed record CompletionProviderProgress(
+    string Endpoint, DateTime LastSuccessfulRefreshAt, DateTime? LastRefreshAt,
+    string? LastRefreshError, int EligibleSceneCount, int OwnedSceneCount);
 public sealed record CompletionTargetOverviewItem(
     string Type, int EntityId, string DisplayName, DateTime SelectedAt,
-    DateTime? LastRefreshAt, string? LastRefreshError, int MissingSceneCount);
+    DateTime? LastRefreshAt, string? LastRefreshError, int MissingSceneCount,
+    IReadOnlyList<CompletionProviderProgress> Providers);
 public sealed record CompletionTargetOverviewTotals(int All, int Performer, int Studio, int Tag);
 public sealed record CompletionTargetOverview(
     IReadOnlyList<CompletionTargetOverviewItem> Items, CompletionTargetOverviewTotals Totals);
@@ -50,6 +54,9 @@ public sealed class CompletionTarget
     public DateTime SelectedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastRefreshAt { get; set; }
     public string? LastRefreshError { get; set; }
+    public DateTime? LastSuccessfulRefreshAt { get; set; }
+    public int? EligibleSceneCount { get; set; }
+    public int? OwnedSceneCount { get; set; }
     public List<CompletionSceneTarget> Scenes { get; set; } = [];
 }
 
