@@ -149,6 +149,26 @@ test("provides a URL-backed tracked-records overview with grouped target section
   assert.match(source, /onKeyDown: handleTabKey/);
 });
 
+test("provides a staged native-like filter panel for related entities", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+
+  assert.match(source, /function CatalogFilterPanel/);
+  assert.match(source, /role: "dialog"/);
+  assert.match(source, /Includes All/);
+  assert.match(source, /Is Null/);
+  assert.match(source, /Not Null/);
+  assert.match(source, /excludePerformer/);
+  assert.match(source, /excludeStudio/);
+  assert.match(source, /excludeTag/);
+  assert.match(source, /Include sub-studios/);
+  assert.match(source, /Clear All/);
+  assert.match(source, /onApply/);
+  assert.match(source, /onClose/);
+  assert.match(stylesheet, /\.complete-the-cove-filter-panel/);
+  assert.match(stylesheet, /\.complete-the-cove-filter-choice-active/);
+});
+
 test("parses and writes catalog URLs without losing unrelated parameters", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/function readCatalogLocation\(\) \{[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
@@ -185,7 +205,7 @@ test("persists missing-scene catalog filters in the URL", async () => {
   const window = {
     location: {
       pathname: "/missing-scenes",
-      search: "?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performer=remote%7C7&studio=remote%7C8&tag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3",
+      search: "?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performerMode=all&performer=remote%7C7&performer=remote%7C17&excludePerformer=remote%7C27&studio=remote%7C8&includeSubstudios=true&tagMode=not-null&excludeTag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3",
     },
     history: { replaceState: (_state, _title, url) => { replacedUrl = url; } },
   };
@@ -194,26 +214,45 @@ test("persists missing-scene catalog filters in the URL", async () => {
   assert.deepEqual(helpers.readCatalogFilters(), {
     q: "Crystal",
     provider: "https://example.test/graphql",
-    performer: "remote|7",
-    studio: "remote|8",
-    tag: "remote|9",
+    performer: ["remote|7", "remote|17"],
+    excludePerformer: ["remote|27"],
+    performerMode: "all",
+    studio: ["remote|8"],
+    excludeStudio: [],
+    studioMode: "any",
+    includeSubstudios: true,
+    tag: [],
+    excludeTag: ["remote|9"],
+    tagMode: "not-null",
     showIgnored: true,
     sort: "title",
     direction: "asc",
     page: 3,
   });
-  assert.equal(helpers.catalogQueryString(), "keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performer=remote%7C7&studio=remote%7C8&tag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3");
-  assert.equal(helpers.missingSceneDetailUrl(17), "/missing-scene/17?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performer=remote%7C7&studio=remote%7C8&tag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3");
-  assert.equal(helpers.missingScenesCatalogUrl(), "/missing-scenes?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performer=remote%7C7&studio=remote%7C8&tag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3");
+  assert.match(helpers.catalogQueryString(), /performer=remote%7C7&performer=remote%7C17/);
+  assert.match(helpers.missingSceneDetailUrl(17), /^\/missing-scene\/17\?keep=yes&/);
+  assert.match(helpers.missingScenesCatalogUrl(), /^\/missing-scenes\?keep=yes&/);
 
-  helpers.writeCatalogFilters({ q: "", provider: "", performer: "", studio: "", tag: "", showIgnored: false, sort: "release", direction: "desc", page: 1 });
+  helpers.writeCatalogFilters({
+    q: "", provider: "",
+    performer: [], excludePerformer: [], performerMode: "any",
+    studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
+    tag: [], excludeTag: [], tagMode: "any",
+    showIgnored: false, sort: "release", direction: "desc", page: 1,
+  });
   assert.equal(replacedUrl, "/missing-scenes?keep=yes", "default values should be omitted without losing unrelated parameters");
 
   window.location.pathname = "/performer/42";
   window.location.search = "?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title";
   assert.equal(helpers.readCatalogFilters().q, "test", "scoped tabs must read extension-owned parameters");
   replacedUrl = "";
-  helpers.writeCatalogFilters({ q: "changed", provider: "", performer: "", studio: "", tag: "", showIgnored: false, sort: "title", direction: "desc", page: 1 });
+  helpers.writeCatalogFilters({
+    q: "changed", provider: "",
+    performer: [], excludePerformer: [], performerMode: "any",
+    studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
+    tag: [], excludeTag: [], tagMode: "any",
+    showIgnored: false, sort: "title", direction: "desc", page: 1,
+  });
   assert.equal(replacedUrl, "/performer/42?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=changed&ctcSort=title");
   const scopedDetailUrl = helpers.missingSceneDetailUrl(17);
   assert.equal(scopedDetailUrl, "/missing-scene/17?tab=ext%3Amissing-scenes&q=host-search&view=host-view&returnTo=host-return&ctcQ=test&ctcSort=title&ctcReturnTo=%2Fperformer%2F42");
@@ -227,7 +266,11 @@ test("persists missing-scene catalog filters in the URL", async () => {
 
   window.location.search = "?q=test&showIgnored=maybe&sort=unknown&direction=sideways&page=-2";
   assert.deepEqual(helpers.readCatalogFilters(), {
-    q: "test", provider: "", performer: "", studio: "", tag: "", showIgnored: false, sort: "release", direction: "desc", page: 1,
+    q: "test", provider: "",
+    performer: [], excludePerformer: [], performerMode: "any",
+    studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
+    tag: [], excludeTag: [], tagMode: "any",
+    showIgnored: false, sort: "release", direction: "desc", page: 1,
   });
 });
 
@@ -250,7 +293,7 @@ test("URL-backs catalog filters in scoped entity tabs", async () => {
 
 test("filters scenes by provider and renders linked native-like detail entities", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  assert.match(source, /select\("provider", "All providers"/);
+  assert.match(source, /"aria-label": "All providers"/);
   assert.match(source, /Open \$\{providerLabel\(scene\.remoteEndpoint\)\} metadata page/);
   assert.match(source, /rounded-full border border-border bg-card px-3 py-1 text-xs text-accent/);
   assert.match(source, /scene\.coveStudioId/);

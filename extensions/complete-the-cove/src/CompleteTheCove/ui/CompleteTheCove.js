@@ -44,9 +44,27 @@ function remoteSceneUrl(scene) {
   return null;
 }
 
-const DEFAULT_CATALOG_FILTERS = Object.freeze({ q: "", provider: "", performer: "", studio: "", tag: "", showIgnored: false, sort: "release", direction: "desc", page: 1 });
-const CATALOG_FILTER_KEYS = ["q", "provider", "performer", "studio", "tag", "showIgnored", "sort", "direction", "page"];
-const SCOPED_CATALOG_FILTER_KEYS = Object.freeze({ q: "ctcQ", provider: "ctcProvider", performer: "ctcPerformer", studio: "ctcStudio", tag: "ctcTag", showIgnored: "ctcShowIgnored", sort: "ctcSort", direction: "ctcDirection", page: "ctcPage" });
+const DEFAULT_CATALOG_FILTERS = Object.freeze({
+  q: "", provider: "",
+  performer: [], excludePerformer: [], performerMode: "any",
+  studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
+  tag: [], excludeTag: [], tagMode: "any",
+  showIgnored: false, sort: "release", direction: "desc", page: 1,
+});
+const CATALOG_FILTER_KEYS = [
+  "q", "provider",
+  "performer", "excludePerformer", "performerMode",
+  "studio", "excludeStudio", "studioMode", "includeSubstudios",
+  "tag", "excludeTag", "tagMode",
+  "showIgnored", "sort", "direction", "page",
+];
+const SCOPED_CATALOG_FILTER_KEYS = Object.freeze({
+  q: "ctcQ", provider: "ctcProvider",
+  performer: "ctcPerformer", excludePerformer: "ctcExcludePerformer", performerMode: "ctcPerformerMode",
+  studio: "ctcStudio", excludeStudio: "ctcExcludeStudio", studioMode: "ctcStudioMode", includeSubstudios: "ctcIncludeSubstudios",
+  tag: "ctcTag", excludeTag: "ctcExcludeTag", tagMode: "ctcTagMode",
+  showIgnored: "ctcShowIgnored", sort: "ctcSort", direction: "ctcDirection", page: "ctcPage",
+});
 
 function catalogFilterKey(key, pathname = window.location.pathname) {
   return /^\/(performer|studio|tag)\/\d+$/.test(pathname) ? SCOPED_CATALOG_FILTER_KEYS[key] : key;
@@ -55,13 +73,22 @@ function catalogFilterKey(key, pathname = window.location.pathname) {
 function readCatalogFilters() {
   const params = new URLSearchParams(window.location.search);
   const value = (key) => params.get(catalogFilterKey(key));
+  const values = (key) => params.getAll(catalogFilterKey(key)).filter(Boolean);
+  const mode = (key) => ["all", "null", "not-null"].includes(value(key)) ? value(key) : "any";
   const parsedPage = Number(value("page"));
   return {
     q: value("q") || "",
     provider: value("provider") || "",
-    performer: value("performer") || "",
-    studio: value("studio") || "",
-    tag: value("tag") || "",
+    performer: values("performer"),
+    excludePerformer: values("excludePerformer"),
+    performerMode: mode("performerMode"),
+    studio: values("studio"),
+    excludeStudio: values("excludeStudio"),
+    studioMode: mode("studioMode"),
+    includeSubstudios: value("includeSubstudios") === "true",
+    tag: values("tag"),
+    excludeTag: values("excludeTag"),
+    tagMode: mode("tagMode"),
     showIgnored: value("showIgnored") === "true",
     sort: value("sort") === "title" ? "title" : "release",
     direction: value("direction") === "asc" ? "asc" : "desc",
@@ -69,22 +96,42 @@ function readCatalogFilters() {
   };
 }
 
-function writeCatalogFilters(filters) {
-  const params = new URLSearchParams(window.location.search);
-  const key = (name) => catalogFilterKey(name);
-  CATALOG_FILTER_KEYS.forEach((name) => params.delete(key(name)));
+function appendCatalogFilterParams(params, filters, key = (name) => name) {
   if (filters.q) params.set(key("q"), filters.q);
   if (filters.provider) params.set(key("provider"), filters.provider);
-  if (filters.performer) params.set(key("performer"), filters.performer);
-  if (filters.studio) params.set(key("studio"), filters.studio);
-  if (filters.tag) params.set(key("tag"), filters.tag);
+  for (const facet of ["performer", "studio", "tag"]) {
+    for (const value of filters[facet] || []) params.append(key(facet), value);
+    const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
+    for (const value of filters[excludeKey] || []) params.append(key(excludeKey), value);
+    const modeKey = `${facet}Mode`;
+    if (filters[modeKey] && filters[modeKey] !== "any") params.set(key(modeKey), filters[modeKey]);
+  }
+  if (filters.includeSubstudios) params.set(key("includeSubstudios"), "true");
   if (filters.showIgnored) params.set(key("showIgnored"), "true");
   if (filters.sort !== DEFAULT_CATALOG_FILTERS.sort) params.set(key("sort"), filters.sort);
   if (filters.direction !== DEFAULT_CATALOG_FILTERS.direction) params.set(key("direction"), filters.direction);
   if (filters.page > 1) params.set(key("page"), String(filters.page));
+  return params;
+}
+
+function writeCatalogFilters(filters) {
+  const params = new URLSearchParams(window.location.search);
+  const key = (name) => catalogFilterKey(name);
+  CATALOG_FILTER_KEYS.forEach((name) => params.delete(key(name)));
+  appendCatalogFilterParams(params, filters, key);
   const query = params.toString();
   const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}`;
   if (`${window.location.pathname}${window.location.search}` !== nextUrl) window.history.replaceState(null, "", nextUrl);
+}
+
+function catalogApiQuery(filters, scope) {
+  const params = appendCatalogFilterParams(new URLSearchParams(), filters);
+  params.set("perPage", "24");
+  if (scope) {
+    params.set("targetType", scope.type);
+    params.set("targetId", String(scope.entityId));
+  }
+  return params.toString();
 }
 
 function catalogQueryString() {
@@ -301,8 +348,129 @@ function RefreshSplitButton({ providers = [], refresh, refreshing, disabled = re
   ]);
 }
 
+function cloneCatalogFilters(filters) {
+  return {
+    ...filters,
+    performer: [...(filters.performer || [])],
+    excludePerformer: [...(filters.excludePerformer || [])],
+    studio: [...(filters.studio || [])],
+    excludeStudio: [...(filters.excludeStudio || [])],
+    tag: [...(filters.tag || [])],
+    excludeTag: [...(filters.excludeTag || [])],
+  };
+}
+
+function activeCatalogFilterCount(filters) {
+  let count = 0;
+  for (const facet of ["performer", "studio", "tag"]) {
+    const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
+    count += (filters[facet] || []).length + (filters[excludeKey] || []).length;
+    if (filters[`${facet}Mode`] !== "any") count += 1;
+  }
+  if (filters.includeSubstudios) count += 1;
+  return count;
+}
+
+function FacetCriterion({ facet, label, values, draft, setDraft, allowSubstudios = false }) {
+  const [search, setSearch] = useState("");
+  const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
+  const modeKey = `${facet}Mode`;
+  const included = draft[facet] || [];
+  const excluded = draft[excludeKey] || [];
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const matching = values.filter((item) => !normalizedSearch || item.name.toLocaleLowerCase().includes(normalizedSearch));
+  const selectedValues = new Set([...included, ...excluded]);
+  const displayed = [
+    ...values.filter((item) => selectedValues.has(item.value)),
+    ...matching.filter((item) => !selectedValues.has(item.value)),
+  ].slice(0, 150);
+  const updateSelection = (value, selection) => setDraft((current) => {
+    const nextIncluded = (current[facet] || []).filter((item) => item !== value);
+    const nextExcluded = (current[excludeKey] || []).filter((item) => item !== value);
+    if (selection === "include" && !included.includes(value)) nextIncluded.push(value);
+    if (selection === "exclude" && !excluded.includes(value)) nextExcluded.push(value);
+    return { ...current, [facet]: nextIncluded, [excludeKey]: nextExcluded };
+  });
+  const modeOptions = [
+    ["any", "Includes"],
+    ["all", "Includes All"],
+    ["null", "Is Null"],
+    ["not-null", "Not Null"],
+  ];
+  const selectionDisabled = ["null", "not-null"].includes(draft[modeKey]);
+  return h("section", { className: "complete-the-cove-filter-criterion" }, [
+    h("div", { key: "heading", className: "complete-the-cove-filter-criterion-heading" }, [
+      h("h3", { key: "title" }, label),
+      h("span", { key: "count", className: "text-xs text-muted" }, `${included.length} included · ${excluded.length} excluded`),
+    ]),
+    h("div", { key: "modes", className: "complete-the-cove-filter-modes", role: "group", "aria-label": `${label} matching mode` }, modeOptions.map(([value, text]) => h("button", {
+      key: value,
+      type: "button",
+      onClick: () => setDraft((current) => ({ ...current, [modeKey]: value })),
+      className: `complete-the-cove-filter-mode ${draft[modeKey] === value ? "complete-the-cove-filter-choice-active" : ""}`,
+      "aria-pressed": draft[modeKey] === value,
+    }, text))),
+    allowSubstudios ? h("label", { key: "substudios", className: "complete-the-cove-filter-checkbox" }, [
+      h("input", { key: "input", type: "checkbox", checked: draft.includeSubstudios, onChange: (event) => setDraft((current) => ({ ...current, includeSubstudios: event.target.checked })) }),
+      h("span", { key: "label" }, "Include sub-studios"),
+    ]) : null,
+    h("div", { key: "search", className: "complete-the-cove-filter-search" }, [
+      h(Search, { key: "icon", className: "h-4 w-4 text-muted" }),
+      h("input", { key: "input", value: search, onChange: (event) => setSearch(event.target.value), placeholder: `Search ${label.toLocaleLowerCase()}...`, "aria-label": `Search ${label.toLocaleLowerCase()}` }),
+    ]),
+    h("div", { key: "values", className: `complete-the-cove-filter-values ${selectionDisabled ? "complete-the-cove-filter-values-disabled" : ""}` }, displayed.length ? displayed.map((item) => {
+      const isIncluded = included.includes(item.value);
+      const isExcluded = excluded.includes(item.value);
+      return h("div", { key: item.value, className: "complete-the-cove-filter-value" }, [
+        h("button", { key: "include", type: "button", disabled: selectionDisabled, onClick: () => updateSelection(item.value, "include"), className: `complete-the-cove-filter-value-action ${isIncluded ? "complete-the-cove-filter-choice-active" : ""}`, title: `Include ${item.name}`, "aria-label": `Include ${item.name}`, "aria-pressed": isIncluded }, h(Check, { className: "h-3.5 w-3.5" })),
+        h("button", { key: "exclude", type: "button", disabled: selectionDisabled, onClick: () => updateSelection(item.value, "exclude"), className: `complete-the-cove-filter-value-action ${isExcluded ? "complete-the-cove-filter-exclude-active" : ""}`, title: `Exclude ${item.name}`, "aria-label": `Exclude ${item.name}`, "aria-pressed": isExcluded }, h(X, { className: "h-3.5 w-3.5" })),
+        h("span", { key: "name", title: item.name }, item.name),
+        h("span", { key: "count", className: "text-xs text-muted" }, item.count.toLocaleString()),
+      ]);
+    }) : h("div", { className: "p-4 text-center text-sm text-muted" }, "No matching values.")),
+    matching.length > displayed.length ? h("p", { key: "limit", className: "mt-2 text-xs text-muted" }, `Showing the first ${displayed.length.toLocaleString()} matches. Refine the search to see more.`) : null,
+  ]);
+}
+
+function CatalogFilterPanel({ open, filters, facets, onApply, onClose }) {
+  const [draft, setDraft] = useState(() => cloneCatalogFilters(filters));
+  useEffect(() => { if (open) setDraft(cloneCatalogFilters(filters)); }, [open, filters]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+  if (!open) return null;
+  const clearAll = () => setDraft((current) => ({
+    ...current,
+    performer: [], excludePerformer: [], performerMode: "any",
+    studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
+    tag: [], excludeTag: [], tagMode: "any",
+  }));
+  return createPortal(h("div", { className: "complete-the-cove-filter-backdrop", onMouseDown: (event) => { if (event.target === event.currentTarget) onClose(); } }, h("div", { className: "complete-the-cove-filter-panel", role: "dialog", "aria-modal": true, "aria-labelledby": "complete-the-cove-filter-title" }, [
+    h("header", { key: "header", className: "complete-the-cove-filter-header" }, [
+      h("div", { key: "copy" }, [h("h2", { key: "title", id: "complete-the-cove-filter-title", className: "text-lg font-semibold" }, "Filter Missing Scenes"), h("p", { key: "help", className: "text-xs text-muted" }, "Criteria are combined together. Included values follow each criterion's matching mode; excluded values never match.")]),
+      h("button", { key: "close", type: "button", onClick: onClose, className: "complete-the-cove-icon-button text-secondary", title: "Close filters", "aria-label": "Close filters" }, h(X, { className: "h-4 w-4" })),
+    ]),
+    h("div", { key: "body", className: "complete-the-cove-filter-body" }, [
+      h(FacetCriterion, { key: "performers", facet: "performer", label: "Performers", values: facets.performers || [], draft, setDraft }),
+      h(FacetCriterion, { key: "studios", facet: "studio", label: "Studios", values: facets.studios || [], draft, setDraft, allowSubstudios: true }),
+      h(FacetCriterion, { key: "tags", facet: "tag", label: "Tags", values: facets.tags || [], draft, setDraft }),
+    ]),
+    h("footer", { key: "footer", className: "complete-the-cove-filter-footer" }, [
+      h("button", { key: "clear", type: "button", onClick: clearAll, className: "rounded-md border border-border px-3 py-2 text-sm text-secondary hover:text-foreground" }, "Clear All"),
+      h("div", { key: "actions", className: "flex gap-2" }, [
+        h("button", { key: "cancel", type: "button", onClick: onClose, className: "rounded-md border border-border px-3 py-2 text-sm text-secondary hover:text-foreground" }, "Cancel"),
+        h("button", { key: "apply", type: "button", onClick: () => onApply({ ...draft, page: 1 }), className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white" }, "Apply"),
+      ]),
+    ]),
+  ])), document.body);
+}
+
 function CatalogControls({ filters, setFilters, facets, refresh, refreshing, providers, total, perPage }) {
   const [searchText, setSearchText] = useState(filters.q || "");
+  const [filterOpen, setFilterOpen] = useState(false);
   useEffect(() => { setSearchText(filters.q || ""); }, [filters.q]);
   useEffect(() => {
     if (searchText.trim() === (filters.q || "").trim()) return;
@@ -310,14 +478,9 @@ function CatalogControls({ filters, setFilters, facets, refresh, refreshing, pro
     return () => window.clearTimeout(timeout);
   }, [searchText, filters.q, setFilters]);
 
-  const select = (key, label, values, display = (item) => item.name) => h("select", {
-    key,
-    "aria-label": label,
-    value: filters[key], onChange: (event) => setFilters((current) => ({ ...current, [key]: event.target.value, page: 1 })),
-    className: "complete-the-cove-select rounded-md border border-border bg-input text-foreground",
-  }, [h("option", { key: "", value: "" }, label), ...values.map((item) => h("option", { key: item.value, value: item.value }, `${display(item)} (${item.count})`))]);
   const start = total > 0 ? (filters.page - 1) * perPage + 1 : 0;
   const end = Math.min(filters.page * perPage, total);
+  const activeFilterCount = activeCatalogFilterCount(filters);
   const clearSearch = () => { setSearchText(""); setFilters((current) => ({ ...current, q: "", page: 1 })); };
   return h("div", { className: "complete-the-cove-toolbar" }, [
     h("span", { key: "count", className: "complete-the-cove-count text-muted" }, total > 0 ? `${start}–${end} of ${total.toLocaleString()}` : "0 items"),
@@ -326,7 +489,8 @@ function CatalogControls({ filters, setFilters, facets, refresh, refreshing, pro
       h("input", { key: "input", type: "text", value: searchText, onChange: (event) => setSearchText(event.target.value), onKeyDown: (event) => { if (event.key === "Escape" && searchText) clearSearch(); }, placeholder: "Search missing scenes...", "aria-label": "Search missing scenes", className: "complete-the-cove-search-input border border-border bg-card/70 text-foreground placeholder:text-muted" }),
       searchText ? h("button", { key: "clear", type: "button", onClick: clearSearch, className: "complete-the-cove-search-clear text-muted", title: "Clear search", "aria-label": "Clear search" }, h(X, { className: "h-3.5 w-3.5" })) : null,
     ]),
-    h("div", { key: "facets", className: "complete-the-cove-facets" }, [select("provider", "All providers", facets.providers || [], (item) => providerLabel(item.value)), select("performer", "All performers", facets.performers || []), select("studio", "All studios", facets.studios || []), select("tag", "All tags", facets.tags || [])]),
+    h("select", { key: "provider", "aria-label": "All providers", value: filters.provider, onChange: (event) => setFilters((current) => ({ ...current, provider: event.target.value, page: 1 })), className: "complete-the-cove-select complete-the-cove-provider-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "", value: "" }, "All providers"), ...(facets.providers || []).map((item) => h("option", { key: item.value, value: item.value }, `${providerLabel(item.value)} (${item.count})`))]),
+    h("button", { key: "filter", type: "button", onClick: () => setFilterOpen(true), className: `complete-the-cove-filter-trigger ${activeFilterCount ? "complete-the-cove-filter-trigger-active" : ""}`, "aria-haspopup": "dialog" }, [h(MoreHorizontal, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Filter"), activeFilterCount ? h("span", { key: "count", className: "complete-the-cove-filter-trigger-count" }, String(activeFilterCount)) : null]),
     h("details", { key: "options", className: "relative" }, [
       h("summary", { key: "trigger", title: "More catalog options", "aria-label": "More catalog options", className: "complete-the-cove-icon-button flex cursor-pointer list-none items-center justify-center text-secondary [&::-webkit-details-marker]:hidden" }, h(MoreHorizontal, { className: "h-4 w-4" })),
       h("div", { key: "menu", className: "absolute right-0 top-full z-20 mt-1 min-w-48 rounded-md border border-border bg-card p-2 shadow-lg" }, h("label", { className: "flex cursor-pointer items-center gap-2 whitespace-nowrap px-2 py-1.5 text-sm text-secondary" }, [h("input", { key: "input", type: "checkbox", checked: filters.showIgnored, onChange: (event) => setFilters((current) => ({ ...current, showIgnored: event.target.checked, page: 1 })) }), h(EyeOff, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Show ignored scenes")]))
@@ -336,6 +500,7 @@ function CatalogControls({ filters, setFilters, facets, refresh, refreshing, pro
       h("button", { key: "direction", type: "button", onClick: () => setFilters((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc", page: 1 })), className: "complete-the-cove-icon-button text-secondary", title: filters.direction === "asc" ? "Ascending" : "Descending", "aria-label": filters.direction === "asc" ? "Ascending" : "Descending" }, filters.direction === "desc" ? h(ArrowDown, { className: "h-3.5 w-3.5" }) : h(ArrowUp, { className: "h-3.5 w-3.5" })),
     ]),
     refresh ? h(RefreshSplitButton, { key: "refresh", providers, refresh, refreshing }) : null,
+    h(CatalogFilterPanel, { key: "filter-panel", open: filterOpen, filters, facets, onApply: (next) => { setFilters(next); setFilterOpen(false); }, onClose: () => setFilterOpen(false) }),
   ]);
 }
 
@@ -364,11 +529,7 @@ function SceneGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  const query = useMemo(() => {
-    const params = new URLSearchParams({ ...filters, perPage: "24" });
-    if (scope) { params.set("targetType", scope.type); params.set("targetId", String(scope.entityId)); }
-    return params.toString();
-  }, [filters, scope?.type, scope?.entityId]);
+  const query = useMemo(() => catalogApiQuery(filters, scope), [filters, scope?.type, scope?.entityId]);
   useEffect(() => { let cancelled = false; const requestQuery = query; request(`${API}/scenes?${requestQuery}`).then((value) => { if (!cancelled) { setData({ ...value, query: requestQuery }); setError(""); } }).catch((err) => !cancelled && setError(err.message)); return () => { cancelled = true; }; }, [query, reloadVersion]);
   useEffect(() => { request(`${API}/facets?showIgnored=${filters.showIgnored}`).then(setFacets).catch(() => {}); }, [filters.showIgnored, reloadVersion]);
   useEffect(() => { request(`${API}/providers`).then(setProviders).catch(() => {}); }, []);
