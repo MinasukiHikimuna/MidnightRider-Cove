@@ -295,6 +295,10 @@ function SceneMetadataPopover({ Icon, items, label, kind }) {
   ]);
 }
 
+function MissingBanner() {
+  return h("div", { className: "complete-the-cove-missing-banner", "aria-label": "Missing scene" }, "MISSING");
+}
+
 function SceneCard({ scene, onNavigate }) {
   const performers = scene.performers || [];
   const tags = scene.tags || [];
@@ -314,9 +318,12 @@ function SceneCard({ scene, onNavigate }) {
       "aria-label": `Open missing scene ${title}`,
     }),
     h("div", { key: "content", className: "contents" }, [
-    h("div", { key: "image", className: "complete-the-cove-card-preview card-media relative aspect-video overflow-hidden bg-black" }, scene.coverUrl
-      ? h("img", { src: scene.coverUrl, alt: `Cover for ${title}`, loading: "lazy", className: "complete-the-cove-card-preview-image h-full w-full object-cover" })
-      : h("div", { className: "flex h-full items-center justify-center text-muted" }, h(Puzzle, { className: "h-8 w-8" }))),
+    h("div", { key: "image", className: "complete-the-cove-card-preview card-media relative aspect-video overflow-hidden bg-black" }, [
+      scene.coverUrl
+        ? h("img", { key: "cover", src: scene.coverUrl, alt: `Cover for ${title}`, loading: "lazy", className: "complete-the-cove-card-preview-image h-full w-full object-cover" })
+        : h("div", { key: "placeholder", className: "flex h-full items-center justify-center text-muted" }, h(Puzzle, { className: "h-8 w-8" })),
+      h(MissingBanner, { key: "missing" }),
+    ]),
     h("div", { key: "body", className: "complete-the-cove-card-body card-body flex min-h-0 flex-1 flex-col gap-1.5 border-t border-border/50 px-2.5 pb-2 pt-2" }, [
       h("div", { key: "heading" }, [
         h("p", { key: "title", className: "complete-the-cove-card-title card-title line-clamp-2 font-semibold leading-snug text-foreground", title }, title),
@@ -710,7 +717,7 @@ function MissingSceneDetailPage({ id, onNavigate }) {
       setScene((current) => ({ ...current, isIgnored: !current.isIgnored }));
     } catch (err) { setIgnoreError(err.message); } finally { setIgnoreBusy(false); }
   }
-  const media = scene?.coverUrl ? h("div", { className: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black" }, [h("img", { key: "blur", src: scene.coverUrl, alt: "", "aria-hidden": true, className: "absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-2xl" }), h("img", { key: "cover", src: scene.coverUrl, alt: `Cover for ${scene.title || "Untitled scene"}`, className: "relative h-full w-full object-contain" })]) : h("div", { className: "flex h-full w-full items-center justify-center bg-black text-muted" }, "No cover available");
+  const media = scene?.coverUrl ? h("div", { className: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black" }, [h("img", { key: "cover", src: scene.coverUrl, alt: `Cover for ${scene.title || "Untitled scene"}`, className: "relative h-full w-full object-contain" }), h(MissingBanner, { key: "missing" })]) : h("div", { className: "flex h-full w-full items-center justify-center bg-black text-muted" }, "No cover available");
   const sourceUrl = scene ? remoteSceneUrl(scene) : null;
   const metadataRows = scene ? [["Created", formatDate(scene.createdAt)], ["Updated", formatDate(scene.updatedAt)], ["Studio Code", scene.code]].filter((x) => x[1]) : [];
   const studioImageUrl = scene?.coveStudioId ? `/api/studios/${scene.coveStudioId}/image?max=640` : null;
