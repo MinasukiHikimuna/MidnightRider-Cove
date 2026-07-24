@@ -555,6 +555,26 @@ function SceneGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
   ]);
 }
 
+function ProviderProgress({ providers = [] }) {
+  if (!providers.length) return h("div", { className: "complete-the-cove-progress-empty text-muted" }, "Refresh to calculate progress");
+  return h("div", { className: "complete-the-cove-progress-list" }, providers.map((provider) => {
+    const percentage = provider.eligibleSceneCount > 0
+      ? Math.round((provider.ownedSceneCount / provider.eligibleSceneCount) * 100)
+      : null;
+    const detail = percentage === null
+      ? "No eligible scenes"
+      : `${provider.ownedSceneCount.toLocaleString()} of ${provider.eligibleSceneCount.toLocaleString()} owned`;
+    return h("div", { key: provider.endpoint, className: `complete-the-cove-progress ${provider.lastRefreshError ? "complete-the-cove-progress-stale" : ""}`, title: provider.lastRefreshError || `Last measured ${formatDateTime(provider.lastSuccessfulRefreshAt)}` }, [
+      h("div", { key: "heading", className: "complete-the-cove-progress-heading" }, [
+        h("span", { key: "provider", className: "font-medium" }, providerLabel(provider.endpoint)),
+        h("span", { key: "percentage", className: provider.lastRefreshError ? "text-amber-300" : "text-accent" }, percentage === null ? "—" : `${percentage}%`),
+      ]),
+      h("div", { key: "bar", className: "complete-the-cove-progress-bar", role: "progressbar", "aria-label": `${providerLabel(provider.endpoint)} completion`, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": percentage ?? 0 }, h("span", { className: "complete-the-cove-progress-fill", style: { width: `${percentage ?? 0}%` } })),
+      h("div", { key: "detail", className: "complete-the-cove-progress-detail text-muted" }, [h("span", { key: "counts" }, detail), provider.lastRefreshError ? h("span", { key: "stale", className: "text-amber-300" }, "Last successful measurement") : null]),
+    ]);
+  }));
+}
+
 const TARGET_SECTIONS = [
   { type: "performer", label: "Performers", singular: "performer", Icon: Users },
   { type: "studio", label: "Studios", singular: "studio", Icon: Building2 },
@@ -569,6 +589,7 @@ function TargetRow({ target, providers, refreshKey, onRefresh, onOpen, onUntrack
       h("span", { key: "count", className: "complete-the-cove-target-count text-accent" }, `${target.missingSceneCount.toLocaleString()} missing ${target.missingSceneCount === 1 ? "scene" : "scenes"}`),
       h("span", { key: "tracked", className: "complete-the-cove-target-meta text-muted" }, `Tracked ${formatDate(target.selectedAt)}`),
       h("span", { key: "refresh-state", className: `complete-the-cove-target-meta ${target.lastRefreshError ? "text-amber-300" : "text-muted"}` }, target.lastRefreshError || (target.lastRefreshAt ? `Last refreshed ${formatDateTime(target.lastRefreshAt)}` : "Not refreshed yet")),
+      h(ProviderProgress, { key: "progress", providers: target.providers }),
     ]),
     h("div", { key: "actions", className: "complete-the-cove-target-actions" }, [
       h(RefreshSplitButton, { key: "refresh", providers, disabled: Boolean(refreshKey), refreshing, refresh: (provider) => onRefresh(target, provider), title: `Refresh ${target.displayName} from all providers` }),
@@ -661,7 +682,7 @@ function MissingScenesPage({ onNavigate }) {
     h("div", { key: "content", id: "complete-the-cove-panel", role: "tabpanel", "aria-labelledby": activeTabId, className: "complete-the-cove-panel" }, location.view === "tracked"
       ? h(TrackedRecordsView, { overview, loading: overviewLoading, error: overviewError, reload: loadOverview, onOpen: (target) => navigateCatalog({ view: "scenes", targetType: target.type, targetId: target.entityId }) })
       : h("div", null, [
-        scope ? h("div", { key: "scope", className: `complete-the-cove-scope ${selectedTarget || overviewLoading ? "border-accent/40 bg-accent/10" : "border-amber-500/40 bg-amber-500/10"}` }, [h("div", { key: "copy" }, [h("div", { key: "title", className: "text-sm font-medium" }, overviewLoading ? "Loading tracked record..." : overviewError ? "Could not load tracked record details" : selectedTarget ? `Missing scenes for ${selectedTarget.displayName}` : "Tracked record is no longer available"), h("div", { key: "detail", className: "text-xs text-secondary" }, overviewLoading ? "The scene catalog remains scoped to this record." : overviewError ? `${overviewError} The scene catalog remains scoped.` : selectedTarget ? `${selectedTarget.missingSceneCount.toLocaleString()} linked ${selectedTarget.missingSceneCount === 1 ? "scene" : "scenes"}` : "No scenes should remain linked to this record.")]), h("button", { key: "clear", type: "button", onClick: () => navigateCatalog({ view: "scenes", targetType: null, targetId: null }), className: "rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, "Show all")]) : null,
+        scope ? h("div", { key: "scope", className: `complete-the-cove-scope ${selectedTarget || overviewLoading ? "border-accent/40 bg-accent/10" : "border-amber-500/40 bg-amber-500/10"}` }, [h("div", { key: "copy", className: "min-w-0 flex-1" }, [h("div", { key: "title", className: "text-sm font-medium" }, overviewLoading ? "Loading tracked record..." : overviewError ? "Could not load tracked record details" : selectedTarget ? `Missing scenes for ${selectedTarget.displayName}` : "Tracked record is no longer available"), h("div", { key: "detail", className: "text-xs text-secondary" }, overviewLoading ? "The scene catalog remains scoped to this record." : overviewError ? `${overviewError} The scene catalog remains scoped.` : selectedTarget ? `${selectedTarget.missingSceneCount.toLocaleString()} linked ${selectedTarget.missingSceneCount === 1 ? "scene" : "scenes"}` : "No scenes should remain linked to this record."), selectedTarget ? h(ProviderProgress, { key: "progress", providers: selectedTarget.providers }) : null]), h("button", { key: "clear", type: "button", onClick: () => navigateCatalog({ view: "scenes", targetType: null, targetId: null }), className: "rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, "Show all")]) : null,
         h(SceneGrid, { key: scope ? `${scope.type}:${scope.entityId}` : "all", scope, onNavigate, onRefreshed: loadOverview }),
       ])),
   ]);
@@ -675,7 +696,7 @@ function EntityTab({ entityId, type, onNavigate }) {
   async function toggle() { setBusy(true); setError(""); try { await request(url, { method: state?.tracked ? "DELETE" : "POST", body: state?.tracked ? undefined : "{}" }); await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } }
   if (!state) return h("p", { className: "text-sm text-secondary" }, error || "Loading completion status...");
   if (!state.tracked) return h("div", { className: "rounded-lg border border-border bg-card p-6 text-center" }, [h(Puzzle, { className: "mx-auto h-8 w-8 text-accent" }), h("h3", { className: "mt-3 text-lg font-semibold" }, "Track missing scenes"), h("p", { className: "mx-auto mt-1 max-w-lg text-sm text-secondary" }, "Track this entity across each configured metadata provider where it has a remote identity."), error ? h("p", { className: "mt-3 text-sm text-red-300" }, error) : null, h("button", { disabled: busy, onClick: toggle, className: "mt-4 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" }, busy ? "Tracking..." : "Track this entity")]);
-  return h("div", null, [h("div", { key: "status", className: "mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3" }, [h("div", null, [h("div", { className: "inline-flex items-center gap-2 text-sm font-medium" }, [state.tracked.lastRefreshError ? h(AlertTriangle, { className: "h-4 w-4 text-amber-400" }) : h(Check, { className: "h-4 w-4 text-green-400" }), "Tracked for completion"]), h("div", { className: "text-xs text-secondary" }, state.tracked.lastRefreshError || (state.tracked.lastRefreshAt ? `Last refreshed ${formatDateTime(state.tracked.lastRefreshAt)}` : "Not refreshed yet"))]), h("button", { disabled: busy, onClick: toggle, className: "inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, [h(X, { className: "h-4 w-4" }), "Untrack"])]), h(SceneGrid, { key: "grid", scope: { type, entityId }, onNavigate })]);
+  return h("div", null, [h("div", { key: "status", className: "mb-4 rounded-lg border border-border bg-card p-3" }, [h("div", { key: "heading", className: "flex flex-wrap items-center justify-between gap-3" }, [h("div", null, [h("div", { className: "inline-flex items-center gap-2 text-sm font-medium" }, [state.tracked.lastRefreshError ? h(AlertTriangle, { className: "h-4 w-4 text-amber-400" }) : h(Check, { className: "h-4 w-4 text-green-400" }), "Tracked for completion"]), h("div", { className: "text-xs text-secondary" }, state.tracked.lastRefreshError || (state.tracked.lastRefreshAt ? `Last refreshed ${formatDateTime(state.tracked.lastRefreshAt)}` : "Not refreshed yet"))]), h("button", { disabled: busy, onClick: toggle, className: "inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, [h(X, { className: "h-4 w-4" }), "Untrack"])]), h(ProviderProgress, { key: "progress", providers: state.tracked.providers })]), h(SceneGrid, { key: "grid", scope: { type, entityId }, onNavigate })]);
 }
 
 function MissingSceneDetailPage({ id, onNavigate }) {

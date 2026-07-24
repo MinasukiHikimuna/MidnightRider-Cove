@@ -640,6 +640,69 @@
   font-size: 0.75rem;
 }
 
+.complete-the-cove-target-main > .complete-the-cove-progress-list,
+.complete-the-cove-target-main > .complete-the-cove-progress-empty {
+  grid-column: 1 / -1;
+}
+
+.complete-the-cove-progress-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.complete-the-cove-progress {
+  min-width: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-surface) 75%, transparent);
+}
+
+.complete-the-cove-progress-stale {
+  border-color: color-mix(in srgb, rgb(245 158 11) 55%, var(--color-border));
+}
+
+.complete-the-cove-progress-heading,
+.complete-the-cove-progress-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.complete-the-cove-progress-heading {
+  font-size: 0.75rem;
+}
+
+.complete-the-cove-progress-bar {
+  height: 0.375rem;
+  margin: 0.375rem 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-input);
+}
+
+.complete-the-cove-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 200ms ease;
+}
+
+.complete-the-cove-progress-detail,
+.complete-the-cove-progress-empty {
+  font-size: 0.6875rem;
+}
+
+.complete-the-cove-progress-empty {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
 .complete-the-cove-target-actions {
   display: flex;
   flex: 0 0 auto;

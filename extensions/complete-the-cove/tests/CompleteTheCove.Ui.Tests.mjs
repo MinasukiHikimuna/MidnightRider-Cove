@@ -169,6 +169,21 @@ test("provides a staged native-like filter panel for related entities", async ()
   assert.match(stylesheet, /\.complete-the-cove-filter-choice-active/);
 });
 
+test("renders provider-specific completion only for successfully measured providers", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+
+  assert.match(source, /function ProviderProgress/);
+  assert.match(source, /providers\.map/);
+  assert.match(source, /Refresh to calculate progress/);
+  assert.match(source, /No eligible scenes/);
+  assert.match(source, /Math\.round\(\(provider\.ownedSceneCount \/ provider\.eligibleSceneCount\) \* 100\)/);
+  assert.match(source, /provider\.lastRefreshError/);
+  assert.equal((source.match(/h\(ProviderProgress,/g) || []).length, 3);
+  assert.match(stylesheet, /\.complete-the-cove-progress-bar/);
+  assert.match(stylesheet, /\.complete-the-cove-progress-fill/);
+});
+
 test("parses and writes catalog URLs without losing unrelated parameters", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/function readCatalogLocation\(\) \{[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
