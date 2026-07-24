@@ -230,8 +230,6 @@ public sealed class CompletionCatalog(
             .Where(item => !owned.Contains(item.RemoteId!))
             .Select(item => item.Scene)
             .ToList();
-        target.EligibleSceneCount = eligible.Count;
-        target.OwnedSceneCount = eligible.Count(item => owned.Contains(item.RemoteId!));
 
         var priorLinks = await db.Set<CompletionSceneTarget>().Include(x => x.Scene).ThenInclude(scene => scene!.Tags)
             .Where(x => x.TargetId == target.Id).ToListAsync(ct);
@@ -251,6 +249,8 @@ public sealed class CompletionCatalog(
         db.RemoveRange(removed);
         await db.SaveChangesAsync(ct);
         await DeleteOrphansAsync(ct);
+        target.EligibleSceneCount = eligible.Count;
+        target.OwnedSceneCount = eligible.Count(item => owned.Contains(item.RemoteId!));
         return totals with
         {
             Examined = totals.Examined + discovered.Count,

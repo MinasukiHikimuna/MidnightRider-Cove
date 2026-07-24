@@ -618,6 +618,32 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task Failed_reconciliation_keeps_last_successful_provider_progress()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        await catalog.RefreshAsync(
+            new FakeDiscovery(Scene("first")),
+            new CompleteSettings(new HashSet<string>()),
+            null, null, new ProgressStub(), default);
+        var successfulAt = (await db.Set<CompletionTarget>().SingleAsync()).LastSuccessfulRefreshAt;
+        var invalid = Scene("invalid") with { Performers = null! };
+
+        await catalog.RefreshAsync(
+            new FakeDiscovery(Scene("second"), invalid),
+            new CompleteSettings(new HashSet<string>()),
+            null, null, new ProgressStub(), default);
+
+        var target = await db.Set<CompletionTarget>().SingleAsync();
+        Assert.Equal(successfulAt, target.LastSuccessfulRefreshAt);
+        Assert.Equal(1, target.EligibleSceneCount);
+        Assert.Equal(0, target.OwnedSceneCount);
+        Assert.NotNull(target.LastRefreshError);
+    }
+
+    [Fact]
     public async Task Scene_filters_support_any_all_exclusions_and_cross_criterion_and()
     {
         await using var db = CreateDb();
