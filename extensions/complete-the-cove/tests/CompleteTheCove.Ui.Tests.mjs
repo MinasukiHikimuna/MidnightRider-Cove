@@ -184,6 +184,15 @@ test("renders provider-specific completion only for successfully measured provid
   assert.match(stylesheet, /\.complete-the-cove-progress-fill/);
 });
 
+test("keeps tracked target names readable and actions below content on mobile", async () => {
+  const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
+  const mobile = stylesheet.match(/@media \(max-width: 639px\) \{[\s\S]*\n\}/)?.[0] ?? "";
+
+  assert.match(mobile, /\.complete-the-cove-target-row\s*\{[\s\S]*?flex-direction: column/);
+  assert.match(mobile, /\.complete-the-cove-target-name\s*\{[\s\S]*?white-space: normal/);
+  assert.match(mobile, /\.complete-the-cove-target-actions\s*\{[\s\S]*?flex-direction: row/);
+});
+
 test("parses and writes catalog URLs without losing unrelated parameters", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/function readCatalogLocation\(\) \{[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];

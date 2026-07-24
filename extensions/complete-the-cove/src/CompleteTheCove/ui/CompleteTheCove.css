@@ -814,19 +814,27 @@
     flex-direction: column;
   }
 
+  .complete-the-cove-target-row {
+    flex-direction: column;
+  }
+
   .complete-the-cove-target-main {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.25rem 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
   }
 
   .complete-the-cove-target-name {
     grid-column: 1;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .complete-the-cove-target-count {
-    grid-column: 2;
-    grid-row: 1;
-    text-align: right;
+    grid-column: 1;
+    grid-row: auto;
+    text-align: left;
   }
 
   .complete-the-cove-target-meta {
@@ -835,7 +843,9 @@
   }
 
   .complete-the-cove-target-actions {
-    flex-direction: column;
+    justify-content: flex-end;
+    flex-direction: row;
+    border-top: 1px solid var(--color-border);
   }
 
   .complete-the-cove-scope {
