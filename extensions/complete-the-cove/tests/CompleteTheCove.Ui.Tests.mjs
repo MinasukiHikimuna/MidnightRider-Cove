@@ -138,7 +138,8 @@ test("provides a URL-backed tracked-records overview with grouped target section
   assert.match(source, /params\.set\("view", "tracked"\)/);
   assert.match(source, /targetType/);
   assert.match(source, /targetId/);
-  assert.match(source, /Tracked Records/);
+  assert.match(source, /\}, \["Tracked",/);
+  assert.doesNotMatch(source, /\["Tracked Records",/);
   assert.match(source, /Performers/);
   assert.match(source, /Studios/);
   assert.match(source, /Tags/);
