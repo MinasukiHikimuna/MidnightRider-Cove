@@ -448,9 +448,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     {
         var page = Math.Max(1, ParseInt(request.Query["page"], 1));
         var perPage = Math.Clamp(ParseInt(request.Query["perPage"], 24), 1, 96);
-        var query = db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any());
-        var showIgnored = bool.TryParse(request.Query["showIgnored"], out var parsedShowIgnored) && parsedShowIgnored;
-        if (!showIgnored) query = query.Where(x => !x.IsIgnored);
+        var query = ApplyIgnoredStatus(request, db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any()));
         var q = request.Query["q"].ToString().Trim().ToLowerInvariant();
         if (q.Length > 0) query = query.Where(x => (x.Title ?? "").ToLower().Contains(q) || (x.Code ?? "").ToLower().Contains(q)
             || (x.StudioName ?? "").ToLower().Contains(q) || x.Performers.Any(p => p.Name.ToLower().Contains(q)) || x.Tags.Any(t => t.Name.ToLower().Contains(q)));
@@ -510,15 +508,30 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
 
     private static async Task<IResult> GetFacets(HttpRequest request, DbContext db, CancellationToken ct)
     {
-        var showIgnored = bool.TryParse(request.Query["showIgnored"], out var parsedShowIgnored) && parsedShowIgnored;
-        var videos = db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any() && (showIgnored || !x.IsIgnored));
+        var videos = ApplyIgnoredStatus(request, db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any()));
         return Results.Ok(new
         {
             providers = await videos.GroupBy(x => x.RemoteEndpoint).Select(x => new { value = x.Key, name = x.Key, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
-            performers = await db.Set<CompletionVideoPerformer>().AsNoTracking().Where(x => x.Video!.Targets.Any() && (showIgnored || !x.Video.IsIgnored)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
+            performers = await db.Set<CompletionVideoPerformer>().AsNoTracking().Where(x => videos.Any(video => video.Id == x.VideoId)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
             studios = await videos.Where(x => x.StudioRemoteId != null).GroupBy(x => new { x.RemoteEndpoint, x.StudioRemoteId, x.StudioName }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.StudioRemoteId, name = x.Key.StudioName, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
-            tags = await db.Set<CompletionVideoTag>().AsNoTracking().Where(x => x.Video!.Targets.Any() && (showIgnored || !x.Video.IsIgnored)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
+            tags = await db.Set<CompletionVideoTag>().AsNoTracking().Where(x => videos.Any(video => video.Id == x.VideoId)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
         });
+    }
+
+    internal static IQueryable<CompletionVideo> ApplyIgnoredStatus(HttpRequest request, IQueryable<CompletionVideo> videos)
+    {
+        var status = request.Query["ignored"].ToString();
+        if (status == "all"
+            || (status.Length == 0
+                && bool.TryParse(request.Query["showIgnored"], out var showIgnored)
+                && showIgnored))
+        {
+            return videos;
+        }
+
+        return status == "ignored"
+            ? videos.Where(video => video.IsIgnored)
+            : videos.Where(video => !video.IsIgnored);
     }
 
     private static async Task<IResult> GetTargets(CompletionCatalog catalog, CancellationToken ct) => Results.Ok(await catalog.GetTargetOverviewAsync(ct));

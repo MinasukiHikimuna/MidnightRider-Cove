@@ -755,6 +755,32 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task Ignored_status_filter_supports_all_ignored_not_ignored_and_legacy_urls()
+    {
+        await using var db = CreateDb();
+        db.AddRange(
+            new CompletionVideo { RemoteEndpoint = "https://example.test", RemoteId = "visible", IsIgnored = false },
+            new CompletionVideo { RemoteEndpoint = "https://example.test", RemoteId = "ignored", IsIgnored = true });
+        await db.SaveChangesAsync();
+
+        async Task<string[]> Filter(string query)
+        {
+            var context = new DefaultHttpContext();
+            context.Request.QueryString = new QueryString(query);
+            return await CompleteTheCoveExtension.ApplyIgnoredStatus(context.Request, db.Set<CompletionVideo>())
+                .OrderBy(video => video.RemoteId)
+                .Select(video => video.RemoteId)
+                .ToArrayAsync();
+        }
+
+        Assert.Equal(["visible"], await Filter(""));
+        Assert.Equal(["ignored", "visible"], await Filter("?ignored=all"));
+        Assert.Equal(["ignored"], await Filter("?ignored=ignored"));
+        Assert.Equal(["visible"], await Filter("?ignored=not-ignored"));
+        Assert.Equal(["ignored", "visible"], await Filter("?showIgnored=true"));
+    }
+
+    [Fact]
     public async Task Excluded_video_is_removed_on_successful_reconciliation()
     {
         await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();

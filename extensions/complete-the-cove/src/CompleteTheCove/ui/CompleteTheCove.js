@@ -49,21 +49,21 @@ const DEFAULT_CATALOG_FILTERS = Object.freeze({
   performer: [], excludePerformer: [], performerMode: "any",
   studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
   tag: [], excludeTag: [], tagMode: "any",
-  showIgnored: false, sort: "release", direction: "desc", page: 1,
+  ignored: "not-ignored", sort: "release", direction: "desc", page: 1,
 });
 const CATALOG_FILTER_KEYS = [
   "q", "provider",
   "performer", "excludePerformer", "performerMode",
   "studio", "excludeStudio", "studioMode", "includeSubstudios",
   "tag", "excludeTag", "tagMode",
-  "showIgnored", "sort", "direction", "page",
+  "ignored", "showIgnored", "sort", "direction", "page",
 ];
 const SCOPED_CATALOG_FILTER_KEYS = Object.freeze({
   q: "ctcQ", provider: "ctcProvider",
   performer: "ctcPerformer", excludePerformer: "ctcExcludePerformer", performerMode: "ctcPerformerMode",
   studio: "ctcStudio", excludeStudio: "ctcExcludeStudio", studioMode: "ctcStudioMode", includeSubstudios: "ctcIncludeSubstudios",
   tag: "ctcTag", excludeTag: "ctcExcludeTag", tagMode: "ctcTagMode",
-  showIgnored: "ctcShowIgnored", sort: "ctcSort", direction: "ctcDirection", page: "ctcPage",
+  ignored: "ctcIgnored", showIgnored: "ctcShowIgnored", sort: "ctcSort", direction: "ctcDirection", page: "ctcPage",
 });
 
 function catalogFilterKey(key, pathname = window.location.pathname) {
@@ -89,7 +89,9 @@ function readCatalogFilters() {
     tag: values("tag"),
     excludeTag: values("excludeTag"),
     tagMode: mode("tagMode"),
-    showIgnored: value("showIgnored") === "true",
+    ignored: ["all", "ignored", "not-ignored"].includes(value("ignored"))
+      ? value("ignored")
+      : value("showIgnored") === "true" ? "all" : "not-ignored",
     sort: value("sort") === "title" ? "title" : "release",
     direction: value("direction") === "asc" ? "asc" : "desc",
     page: Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1,
@@ -107,7 +109,7 @@ function appendCatalogFilterParams(params, filters, key = (name) => name) {
     if (filters[modeKey] && filters[modeKey] !== "any") params.set(key(modeKey), filters[modeKey]);
   }
   if (filters.includeSubstudios) params.set(key("includeSubstudios"), "true");
-  if (filters.showIgnored) params.set(key("showIgnored"), "true");
+  if (filters.ignored !== DEFAULT_CATALOG_FILTERS.ignored) params.set(key("ignored"), filters.ignored);
   if (filters.sort !== DEFAULT_CATALOG_FILTERS.sort) params.set(key("sort"), filters.sort);
   if (filters.direction !== DEFAULT_CATALOG_FILTERS.direction) params.set(key("direction"), filters.direction);
   if (filters.page > 1) params.set(key("page"), String(filters.page));
@@ -393,7 +395,28 @@ function activeCatalogFilterCount(filters) {
     if (filters[`${facet}Mode`] !== "any") count += 1;
   }
   if (filters.includeSubstudios) count += 1;
+  if (filters.ignored !== DEFAULT_CATALOG_FILTERS.ignored) count += 1;
   return count;
+}
+
+function IgnoredStatusCriterion({ draft, setDraft }) {
+  const options = [
+    ["all", "All videos"],
+    ["ignored", "Ignored"],
+    ["not-ignored", "Not ignored"],
+  ];
+  return h("section", { className: "complete-the-cove-filter-criterion" }, [
+    h("div", { key: "heading", className: "complete-the-cove-filter-criterion-heading" },
+      h("h3", null, "Ignored status")),
+    h("div", { key: "modes", className: "complete-the-cove-filter-modes", role: "group", "aria-label": "Ignored status" },
+      options.map(([value, label]) => h("button", {
+        key: value,
+        type: "button",
+        onClick: () => setDraft((current) => ({ ...current, ignored: value })),
+        className: `complete-the-cove-filter-mode ${draft.ignored === value ? "complete-the-cove-filter-choice-active" : ""}`,
+        "aria-pressed": draft.ignored === value,
+      }, label))),
+  ]);
 }
 
 function FacetCriterion({ facet, label, values, draft, setDraft, allowSubstudios = false }) {
@@ -472,6 +495,7 @@ function CatalogFilterPanel({ open, filters, facets, onApply, onClose }) {
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
     tag: [], excludeTag: [], tagMode: "any",
+    ignored: DEFAULT_CATALOG_FILTERS.ignored,
   }));
   return createPortal(h("div", { className: "complete-the-cove-filter-backdrop", onMouseDown: (event) => { if (event.target === event.currentTarget) onClose(); } }, h("div", { className: "complete-the-cove-filter-panel", role: "dialog", "aria-modal": true, "aria-labelledby": "complete-the-cove-filter-title" }, [
     h("header", { key: "header", className: "complete-the-cove-filter-header" }, [
@@ -479,6 +503,7 @@ function CatalogFilterPanel({ open, filters, facets, onApply, onClose }) {
       h("button", { key: "close", type: "button", onClick: onClose, className: "complete-the-cove-icon-button text-secondary", title: "Close filters", "aria-label": "Close filters" }, h(X, { className: "h-4 w-4" })),
     ]),
     h("div", { key: "body", className: "complete-the-cove-filter-body" }, [
+      h(IgnoredStatusCriterion, { key: "ignored", draft, setDraft }),
       h(FacetCriterion, { key: "performers", facet: "performer", label: "Performers", values: facets.performers || [], draft, setDraft }),
       h(FacetCriterion, { key: "studios", facet: "studio", label: "Studios", values: facets.studios || [], draft, setDraft, allowSubstudios: true }),
       h(FacetCriterion, { key: "tags", facet: "tag", label: "Tags", values: facets.tags || [], draft, setDraft }),
@@ -516,10 +541,6 @@ function CatalogControls({ filters, setFilters, facets, refresh, refreshing, pro
     ]),
     h("select", { key: "provider", "aria-label": "All providers", value: filters.provider, onChange: (event) => setFilters((current) => ({ ...current, provider: event.target.value, page: 1 })), className: "complete-the-cove-select complete-the-cove-provider-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "", value: "" }, "All providers"), ...(facets.providers || []).map((item) => h("option", { key: item.value, value: item.value }, `${providerLabel(item.value)} (${item.count})`))]),
     h("button", { key: "filter", type: "button", onClick: () => setFilterOpen(true), className: `complete-the-cove-filter-trigger ${activeFilterCount ? "complete-the-cove-filter-trigger-active" : ""}`, "aria-haspopup": "dialog" }, [h(MoreHorizontal, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Filter"), activeFilterCount ? h("span", { key: "count", className: "complete-the-cove-filter-trigger-count" }, String(activeFilterCount)) : null]),
-    h("details", { key: "options", className: "relative" }, [
-      h("summary", { key: "trigger", title: "More catalog options", "aria-label": "More catalog options", className: "complete-the-cove-icon-button flex cursor-pointer list-none items-center justify-center text-secondary [&::-webkit-details-marker]:hidden" }, h(MoreHorizontal, { className: "h-4 w-4" })),
-      h("div", { key: "menu", className: "absolute right-0 top-full z-20 mt-1 min-w-48 rounded-md border border-border bg-card p-2 shadow-lg" }, h("label", { className: "flex cursor-pointer items-center gap-2 whitespace-nowrap px-2 py-1.5 text-sm text-secondary" }, [h("input", { key: "input", type: "checkbox", checked: filters.showIgnored, onChange: (event) => setFilters((current) => ({ ...current, showIgnored: event.target.checked, page: 1 })) }), h(EyeOff, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Show ignored videos")]))
-    ]),
     h("div", { key: "sort", className: "complete-the-cove-sort" }, [
       h("select", { key: "field", "aria-label": "Sort missing videos", value: filters.sort, onChange: (event) => setFilters((current) => ({ ...current, sort: event.target.value, page: 1 })), className: "complete-the-cove-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "release", value: "release" }, "Release date"), h("option", { key: "title", value: "title" }, "Title")]),
       h("button", { key: "direction", type: "button", onClick: () => setFilters((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc", page: 1 })), className: "complete-the-cove-icon-button text-secondary", title: filters.direction === "asc" ? "Ascending" : "Descending", "aria-label": filters.direction === "asc" ? "Ascending" : "Descending" }, filters.direction === "desc" ? h(ArrowDown, { className: "h-3.5 w-3.5" }) : h(ArrowUp, { className: "h-3.5 w-3.5" })),
@@ -556,7 +577,7 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
   }, []);
   const query = useMemo(() => catalogApiQuery(filters, scope), [filters, scope?.type, scope?.entityId]);
   useEffect(() => { let cancelled = false; const requestQuery = query; request(`${API}/videos?${requestQuery}`).then((value) => { if (!cancelled) { setData({ ...value, query: requestQuery }); setError(""); } }).catch((err) => !cancelled && setError(err.message)); return () => { cancelled = true; }; }, [query, reloadVersion]);
-  useEffect(() => { request(`${API}/facets?showIgnored=${filters.showIgnored}`).then(setFacets).catch(() => {}); }, [filters.showIgnored, reloadVersion]);
+  useEffect(() => { request(`${API}/facets?ignored=${encodeURIComponent(filters.ignored)}`).then(setFacets).catch(() => {}); }, [filters.ignored, reloadVersion]);
   useEffect(() => { request(`${API}/providers`).then(setProviders).catch(() => {}); }, []);
   useEffect(() => {
     setFilters((current) => clampCatalogFilters(current, data, query));

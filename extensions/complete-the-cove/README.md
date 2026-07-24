@@ -10,8 +10,8 @@ This extension keeps a catalog of metadata-server videos that are missing from o
 - Cove `VideoRemoteId` rows for each configured provider determine which videos already exist locally.
 - Missing video metadata, relationships, selection links, refresh state, and cover blob IDs live in extension-owned tables. Cover bytes live in Cove's extension blob store.
 - Successful refreshes reconcile the selected entity: new missing videos are added, videos now present in Cove are removed, and videos shared by another selection remain.
-- Individual missing videos can be ignored from their detail page. Ignored videos remain hidden across catalog refreshes until **Show ignored videos** is enabled and the video is unignored.
-- Missing Videos URLs preserve search, provider, performer, studio, and tag filters, sorting, page, and the **Show ignored videos** option in both the top-level catalog and entity tabs. Opening a video and using **Back to Missing Videos** restores the originating catalog view, and the URL can be bookmarked or shared.
+- Individual missing videos can be ignored from their detail page. The **Ignored status** filter can show all videos, only ignored videos, or only videos that are not ignored.
+- Missing Videos URLs preserve search, provider, performer, studio, tag, ignored-status, sorting, and page filters in both the top-level catalog and entity tabs. Opening a video and using **Back to Missing Videos** restores the originating catalog view, and the URL can be bookmarked or shared.
 - Exact, case-insensitive tag names configured in `excluded_tags` are omitted.
 
 ## Intentionally unsupported legacy behavior

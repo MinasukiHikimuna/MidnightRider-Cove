@@ -201,7 +201,7 @@ test("uses Cove video terminology and reserves the missing-cover ribbon for deta
   assert.match(source, /"Missing Videos"/);
   assert.match(source, /"Remote videos missing from this Cove/);
   assert.match(source, /"Search missing videos"/);
-  assert.match(source, /"Show ignored videos"/);
+  assert.match(source, /"Not ignored"/);
   assert.match(source, /"No missing videos match this view."/);
   assert.match(source, /\/missing-videos/);
   assert.match(source, /\/missing-video\//);
@@ -253,7 +253,7 @@ test("persists missing-video catalog filters in the URL", async () => {
   const window = {
     location: {
       pathname: "/missing-videos",
-      search: "?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performerMode=all&performer=remote%7C7&performer=remote%7C17&excludePerformer=remote%7C27&studio=remote%7C8&includeSubstudios=true&tagMode=not-null&excludeTag=remote%7C9&showIgnored=true&sort=title&direction=asc&page=3",
+      search: "?keep=yes&q=Crystal&provider=https%3A%2F%2Fexample.test%2Fgraphql&performerMode=all&performer=remote%7C7&performer=remote%7C17&excludePerformer=remote%7C27&studio=remote%7C8&includeSubstudios=true&tagMode=not-null&excludeTag=remote%7C9&ignored=all&sort=title&direction=asc&page=3",
     },
     history: { replaceState: (_state, _title, url) => { replacedUrl = url; } },
   };
@@ -272,7 +272,7 @@ test("persists missing-video catalog filters in the URL", async () => {
     tag: [],
     excludeTag: ["remote|9"],
     tagMode: "not-null",
-    showIgnored: true,
+    ignored: "all",
     sort: "title",
     direction: "asc",
     page: 3,
@@ -286,7 +286,7 @@ test("persists missing-video catalog filters in the URL", async () => {
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
     tag: [], excludeTag: [], tagMode: "any",
-    showIgnored: false, sort: "release", direction: "desc", page: 1,
+    ignored: "not-ignored", sort: "release", direction: "desc", page: 1,
   });
   assert.equal(replacedUrl, "/missing-videos?keep=yes", "default values should be omitted without losing unrelated parameters");
 
@@ -299,7 +299,7 @@ test("persists missing-video catalog filters in the URL", async () => {
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
     tag: [], excludeTag: [], tagMode: "any",
-    showIgnored: false, sort: "title", direction: "desc", page: 1,
+    ignored: "not-ignored", sort: "title", direction: "desc", page: 1,
   });
   assert.equal(replacedUrl, "/performer/42?tab=ext%3Amissing-videos&q=host-search&view=host-view&returnTo=host-return&ctcQ=changed&ctcSort=title");
   const scopedDetailUrl = helpers.missingVideoDetailUrl(17);
@@ -312,13 +312,13 @@ test("persists missing-video catalog filters in the URL", async () => {
     assert.equal(helpers.missingVideosCatalogUrl(), "/missing-videos?ctcQ=test", `must reject unsafe return path ${unsafeReturnTo}`);
   }
 
-  window.location.search = "?q=test&showIgnored=maybe&sort=unknown&direction=sideways&page=-2";
+  window.location.search = "?q=test&ignored=unknown&sort=unknown&direction=sideways&page=-2";
   assert.deepEqual(helpers.readCatalogFilters(), {
     q: "test", provider: "",
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
     tag: [], excludeTag: [], tagMode: "any",
-    showIgnored: false, sort: "release", direction: "desc", page: 1,
+    ignored: "not-ignored", sort: "release", direction: "desc", page: 1,
   });
 });
 
@@ -362,17 +362,20 @@ test("filters videos by provider and renders linked native-like detail entities"
   assert.match(source, /\/api\/studios\/\$\{video\.coveStudioId\}\/image/);
 });
 
-test("hides ignored videos by default and supports showing and restoring them", async () => {
+test("filters ignored status inside the filter panel with legacy URL compatibility", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
-  assert.match(source, /showIgnored: false/);
-  assert.match(source, /Show ignored videos/);
-  assert.match(source, /showIgnored=\$\{filters\.showIgnored\}/);
+  assert.match(source, /ignored: "not-ignored"/);
+  assert.match(source, /\["all", "All videos"\]/);
+  assert.match(source, /\["ignored", "Ignored"\]/);
+  assert.match(source, /\["not-ignored", "Not ignored"\]/);
+  assert.match(source, /"aria-label": "Ignored status"/);
+  assert.match(source, /value\("showIgnored"\) === "true" \? "all"/);
+  assert.doesNotMatch(source, /Show ignored videos/);
+  assert.doesNotMatch(source, /More catalog options/);
   assert.match(source, /method: video\.isIgnored \? "DELETE" : "POST"/);
   assert.match(source, /video\.isIgnored \? "Unignore" : "Ignore"/);
   assert.match(source, /video\.isIgnored \? Eye : EyeOff/);
-  assert.match(source, /More catalog options/);
-  assert.match(source, /h\(MoreHorizontal,/);
 });
 
 test("settings select multiple configured metadata providers", async () => {
