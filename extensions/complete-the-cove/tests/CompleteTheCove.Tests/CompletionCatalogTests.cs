@@ -755,6 +755,25 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task Studio_facets_include_matching_studios_and_their_parents()
+    {
+        await using var db = CreateDb();
+        db.AddRange(
+            StudioVideo("child-one", "child", "Child", "parent", "Parent old"),
+            StudioVideo("child-two", "child", "Child", "parent", "Parent"),
+            StudioVideo("parent-direct", "parent", "Parent canonical"),
+            StudioVideo("self-parent", "parent", "Parent canonical", "parent", "Parent stale"),
+            StudioVideo("other", "other", "Other"));
+        await db.SaveChangesAsync();
+
+        var facets = (await CompleteTheCoveExtension.BuildStudioFacetsAsync(db.Set<CompletionVideo>()))
+            .Select(facet => $"{facet.Name}:{facet.Count}")
+            .ToArray();
+
+        Assert.Equal(["Child:2", "Other:1", "Parent canonical:4"], facets);
+    }
+
+    [Fact]
     public async Task Ignored_status_filter_supports_all_ignored_not_ignored_and_legacy_urls()
     {
         await using var db = CreateDb();
@@ -902,6 +921,21 @@ public sealed class CompletionCatalogTests
                 RemoteId = remoteId,
                 Name = remoteId
             }).ToList()
+        };
+    private static CompletionVideo StudioVideo(
+        string id,
+        string studioId,
+        string studioName,
+        string? parentStudioId = null,
+        string? parentStudioName = null) => new()
+        {
+            RemoteEndpoint = "https://stashdb.org/graphql",
+            RemoteId = id,
+            Title = id,
+            StudioRemoteId = studioId,
+            StudioName = studioName,
+            ParentStudioRemoteId = parentStudioId,
+            ParentStudioName = parentStudioName
         };
     private static string Facet(string remoteId) => $"https://stashdb.org/graphql|{remoteId}";
     private static async Task<string[]> ApplyVideoFilters(

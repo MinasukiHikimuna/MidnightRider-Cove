@@ -17,6 +17,13 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         CompletionTargetType? TargetType,
         int? EntityId,
         string? ProviderEndpoint);
+    private sealed record StudioFacetCandidate(
+        string Value,
+        string? Name,
+        int Count,
+        bool IsDirect);
+    private sealed record StudioFacetOverlap(string Value, int Count);
+    internal sealed record StudioFacet(string Value, string? Name, int Count);
 
     private static readonly TargetSurface[] TargetSurfaces =
     [
@@ -513,10 +520,77 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         {
             providers = await videos.GroupBy(x => x.RemoteEndpoint).Select(x => new { value = x.Key, name = x.Key, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
             performers = await db.Set<CompletionVideoPerformer>().AsNoTracking().Where(x => videos.Any(video => video.Id == x.VideoId)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
-            studios = await videos.Where(x => x.StudioRemoteId != null).GroupBy(x => new { x.RemoteEndpoint, x.StudioRemoteId, x.StudioName }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.StudioRemoteId, name = x.Key.StudioName, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
+            studios = await BuildStudioFacetsAsync(videos, ct),
             tags = await db.Set<CompletionVideoTag>().AsNoTracking().Where(x => videos.Any(video => video.Id == x.VideoId)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
         });
     }
+
+    internal static async Task<IReadOnlyList<StudioFacet>> BuildStudioFacetsAsync(
+        IQueryable<CompletionVideo> videos,
+        CancellationToken ct = default)
+    {
+        var matchingStudios = await videos
+            .Where(video => video.StudioRemoteId != null)
+            .GroupBy(video => new
+            {
+                video.RemoteEndpoint,
+                video.StudioRemoteId,
+                video.StudioName
+            })
+            .Select(group => new StudioFacetCandidate(
+                group.Key.RemoteEndpoint + "|" + group.Key.StudioRemoteId,
+                group.Key.StudioName,
+                group.Count(),
+                true))
+            .ToListAsync(ct);
+        var parentStudios = await videos
+            .Where(video => video.ParentStudioRemoteId != null)
+            .GroupBy(video => new
+            {
+                video.RemoteEndpoint,
+                video.ParentStudioRemoteId,
+                video.ParentStudioName
+            })
+            .Select(group => new StudioFacetCandidate(
+                group.Key.RemoteEndpoint + "|" + group.Key.ParentStudioRemoteId,
+                group.Key.ParentStudioName,
+                group.Count(),
+                false))
+            .ToListAsync(ct);
+        var overlappingStudios = await videos
+            .Where(video => video.StudioRemoteId != null
+                && video.StudioRemoteId == video.ParentStudioRemoteId)
+            .GroupBy(video => new { video.RemoteEndpoint, video.StudioRemoteId })
+            .Select(group => new StudioFacetOverlap(
+                group.Key.RemoteEndpoint + "|" + group.Key.StudioRemoteId,
+                group.Count()))
+            .ToDictionaryAsync(overlap => overlap.Value, overlap => overlap.Count, ct);
+
+        return matchingStudios
+            .Concat(parentStudios)
+            .GroupBy(studio => studio.Value)
+            .Select(group => new StudioFacet(
+                group.Key,
+                PreferredStudioCandidate(group).Name,
+                group.Sum(studio => studio.Count)
+                    - overlappingStudios.GetValueOrDefault(group.Key)))
+            .OrderBy(studio => studio.Name)
+            .ThenBy(studio => studio.Value)
+            .ToList();
+    }
+
+    private static StudioFacetCandidate PreferredStudioCandidate(
+        IEnumerable<StudioFacetCandidate> candidates) =>
+        candidates
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.Name))
+            .OrderByDescending(candidate => candidate.IsDirect)
+            .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(candidate => candidate.Name, StringComparer.Ordinal)
+            .FirstOrDefault()
+        ?? candidates
+            .OrderByDescending(candidate => candidate.IsDirect)
+            .ThenBy(candidate => candidate.Value, StringComparer.Ordinal)
+            .First();
 
     internal static IQueryable<CompletionVideo> ApplyIgnoredStatus(HttpRequest request, IQueryable<CompletionVideo> videos)
     {
