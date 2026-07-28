@@ -25,7 +25,7 @@ vulnerability database and should be refreshed before publishing an image.
 - Scan date: 2026-07-28
 - Image tag: `segment-studio-analysis:0.1.0`
 - Local immutable image ID:
-  `sha256:559e2af414808293fd9153b790d37803d2130445ae2bb32be945bb730f38caaa`
+  `sha256:cf5f4a09a8cc7d2d248e72e9fbff0dea25d3bc40fec44d3efac47524b040d9ca`
 - SBOM packages: 521
 - Findings: 5 critical, 44 high, 960 medium, 128 low, and 17 negligible
 
