@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1",
+  "requestId": "00000000-0000-4000-8000-000000000001",
+  "sourcePath": "/media/library/sanitized-example.mp4",
+  "analyses": [
+    "aiTagging",
+    "omnishotcut"
+  ],
+  "proxy": {
+    "enabled": true
+  },
+  "ai": {
+    "models": [
+      "example-model"
+    ],
+    "categoriesToSkip": [],
+    "frameIntervalSeconds": 2.0,
+    "threshold": 0.5,
+    "candidateConfidenceFloor": 0.35,
+    "returnConfidence": true,
+    "vrVideo": false,
+    "loadPolicy": "load_if_cheap",
+    "pipelineName": null
+  },
+  "omnishotcut": {
+    "mode": "clean_shot",
+    "numContextFrames": 0
+  }
+}

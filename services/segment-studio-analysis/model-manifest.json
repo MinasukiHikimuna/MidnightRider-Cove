@@ -1,0 +1,21 @@
+{
+  "omnishotcut": {
+    "sourceRepository": "https://github.com/UVA-Computer-Vision-Lab/OmniShotCut",
+    "sourceRevision": "338c0e70a053fabc4d95a87e7b897c28aed65648",
+    "checkpointRepository": "https://huggingface.co/uva-cv-lab/OmniShotCut",
+    "checkpointRevision": "7f646c4ff4bb843e18c013481fb5d9ed2b068c6b",
+    "checkpointFilename": "OmniShotCut_ckpt.pth",
+    "checkpointSha256": "5948ea78e00626c0e6c5e742e64873ef872cf4a5071d2a0841aed51c3e686cfa",
+    "backbone": {
+      "name": "ResNet-18",
+      "sourceUrl": "https://download.pytorch.org/models/resnet18-f37072fd.pth",
+      "filename": "resnet18-f37072fd.pth",
+      "sha256": "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec"
+    }
+  },
+  "runtime": {
+    "pytorch": "2.5.1+cu124",
+    "cuda": "12.4",
+    "ffmpeg": "runtime image distribution package; record exact output from the built image"
+  }
+}

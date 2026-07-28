@@ -1,0 +1,983 @@
+{
+  "components": {
+    "schemas": {
+      "AiAnalysisResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "frameIntervalSeconds": {
+            "title": "Frameintervalseconds",
+            "type": "number"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/AiModelResponse"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentResponse"
+            },
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "models",
+          "frameIntervalSeconds",
+          "segments"
+        ],
+        "title": "AiAnalysisResponse",
+        "type": "object"
+      },
+      "AiModelResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "configName": {
+            "title": "Configname",
+            "type": "string"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "configName"
+        ],
+        "title": "AiModelResponse",
+        "type": "object"
+      },
+      "AiOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateConfidenceFloor": {
+            "default": 0.35,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Candidateconfidencefloor",
+            "type": "number"
+          },
+          "categoriesToSkip": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categoriestoskip",
+            "type": "array"
+          },
+          "frameIntervalSeconds": {
+            "default": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Frameintervalseconds",
+            "type": "number"
+          },
+          "loadPolicy": {
+            "default": "load_if_cheap",
+            "enum": [
+              "use_loaded",
+              "load_if_cheap",
+              "load_or_fail"
+            ],
+            "title": "Loadpolicy",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "pipelineName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipelinename"
+          },
+          "returnConfidence": {
+            "default": true,
+            "title": "Returnconfidence",
+            "type": "boolean"
+          },
+          "threshold": {
+            "default": 0.5,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "vrVideo": {
+            "default": false,
+            "title": "Vrvideo",
+            "type": "boolean"
+          }
+        },
+        "title": "AiOptions",
+        "type": "object"
+      },
+      "AnalyzeVideoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ai": {
+            "$ref": "#/components/schemas/AiOptions"
+          },
+          "analyses": {
+            "items": {
+              "enum": [
+                "aiTagging",
+                "omnishotcut"
+              ],
+              "type": "string"
+            },
+            "title": "Analyses",
+            "type": "array"
+          },
+          "omnishotcut": {
+            "$ref": "#/components/schemas/OmniShotCutOptions"
+          },
+          "proxy": {
+            "$ref": "#/components/schemas/ProxyOptions"
+          },
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "1",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "sourcePath": {
+            "minLength": 1,
+            "title": "Sourcepath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "requestId",
+          "sourcePath",
+          "analyses"
+        ],
+        "title": "AnalyzeVideoRequest",
+        "type": "object"
+      },
+      "AnalyzeVideoResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiAnalysisResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/MetricsResponse"
+          },
+          "omnishotcut": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OmniShotCutAnalysisResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proxies": {
+            "$ref": "#/components/schemas/ProxiesResponse"
+          },
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          },
+          "runId": {
+            "format": "uuid",
+            "title": "Runid",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "1",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "serviceVersion": {
+            "title": "Serviceversion",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceResponse"
+          },
+          "status": {
+            "const": "completed",
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "requestId",
+          "runId",
+          "serviceVersion",
+          "status",
+          "source",
+          "proxies",
+          "metrics",
+          "warnings"
+        ],
+        "title": "AnalyzeVideoResponse",
+        "type": "object"
+      },
+      "BoundaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "endSeconds": {
+            "title": "Endseconds",
+            "type": "number"
+          },
+          "startSeconds": {
+            "title": "Startseconds",
+            "type": "number"
+          },
+          "transitionAfter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transitionafter"
+          }
+        },
+        "required": [
+          "startSeconds",
+          "endSeconds"
+        ],
+        "title": "BoundaryResponse",
+        "type": "object"
+      },
+      "CatalogModel": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "artifactAvailable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifactavailable"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
+          "categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "configName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configname"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier"
+          },
+          "imageSize": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imagesize"
+          },
+          "incompatibilityReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incompatibilityreason"
+          },
+          "incompatible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incompatible"
+          },
+          "info": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Info"
+          },
+          "loaded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loaded"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "supportedScopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supportedscopes"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "CatalogModel",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "MetricsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "aiSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aiseconds"
+          },
+          "omnishotcutSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omnishotcutseconds"
+          },
+          "probeSeconds": {
+            "title": "Probeseconds",
+            "type": "number"
+          },
+          "proxySeconds": {
+            "title": "Proxyseconds",
+            "type": "number"
+          },
+          "totalSeconds": {
+            "title": "Totalseconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "probeSeconds",
+          "proxySeconds",
+          "totalSeconds"
+        ],
+        "title": "MetricsResponse",
+        "type": "object"
+      },
+      "OmniShotCutAnalysisResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "boundaries": {
+            "items": {
+              "$ref": "#/components/schemas/BoundaryResponse"
+            },
+            "title": "Boundaries",
+            "type": "array"
+          },
+          "labelCounts": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Labelcounts",
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "clean_shot",
+              "default"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "modelRevision": {
+            "title": "Modelrevision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelRevision",
+          "mode",
+          "boundaries",
+          "labelCounts"
+        ],
+        "title": "OmniShotCutAnalysisResponse",
+        "type": "object"
+      },
+      "OmniShotCutOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "clean_shot",
+            "enum": [
+              "clean_shot",
+              "default"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "numContextFrames": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Numcontextframes",
+            "type": "integer"
+          }
+        },
+        "title": "OmniShotCutOptions",
+        "type": "object"
+      },
+      "ProxiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProxyResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cacheKey": {
+            "title": "Cachekey",
+            "type": "string"
+          },
+          "omnishotcut": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProxyResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settingsVersion": {
+            "title": "Settingsversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cacheKey",
+          "settingsVersion"
+        ],
+        "title": "ProxiesResponse",
+        "type": "object"
+      },
+      "ProxyOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "ProxyOptions",
+        "type": "object"
+      },
+      "ProxyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cacheHit": {
+            "title": "Cachehit",
+            "type": "boolean"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "fps",
+          "cacheHit",
+          "sizeBytes"
+        ],
+        "title": "ProxyResponse",
+        "type": "object"
+      },
+      "SegmentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateKey": {
+            "title": "Candidatekey",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "endSeconds": {
+            "title": "Endseconds",
+            "type": "number"
+          },
+          "kind": {
+            "const": "tag",
+            "title": "Kind",
+            "type": "string"
+          },
+          "modelKey": {
+            "title": "Modelkey",
+            "type": "string"
+          },
+          "observationCount": {
+            "title": "Observationcount",
+            "type": "integer"
+          },
+          "startSeconds": {
+            "title": "Startseconds",
+            "type": "number"
+          },
+          "tagName": {
+            "title": "Tagname",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidateKey",
+          "kind",
+          "tagName",
+          "title",
+          "startSeconds",
+          "endSeconds",
+          "modelKey",
+          "observationCount"
+        ],
+        "title": "SegmentResponse",
+        "type": "object"
+      },
+      "SourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "durationSeconds": {
+            "title": "Durationseconds",
+            "type": "number"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "number"
+          },
+          "frameCount": {
+            "title": "Framecount",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "mtimeNs": {
+            "title": "Mtimens",
+            "type": "integer"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "sizeBytes",
+          "mtimeNs",
+          "durationSeconds",
+          "fps",
+          "width",
+          "height",
+          "frameCount"
+        ],
+        "title": "SourceResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Segment Studio Analysis",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Readyz"
+      }
+    },
+    "/v1/ai/catalog": {
+      "get": {
+        "operationId": "ai_catalog_v1_ai_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogModel"
+                  },
+                  "title": "Response Ai Catalog V1 Ai Catalog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ai Catalog"
+      }
+    },
+    "/v1/analyze-video": {
+      "post": {
+        "operationId": "analyze_video_v1_analyze_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeVideoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analyze Video"
+      }
+    }
+  }
+}

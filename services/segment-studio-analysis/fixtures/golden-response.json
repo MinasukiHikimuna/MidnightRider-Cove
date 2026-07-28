@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "1",
+  "requestId": "00000000-0000-4000-8000-000000000001",
+  "runId": "00000000-0000-4000-8000-000000000002",
+  "serviceVersion": "0.1.0",
+  "status": "completed",
+  "source": {
+    "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sizeBytes": 1000,
+    "mtimeNs": 1000000,
+    "durationSeconds": 10.0,
+    "fps": 25.0,
+    "width": 1920,
+    "height": 1080,
+    "frameCount": 250
+  },
+  "proxies": {
+    "cacheKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "settingsVersion": "analysis-proxies-v1",
+    "ai": {
+      "width": 512,
+      "height": 288,
+      "fps": 0.5,
+      "cacheHit": false,
+      "sizeBytes": 500
+    },
+    "omnishotcut": {
+      "width": 128,
+      "height": 96,
+      "fps": 25.0,
+      "cacheHit": false,
+      "sizeBytes": 750
+    }
+  },
+  "ai": {
+    "models": [
+      {
+        "configName": "example-model",
+        "name": "example",
+        "identifier": 1,
+        "version": "1",
+        "categories": [
+          "example"
+        ]
+      }
+    ],
+    "frameIntervalSeconds": 2.0,
+    "segments": [
+      {
+        "candidateKey": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "kind": "tag",
+        "tagName": "example",
+        "title": "example",
+        "startSeconds": 0.0,
+        "endSeconds": 2.0,
+        "confidence": 0.9,
+        "modelKey": "example-model",
+        "observationCount": 1
+      }
+    ]
+  },
+  "omnishotcut": {
+    "modelRevision": "338c0e70a053fabc4d95a87e7b897c28aed65648",
+    "mode": "clean_shot",
+    "boundaries": [
+      {
+        "startSeconds": 0.0,
+        "endSeconds": 5.0,
+        "transitionAfter": "New_Start"
+      },
+      {
+        "startSeconds": 5.0,
+        "endSeconds": 10.0,
+        "transitionAfter": "New_Start"
+      }
+    ],
+    "labelCounts": {
+      "intra": {
+        "General": 2
+      },
+      "inter": {
+        "New_Start": 2
+      }
+    }
+  },
+  "metrics": {
+    "probeSeconds": 0.01,
+    "proxySeconds": 0.1,
+    "aiSeconds": 0.2,
+    "omnishotcutSeconds": 0.3,
+    "totalSeconds": 0.61
+  },
+  "warnings": []
+}

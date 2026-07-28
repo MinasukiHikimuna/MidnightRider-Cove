@@ -1,0 +1,31 @@
+services:
+  segment-studio-analysis:
+    image: ${SEGMENT_STUDIO_ANALYSIS_IMAGE:?Set an immutable image reference}
+    restart: unless-stopped
+    env_file:
+      - ${SEGMENT_STUDIO_ANALYSIS_ENV_FILE:-.env}
+    ports:
+      - "${SEGMENT_STUDIO_ANALYSIS_BIND_ADDRESS:-127.0.0.1}:${SEGMENT_STUDIO_ANALYSIS_HOST_PORT:-8766}:8766"
+    volumes:
+      - ${SEGMENT_STUDIO_MEDIA_HOST_PATH:?Set the media library path}:${SEGMENT_STUDIO_MEDIA_CONTAINER_PATH:-/media/library}:ro
+      - ${SEGMENT_STUDIO_PROXY_CACHE_HOST_PATH:?Set the proxy cache path}:/cache/proxies:rw
+      - ${SEGMENT_STUDIO_MODEL_CACHE_HOST_PATH:?Set the model cache path}:/cache/models:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - analysis
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  analysis:
+    name: ${SEGMENT_STUDIO_ANALYSIS_NETWORK:?Set the shared Docker network}
+    external: true
