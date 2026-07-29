@@ -9,6 +9,7 @@ on:
 
 env:
   DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '24'
 
 permissions:
   contents: read
@@ -33,17 +34,28 @@ jobs:
             .filter(entry => entry.isDirectory())
             .map(entry => ({ directory: entry.name, descriptor: path.join(root, entry.name, 'release.json') }))
             .filter(entry => fs.existsSync(entry.descriptor))
-            .map(entry => ({ ...JSON.parse(fs.readFileSync(entry.descriptor, 'utf8')), path: path.join(root, entry.directory) }));
+            .map(entry => ({
+              uiPackagePath: 'ui',
+              ...JSON.parse(fs.readFileSync(entry.descriptor, 'utf8')),
+              path: path.join(root, entry.directory),
+            }));
 
           const required = ['id', 'name', 'tagPrefix', 'solution', 'project', 'manifest', 'readme', 'ui'];
           for (const entry of entries) {
             for (const field of required) {
               if (!entry[field]) throw new Error(`${entry.path}/release.json is missing ${field}`);
             }
-            for (const field of ['solution', 'project', 'manifest', 'readme', 'ui']) {
+            for (const field of ['solution', 'project', 'manifest', 'readme']) {
               if (!fs.existsSync(path.join(entry.path, entry[field]))) {
                 throw new Error(`${entry.path}/release.json references a missing ${field}: ${entry[field]}`);
               }
+            }
+            if (entry.uiBuildDirectory) {
+              if (!fs.existsSync(path.join(entry.path, entry.uiBuildDirectory))) {
+                throw new Error(`${entry.path}/release.json references a missing uiBuildDirectory: ${entry.uiBuildDirectory}`);
+              }
+            } else if (!fs.existsSync(path.join(entry.path, entry.ui))) {
+              throw new Error(`${entry.path}/release.json references a missing ui: ${entry.ui}`);
             }
           }
 
@@ -81,6 +93,20 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Setup Node
+        if: matrix.extension.uiBuildDirectory
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.extension.path }}/${{ matrix.extension.uiBuildDirectory }}/package-lock.json
+      - name: Test and build extension UI
+        if: matrix.extension.uiBuildDirectory
+        working-directory: ${{ matrix.extension.path }}/${{ matrix.extension.uiBuildDirectory }}
+        run: |
+          npm ci
+          npm test
+          npm run build
       - name: Resolve version
         id: version
         shell: bash
@@ -108,7 +134,8 @@ jobs:
           cp ${{ matrix.extension.path }}/LICENSE artifacts/${{ matrix.extension.name }}/LICENSE
           cp artifacts/publish/${{ matrix.extension.name }}/${{ matrix.extension.name }}.dll artifacts/${{ matrix.extension.name }}/
           if [[ -d "${{ matrix.extension.path }}/${{ matrix.extension.ui }}" ]]; then
-            cp -R ${{ matrix.extension.path }}/${{ matrix.extension.ui }} artifacts/${{ matrix.extension.name }}/ui
+            mkdir -p artifacts/${{ matrix.extension.name }}/${{ matrix.extension.uiPackagePath }}
+            cp -R ${{ matrix.extension.path }}/${{ matrix.extension.ui }}/. artifacts/${{ matrix.extension.name }}/${{ matrix.extension.uiPackagePath }}/
           fi
       - name: Stamp packaged manifest version
         run: |

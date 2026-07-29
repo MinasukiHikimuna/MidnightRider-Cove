@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.animated-tag-previews",
+  "name": "AnimatedTagPreviews",
+  "tagPrefix": "com.midnightrider.animated-tag-previews/",
+  "solution": "AnimatedTagPreviews.slnx",
+  "project": "src/AnimatedTagPreviews/AnimatedTagPreviews.csproj",
+  "manifest": "src/AnimatedTagPreviews/extension.json",
+  "readme": "README.md",
+  "ui": "src/AnimatedTagPreviews/dist",
+  "uiPackagePath": "dist",
+  "uiBuildDirectory": "src/AnimatedTagPreviews/ui"
+}

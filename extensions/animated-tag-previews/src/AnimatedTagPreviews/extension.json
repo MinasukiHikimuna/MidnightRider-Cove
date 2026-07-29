@@ -1,0 +1,118 @@
+{
+  "id": "com.midnightrider.animated-tag-previews",
+  "name": "Animated Tag Previews",
+  "version": "1.0.0",
+  "description": "Create cropped VP9 WebM previews from Cove videos and use them as optional animated tag media.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "minCoveVersion": "1.1.0",
+  "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "dependencies": {},
+  "externalDependencies": [
+    {
+      "id": "ffmpeg",
+      "name": "FFmpeg with VP9 encoding",
+      "kind": "tool",
+      "required": true,
+      "description": "Encodes bounded, muted VP9 WebM tag previews. The libvpx-vp9 encoder must be available.",
+      "versionRequirement": "libvpx-vp9 encoder",
+      "executables": [
+        "ffmpeg"
+      ],
+      "configurationKeys": [
+        "Cove.FfmpegPath"
+      ],
+      "installHint": "Install an FFmpeg build containing libvpx-vp9 or configure Cove's FFmpeg path.",
+      "url": "https://ffmpeg.org/download.html"
+    },
+    {
+      "id": "ffprobe",
+      "name": "FFprobe",
+      "kind": "tool",
+      "required": true,
+      "description": "Probes source and generated media before a preview is published.",
+      "executables": [
+        "ffprobe"
+      ],
+      "configurationKeys": [
+        "Cove.FfprobePath"
+      ],
+      "installHint": "Install FFprobe beside FFmpeg or configure Cove's FFprobe path.",
+      "url": "https://ffmpeg.org/download.html"
+    }
+  ],
+  "settings": [],
+  "tutorialTopics": [
+    {
+      "id": "com.midnightrider.animated-tag-previews.setup",
+      "title": "Animated Tag Previews",
+      "description": "Set up, generate, and manage animated media for tags.",
+      "contexts": [
+        "settings-tab:extensions/com.midnightrider.animated-tag-previews",
+        "page:video-detail"
+      ],
+      "order": 70,
+      "slides": [
+        {
+          "id": "requirements",
+          "title": "Check the encoder",
+          "caption": "Cove normally manages FFmpeg and FFprobe for you.",
+          "bodyMarkdown": "Open the extension health view before your first encode. Both tools must be available, and FFmpeg must report the `libvpx-vp9` encoder. Tool paths stay on the server and are never sent to the browser.",
+          "points": [
+            "Install or configure FFmpeg and FFprobe",
+            "Confirm VP9 support in extension health",
+            "Keep source media readable by Cove"
+          ]
+        },
+        {
+          "id": "create",
+          "title": "Create a preview",
+          "caption": "Use the preview action on a video player.",
+          "bodyMarkdown": "Pause on a useful moment, open Animated Tag Preview, position the configured crop, choose a readable tag, and start the job. Cove validates access again on the server and publishes the result only after the new WebM has been stored successfully.",
+          "points": [
+            "Drag or use keyboard and numeric crop controls",
+            "Choose the canonical tag, not a typed tag name",
+            "Follow or cancel the background job from Cove"
+          ]
+        },
+        {
+          "id": "playback",
+          "title": "Playback and fallback",
+          "caption": "The normal tag image remains the source of truth.",
+          "bodyMarkdown": "Supported tag cards and heroes can play the muted looping WebM. Cove keeps the ordinary tag image as poster and fallback. Reduced-motion preferences, unsupported surfaces, media errors, and missing previews all render the static image.",
+          "points": [
+            "Previews load lazily near the viewport",
+            "Offscreen and backgrounded previews pause",
+            "Reduced-motion users receive static media"
+          ]
+        },
+        {
+          "id": "lifecycle",
+          "title": "Keep or remove generated media",
+          "caption": "Generated files are data, not extension binaries.",
+          "bodyMarkdown": "Disabling or upgrading the extension preserves preview mappings and Cove-managed blobs. Uninstall also preserves generated data by default. Replace an animated preview with an image cover before uninstalling when it should be removed, and use the explicit orphan-cleanup dry run before approving bulk deletion.",
+          "points": [
+            "Disable hides UI without deleting previews",
+            "Upgrade replaces code without replacing user data",
+            "Cover replacement and orphan cleanup are explicit operations"
+          ]
+        }
+      ]
+    }
+  ],
+  "entryDll": "AnimatedTagPreviews.dll",
+  "sharedAssemblies": [],
+  "jsBundle": "dist/ui.mjs",
+  "cssBundle": "dist/ui.css",
+  "categories": [
+    "tools",
+    "ui",
+    "media-player",
+    "content-management"
+  ],
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}
