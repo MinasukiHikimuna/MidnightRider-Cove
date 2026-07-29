@@ -1,7 +1,7 @@
 {
-  "id": "hash-the-cove",
+  "id": "com.midnightrider.hash-the-cove",
   "name": "HashTheCove",
-  "tagPrefix": "hash-the-cove/",
+  "tagPrefix": "com.midnightrider.hash-the-cove/",
   "solution": "HashTheCove.slnx",
   "project": "src/HashTheCove/HashTheCove.csproj",
   "manifest": "src/HashTheCove/extension.json",

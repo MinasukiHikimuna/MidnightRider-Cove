@@ -22,8 +22,8 @@ test("accepts successful extension API responses with empty bodies", async () =>
       : Response.json({ available: true }),
   );
 
-  assert.equal(await request("/api/plugins/complete-the-cove/config", { method: "POST" }), null);
-  assert.deepEqual(await request("/api/plugins/complete-the-cove/providers"), { available: true });
+  assert.equal(await request("/api/plugins/com.midnightrider.complete-the-cove/config", { method: "POST" }), null);
+  assert.deepEqual(await request("/api/plugins/com.midnightrider.complete-the-cove/providers"), { available: true });
 });
 
 test("uses Cove's canonical detail-list pagination", async () => {
@@ -384,7 +384,7 @@ test("settings select multiple configured metadata providers", async () => {
   const declaration = source.match(/function normalizeProviderEndpoint\(endpoint\) \{[\s\S]*?\n\}/)?.[0];
 
   assert.ok(manifest.settings.some((setting) => setting.name === "selected_metadata_endpoints"));
-  assert.match(source, /\/api\/plugins\/complete-the-cove\/providers/);
+  assert.match(source, /\/api\/plugins\/com\.midnightrider\.complete-the-cove\/providers/);
   assert.match(source, /type: "checkbox"/);
   assert.match(source, /selected_metadata_endpoints: selected\.join\(","\)/);
   assert.match(source, /Loading configured providers/);
@@ -405,7 +405,7 @@ test("refresh controls use a split button for all or one enabled provider", asyn
   assert.match(source, /Refresh all providers/);
   assert.match(source, /Refresh from \$\{provider\.name/);
   assert.match(source, /providerEndpoint: provider\.endpoint/);
-  assert.match(source, /request\("\/api\/plugins\/complete-the-cove\/providers"\)/);
+  assert.match(source, /request\("\/api\/plugins\/com\.midnightrider\.complete-the-cove\/providers"\)/);
   assert.match(source, /h\(RefreshSplitButton,/);
   assert.match(source, /function TargetRow\(\{ target, providers,/);
   assert.match(source, /refresh: \(provider\) => onRefresh\(target, provider\)/);

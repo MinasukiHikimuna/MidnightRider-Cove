@@ -21,7 +21,7 @@ public sealed class CompletionCatalogTests
         var extension = new CompleteTheCoveExtension();
         ((IManifestAware)extension).ApplyManifest(new ExtensionManifestFile
         {
-            Id = "complete-the-cove",
+            Id = "com.midnightrider.complete-the-cove",
             Name = "Complete the Cove",
             Version = "1.0.0"
         });
@@ -48,7 +48,7 @@ public sealed class CompletionCatalogTests
         builder.Services.AddScoped<DbContext>(_ => CreateDb());
         builder.Services.AddScoped<CompletionCatalog>();
         await using var app = builder.Build();
-        var endpoints = new ExtensionEndpointDataSource(app, "complete-the-cove", app.Services);
+        var endpoints = new ExtensionEndpointDataSource(app, "com.midnightrider.complete-the-cove", app.Services);
 
         new CompleteTheCoveExtension().MapEndpoints(endpoints);
 
@@ -67,14 +67,14 @@ public sealed class CompletionCatalogTests
         builder.Services.AddScoped<DbContext>(_ => CreateDb());
         builder.Services.AddScoped<CompletionCatalog>();
         await using var app = builder.Build();
-        var endpoints = new ExtensionEndpointDataSource(app, "complete-the-cove", app.Services);
+        var endpoints = new ExtensionEndpointDataSource(app, "com.midnightrider.complete-the-cove", app.Services);
 
         new CompleteTheCoveExtension().MapEndpoints(endpoints);
 
         var aliases = endpoints.Endpoints
             .OfType<RouteEndpoint>()
             .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith(
-                "/api/plugins/complete-the-cove/scenes",
+                "/api/plugins/com.midnightrider.complete-the-cove/scenes",
                 StringComparison.Ordinal) == true)
             .ToArray();
         Assert.Equal(5, aliases.Length);
@@ -130,7 +130,7 @@ public sealed class CompletionCatalogTests
         string entityKind,
         string readPermission)
     {
-        var routePrefix = $"/api/plugins/complete-the-cove/targets/{routeType}/{{entityId:int}}";
+        var routePrefix = $"/api/plugins/com.midnightrider.complete-the-cove/targets/{routeType}/{{entityId:int}}";
         var targetEndpoints = endpoints.Endpoints
             .OfType<RouteEndpoint>()
             .Where(endpoint => endpoint.RoutePattern.RawText is { } route
@@ -284,7 +284,7 @@ public sealed class CompletionCatalogTests
     public void Settings_normalize_selected_endpoints_and_keep_blank_as_all()
     {
         var configuration = new Cove.Core.Interfaces.CoveConfiguration();
-        configuration.PluginConfigurations["complete-the-cove"] = new()
+        configuration.PluginConfigurations["com.midnightrider.complete-the-cove"] = new()
         {
             ["selected_metadata_endpoints"] = " https://stashdb.org/graphql/, HTTPS://FANSDB.XYZ/graphql ",
         };
@@ -294,7 +294,7 @@ public sealed class CompletionCatalogTests
         Assert.Equal(2, selected.Count);
         Assert.Contains("https://stashdb.org/graphql", selected);
         Assert.Contains("https://fansdb.xyz/graphql", selected);
-        configuration.PluginConfigurations["complete-the-cove"]["selected_metadata_endpoints"] = "";
+        configuration.PluginConfigurations["com.midnightrider.complete-the-cove"]["selected_metadata_endpoints"] = "";
         Assert.Empty(CompleteSettings.From(configuration).SelectedMetadataEndpoints!);
     }
 

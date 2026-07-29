@@ -6,7 +6,7 @@ import { RefreshCw, ChevronDown, Search, Puzzle, ExternalLink, Check, X, AlertTr
 
 const h = React.createElement;
 const { useEffect, useId, useMemo, useRef, useState } = React;
-const API = "/api/plugins/complete-the-cove";
+const API = "/api/plugins/com.midnightrider.complete-the-cove";
 
 function formatDateTime(value) {
   const date = new Date(value);
@@ -231,7 +231,7 @@ async function request(url, options) {
 }
 
 async function runRefresh(body) {
-  const started = await request("/api/extensions/complete-the-cove/jobs/refresh-catalog/run", { method: "POST", body: JSON.stringify(body) });
+  const started = await request("/api/extensions/com.midnightrider.complete-the-cove/jobs/refresh-catalog/run", { method: "POST", body: JSON.stringify(body) });
   for (;;) {
     await new Promise((resolve) => window.setTimeout(resolve, 1500));
     const job = await request(`${API}/refresh/${encodeURIComponent(started.jobId)}`);
@@ -790,9 +790,9 @@ function LegacyMissingVideoDetailPage({ id }) {
 
 function CompleteTheCoveSettings() {
   const [value, setValue] = useState(""); const [providers, setProviders] = useState([]); const [selected, setSelected] = useState([]); const [message, setMessage] = useState(""); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
-  useEffect(() => { Promise.all([request("/api/plugins/complete-the-cove/config"), request("/api/plugins/complete-the-cove/providers")]).then(([config, available]) => { const configured = (config.selected_metadata_endpoints || "").split(",").map(normalizeProviderEndpoint).filter(Boolean); setValue(config.excluded_tags || ""); setProviders(available); setSelected(configured.length ? configured : available.map((item) => item.endpoint)); }).catch((err) => setMessage(err.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { Promise.all([request("/api/plugins/com.midnightrider.complete-the-cove/config"), request("/api/plugins/com.midnightrider.complete-the-cove/providers")]).then(([config, available]) => { const configured = (config.selected_metadata_endpoints || "").split(",").map(normalizeProviderEndpoint).filter(Boolean); setValue(config.excluded_tags || ""); setProviders(available); setSelected(configured.length ? configured : available.map((item) => item.endpoint)); }).catch((err) => setMessage(err.message)).finally(() => setLoading(false)); }, []);
   function toggle(endpoint) { setSelected((current) => current.includes(endpoint) ? current.filter((item) => item !== endpoint) : [...current, endpoint]); }
-  async function save() { setSaving(true); setMessage(""); try { await request("/api/plugins/complete-the-cove/config", { method: "POST", body: JSON.stringify({ excluded_tags: value, selected_metadata_endpoints: selected.join(",") }) }); setMessage("Settings saved. Refresh the catalog to apply provider changes."); } catch (err) { setMessage(err.message); } finally { setSaving(false); } }
+  async function save() { setSaving(true); setMessage(""); try { await request("/api/plugins/com.midnightrider.complete-the-cove/config", { method: "POST", body: JSON.stringify({ excluded_tags: value, selected_metadata_endpoints: selected.join(",") }) }); setMessage("Settings saved. Refresh the catalog to apply provider changes."); } catch (err) { setMessage(err.message); } finally { setSaving(false); } }
   return h("div", { className: "space-y-4" }, [h("fieldset", { key: "providers", className: "space-y-2" }, [h("legend", { key: "legend", className: "text-sm font-medium" }, "Metadata providers"), h("p", { key: "help", className: "text-xs text-secondary" }, "Select one or more configured providers for tracking and catalog refreshes."), loading ? h("p", { key: "loading", className: "text-sm text-secondary" }, "Loading configured providers...") : providers.length === 0 ? h("p", { key: "empty", className: "text-sm text-secondary" }, "No compatible metadata providers are configured in Cove.") : null, ...providers.map((provider) => h("label", { key: provider.endpoint, className: "flex items-center gap-2 text-sm" }, [h("input", { key: "input", type: "checkbox", checked: selected.includes(provider.endpoint), onChange: () => toggle(provider.endpoint) }), h("span", { key: "name" }, provider.name), h("span", { key: "endpoint", className: "text-xs text-secondary" }, providerLabel(provider.endpoint))]))]), h("label", { key: "excluded", className: "block" }, [h("span", { key: "label", className: "block text-sm font-medium" }, "Excluded remote tags"), h("span", { key: "help", className: "block text-xs text-secondary" }, "Comma-separated exact tag names. Matching is case-insensitive."), h("input", { key: "input", value, onChange: (event) => setValue(event.target.value), placeholder: "Tag name, Another tag", className: "mt-2 w-full rounded-md border border-border bg-card px-3 py-2 text-sm" })]), h("div", { key: "actions", className: "flex items-center justify-end gap-3" }, [message ? h("span", { key: "message", className: "text-sm text-secondary" }, message) : null, h("button", { key: "save", disabled: loading || saving || selected.length === 0, onClick: save, className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" }, saving ? "Saving..." : "Save")])]);
 }
 

@@ -2,7 +2,7 @@ import React from "@cove/runtime/react";
 
 const { useEffect, useState } = React;
 const h = React.createElement;
-const CONFIG_URL = "/api/plugins/hash-the-cove/config";
+const CONFIG_URL = "/api/plugins/com.midnightrider.hash-the-cove/config";
 
 const choices = [
   {

@@ -11,4 +11,4 @@ page.
 dotnet test HashTheCove.slnx --configuration Release
 ```
 
-Release tags use `hash-the-cove/v<version>`.
+Release tags use `com.midnightrider.hash-the-cove/v<version>`.

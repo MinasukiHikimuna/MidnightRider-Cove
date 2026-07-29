@@ -1,5 +1,5 @@
 {
-  "id": "hash-the-cove",
+  "id": "com.midnightrider.hash-the-cove",
   "name": "Hash The Cove",
   "version": "1.0.0",
   "description": "Calculates additional whole-file fingerprints for Cove video and gallery files.",

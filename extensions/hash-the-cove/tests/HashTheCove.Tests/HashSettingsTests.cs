@@ -24,7 +24,7 @@ public sealed class HashSettingsTests
         {
             PluginConfigurations = new()
             {
-                ["hash-the-cove"] = new()
+                ["com.midnightrider.hash-the-cove"] = new()
                 {
                     ["xxhash"] = true,
                     ["sha256"] = JsonDocument.Parse("true").RootElement.Clone(),

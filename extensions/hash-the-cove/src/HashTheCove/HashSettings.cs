@@ -12,7 +12,7 @@ public sealed record HashSettings(
 {
     public static HashSettings From(CoveConfiguration configuration)
     {
-        configuration.PluginConfigurations.TryGetValue("hash-the-cove", out var values);
+        configuration.PluginConfigurations.TryGetValue("com.midnightrider.hash-the-cove", out var values);
         values ??= [];
 
         return new HashSettings(

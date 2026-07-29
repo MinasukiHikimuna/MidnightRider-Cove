@@ -22,15 +22,15 @@ public sealed class HashTheCoveExtension : JobExtensionBase
     public override UIManifest GetUIManifest() =>
         ManifestBuilder()
             .AddSettingsTab(
-                "extensions/hash-the-cove",
+                "extensions/com.midnightrider.hash-the-cove",
                 "Hash The Cove",
                 order: 120,
                 icon: "hard-drive",
                 description: "Choose which fingerprints Hash The Cove calculates and which file types it processes.",
                 searchKeywords: ["hash", "fingerprint", "xxhash", "sha256", "sha1"],
-                aliases: ["extensions-hash-the-cove"])
+                aliases: ["extensions-com-midnightrider-hash-the-cove"])
             .AddSettingsSection(
-                "extensions/hash-the-cove",
+                "extensions/com.midnightrider.hash-the-cove",
                 "Hash The Cove",
                 "HashTheCoveSettings",
                 order: 50)

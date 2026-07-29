@@ -9,7 +9,7 @@ public sealed record CompleteSettings(
 {
     public static CompleteSettings From(CoveConfiguration configuration)
     {
-        configuration.PluginConfigurations.TryGetValue("complete-the-cove", out var values);
+        configuration.PluginConfigurations.TryGetValue("com.midnightrider.complete-the-cove", out var values);
         values ??= [];
         var raw = Read(values, "excluded_tags") ?? string.Empty;
         var selected = Read(values, "selected_metadata_endpoints") ?? string.Empty;

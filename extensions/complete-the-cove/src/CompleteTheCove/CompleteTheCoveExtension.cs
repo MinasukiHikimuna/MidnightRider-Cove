@@ -56,15 +56,15 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         }
 
         return manifest
-            .AddSettingsTab("extensions/complete-the-cove", "Complete the Cove", order: 125, icon: "puzzle",
+            .AddSettingsTab("extensions/com.midnightrider.complete-the-cove", "Complete the Cove", order: 125, icon: "puzzle",
                 description: "Configure discovery exclusions for the missing-video catalog.")
-            .AddSettingsSection("extensions/complete-the-cove", "Complete the Cove", "CompleteTheCoveSettings")
+            .AddSettingsSection("extensions/com.midnightrider.complete-the-cove", "Complete the Cove", "CompleteTheCoveSettings")
             .Build();
     }
 
     private static UITabContribution CreateTab(TargetSurface target) => new(
-        "missing-videos", "Missing Videos", target.RouteType, "complete-the-cove", target.ComponentName, 85,
-        $"/api/plugins/complete-the-cove/targets/{target.RouteType}/{{entityId}}/count", "puzzle")
+        "missing-videos", "Missing Videos", target.RouteType, "com.midnightrider.complete-the-cove", target.ComponentName, 85,
+        $"/api/plugins/com.midnightrider.complete-the-cove/targets/{target.RouteType}/{{entityId}}/count", "puzzle")
     { RequiredPermissions = [Permissions.ExtensionsConfigure, target.ReadPermission] };
 
     public override void ConfigureServices(IServiceCollection services, ExtensionContext context) =>
@@ -402,20 +402,20 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/plugins/complete-the-cove/videos", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/videos/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapPost("/api/plugins/complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapDelete("/api/plugins/complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/videos/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/scenes", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/scenes/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapPost("/api/plugins/complete-the-cove/scenes/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapDelete("/api/plugins/complete-the-cove/scenes/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/scenes/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/facets", GetFacets).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/targets", GetTargets).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/providers", GetProviders).RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapGet("/api/plugins/complete-the-cove/refresh/{jobId}", (string jobId, IJobService jobs) =>
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/videos", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapPost("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapDelete("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/scenes", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/scenes/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapPost("/api/plugins/com.midnightrider.complete-the-cove/scenes/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapDelete("/api/plugins/com.midnightrider.complete-the-cove/scenes/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/scenes/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/facets", GetFacets).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/targets", GetTargets).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/providers", GetProviders).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/refresh/{jobId}", (string jobId, IJobService jobs) =>
             jobs.GetJob(jobId) is { } job ? Results.Ok(job) : Results.NotFound()).RequireCovePermission(Permissions.ExtensionsConfigure);
         foreach (var target in TargetSurfaces)
         {
@@ -425,7 +425,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
 
     private static void MapTarget(IEndpointRouteBuilder endpoints, TargetSurface target)
     {
-        var route = $"/api/plugins/complete-the-cove/targets/{target.RouteType}/{{entityId:int}}";
+        var route = $"/api/plugins/com.midnightrider.complete-the-cove/targets/{target.RouteType}/{{entityId:int}}";
         ApplyTargetAccessPolicy(
             endpoints.MapGet(route, (int entityId, CompletionCatalog catalog, CancellationToken ct) =>
                 GetTarget(target.TargetType, entityId, catalog, ct)),
@@ -471,7 +471,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         var items = await query.Skip((page - 1) * perPage).Take(perPage).Select(x => new
         {
             x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId, x.RemoteEndpoint, x.IsIgnored,
-            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
+            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/com.midnightrider.complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
             performers = x.Performers.OrderBy(p => p.Name).Select(p => new
             {
                 p.RemoteId,
@@ -490,7 +490,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         {
             x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId,
             x.ParentStudioName, x.ParentStudioRemoteId, x.RemoteEndpoint, x.RemoteId, x.CoverError, x.IsIgnored, x.CreatedAt, x.UpdatedAt,
-            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
+            coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/com.midnightrider.complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
             performers = x.Performers.OrderBy(p => p.Name).Select(p => new
             {
                 p.RemoteId,

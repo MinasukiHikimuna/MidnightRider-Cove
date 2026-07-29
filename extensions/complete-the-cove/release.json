@@ -1,7 +1,7 @@
 {
-  "id": "complete-the-cove",
+  "id": "com.midnightrider.complete-the-cove",
   "name": "CompleteTheCove",
-  "tagPrefix": "complete-the-cove/",
+  "tagPrefix": "com.midnightrider.complete-the-cove/",
   "solution": "CompleteTheCove.slnx",
   "project": "src/CompleteTheCove/CompleteTheCove.csproj",
   "manifest": "src/CompleteTheCove/extension.json",

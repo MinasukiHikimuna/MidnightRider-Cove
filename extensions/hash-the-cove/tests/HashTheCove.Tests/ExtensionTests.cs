@@ -21,7 +21,7 @@ public sealed class ExtensionTests
         var extension = new HashTheCoveExtension();
         ((IManifestAware)extension).ApplyManifest(new ExtensionManifestFile
         {
-            Id = "hash-the-cove",
+            Id = "com.midnightrider.hash-the-cove",
             Name = "Hash The Cove",
             Version = "1.0.0",
         });
@@ -29,9 +29,9 @@ public sealed class ExtensionTests
         var manifest = extension.GetUIManifest();
 
         var tab = Assert.Single(manifest.SettingsTabs);
-        Assert.Equal("extensions/hash-the-cove", tab.Key);
+        Assert.Equal("extensions/com.midnightrider.hash-the-cove", tab.Key);
         var panel = Assert.Single(manifest.SettingsPanels);
-        Assert.Equal("extensions/hash-the-cove", panel.TargetTab);
+        Assert.Equal("extensions/com.midnightrider.hash-the-cove", panel.TargetTab);
         Assert.Equal("HashTheCoveSettings", panel.ComponentName);
     }
 }
