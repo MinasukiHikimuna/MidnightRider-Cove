@@ -9,7 +9,7 @@ test("uses Cove's authenticated extension API runtime", async () => {
   assert.match(source, /import \{ extensionFetch \} from "@cove\/runtime\/api"/);
   assert.match(source, /const response = await extensionFetch\(url,/);
   assert.doesNotMatch(source, /const response = await fetch\(url,/);
-  assert.equal(manifest.minCoveVersion, "1.0.0-dev");
+  assert.equal(manifest.minCoveVersion, "1.1.0");
 });
 
 test("accepts successful extension API responses with empty bodies", async () => {
