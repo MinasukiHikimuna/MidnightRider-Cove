@@ -1,0 +1,252 @@
+import { selectedSwimlaneMerge } from "../model/swimlanes.js";
+import { readMergeConfirmationPreference, writeMergeConfirmationPreference } from "../model/selection.js";
+import { completeOperation, formatTime, operationIdFor, requestJson } from "../../shared/api.js";
+import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
+import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
+import { segmentsHistoryState } from "../model/history.js";
+
+function createReviewActions(context) {
+  const { acceptHistory, compatibilityMode, detailPanelRef, mergeSavingRef, onConflict, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+
+  function closeMergeConfirmation() {
+      setMergeConfirmation(null);
+      requestAnimationFrame(() => detailPanelRef.current?.focus({ preventScroll: true }));
+    }
+
+    async function mergeSelectedSwimlane(
+      confirmed = false,
+      skipFutureConfirmation = false,
+      confirmedMerge = null,
+    ) {
+      if (mergeSavingRef.current || savingSegmentId != null) return;
+      const merge = confirmedMerge || selectedSwimlaneMerge(
+        selectedGroups,
+        { nativeOnly: !compatibilityMode },
+      );
+      if (!merge) {
+        setSaveMessage("Select at least two segments from one swimlane.");
+        return;
+      }
+      if (!confirmed && readMergeConfirmationPreference()) {
+        setMergeConfirmation(merge);
+        return;
+      }
+      if (skipFutureConfirmation)
+        writeMergeConfirmationPreference(false);
+      closeMergeConfirmation();
+      const endLabel = merge.endSec == null ? "open end" : formatTime(merge.endSec);
+
+      mergeSavingRef.current = true;
+      let survivor = merge.segments[0];
+      const basicBeforeState = !compatibilityMode
+        ? segmentsHistoryState(merge.segments, false)
+        : null;
+      const historyReceiptId = !compatibilityMode
+        ? crypto.randomUUID()
+        : null;
+      setSavingSegmentId(survivor.id);
+      try {
+        const consumedSegments = merge.segments.slice(1);
+        if (!compatibilityMode || survivor.nativeSegmentId != null) {
+          const operations = consumedSegments.map((consumed) => {
+            const key = `merge-native-selection:${video.id}:${survivor.id}:${consumed.id}:${survivor.updatedAt}:${consumed.updatedAt}`;
+            return { key, operationId: operationIdFor(key), segmentId: consumed.id, expectedUpdatedAt: consumed.updatedAt };
+          });
+          survivor = {
+            ...survivor,
+            ...await requestJson(`/videos/${video.id}/segments/merge-selection`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                survivorSegmentId: survivor.id,
+                expectedSurvivorUpdatedAt: survivor.updatedAt,
+                consumedSegments: operations.map(({ key: _key, ...operation }) => operation),
+                historyReceiptId,
+              }),
+            }),
+          };
+          operations.forEach(({ key }) => completeOperation(key));
+        } else {
+          const operations = consumedSegments.map((consumed) => {
+            const key = `merge-draft-selection:${video.id}:${survivor.itemId}:${consumed.itemId}:${survivor.revision}:${consumed.revision}`;
+            return { key, operationId: operationIdFor(key), itemId: consumed.itemId, expectedRevision: consumed.revision };
+          });
+          const result = await requestJson(`/videos/${video.id}/drafts/merge-selection`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              survivorItemId: survivor.itemId,
+              expectedSurvivorRevision: survivor.revision,
+              consumedDrafts: operations.map(({ key: _key, ...operation }) => operation),
+            }),
+          });
+          survivor = { ...survivor, ...result.draft };
+          operations.forEach(({ key }) => completeOperation(key));
+        }
+        const loaded = await onReload();
+        const reloadedSurvivor = findSegmentByStableIdentity(
+          loaded?.segments,
+          { nativeSegmentId: survivor.nativeSegmentId ?? survivor.id },
+        ) || survivor;
+        setSelectedSegmentIds([reloadedSurvivor.id]);
+        setSelectedSegmentId(reloadedSurvivor.id);
+        selectionAnchorIdRef.current = reloadedSurvivor.id;
+        selectionRangeBaseIdsRef.current = [];
+        if (compatibilityMode) {
+          acceptHistory(EMPTY_EDITOR_HISTORY);
+        } else {
+          await recordHistoryAction(
+            "segments.merge",
+            `Merged ${merge.segments.length} segments`,
+            basicBeforeState,
+            segmentsHistoryState([reloadedSurvivor], false),
+            historyReceiptId,
+          );
+        }
+        revealSegmentGroupForSelection(reloadedSurvivor.id);
+        setSaveMessage(`${merge.segments.length} segments merged into ${formatTime(merge.startSec)} – ${endLabel}.`);
+      } catch (error) {
+        if (error.status === 409) await onConflict();
+        else setSaveMessage(error.message || "Unable to merge selected segments.");
+      } finally {
+        mergeSavingRef.current = false;
+        setSavingSegmentId(null);
+      }
+    }
+
+    async function saveSelectedReviewState(requestedState) {
+      if (selectedSegments.length === 0 || reviewSavingRef.current || savingSegmentId != null) return;
+      const reviewState = toggledSelectionReviewState(selectedSegments, requestedState);
+      const candidates = selectedSegments.filter((segment) => segment.reviewState !== reviewState);
+      if (candidates.length === 0) return;
+      const identities = selectedSegments.map((segment) => ({
+        id: segment.id,
+        itemId: segment.itemId,
+        nativeSegmentId: segment.nativeSegmentId,
+      }));
+      const activeIdentity = identities.find((identity) => identity.id === selectedSegment?.id) || identities[0];
+      const restoreSelection = (loaded) => {
+        if (!loaded?.segments) return;
+        if (!shouldRestoreTransitionSelection(selectedSegmentIdRef.current, activeIdentity.id))
+          return;
+        const reloadedSelection = identities
+          .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
+          .filter(Boolean);
+        const reloadedActive = findSegmentByStableIdentity(loaded?.segments, activeIdentity)
+          || reloadedSelection[0]
+          || null;
+        setSelectedSegmentIds(reloadedSelection.map((segment) => segment.id));
+        setSelectedSegmentId(reloadedActive?.id ?? null);
+        selectionAnchorIdRef.current = reloadedActive?.id ?? null;
+        selectionRangeBaseIdsRef.current = [];
+      };
+      const beforeState = segmentsHistoryState(candidates);
+      const completedCandidates = [];
+      reviewSavingRef.current = true;
+      setSavingSegmentId(selectedSegment?.id ?? candidates[0].id);
+      setSaveMessage(`Updating ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
+      try {
+        const publishedCandidates = candidates.filter((segment) => segment.published && reviewState !== "approved");
+        if (publishedCandidates.length > 0) {
+          const signature = publishedCandidates
+            .map((segment) => `${segment.nativeSegmentId}:${segment.updatedAt}`)
+            .sort()
+            .join(",");
+          const operationKey = `bulk-unpublish:${video.id}:${reviewState}:${signature}`;
+          const transition = await requestJson(`/videos/${video.id}/segments/move-to-bin`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              operationId: operationIdFor(operationKey),
+              reviewState,
+              segments: publishedCandidates.map((segment) => ({
+                segmentId: segment.nativeSegmentId,
+                expectedUpdatedAt: segment.updatedAt,
+              })),
+            }),
+          });
+          completeOperation(operationKey);
+          const resultsBySegmentId = new Map(
+            (transition.items || []).map((item) => [item.segmentId, item]),
+          );
+          publishedCandidates.forEach((segment) => {
+            const result = resultsBySegmentId.get(segment.nativeSegmentId);
+            const identity = identities.find((candidate) => candidate.id === segment.id);
+            if (identity && result) identity.itemId = result.itemId;
+            completedCandidates.push(segment);
+          });
+        }
+        const publishedCandidateIds = new Set(publishedCandidates.map((segment) => segment.id));
+        for (const segment of candidates.filter((candidate) => !publishedCandidateIds.has(candidate.id))) {
+          const values = {
+            reviewState,
+            startSec: segment.startSec,
+            endSec: segment.endSec,
+            tagId: segment.tagId,
+          };
+          if (!segment.published && segment.itemId != null) {
+            const operationKey = `draft-update:${video.id}:${segment.itemId}:${segment.revision}:${segment.tagId}:${segment.startSec}:${segment.endSec ?? "open"}:${reviewState}`;
+            const result = await requestJson(`/videos/${video.id}/drafts/${segment.itemId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                operationId: operationIdFor(operationKey),
+                expectedRevision: segment.revision,
+                ...values,
+              }),
+            });
+            completeOperation(operationKey);
+          } else {
+            await requestJson(`/videos/${video.id}/segments/${segment.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...values, expectedUpdatedAt: segment.updatedAt }),
+            });
+          }
+          completedCandidates.push(segment);
+        }
+        const loaded = await onReload();
+        const changedSegments = identities
+          .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
+          .filter(Boolean);
+        await recordHistoryAction(
+          "segments.review",
+          reviewState === "approved"
+            ? `Approved ${candidates.length} segment${candidates.length === 1 ? "" : "s"}`
+            : reviewState === "rejected"
+              ? `Rejected ${candidates.length} segment${candidates.length === 1 ? "" : "s"}`
+              : `Reset ${candidates.length} segment${candidates.length === 1 ? "" : "s"} to unreviewed`,
+          beforeState,
+          segmentsHistoryState(changedSegments),
+        );
+        restoreSelection(loaded);
+        setSaveMessage(`${candidates.length} selected segment${candidates.length === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
+      } catch (error) {
+        const loaded = error.status === 409 ? await onConflict() : await onReload();
+        if (completedCandidates.length > 0) {
+          const completedIds = new Set(completedCandidates.map((segment) => segment.id));
+          const completedIdentities = identities.filter((identity) => completedIds.has(identity.id));
+          const changedSegments = completedIdentities
+            .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
+            .filter(Boolean);
+          await recordHistoryAction(
+            "segments.review",
+            `Partially updated ${completedCandidates.length} of ${candidates.length} selected segments`,
+            segmentsHistoryState(completedCandidates),
+            segmentsHistoryState(changedSegments),
+          );
+        }
+        restoreSelection(loaded);
+        setSaveMessage(completedCandidates.length > 0
+          ? `Updated ${completedCandidates.length} of ${candidates.length} selected segments; the remaining changes were not applied.`
+          : error.message || "Unable to update every selected segment.");
+      } finally {
+        reviewSavingRef.current = false;
+        setSavingSegmentId(null);
+      }
+    }
+
+  return { closeMergeConfirmation, mergeSelectedSwimlane, saveSelectedReviewState };
+}
+
+export { createReviewActions };

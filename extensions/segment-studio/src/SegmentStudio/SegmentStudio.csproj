@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <CoveMinVersion>1.1.0</CoveMinVersion>
+  </PropertyGroup>
+
+  <!-- Cove host contracts are supplied compile-only by Directory.Build.targets. -->
+
+  <ItemGroup>
+    <EmbeddedResource Include="SegmentStudioBaseline.sql" />
+  </ItemGroup>
+
+</Project>

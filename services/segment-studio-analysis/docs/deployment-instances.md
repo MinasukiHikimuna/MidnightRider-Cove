@@ -26,6 +26,10 @@ private/
   production.env
 ```
 
+The service has no application-level authentication. Keep every instance on
+loopback or its private application network; never publish its port directly
+to an untrusted network.
+
 Start an instance with an explicit project name and its private environment:
 
 ```fish
@@ -51,6 +55,22 @@ Docker network attachments are lost when the service container is recreated.
 Devbox automation should invoke the attachment script after creating a devbox,
 or the devbox Compose configuration should declare a shared external analysis
 network. Do not attach staging or production to development networks.
+
+In Cove, open **Segment Studio → Settings → General** and set the analysis
+service URL to the service name on the same instance network:
+
+```text
+http://segment-studio-analysis:8766
+```
+
+The extension persists this setting and applies it without a Cove restart. No
+shared token is required. The value must be a root HTTP(S) origin with no
+credentials, path, query, or fragment. Treat permission to change it as a
+host-network administration capability and apply an egress policy to Cove
+where the deployment requires a target allowlist.
+The analysis container must mount the media library at the same absolute paths
+stored by Cove, because Segment Studio sends those paths without rewriting
+them.
 
 The analysis-to-AI proxy mapping deserves special care. The proxy cache must be
 mounted somewhere the NSFW AI server can read. If the containers cannot use the

@@ -202,8 +202,12 @@ async def test_health_and_combined_golden(
                 "serviceVersion": "0.1.0",
                 "schemaVersion": "1",
             }
-            assert (await client.get("/readyz")).status_code == 200
-            assert (await client.get("/v1/ai/catalog")).status_code == 200
+            ready = await client.get("/readyz")
+            assert ready.status_code == 200
+            assert ready.json()["ok"] is True
+            catalog = await client.get("/v1/ai/catalog")
+            assert catalog.status_code == 200
+            assert catalog.json()[0]["configName"] == "test-model"
             response = await client.post("/v1/analyze-video", json=request)
             assert response.status_code == 202, response.text
             accepted = response.json()

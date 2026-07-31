@@ -26,6 +26,7 @@ def valid_environment(tmp_path: Path) -> dict[str, str]:
 
 def test_load_settings_validates_and_redacts_environment_details(tmp_path: Path) -> None:
     settings = load_settings(valid_environment(tmp_path))
+    assert "token" not in settings.redacted()
     assert "ai-server" not in str(settings.redacted())
     assert settings.map_ai_path(settings.proxy_cache_root / "a.mp4") == Path(
         "/cache/proxies/a.mp4"

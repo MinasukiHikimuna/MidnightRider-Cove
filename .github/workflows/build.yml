@@ -85,6 +85,20 @@ jobs:
   build:
     needs: select-extension
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       matrix: ${{ fromJson(needs.select-extension.outputs.matrix) }}
     steps:
@@ -119,10 +133,21 @@ jobs:
       - name: Restore
         run: dotnet restore ${{ matrix.extension.path }}/${{ matrix.extension.solution }} --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
       - name: Test
+        env:
+          COVE__Postgres__ConnectionString: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
         run: dotnet test ${{ matrix.extension.path }}/${{ matrix.extension.solution }} --configuration Release --no-restore --property:Version=${{ steps.version.outputs.value }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
       - name: Test UI
         if: matrix.extension.uiTest
         run: node --test ${{ matrix.extension.path }}/${{ matrix.extension.uiTest }}
+      - name: Test migration operators
+        if: matrix.extension.pythonTests
+        env:
+          SEGMENT_STUDIO_MIGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        shell: bash
+        run: |
+          for test_file in ${{ matrix.extension.pythonTests }}; do
+            python3 "${{ matrix.extension.path }}/$test_file"
+          done
       - name: Publish
         run: dotnet publish ${{ matrix.extension.path }}/${{ matrix.extension.project }} --configuration Release --output artifacts/publish/${{ matrix.extension.name }} --no-build --property:Version=${{ steps.version.outputs.value }} --property:ContinuousIntegrationBuild=true --property:UseLocalCoveSource=false --property:UseLocalCoveCore=false
       - name: Assemble package
@@ -136,6 +161,10 @@ jobs:
           if [[ -d "${{ matrix.extension.path }}/${{ matrix.extension.ui }}" ]]; then
             mkdir -p artifacts/${{ matrix.extension.name }}/${{ matrix.extension.uiPackagePath }}
             cp -R ${{ matrix.extension.path }}/${{ matrix.extension.ui }}/. artifacts/${{ matrix.extension.name }}/${{ matrix.extension.uiPackagePath }}/
+          fi
+          if [[ -n "${{ matrix.extension.docs }}" && -d "${{ matrix.extension.path }}/${{ matrix.extension.docs }}" ]]; then
+            mkdir -p artifacts/${{ matrix.extension.name }}/docs
+            cp -R ${{ matrix.extension.path }}/${{ matrix.extension.docs }}/. artifacts/${{ matrix.extension.name }}/docs/
           fi
       - name: Stamp packaged manifest version
         run: |
@@ -160,8 +189,26 @@ jobs:
             ${{ matrix.extension.id }}-*.zip.sha256
           if-no-files-found: error
 
+  analysis-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/segment-studio-analysis
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/segment-studio-analysis/uv.lock
+      - name: Test analysis service
+        run: uv run --locked --extra test pytest
+      - name: Verify generated OpenAPI contract
+        run: |
+          uv run --locked python scripts/generate-openapi.py
+          git diff --exit-code -- openapi.json
+
   release:
-    needs: build
+    needs: [build, analysis-service]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

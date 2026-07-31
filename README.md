@@ -12,6 +12,7 @@ descriptor under `extensions/<extension-id>/`.
 | Stash Filter Importer | `extensions/stash-filter-importer` | `com.midnightrider.stash-filter-importer/v<version>` |
 | API Fault Simulator | `extensions/api-fault-simulator` | `com.midnightrider.api-fault-simulator/v<version>` |
 | External Sign-In | `extensions/external-sign-in` | `com.midnightrider.external-sign-in/v<version>` |
+| Segment Studio | `extensions/segment-studio` | `segment-studio/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing

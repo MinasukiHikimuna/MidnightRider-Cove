@@ -81,9 +81,40 @@ The upstream NSFW AI v4 server currently has no path-mapping probe endpoint.
 `/readyz` therefore reports `aiProxyPathMapping.supported=false`; a first smoke
 analysis must establish that both containers see the mapped proxy path.
 
+## Connect Cove
+
+Put Cove and this service on the same private Docker network. In Cove, open
+**Segment Studio → Settings → General**, enter the URL under **Analysis
+service**, and save it. For a Compose service on the shared network, use:
+
+```text
+http://segment-studio-analysis:8766
+```
+
+The URL is persisted in Segment Studio's extension settings and takes effect
+without restarting Cove. Enter a root HTTP(S) origin containing only the
+scheme, host, and optional port. No analysis token is required.
+
+Changing this URL controls where the Cove API sends readiness requests and
+media paths. Grant the Segment Studio analysis-settings permission only to
+administrators trusted to manage host networking, and constrain Cove's egress
+at the network layer where required.
+
+Cove sends the stored video file path to the service. Mount the media library
+into both containers at the same absolute path and include that path in
+`SEGMENT_STUDIO_MEDIA_ROOTS`. For example, if Cove stores paths below
+`/media/library`, the analysis container must also see those files below
+`/media/library`.
+
+Verify connectivity with `GET /healthz`, then verify runtime readiness with
+`GET /readyz`. A ready response requires ffmpeg, ffprobe, CUDA, the warm
+OmniShotCut model, a writable proxy cache, and the NSFW AI v4 server. The AI
+proxy path mapping is verified by the first smoke scan.
+
 ## Smoke test
 
-Keep the media path in a shell variable so it is not embedded in the script:
+Keep the media path in an ignored/private shell variable. The smoke script
+does not embed it:
 
 ```fish
 scripts/smoke-test.fish \
