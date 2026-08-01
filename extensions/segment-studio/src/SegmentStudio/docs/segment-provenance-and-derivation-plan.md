@@ -552,7 +552,7 @@ completed ranges.
 
 The pre-release deletion-policy preference is absent from the 1.0 baseline. Segment
 deletion always previews its dependency-aware effects and requires UI
-confirmation; deleting ten or more segments also requires typed confirmation.
+confirmation.
 
 ## Provenance mapping
 
@@ -756,8 +756,6 @@ native segment update timestamps, and open integrity issue revisions.
 
 - show the full preview;
 - require confirmation for the entire component;
-- require typed confirmation when the component exceeds a conservative size
-  threshold or contains multiple roots;
 - execute only if the preview fingerprint still matches.
 
 `remove`:

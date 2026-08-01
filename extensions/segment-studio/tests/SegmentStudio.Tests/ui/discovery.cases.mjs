@@ -301,8 +301,8 @@ test("dependency deletion previews exact effects and always asks for confirmatio
   assert.match(source, /preview\.selectedSegmentCount/);
   assert.match(source, /preview\.dependentSegmentCount/);
   assert.match(source, /preview\.retainedSharedSegmentCount/);
-  assert.match(source, /preview\.requiresTypedConfirmation/);
-  assert.match(source, /DELETE SEGMENTS/);
+  assert.doesNotMatch(source, /requiresTypedConfirmation/);
+  assert.doesNotMatch(source, /DELETE SEGMENTS/);
   assert.match(source, /\/delete\/execute/);
   assert.match(source, /fingerprint: preview\.fingerprint/);
 });

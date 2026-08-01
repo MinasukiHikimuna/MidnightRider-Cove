@@ -9,7 +9,7 @@ Change the root tag instead; Segment Studio previews every affected segment
 before applying the change. Permanent deletion previews the selected segments
 and any dependent derived segments that would lose their last source. Shared
 derived segments remain when another source still supports them. Every deletion
-requires confirmation, with typed confirmation for ten or more segments.
+requires confirmation.
 
 Settings → Derivation shows rules grouped by Segment group in graph and list
 views. A rule either exists or it does not; there is no disabled or historical

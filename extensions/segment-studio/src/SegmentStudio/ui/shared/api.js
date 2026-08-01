@@ -190,8 +190,7 @@ function confirmDependencyDeletion(preview) {
   if (!window.confirm(
     `Permanently delete ${selectedLabel}${dependentLabel} (${total} total)?${retainedNote} This cannot be undone.`,
   )) return false;
-  return !preview.requiresTypedConfirmation
-    || window.prompt('Type "DELETE SEGMENTS" to confirm.') === "DELETE SEGMENTS";
+  return true;
 }
 
 export function recyclingBinDeletionSummary(items, totalCount) {
