@@ -27,8 +27,19 @@ test("Basic mode hides the Full Scan action", () => {
   const view = sourceByModule["editor/SegmentEditorView.js"];
   assert.match(
     view,
-    /compatibilityMode \? h\("button", \{[\s\S]{0,120}key: "full-analysis"/,
+    /compatibilityMode \? h\("div", \{[\s\S]{0,120}key: "full-analysis"/,
   );
+});
+
+test("Full Scan offers AI-only and shot-boundary-only runs", () => {
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+  const analysis = sourceByModule["editor/hooks/useSegmentAnalysis.js"];
+
+  assert.match(view, /aria-label": "Choose Full Scan analyses"/);
+  assert.match(view, /\["AI analysis only", \["aiTagging"\]\]/);
+  assert.match(view, /\["Shot boundaries only", \["omnishotcut"\]\]/);
+  assert.match(analysis, /async function startFullAnalysis\(analyses = null\)/);
+  assert.match(analysis, /analyses: analyses \|\| \(fullMode/);
 });
 
 test("Basic structural commands record native history and use native restoration", () => {

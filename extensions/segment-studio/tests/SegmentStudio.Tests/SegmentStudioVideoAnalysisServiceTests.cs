@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.Json;
 using Cove.Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 public sealed class SegmentStudioVideoAnalysisServiceTests
 {
@@ -269,7 +270,8 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
             new SegmentSourceRegistry(),
             new ProvenanceActivityService(),
             new LineageNodeService(),
-            new SegmentProvenanceService()));
+            new SegmentProvenanceService()),
+        NullLogger<SegmentStudioVideoAnalysisService>.Instance);
 
     private static SegmentStudioAnalyzeVideoResponse Response() => new(
         "1",

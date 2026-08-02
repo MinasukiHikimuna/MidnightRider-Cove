@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Diagnostics;
 using Cove.Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace SegmentStudio;
 
@@ -56,12 +58,21 @@ public interface ISegmentStudioVideoAnalysisService
         StartSegmentStudioAnalysisRequest request,
         string mode,
         CancellationToken ct);
+    Task ExecuteRunAsync(
+        DbContext db,
+        Guid runId,
+        StartSegmentStudioAnalysisRequest request,
+        string mode,
+        IProgress<SegmentStudioAnalysisProgress> progress,
+        CancellationToken ct)
+        => ExecuteRunAsync(db, runId, request, mode, ct);
     Task<int> BackfillProvenanceAsync(DbContext db, Guid runId, CancellationToken ct);
 }
 
 public sealed class SegmentStudioVideoAnalysisService(
     ISegmentStudioAnalysisClient client,
-    ISegmentStudioAnalysisProvenanceService provenance) : ISegmentStudioVideoAnalysisService
+    ISegmentStudioAnalysisProvenanceService provenance,
+    ILogger<SegmentStudioVideoAnalysisService> logger) : ISegmentStudioVideoAnalysisService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -106,6 +117,13 @@ public sealed class SegmentStudioVideoAnalysisService(
         };
         db.Add(run);
         await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Queued Segment Studio analysis run {RunId} for video {VideoId}, file {VideoFileId}, mode {Mode}, analyses {Analyses}",
+            run.Id,
+            run.VideoId,
+            run.VideoFileId,
+            mode,
+            string.Join(",", analyses));
         return run;
     }
 
@@ -120,12 +138,28 @@ public sealed class SegmentStudioVideoAnalysisService(
         StartSegmentStudioAnalysisRequest request,
         string mode,
         CancellationToken ct)
+        => await ExecuteRunAsync(db, runId, request, mode, progress: null, ct);
+
+    public async Task ExecuteRunAsync(
+        DbContext db,
+        Guid runId,
+        StartSegmentStudioAnalysisRequest request,
+        string mode,
+        IProgress<SegmentStudioAnalysisProgress>? progress,
+        CancellationToken ct)
     {
         var normalizedMode = SegmentStudioModes.NormalizePublic(mode);
         var run = await db.Set<SegmentStudioAnalysisRun>().SingleAsync(candidate => candidate.Id == runId, ct);
         run.Status = "running";
         run.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        var started = Stopwatch.GetTimestamp();
+        logger.LogInformation(
+            "Starting Segment Studio analysis run {RunId} for video {VideoId}, file {VideoFileId}, mode {Mode}",
+            run.Id,
+            run.VideoId,
+            run.VideoFileId,
+            normalizedMode);
 
         try
         {
@@ -135,7 +169,9 @@ public sealed class SegmentStudioVideoAnalysisService(
                 .SingleAsync(ct);
             var analyses = NormalizeAnalyses(request.Analyses, normalizedMode);
             var response = await client.AnalyzeVideoAsync(new SegmentStudioAnalyzeVideoRequest(
-                run.Id, sourcePath, analyses, Ai: request.Ai, OmniShotCut: request.OmniShotCut), ct);
+                run.Id, sourcePath, analyses, Ai: request.Ai, OmniShotCut: request.OmniShotCut),
+                progress,
+                ct);
 
             var strategy = db.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
@@ -296,28 +332,60 @@ public sealed class SegmentStudioVideoAnalysisService(
                 if (transaction is not null)
                     await transaction.CommitAsync(ct);
             });
+            logger.LogInformation(
+                "Completed Segment Studio analysis run {RunId} as service run {ServiceRunId} in {ElapsedMs} ms with {CandidateCount} candidate(s) and {BoundaryCount} shot boundary result(s)",
+                runId,
+                response.RunId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                response.Ai?.Segments.Count ?? 0,
+                response.OmniShotCut?.Boundaries.Count ?? 0);
         }
         catch (OperationCanceledException)
         {
             await MarkFailedAsync(
                 db, runId, "cancelled", "Analysis was cancelled.", "cancelled");
+            logger.LogWarning(
+                "Cancelled Segment Studio analysis run {RunId} after {ElapsedMs} ms",
+                runId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             throw;
         }
         catch (SegmentStudioAnalysisServiceException exception)
         {
             await MarkFailedAsync(db, runId, exception.Code, exception.Message);
+            logger.LogWarning(
+                exception,
+                "Segment Studio analysis run {RunId} failed after {ElapsedMs} ms: status={StatusCode}, code={ErrorCode}, phase={Phase}, retryable={Retryable}, upstreamStatus={UpstreamStatus}, upstreamCode={UpstreamCode}",
+                runId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                (int)exception.StatusCode,
+                exception.Code,
+                exception.Phase,
+                exception.Retryable,
+                exception.UpstreamHttpStatus,
+                exception.UpstreamErrorCode);
             throw;
         }
         catch (SegmentStudioAnalysisNotConfiguredException exception)
         {
             var message = exception.Message;
             await MarkFailedAsync(db, runId, "analysis_not_configured", message);
+            logger.LogWarning(
+                exception,
+                "Segment Studio analysis run {RunId} is not configured after {ElapsedMs} ms",
+                runId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             throw new InvalidOperationException(message);
         }
-        catch
+        catch (Exception exception)
         {
             await MarkFailedAsync(
                 db, runId, "analysis_failed", "The video analysis could not be completed.");
+            logger.LogError(
+                exception,
+                "Segment Studio analysis run {RunId} failed unexpectedly after {ElapsedMs} ms",
+                runId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             throw;
         }
     }

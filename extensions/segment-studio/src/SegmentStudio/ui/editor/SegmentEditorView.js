@@ -140,20 +140,22 @@ function SegmentEditorView(props) {
         }, analysisError) : null,
         h("div", { key: "toolbar", className: "flex flex-wrap items-center justify-between gap-2" }, [
           h("div", { key: "workflow", className: "flex flex-wrap items-center gap-1.5" }, [
-            compatibilityMode ? h("button", {
+            compatibilityMode ? h("div", {
               key: "full-analysis",
-              type: "button",
-              disabled: analysisStatus?.configured === false
-                || analysisStatus?.ready === false
-                || analysisRun?.status === "queued"
-                || analysisRun?.status === "running",
-              onClick: startFullAnalysis,
-              title: analysisStatus?.error
-                || (compatibilityMode
-                  ? "Run AI tagging and OmniShotCut into the Full review workflow"
-                  : "Run AI tagging and save the results as native Cove segments"),
-              className: "rounded-md border border-cyan-400/60 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-cyan-500/25 disabled:opacity-50",
-            }, analysisStatus?.configured === false
+              className: "inline-flex items-stretch",
+            }, [
+              h("button", {
+                key: "run",
+                type: "button",
+                disabled: analysisStatus?.configured === false
+                  || analysisStatus?.ready === false
+                  || analysisRun?.status === "queued"
+                  || analysisRun?.status === "running",
+                onClick: () => startFullAnalysis(),
+                title: analysisStatus?.error
+                  || "Run AI tagging and shot boundary analysis into the Full review workflow",
+                className: "rounded-l-md border border-cyan-400/60 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-cyan-500/25 disabled:opacity-50",
+              }, analysisStatus?.configured === false
               ? "Full Scan not configured"
               : analysisStatus?.ready === false
                 ? "Full Scan unavailable"
@@ -161,7 +163,55 @@ function SegmentEditorView(props) {
               ? "Full Scan queued…"
               : analysisRun?.status === "running"
                 ? "Full Scan running…"
-                : "Full Scan") : null,
+                : "Full Scan"),
+              h("details", { key: "choices", className: "relative" }, [
+                h("summary", {
+                  "aria-label": "Choose Full Scan analyses",
+                  "aria-disabled": analysisStatus?.configured === false
+                    || analysisStatus?.ready === false
+                    || analysisRun?.status === "queued"
+                    || analysisRun?.status === "running",
+                  title: "Choose analyses",
+                  onClick: (event) => {
+                    if (analysisStatus?.configured === false
+                      || analysisStatus?.ready === false
+                      || analysisRun?.status === "queued"
+                      || analysisRun?.status === "running") event.preventDefault();
+                  },
+                  onKeyDown: (event) => {
+                    if ((event.key === "Enter" || event.key === " ")
+                      && (analysisStatus?.configured === false
+                        || analysisStatus?.ready === false
+                        || analysisRun?.status === "queued"
+                        || analysisRun?.status === "running")) event.preventDefault();
+                  },
+                  className: `flex h-full list-none items-center rounded-r-md border border-l-0 border-cyan-400/60 bg-cyan-500/15 px-2 text-xs text-foreground marker:hidden ${analysisStatus?.configured === false
+                    || analysisStatus?.ready === false
+                    || analysisRun?.status === "queued"
+                    || analysisRun?.status === "running"
+                    ? "pointer-events-none cursor-default opacity-50"
+                    : "cursor-pointer hover:bg-cyan-500/25"}`,
+                }, "▾"),
+                h("div", {
+                  className: "absolute left-0 z-50 mt-1 min-w-48 rounded-md border border-border bg-card p-1 shadow-xl",
+                }, [
+                  ["AI analysis only", ["aiTagging"]],
+                  ["Shot boundaries only", ["omnishotcut"]],
+                ].map(([label, analyses]) => h("button", {
+                  key: label,
+                  type: "button",
+                  disabled: analysisStatus?.configured === false
+                    || analysisStatus?.ready === false
+                    || analysisRun?.status === "queued"
+                    || analysisRun?.status === "running",
+                  onClick: (event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    startFullAnalysis(analyses);
+                  },
+                  className: "block w-full rounded px-2.5 py-2 text-left text-xs text-foreground hover:bg-muted/60 disabled:opacity-50",
+                }, label))),
+              ]),
+            ]) : null,
             analysisRun?.status === "completed" ? h("span", {
               key: "analysis-summary",
               className: "px-1 text-xs text-secondary",

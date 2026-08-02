@@ -364,11 +364,20 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                     "Video analysis cancelled after mode change");
                                 return;
                             }
+                            var jobAnalyses = SegmentStudioVideoAnalysisService.NormalizeAnalyses(
+                                request.Analyses,
+                                outputMode);
                             await scopedAnalysis.ExecuteRunAsync(
                                 scopedDb,
                                 run.Id,
                                 request,
                                 outputMode,
+                                new SegmentStudioAnalysisProgressRelay(update =>
+                                    progress.Report(
+                                        SegmentStudioAnalysisClient.EstimateProgress(
+                                            update,
+                                            jobAnalyses),
+                                        SegmentStudioAnalysisClient.FormatPhase(update.Phase))),
                                 jobCt);
                             progress.Report(1, "Video analysis complete");
                         });
@@ -4279,4 +4288,11 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         string SourceKey,
         string? SourceRunId,
         float? Confidence);
+}
+
+public sealed class SegmentStudioAnalysisProgressRelay(
+    Action<SegmentStudioAnalysisProgress> report)
+    : IProgress<SegmentStudioAnalysisProgress>
+{
+    public void Report(SegmentStudioAnalysisProgress value) => report(value);
 }

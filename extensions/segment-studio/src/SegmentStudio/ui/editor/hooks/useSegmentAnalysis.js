@@ -50,16 +50,16 @@ function useSegmentAnalysis(videoId, onReload, fullMode = false) {
     }
   }
 
-  async function startFullAnalysis() {
+  async function startFullAnalysis(analyses = null) {
     setAnalysisError("");
     try {
       const run = await requestJson(`/videos/${videoId}/analysis-runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          analyses: fullMode
+          analyses: analyses || (fullMode
             ? ["aiTagging", "omnishotcut"]
-            : ["aiTagging"],
+            : ["aiTagging"]),
         }),
       });
       setAnalysisRun(run);

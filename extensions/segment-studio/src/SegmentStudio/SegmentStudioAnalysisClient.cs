@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Cove.Plugins;
+using Microsoft.Extensions.Logging;
 
 namespace SegmentStudio;
 
@@ -267,17 +269,52 @@ public sealed record SegmentStudioAnalysisMetrics(
     double? OmniShotCutSeconds,
     double TotalSeconds);
 
+public sealed record SegmentStudioAnalysisRunError(
+    string Code,
+    string Phase,
+    bool Retryable,
+    int? UpstreamHttpStatus,
+    string? UpstreamErrorCode);
+
+public sealed record SegmentStudioAnalysisRunStatus(
+    string SchemaVersion,
+    Guid RequestId,
+    Guid RunId,
+    string ServiceVersion,
+    string Phase,
+    DateTimeOffset PhaseStartedAt,
+    double ElapsedSeconds,
+    int? CompletedUnits,
+    int? TotalUnits,
+    SegmentStudioAnalysisRunError? Error,
+    SegmentStudioAnalyzeVideoResponse? Result);
+
+public sealed record SegmentStudioAnalysisProgress(
+    Guid RequestId,
+    Guid RunId,
+    string Phase,
+    DateTimeOffset PhaseStartedAt,
+    double ElapsedSeconds,
+    int? CompletedUnits,
+    int? TotalUnits);
+
 public sealed class SegmentStudioAnalysisServiceException(
     HttpStatusCode statusCode,
     string code,
     string message,
     bool retryable = false,
-    Exception? innerException = null)
+    Exception? innerException = null,
+    string? phase = null,
+    int? upstreamHttpStatus = null,
+    string? upstreamErrorCode = null)
     : Exception(message, innerException)
 {
     public HttpStatusCode StatusCode { get; } = statusCode;
     public string Code { get; } = code;
     public bool Retryable { get; } = retryable;
+    public string? Phase { get; } = phase;
+    public int? UpstreamHttpStatus { get; } = upstreamHttpStatus;
+    public string? UpstreamErrorCode { get; } = upstreamErrorCode;
 }
 
 public interface ISegmentStudioAnalysisClient
@@ -287,11 +324,17 @@ public interface ISegmentStudioAnalysisClient
     Task<SegmentStudioAnalyzeVideoResponse> AnalyzeVideoAsync(
         SegmentStudioAnalyzeVideoRequest request,
         CancellationToken ct = default);
+    Task<SegmentStudioAnalyzeVideoResponse> AnalyzeVideoAsync(
+        SegmentStudioAnalyzeVideoRequest request,
+        IProgress<SegmentStudioAnalysisProgress>? progress,
+        CancellationToken ct = default)
+        => AnalyzeVideoAsync(request, ct);
 }
 
 public sealed class SegmentStudioAnalysisClient(
     HttpClient httpClient,
-    ISegmentStudioAnalysisSettingsStore settings) : ISegmentStudioAnalysisClient
+    ISegmentStudioAnalysisSettingsStore settings,
+    ILogger<SegmentStudioAnalysisClient> logger) : ISegmentStudioAnalysisClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -312,6 +355,12 @@ public sealed class SegmentStudioAnalysisClient(
     public async Task<SegmentStudioAnalyzeVideoResponse> AnalyzeVideoAsync(
         SegmentStudioAnalyzeVideoRequest request,
         CancellationToken ct = default)
+        => await AnalyzeVideoAsync(request, progress: null, ct);
+
+    public async Task<SegmentStudioAnalyzeVideoResponse> AnalyzeVideoAsync(
+        SegmentStudioAnalyzeVideoRequest request,
+        IProgress<SegmentStudioAnalysisProgress>? progress,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         var normalized = request with
@@ -324,11 +373,228 @@ public sealed class SegmentStudioAnalysisClient(
                 ? request.OmniShotCut ?? new SegmentStudioAnalysisOmniShotCutOptions()
                 : null,
         };
-        return await SendAsync<SegmentStudioAnalyzeVideoResponse>(
+        var started = Stopwatch.GetTimestamp();
+        logger.LogInformation(
+            "Dispatching Segment Studio analysis {RequestId} for {AnalysisCount} analysis kind(s): {Analyses}",
+            request.RequestId,
+            normalized.Analyses.Count,
+            string.Join(",", normalized.Analyses));
+        try
+        {
+            var (accepted, statusPath) = await StartAnalysisAsync(normalized, ct);
+            ReportProgress(accepted, progress);
+            var status = accepted;
+            while (status.Phase is not "completed" and not "failed")
+            {
+                status = await SendAsync<SegmentStudioAnalysisRunStatus>(
+                    HttpMethod.Get, statusPath, null, ct);
+                EnsureCorrelatedStatus(request.RequestId, accepted.RunId, status);
+                ReportProgress(status, progress);
+                if (status.Phase is not "completed" and not "failed")
+                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            }
+            if (status.Phase == "failed")
+                throw CreateRunFailure(status);
+            var response = status.Result
+                ?? throw new SegmentStudioAnalysisServiceException(
+                    HttpStatusCode.BadGateway,
+                    "invalid_response",
+                    "The Segment Studio analysis service completed without a result.");
+            if (response.RequestId != request.RequestId || response.RunId != accepted.RunId)
+                throw new SegmentStudioAnalysisServiceException(
+                    HttpStatusCode.BadGateway,
+                    "invalid_response",
+                    "The Segment Studio analysis service returned a mismatched analysis result.");
+            logger.LogInformation(
+                "Segment Studio analysis {RequestId} completed as service run {ServiceRunId} in {ElapsedMs} ms (service reported {ServiceSeconds} s)",
+                request.RequestId,
+                response.RunId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                response.Metrics.TotalSeconds);
+            return response;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            logger.LogInformation(
+                "Segment Studio analysis {RequestId} was cancelled after {ElapsedMs} ms",
+                request.RequestId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw;
+        }
+        catch (SegmentStudioAnalysisServiceException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Segment Studio analysis {RequestId} failed after {ElapsedMs} ms: status={StatusCode}, code={ErrorCode}, phase={Phase}, retryable={Retryable}, upstreamStatus={UpstreamStatus}, upstreamCode={UpstreamCode}",
+                request.RequestId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                (int)exception.StatusCode,
+                exception.Code,
+                exception.Phase,
+                exception.Retryable,
+                exception.UpstreamHttpStatus,
+                exception.UpstreamErrorCode);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Segment Studio analysis {RequestId} failed after {ElapsedMs} ms before a service response was available",
+                request.RequestId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw;
+        }
+    }
+
+    private async Task<(SegmentStudioAnalysisRunStatus Status, string StatusPath)> StartAnalysisAsync(
+        SegmentStudioAnalyzeVideoRequest requestBody,
+        CancellationToken ct)
+    {
+        var settings = await _settings.LoadAsync(ct);
+        settings.EnsureConfigured();
+        using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            "/v1/analyze-video",
-            JsonContent.Create(normalized, options: JsonOptions),
-            ct);
+            new Uri(settings.BaseUri!, "/v1/analyze-video"))
+        {
+            Content = JsonContent.Create(requestBody, options: JsonOptions),
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception error)
+        {
+            throw new SegmentStudioAnalysisServiceException(
+                HttpStatusCode.BadGateway,
+                "service_unavailable",
+                "The Segment Studio analysis service could not be reached.",
+                retryable: true,
+                error);
+        }
+        using (response)
+        {
+        if (!response.IsSuccessStatusCode)
+            throw await CreateServiceExceptionAsync(response, ct);
+        if (response.StatusCode != HttpStatusCode.Accepted)
+            throw new SegmentStudioAnalysisServiceException(
+                HttpStatusCode.BadGateway,
+                "invalid_response",
+                "The Segment Studio analysis service did not accept the analysis asynchronously.");
+        var location = response.Headers.Location
+            ?? throw new SegmentStudioAnalysisServiceException(
+                HttpStatusCode.BadGateway,
+                "invalid_response",
+                "The Segment Studio analysis service omitted the analysis status location.");
+        var statusUri = location.IsAbsoluteUri ? location : new Uri(settings.BaseUri!, location);
+        if (!SameOrigin(settings.BaseUri!, statusUri))
+            throw new SegmentStudioAnalysisServiceException(
+                HttpStatusCode.BadGateway,
+                "invalid_response",
+                "The Segment Studio analysis service returned an invalid analysis status location.");
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        var status = await JsonSerializer.DeserializeAsync<SegmentStudioAnalysisRunStatus>(
+            stream, JsonOptions, ct)
+            ?? throw new SegmentStudioAnalysisServiceException(
+                HttpStatusCode.BadGateway,
+                "invalid_response",
+                "The Segment Studio analysis service returned an empty acceptance response.");
+        EnsureCorrelatedStatus(requestBody.RequestId, status.RunId, status);
+            return (status, statusUri.PathAndQuery);
+        }
+    }
+
+    private static bool SameOrigin(Uri expected, Uri actual)
+        => string.Equals(expected.Scheme, actual.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(expected.Host, actual.Host, StringComparison.OrdinalIgnoreCase)
+            && expected.Port == actual.Port;
+
+    private static void EnsureCorrelatedStatus(
+        Guid requestId,
+        Guid runId,
+        SegmentStudioAnalysisRunStatus status)
+    {
+        if (status.RequestId != requestId || status.RunId != runId)
+            throw new SegmentStudioAnalysisServiceException(
+                HttpStatusCode.BadGateway,
+                "invalid_response",
+                "The Segment Studio analysis service returned mismatched run status.");
+    }
+
+    private static void ReportProgress(
+        SegmentStudioAnalysisRunStatus status,
+        IProgress<SegmentStudioAnalysisProgress>? progress)
+        => progress?.Report(new(
+            status.RequestId,
+            status.RunId,
+            status.Phase,
+            status.PhaseStartedAt,
+            status.ElapsedSeconds,
+            status.CompletedUnits,
+            status.TotalUnits));
+
+    private static SegmentStudioAnalysisServiceException CreateRunFailure(
+        SegmentStudioAnalysisRunStatus status)
+    {
+        var error = status.Error;
+        var phase = error?.Phase ?? status.Phase;
+        var detail = $"Video analysis failed during {FormatPhase(phase)}.";
+        return new(
+            HttpStatusCode.BadGateway,
+            error?.Code ?? "analysis_failed",
+            detail,
+            error?.Retryable ?? false,
+            phase: phase,
+            upstreamHttpStatus: error?.UpstreamHttpStatus,
+            upstreamErrorCode: error?.UpstreamErrorCode);
+    }
+
+    public static string FormatPhase(string phase) => phase switch
+    {
+        "queued" => "Queued for analysis",
+        "probing" => "Inspecting source video",
+        "building_proxy" => "Building analysis proxy",
+        "waiting_for_ai" => "Waiting for AI service",
+        "ai_tagging" => "Running AI analysis",
+        "omnishotcut" => "Detecting shot boundaries",
+        "finalizing" => "Finalizing analysis results",
+        "completed" => "Analysis complete",
+        "failed" => "Analysis failed",
+        _ => "Running video analysis",
+    };
+
+    public static double EstimateProgress(
+        SegmentStudioAnalysisProgress progress,
+        IReadOnlyList<SegmentStudioAnalysisKind> analyses)
+    {
+        var includesAi = analyses.Contains(SegmentStudioAnalysisKind.AiTagging);
+        var includesShots = analyses.Contains(SegmentStudioAnalysisKind.OmniShotCut);
+        var (start, end) = progress.Phase switch
+        {
+            "queued" => (0.02, 0.04),
+            "probing" => (0.05, 0.10),
+            "building_proxy" => (0.12, 0.30),
+            "waiting_for_ai" => (0.32, 0.38),
+            "ai_tagging" when includesShots => (0.40, 0.68),
+            "ai_tagging" => (0.40, 0.88),
+            "omnishotcut" when includesAi => (0.70, 0.90),
+            "omnishotcut" => (0.32, 0.90),
+            "finalizing" => (0.92, 0.98),
+            "completed" => (1.0, 1.0),
+            _ => (0.02, 0.02),
+        };
+        if (progress.CompletedUnits is not int completed
+            || progress.TotalUnits is not int total
+            || total <= 0)
+            return start;
+        return start + ((end - start) * Math.Clamp((double)completed / total, 0, 1));
     }
 
     private async Task<IReadOnlyList<SegmentStudioAnalysisCatalogModel>> SendCatalogAsync(CancellationToken ct)

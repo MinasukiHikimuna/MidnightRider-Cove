@@ -2,11 +2,56 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Cove.Plugins;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SegmentStudio.Tests;
 
 public sealed class SegmentStudioAnalysisClientTests
 {
+    [Theory]
+    [InlineData("queued", 0.02)]
+    [InlineData("probing", 0.05)]
+    [InlineData("building_proxy", 0.12)]
+    [InlineData("ai_tagging", 0.40)]
+    [InlineData("omnishotcut", 0.70)]
+    [InlineData("finalizing", 0.92)]
+    [InlineData("completed", 1.0)]
+    public void EstimateProgress_AdvancesAcrossCombinedAnalysisPhases(
+        string phase,
+        double expected)
+    {
+        var update = new SegmentStudioAnalysisProgress(
+            Guid.NewGuid(), Guid.NewGuid(), phase, DateTimeOffset.UtcNow, 1, null, null);
+
+        Assert.Equal(expected, SegmentStudioAnalysisClient.EstimateProgress(
+            update,
+            [SegmentStudioAnalysisKind.AiTagging, SegmentStudioAnalysisKind.OmniShotCut]));
+    }
+
+    [Fact]
+    public void EstimateProgress_UsesRealUnitCountsWithinTheCurrentPhase()
+    {
+        var update = new SegmentStudioAnalysisProgress(
+            Guid.NewGuid(), Guid.NewGuid(), "ai_tagging", DateTimeOffset.UtcNow, 1, 1, 2);
+
+        Assert.Equal(0.64, SegmentStudioAnalysisClient.EstimateProgress(
+            update,
+            [SegmentStudioAnalysisKind.AiTagging]), precision: 10);
+    }
+
+    [Fact]
+    public void AnalysisProgressRelay_ReportsSynchronouslyInOrder()
+    {
+        var phases = new List<string>();
+        var relay = new SegmentStudioAnalysisProgressRelay(update => phases.Add(update.Phase));
+
+        relay.Report(new(Guid.NewGuid(), Guid.NewGuid(), "probing", DateTimeOffset.UtcNow, 1, null, null));
+        relay.Report(new(Guid.NewGuid(), Guid.NewGuid(), "completed", DateTimeOffset.UtcNow, 2, null, null));
+
+        Assert.Equal(["probing", "completed"], phases);
+    }
+
     [Fact]
     public async Task ReadyAsync_SendsNoAuthorizationAndParsesChecks()
     {
@@ -42,6 +87,23 @@ public sealed class SegmentStudioAnalysisClientTests
         var runId = Guid.NewGuid();
         var handler = new StubHandler(request =>
         {
+            if (request.Method == HttpMethod.Get)
+            {
+                Assert.Equal($"/v1/analysis-runs/{runId}", request.RequestUri!.AbsolutePath);
+                return Json(HttpStatusCode.OK, $$"""
+                    {
+                      "schemaVersion": "1",
+                      "requestId": "{{requestId}}",
+                      "runId": "{{runId}}",
+                      "serviceVersion": "0.2.0",
+                      "phase": "completed",
+                      "phaseStartedAt": "2026-08-02T00:00:01Z",
+                      "elapsedSeconds": 6.1,
+                      "result":
+                """ + CompletedResultJson(requestId, runId) + "}");
+            }
+
+            Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/v1/analyze-video", request.RequestUri!.AbsolutePath);
             Assert.Null(request.Headers.Authorization);
             var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult()).RootElement;
@@ -53,13 +115,33 @@ public sealed class SegmentStudioAnalysisClientTests
             Assert.Equal(2, body.GetProperty("ai").GetProperty("frameIntervalSeconds").GetDouble());
             Assert.Equal("clean_shot", body.GetProperty("omnishotcut").GetProperty("mode").GetString());
 
-            return Json(HttpStatusCode.OK, $$"""
+            var accepted = Json(HttpStatusCode.Accepted, $$"""
                 {
-                  "schemaVersion": "1",
-                  "requestId": "{{requestId}}",
-                  "runId": "{{runId}}",
-                  "serviceVersion": "0.1.0",
-                  "status": "completed",
+                  "schemaVersion": "1", "requestId": "{{requestId}}", "runId": "{{runId}}",
+                  "serviceVersion": "0.2.0", "phase": "queued",
+                  "phaseStartedAt": "2026-08-02T00:00:00Z", "elapsedSeconds": 0
+                }
+                """);
+            accepted.Headers.Location = new Uri($"/v1/analysis-runs/{runId}", UriKind.Relative);
+            return accepted;
+        });
+
+        var result = await CreateClient(handler).AnalyzeVideoAsync(new(
+            requestId,
+            "/mnt/media/source.mp4",
+            [SegmentStudioAnalysisKind.AiTagging, SegmentStudioAnalysisKind.OmniShotCut]));
+
+        Assert.Equal(runId, result.RunId);
+        Assert.Equal("sha256:source", result.Source.Fingerprint);
+        var segment = Assert.Single(result.Ai!.Segments);
+        Assert.Equal("sha256:candidate", segment.CandidateKey);
+        Assert.Equal(2, result.OmniShotCut!.Boundaries.Count);
+    }
+
+    private static string CompletedResultJson(Guid requestId, Guid runId) => $$"""
+                {
+                  "schemaVersion": "1", "requestId": "{{requestId}}", "runId": "{{runId}}",
+                  "serviceVersion": "0.2.0", "status": "completed",
                   "source": {
                     "fingerprint": "sha256:source",
                     "sizeBytes": 100,
@@ -109,24 +191,12 @@ public sealed class SegmentStudioAnalysisClientTests
                   },
                   "warnings": []
                 }
-                """);
-        });
-
-        var result = await CreateClient(handler).AnalyzeVideoAsync(new(
-            requestId,
-            "/mnt/media/source.mp4",
-            [SegmentStudioAnalysisKind.AiTagging, SegmentStudioAnalysisKind.OmniShotCut]));
-
-        Assert.Equal(runId, result.RunId);
-        Assert.Equal("sha256:source", result.Source.Fingerprint);
-        var segment = Assert.Single(result.Ai!.Segments);
-        Assert.Equal("sha256:candidate", segment.CandidateKey);
-        Assert.Equal(2, result.OmniShotCut!.Boundaries.Count);
-    }
+                """;
 
     [Fact]
     public async Task AnalyzeVideoAsync_ThrowsSanitizedServiceException()
     {
+        var logger = new RecordingLogger<SegmentStudioAnalysisClient>();
         var handler = new StubHandler(_ => Json(HttpStatusCode.BadGateway, """
             {
               "code": "ai_server_unavailable",
@@ -136,7 +206,7 @@ public sealed class SegmentStudioAnalysisClientTests
             """));
 
         var exception = await Assert.ThrowsAsync<SegmentStudioAnalysisServiceException>(() =>
-            CreateClient(handler).AnalyzeVideoAsync(new(
+            CreateClient(handler, logger).AnalyzeVideoAsync(new(
                 Guid.NewGuid(),
                 "/mnt/media/source.mp4",
                 [SegmentStudioAnalysisKind.AiTagging])));
@@ -145,6 +215,33 @@ public sealed class SegmentStudioAnalysisClientTests
         Assert.Equal("ai_server_unavailable", exception.Code);
         Assert.True(exception.Retryable);
         Assert.DoesNotContain("/mnt/media/source.mp4", exception.Message);
+        Assert.Contains(logger.Messages, message =>
+            message.Contains("status=502", StringComparison.Ordinal)
+            && message.Contains("code=ai_server_unavailable", StringComparison.Ordinal)
+            && message.Contains("retryable=True", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message =>
+            message.Contains("/mnt/media/source.mp4", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeVideoAsync_LogsCancellationWithoutAnError()
+    {
+        var logger = new RecordingLogger<SegmentStudioAnalysisClient>();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            CreateClient(new StubHandler(_ => throw new OperationCanceledException()), logger)
+                .AnalyzeVideoAsync(new(
+                    Guid.NewGuid(),
+                    "/mnt/media/source.mp4",
+                    [SegmentStudioAnalysisKind.AiTagging]),
+                    cancellation.Token));
+
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.Information
+            && entry.Message.Contains("was cancelled", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
     }
 
     [Fact]
@@ -214,7 +311,8 @@ public sealed class SegmentStudioAnalysisClientTests
                     { "ok": true, "serviceVersion": "0.1.0", "schemaVersion": "1", "checks": {} }
                     """);
             })),
-            settings);
+            settings,
+            NullLogger<SegmentStudioAnalysisClient>.Instance);
 
         await client.ReadyAsync();
         await settings.SaveAsync(SegmentStudioAnalysisSettings.FromValues("http://second:8766"));
@@ -223,11 +321,14 @@ public sealed class SegmentStudioAnalysisClientTests
         Assert.Equal(["first", "second"], hosts);
     }
 
-    private static SegmentStudioAnalysisClient CreateClient(HttpMessageHandler handler)
+    private static SegmentStudioAnalysisClient CreateClient(
+        HttpMessageHandler handler,
+        ILogger<SegmentStudioAnalysisClient>? logger = null)
         => new(
             new HttpClient(handler),
             new FixedSettingsStore(
-                SegmentStudioAnalysisSettings.FromValues("http://analysis:8766")));
+                SegmentStudioAnalysisSettings.FromValues("http://analysis:8766")),
+            logger ?? NullLogger<SegmentStudioAnalysisClient>.Instance);
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body)
         => new(status)
@@ -276,5 +377,21 @@ public sealed class SegmentStudioAnalysisClientTests
 
         public Task<Dictionary<string, string>> GetAllAsync(CancellationToken ct = default)
             => Task.FromResult(new Dictionary<string, string>(_values));
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IEnumerable<string> Messages => Entries.Select(entry => entry.Message);
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
     }
 }
