@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import httpx
+
 from segment_studio_analysis.ai import (
     analyze_request,
     normalize_segments,
     parse_predictions,
     sanitize_model,
+    sanitized_upstream_error_code,
     select_models,
 )
 from segment_studio_analysis.models import AiOptions
@@ -58,6 +61,13 @@ def test_catalog_sanitization_and_deterministic_selection() -> None:
     }
     selected = select_models(catalog(), [], AiOptions())
     assert [model["configName"] for model in selected] == ["a-active", "z-loaded"]
+
+
+def test_upstream_error_code_is_strictly_allowlisted() -> None:
+    safe = httpx.Response(503, json={"error": {"code": "MODEL_BUSY"}})
+    unsafe = httpx.Response(503, json={"code": "/media/private/video.mp4"})
+    assert sanitized_upstream_error_code(safe) == "MODEL_BUSY"
+    assert sanitized_upstream_error_code(unsafe) is None
 
 
 def test_exact_v4_request_shape() -> None:

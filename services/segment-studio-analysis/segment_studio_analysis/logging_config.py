@@ -11,12 +11,15 @@ def configure_logging(level: str) -> None:
     handler.setFormatter(
         JsonFormatter(
             "%(asctime)s %(levelname)s %(name)s %(message)s "
-            "%(requestId)s %(runId)s %(phase)s %(elapsedMilliseconds)s "
-            "%(sourceFingerprint)s %(cacheHits)s %(selectedModels)s "
-            "%(resultCounts)s %(errorCode)s"
+            "%(requestId)s %(runId)s %(phase)s %(phaseStartedAt)s "
+            "%(elapsedSeconds)s %(errorCode)s %(failedPhase)s %(retryable)s "
+            "%(upstreamHttpStatus)s %(upstreamErrorCode)s"
         )
     )
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+    # Keep dependency request logging from exposing configured upstream URLs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)

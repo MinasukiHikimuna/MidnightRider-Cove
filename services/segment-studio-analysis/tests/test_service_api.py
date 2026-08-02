@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ import httpx
 
 from segment_studio_analysis.ai import AiClient
 from segment_studio_analysis.config import Settings
+from segment_studio_analysis.errors import ServiceError
 from segment_studio_analysis.main import create_app
 from segment_studio_analysis.models import AnalyzeVideoRequest
 from segment_studio_analysis.proxy_cache import ProxyInfo, ProxySet
@@ -67,6 +69,31 @@ class FakeAdapter:
             "intra_labels": ["General", "General"],
             "inter_labels": ["New_Start", "New_Start"],
         }
+
+
+class BlockingAiClient(FakeAiClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.started.set()
+        await self.release.wait()
+        return await super().analyze(payload)
+
+
+class FailingAiClient(FakeAiClient):
+    async def analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raise ServiceError(
+            "ai_analysis_failed",
+            "AI analysis failed",
+            502,
+            "sensitive upstream response must not be returned",
+            retryable=True,
+            upstream_http_status=503,
+            upstream_error_code="MODEL_BUSY",
+        )
 
 
 class FakeProxyCache:
@@ -178,8 +205,28 @@ async def test_health_and_combined_golden(
             assert (await client.get("/readyz")).status_code == 200
             assert (await client.get("/v1/ai/catalog")).status_code == 200
             response = await client.post("/v1/analyze-video", json=request)
-            assert response.status_code == 200, response.text
-            payload = response.json()
+            assert response.status_code == 202, response.text
+            accepted = response.json()
+            assert accepted["requestId"] == request["requestId"]
+            assert accepted["phase"] == "queued"
+            assert response.headers["location"] == (
+                f"/v1/analysis-runs/{accepted['runId']}"
+            )
+            assert response.headers["cache-control"] == "no-store"
+            assert "completedUnits" not in accepted
+            run_task = service.runs[accepted["runId"]].task
+            assert run_task is not None
+            await run_task
+            status_response = await client.get(response.headers["location"])
+            assert status_response.status_code == 200
+            assert status_response.headers["cache-control"] == "no-store"
+            status_payload = status_response.json()
+            assert status_payload["phase"] == "completed"
+            await asyncio.sleep(0.001)
+            assert (
+                await client.get(response.headers["location"])
+            ).json()["elapsedSeconds"] == status_payload["elapsedSeconds"]
+            payload = status_payload["result"]
             assert payload["schemaVersion"] == "1"
             assert payload["source"]["fingerprint"] == "sha256:source"
             assert payload["ai"]["segments"][0]["tagName"] == "example"
@@ -188,7 +235,9 @@ async def test_health_and_combined_golden(
             assert "sourcePath" not in json.dumps(payload)
 
             replay = await client.post("/v1/analyze-video", json=request)
-            assert replay.json() == payload
+            assert replay.status_code == 202
+            assert replay.json()["phase"] == "completed"
+            assert replay.json()["result"] == payload
             assert fake_ai.analyze_calls == 1
 
             conflicting = {**request, "analyses": ["aiTagging"]}
@@ -222,6 +271,86 @@ async def test_unknown_request_fields_are_rejected(tmp_path: Path) -> None:
             )
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_request"
+
+
+async def test_status_endpoint_reports_live_phase_and_sanitized_failure(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    configured = settings(tmp_path)
+    video = configured.media_roots[0] / "private-library-name.mp4"
+    video.write_bytes(b"video")
+    blocking_ai = BlockingAiClient()
+    service = AnalysisService(
+        configured,
+        ai_client=blocking_ai,  # type: ignore[arg-type]
+        adapter=FakeAdapter(),  # type: ignore[arg-type]
+        proxy_cache=FakeProxyCache(configured.proxy_cache_root),  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr(
+        "segment_studio_analysis.service.probe_source",
+        lambda _: SourceInfo("sha256:source", 5, 1, 10.0, 25.0, 1920, 1080, 250),
+    )
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr("segment_studio_analysis.service.run_in_thread", run_inline)
+    app = create_app(configured, service)
+    request = {
+        "schemaVersion": "1",
+        "requestId": "00000000-0000-4000-8000-000000000010",
+        "sourcePath": str(video),
+        "analyses": ["aiTagging"],
+    }
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            accepted = await client.post("/v1/analyze-video", json=request)
+            await blocking_ai.started.wait()
+            live = (await client.get(accepted.headers["location"])).json()
+            assert live["phase"] == "ai_tagging"
+            assert live["requestId"] == request["requestId"]
+            assert live["runId"] == accepted.json()["runId"]
+            assert live["elapsedSeconds"] >= 0
+            assert "completedUnits" not in live
+            blocking_ai.release.set()
+            assert service.runs[live["runId"]].task is not None
+            await service.runs[live["runId"]].task
+
+    failing = AnalysisService(
+        configured,
+        ai_client=FailingAiClient(),  # type: ignore[arg-type]
+        adapter=FakeAdapter(),  # type: ignore[arg-type]
+        proxy_cache=FakeProxyCache(configured.proxy_cache_root),  # type: ignore[arg-type]
+    )
+    failed_request = {**request, "requestId": "00000000-0000-4000-8000-000000000011"}
+    failed_app = create_app(configured, failing)
+    async with failed_app.router.lifespan_context(failed_app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=failed_app), base_url="http://test"
+        ) as client:
+            accepted = await client.post("/v1/analyze-video", json=failed_request)
+            failed_run = failing.runs[accepted.json()["runId"]]
+            assert failed_run.task is not None
+            await failed_run.task
+            terminal = (await client.get(accepted.headers["location"])).json()
+            assert terminal["phase"] == "failed"
+            assert terminal["error"] == {
+                "code": "ai_analysis_failed",
+                "phase": "ai_tagging",
+                "retryable": True,
+                "upstreamHttpStatus": 503,
+                "upstreamErrorCode": "MODEL_BUSY",
+            }
+            assert "sensitive" not in json.dumps(terminal)
+
+            missing = await client.get(
+                "/v1/analysis-runs/00000000-0000-4000-8000-000000000099"
+            )
+            assert missing.status_code == 404
+            assert missing.json()["code"] == "run_not_found"
+    assert "private-library-name.mp4" not in capsys.readouterr().out
 
 
 def test_api_contract_has_no_authentication_scheme(tmp_path: Path) -> None:

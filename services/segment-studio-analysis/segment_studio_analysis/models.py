@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -160,3 +161,46 @@ class AnalyzeVideoResponse(ApiModel):
     omnishotcut: OmniShotCutAnalysisResponse | None = None
     metrics: MetricsResponse
     warnings: list[str]
+
+
+AnalysisPhase = Literal[
+    "queued",
+    "probing",
+    "building_proxy",
+    "waiting_for_ai",
+    "ai_tagging",
+    "omnishotcut",
+    "finalizing",
+    "completed",
+    "failed",
+]
+
+
+class AnalysisRunError(ApiModel):
+    code: str
+    phase: Literal[
+        "queued",
+        "probing",
+        "building_proxy",
+        "waiting_for_ai",
+        "ai_tagging",
+        "omnishotcut",
+        "finalizing",
+    ]
+    retryable: bool
+    upstreamHttpStatus: int | None = None
+    upstreamErrorCode: str | None = None
+
+
+class AnalysisRunStatus(ApiModel):
+    schemaVersion: Literal["1"]
+    requestId: UUID
+    runId: UUID
+    serviceVersion: str
+    phase: AnalysisPhase
+    phaseStartedAt: datetime
+    elapsedSeconds: float
+    completedUnits: int | None = None
+    totalUnits: int | None = None
+    error: AnalysisRunError | None = None
+    result: AnalyzeVideoResponse | None = None

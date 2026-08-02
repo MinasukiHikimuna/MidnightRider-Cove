@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -41,6 +42,16 @@ class AiClient:
             payload = response.json()
             raw_models = unwrap_catalog(payload)
             models = [sanitize_model(model) for model in raw_models if isinstance(model, dict)]
+        except httpx.HTTPStatusError as error:
+            raise ServiceError(
+                "ai_catalog_failed",
+                "AI catalog failed",
+                502,
+                "The AI model catalog could not be retrieved.",
+                retryable=True,
+                upstream_http_status=error.response.status_code,
+                upstream_error_code=sanitized_upstream_error_code(error.response),
+            ) from error
         except (httpx.HTTPError, ValueError, TypeError) as error:
             raise ServiceError(
                 "ai_catalog_failed",
@@ -67,6 +78,13 @@ class AiClient:
                 "ai_server_unavailable", "AI server unavailable", 502,
                 "The AI analysis service could not complete the request.", True,
             ) from error
+        except httpx.HTTPStatusError as error:
+            raise ServiceError(
+                "ai_analysis_failed", "AI analysis failed", 502,
+                "The AI analysis service rejected or failed the request.", True,
+                upstream_http_status=error.response.status_code,
+                upstream_error_code=sanitized_upstream_error_code(error.response),
+            ) from error
         except httpx.HTTPError as error:
             raise ServiceError(
                 "ai_analysis_failed", "AI analysis failed", 502,
@@ -77,6 +95,24 @@ class AiClient:
                 "ai_analysis_failed", "AI analysis failed", 502,
                 "The AI analysis service returned an invalid response.",
             ) from error
+
+
+SAFE_UPSTREAM_CODE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+
+
+def sanitized_upstream_error_code(response: httpx.Response) -> str | None:
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value: object = payload.get("code")
+    if value is None and isinstance(payload.get("error"), dict):
+        value = payload["error"].get("code")
+    if isinstance(value, str) and SAFE_UPSTREAM_CODE.fullmatch(value):
+        return value
+    return None
 
 
 def unwrap_catalog(payload: object) -> list[object]:

@@ -11,6 +11,8 @@ class ServiceError(Exception):
     detail: str
     retryable: bool = False
     request_id: str | None = None
+    upstream_http_status: int | None = None
+    upstream_error_code: str | None = None
 
     def problem(self) -> dict[str, object]:
         result: dict[str, object] = {

@@ -22,8 +22,10 @@ if test -z "$request_id"
 end
 
 set request_file (mktemp)
+set response_file (mktemp)
 function cleanup --on-event fish_exit
     rm --force $request_file
+    rm --force $response_file
 end
 
 env SOURCE_PATH=$_flag_source_path REQUEST_ID=$request_id python -c '
@@ -44,4 +46,22 @@ curl \
     --show-error \
     --header "Content-Type: application/json" \
     --data-binary "@$request_file" \
+    --output $response_file \
     "$_flag_base_url/v1/analyze-video"
+
+set run_id (python -c 'import json, sys; print(json.load(open(sys.argv[1]))["runId"])' $response_file)
+while true
+    curl \
+        --fail-with-body \
+        --silent \
+        --show-error \
+        --output $response_file \
+        "$_flag_base_url/v1/analysis-runs/$run_id"
+    set phase (python -c 'import json, sys; print(json.load(open(sys.argv[1]))["phase"])' $response_file)
+    if contains -- $phase completed failed
+        python -m json.tool $response_file
+        test $phase = completed
+        exit $status
+    end
+    sleep 1
+end

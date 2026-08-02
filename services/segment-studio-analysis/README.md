@@ -13,7 +13,21 @@ application's database.
 - `GET /healthz` reports process liveness.
 - `GET /readyz` checks runtime readiness.
 - `GET /v1/ai/catalog` returns the sanitized NSFW AI v4 model catalog.
-- `POST /v1/analyze-video` performs one synchronous analysis.
+- `POST /v1/analyze-video` accepts an analysis and returns `202 Accepted` with
+  correlated `requestId`/`runId` values and a `Location` header.
+- `GET /v1/analysis-runs/{runId}` reports the current phase and returns the
+  result or a sanitized terminal failure.
+
+The phases are `queued`, `probing`, `building_proxy`, `waiting_for_ai`,
+`ai_tagging`, `omnishotcut`, `finalizing`, and `completed`/`failed`. Status
+responses include `phaseStartedAt` and total `elapsedSeconds`. Unit counts are
+omitted because the current upstream tools do not expose measurable work-unit
+progress; callers must not derive a percentage from phase names.
+
+Terminal failures identify the phase that failed, whether retry is safe, and,
+when available, an allowlisted upstream HTTP status and error code. Logs and
+status responses exclude source paths, credentials, upstream model payloads,
+and video or library names.
 
 The service does not authenticate requests. Restrict access at the network or
 reverse-proxy boundary when deploying it outside a trusted network.

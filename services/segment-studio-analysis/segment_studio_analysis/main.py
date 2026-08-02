@@ -6,9 +6,10 @@ import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
+from uuid import UUID
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -16,7 +17,7 @@ from . import SCHEMA_VERSION, SERVICE_VERSION
 from .config import Settings, load_settings
 from .errors import ServiceError
 from .logging_config import configure_logging
-from .models import AnalyzeVideoRequest, AnalyzeVideoResponse, CatalogModel
+from .models import AnalysisRunStatus, AnalyzeVideoRequest, CatalogModel
 from .service import AnalysisService
 
 
@@ -88,13 +89,38 @@ def create_app(
 
     @app.post(
         "/v1/analyze-video",
-        response_model=AnalyzeVideoResponse,
+        response_model=AnalysisRunStatus,
         response_model_exclude_none=True,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            status.HTTP_202_ACCEPTED: {
+                "headers": {
+                    "Location": {
+                        "description": "Status resource for the accepted analysis run.",
+                        "schema": {"type": "string"},
+                    }
+                }
+            }
+        },
     )
     async def analyze_video(
-        payload: AnalyzeVideoRequest, request: Request
+        payload: AnalyzeVideoRequest, request: Request, response: Response
     ) -> dict[str, object]:
-        return await get_service(request).analyze(payload)
+        run = await get_service(request).submit(payload)
+        response.headers["Location"] = f"/v1/analysis-runs/{run.run_id}"
+        response.headers["Cache-Control"] = "no-store"
+        return run.public()
+
+    @app.get(
+        "/v1/analysis-runs/{run_id}",
+        response_model=AnalysisRunStatus,
+        response_model_exclude_none=True,
+    )
+    async def analysis_run(
+        run_id: UUID, request: Request, response: Response
+    ) -> dict[str, object]:
+        response.headers["Cache-Control"] = "no-store"
+        return get_service(request).get_run(run_id).public()
 
     return app
 
