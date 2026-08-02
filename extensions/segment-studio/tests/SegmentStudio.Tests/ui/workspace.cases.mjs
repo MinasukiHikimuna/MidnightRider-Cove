@@ -961,10 +961,80 @@ test("performer slot recommendations mirror Marker Studio number-key assignments
     [{ ...slots[0] }, { ...slots[1], label: null }],
     performers,
   ), []);
-  assert.equal(ui.generatePerformerSlotAssignmentRecommendations(
+  assert.deepEqual(ui.generatePerformerSlotAssignmentRecommendations(
     slots,
-    performers.filter((performer) => performer.gender === "Female"),
-  ).length, 0);
+    performers.filter((performer) => performer.name === "Alexis"),
+  ), [{
+    assignments: { giver: "1", receiver: "" },
+    description: "Giver: Alexis, Receiver: Unassigned",
+  }]);
+
+  const ambiguousPartial = ui.generatePerformerSlotAssignmentRecommendations([
+    { slotDefinitionId: "first", label: "First", genderHints: ["FEMALE"], allowSamePerformerInMultipleSlots: false },
+    { slotDefinitionId: "second", label: "Second", genderHints: ["FEMALE"], allowSamePerformerInMultipleSlots: false },
+    { slotDefinitionId: "missing", label: "Missing", genderHints: ["MALE"], allowSamePerformerInMultipleSlots: false },
+  ], performers.filter((performer) => performer.gender === "Female"));
+  assert.deepEqual(ambiguousPartial.map((recommendation) => recommendation.description), [
+    "First: Alexis, Second: Caprice, Missing: Unassigned",
+    "First: Caprice, Second: Alexis, Missing: Unassigned",
+  ]);
+  assert.ok(ambiguousPartial.every((recommendation) => recommendation.assignments.missing === ""));
+
+  const cappedPartial = ui.generatePerformerSlotAssignmentRecommendations([
+    ...Array.from({ length: 5 }, (_, index) => ({
+      slotDefinitionId: `female-${index}`,
+      label: `Female ${index}`,
+      genderHints: ["FEMALE"],
+      allowSamePerformerInMultipleSlots: false,
+    })),
+    ...Array.from({ length: 5 }, (_, index) => ({
+      slotDefinitionId: `male-${index}`,
+      label: `Male ${index}`,
+      genderHints: ["MALE"],
+      allowSamePerformerInMultipleSlots: false,
+    })),
+  ], Array.from({ length: 10 }, (_, index) => ({
+    performerId: index + 1,
+    name: `Female ${index}`,
+    gender: "Female",
+    isVideoPerformer: true,
+  })));
+  assert.equal(cappedPartial.length, 9);
+  assert.ok(cappedPartial.every((recommendation) =>
+    Object.values(recommendation.assignments).filter(Boolean).length === 5));
+
+  const overlappingPartial = ui.generatePerformerSlotAssignmentRecommendations([
+    ...Array.from({ length: 5 }, (_, index) => ({
+      slotDefinitionId: `flexible-${index}`,
+      label: `Flexible ${index}`,
+      genderHints: ["FEMALE", "MALE"],
+      allowSamePerformerInMultipleSlots: false,
+    })),
+    ...Array.from({ length: 5 }, (_, index) => ({
+      slotDefinitionId: `female-only-${index}`,
+      label: `Female only ${index}`,
+      genderHints: ["FEMALE"],
+      allowSamePerformerInMultipleSlots: false,
+    })),
+    {
+      slotDefinitionId: "unavailable",
+      label: "Unavailable",
+      genderHints: ["NON_BINARY"],
+      allowSamePerformerInMultipleSlots: false,
+    },
+  ], [
+    ...Array.from({ length: 5 }, (_, index) => ({ performerId: index + 1, name: `Female ${index}`, gender: "Female" })),
+    ...Array.from({ length: 5 }, (_, index) => ({ performerId: index + 6, name: `Male ${index}`, gender: "Male" })),
+  ]);
+  assert.equal(overlappingPartial.length, 9);
+  assert.ok(overlappingPartial.every((recommendation) =>
+    recommendation.assignments.unavailable === ""
+    && Object.values(recommendation.assignments).filter(Boolean).length === 10));
+
+  assert.deepEqual(ui.generatePerformerSlotAssignmentRecommendations(
+    slots,
+    [{ performerId: 4, name: "No Match", gender: "NonBinary", isVideoPerformer: true }],
+  ), []);
 
   const slotEditor = source.slice(
     source.indexOf("function PerformerSlotAssignmentEditor"),

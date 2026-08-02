@@ -108,10 +108,6 @@ export function generatePerformerSlotAssignmentRecommendations(slots, performers
   const allowSame = slots[0].allowSamePerformerInMultipleSlots === true;
   const maximum = Math.max(0, Math.min(9, Math.floor(Number(limit)) || 0));
   if (maximum === 0) return [];
-  if (!allowSame && slots.length > performers.length) return [];
-  if (slots.some((slot) => slot.genderHints?.length && !performers.some((performer) =>
-    slot.genderHints.some((hint) =>
-      normalizeGender(hint) === normalizeGender(performer.gender || performer.genderIdentity))))) return [];
 
   if (labeledSlots.length === 0 && slots.every((slot) => !slot.genderHints?.length)
       && slots.length === performers.length && !allowSame) {
@@ -129,23 +125,41 @@ export function generatePerformerSlotAssignmentRecommendations(slots, performers
   const recommendations = [];
   const seen = new Set();
   const current = [];
+  const compatiblePerformerIndexes = slots.map((slot) => performers
+    .map((performer, index) => ({ performer, index }))
+    .filter(({ performer }) => !slot.genderHints?.length || slot.genderHints.some((hint) =>
+      normalizeGender(hint) === normalizeGender(performer.gender || performer.genderIdentity)))
+    .map(({ index }) => index));
+  const maximumAssignedCount = allowSame
+    ? compatiblePerformerIndexes.filter((indexes) => indexes.length > 0).length
+    : maximumBipartiteAssignmentCount(compatiblePerformerIndexes, performers.length);
+  if (maximumAssignedCount === 0) return [];
   const performerOrder = new Map(performers.map((performer, index) => [String(performerOptionId(performer)), index]));
-  function collect(index, used) {
+  function collect(index, used, assignedCount) {
     if (recommendations.length >= maximum) return;
+    const remainingCompatibleIndexes = compatiblePerformerIndexes.slice(index);
+    const remainingAssignableCount = allowSame
+      ? remainingCompatibleIndexes.filter((indexes) => indexes.length > 0).length
+      : maximumBipartiteAssignmentCount(remainingCompatibleIndexes.map((indexes) =>
+        indexes.filter((performerIndex) => !used.has(String(performerOptionId(performers[performerIndex]))))), performers.length);
+    if (assignedCount + remainingAssignableCount < maximumAssignedCount) return;
     if (index === slots.length) {
+      if (assignedCount !== maximumAssignedCount) return;
       const assignments = Object.fromEntries(current.map(({ slot, performer }) =>
-        [String(slot.slotDefinitionId), String(performerOptionId(performer))]));
+        [String(slot.slotDefinitionId), performer ? String(performerOptionId(performer)) : ""]));
       const key = labeledSlots.length === 0
         ? Object.values(assignments).sort().join(",")
         : [...new Set(slots.map((slot) => String(slot.label || "")))].map((label) =>
           `${label}:${current.filter(({ slot }) => String(slot.label || "") === label)
-            .map(({ performer }) => String(performerOptionId(performer))).sort().join(",")}`).join("|");
-      if (!seen.has(key)) {
+            .map(({ performer }) => performer ? String(performerOptionId(performer)) : "").sort().join(",")}`).join("|");
+      if (!seen.has(key) && recommendations.length < maximum) {
         seen.add(key);
         recommendations.push({
           assignments,
           description: current.map(({ slot, performer }) =>
-            labeledSlots.length ? `${slot.label}: ${performer.name}` : performer.name).join(", "),
+            labeledSlots.length
+              ? `${slot.label}: ${performer?.name || "Unassigned"}`
+              : performer?.name || "Unassigned").join(", "),
         });
       }
       return;
@@ -156,23 +170,42 @@ export function generatePerformerSlotAssignmentRecommendations(slots, performers
     const minimumPerformerOrder = equivalentPredecessor
       ? performerOrder.get(String(performerOptionId(equivalentPredecessor.performer)))
       : -1;
-    for (let performerIndex = 0; performerIndex < performers.length; performerIndex += 1) {
+    for (const performerIndex of compatiblePerformerIndexes[index]) {
       const performer = performers[performerIndex];
       const performerId = performerOptionId(performer);
       if (performerIndex < minimumPerformerOrder) continue;
       if (performerId == null || (!allowSame && used.has(String(performerId)))) continue;
-      if (slot.genderHints?.length && !slot.genderHints.some((hint) =>
-        normalizeGender(hint) === normalizeGender(performer.gender || performer.genderIdentity))) continue;
       current.push({ slot, performer });
       if (!allowSame) used.add(String(performerId));
-      collect(index + 1, used);
+      collect(index + 1, used, assignedCount + 1);
       if (!allowSame) used.delete(String(performerId));
       current.pop();
       if (recommendations.length >= maximum) return;
     }
+    current.push({ slot, performer: null });
+    collect(index + 1, used, assignedCount);
+    current.pop();
   }
-  collect(0, new Set());
+  collect(0, new Set(), 0);
   return recommendations;
+}
+
+function maximumBipartiteAssignmentCount(compatiblePerformerIndexes, performerCount) {
+  const matchedSlotByPerformer = Array(performerCount).fill(-1);
+  function match(slotIndex, visitedPerformers) {
+    for (const performerIndex of compatiblePerformerIndexes[slotIndex]) {
+      if (visitedPerformers.has(performerIndex)) continue;
+      visitedPerformers.add(performerIndex);
+      if (matchedSlotByPerformer[performerIndex] === -1
+          || match(matchedSlotByPerformer[performerIndex], visitedPerformers)) {
+        matchedSlotByPerformer[performerIndex] = slotIndex;
+        return true;
+      }
+    }
+    return false;
+  }
+  return compatiblePerformerIndexes.reduce((count, _, slotIndex) =>
+    count + (match(slotIndex, new Set()) ? 1 : 0), 0);
 }
 
 export function findUniquePerformerSlotAssignment(slots, performers) {
