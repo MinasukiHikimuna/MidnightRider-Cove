@@ -13,7 +13,6 @@ class ConfigurationError(ValueError):
 
 @dataclass(frozen=True)
 class Settings:
-    token: str
     media_roots: tuple[Path, ...]
     proxy_cache_root: Path
     model_cache_root: Path
@@ -47,7 +46,6 @@ class Settings:
 
     def redacted(self) -> dict[str, object]:
         return {
-            "token": "[REDACTED]",
             "mediaRoots": ["[PATH]" for _ in self.media_roots],
             "proxyCacheRoot": "[PATH]",
             "modelCacheRoot": "[PATH]",
@@ -59,10 +57,6 @@ class Settings:
 
 def load_settings(environ: dict[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
-
-    token = required(env, "SEGMENT_STUDIO_ANALYSIS_TOKEN")
-    if len(token) < 32:
-        raise ConfigurationError("SEGMENT_STUDIO_ANALYSIS_TOKEN must be at least 32 characters")
 
     try:
         media_values = json.loads(required(env, "SEGMENT_STUDIO_MEDIA_ROOTS"))
@@ -117,7 +111,6 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
     )
 
     return Settings(
-        token=token,
         media_roots=media_roots,
         proxy_cache_root=proxy_root,
         model_cache_root=model_root,

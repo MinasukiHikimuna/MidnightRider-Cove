@@ -14,7 +14,6 @@ def valid_environment(tmp_path: Path) -> dict[str, str]:
     media = tmp_path / "media"
     media.mkdir()
     return {
-        "SEGMENT_STUDIO_ANALYSIS_TOKEN": "x" * 32,
         "SEGMENT_STUDIO_MEDIA_ROOTS": json.dumps([str(media)]),
         "SEGMENT_STUDIO_PROXY_CACHE_ROOT": str(tmp_path / "cache" / "proxies"),
         "SEGMENT_STUDIO_MODEL_CACHE_ROOT": str(tmp_path / "cache" / "models"),
@@ -25,10 +24,8 @@ def valid_environment(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_load_settings_validates_and_redacts_secrets(tmp_path: Path) -> None:
+def test_load_settings_validates_and_redacts_environment_details(tmp_path: Path) -> None:
     settings = load_settings(valid_environment(tmp_path))
-    assert settings.token == "x" * 32
-    assert settings.redacted()["token"] == "[REDACTED]"
     assert "ai-server" not in str(settings.redacted())
     assert settings.map_ai_path(settings.proxy_cache_root / "a.mp4") == Path(
         "/cache/proxies/a.mp4"
@@ -38,7 +35,6 @@ def test_load_settings_validates_and_redacts_secrets(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("key", "value"),
     [
-        ("SEGMENT_STUDIO_ANALYSIS_TOKEN", "short"),
         ("SEGMENT_STUDIO_MEDIA_ROOTS", "not-json"),
         ("SEGMENT_STUDIO_PROXY_CACHE_ROOT", "relative"),
         ("SEGMENT_STUDIO_AI_SERVER_BASE_URL", "not-a-url"),

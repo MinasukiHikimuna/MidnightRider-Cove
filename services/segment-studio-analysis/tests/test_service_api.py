@@ -94,7 +94,6 @@ def settings(tmp_path: Path) -> Settings:
     media = tmp_path / "media"
     media.mkdir()
     return Settings(
-        token="t" * 32,
         media_roots=(media,),
         proxy_cache_root=tmp_path / "shared" / "proxies",
         model_cache_root=tmp_path / "models",
@@ -120,7 +119,7 @@ def settings(tmp_path: Path) -> Settings:
     )
 
 
-async def test_health_auth_validation_and_combined_golden(
+async def test_health_and_combined_golden(
     tmp_path: Path, monkeypatch
 ) -> None:
     configured = settings(tmp_path)
@@ -140,10 +139,25 @@ async def test_health_auth_validation_and_combined_golden(
             "sha256:source", 5, 1, 10.0, 25.0, 1920, 1080, 250
         ),
     )
+
     async def run_inline(function, *args, **kwargs):
         return function(*args, **kwargs)
 
+    async def all_ready(_: AnalysisService) -> dict[str, dict[str, object]]:
+        return {
+            name: {"ok": True}
+            for name in (
+                "ffmpeg",
+                "ffprobe",
+                "cuda",
+                "omnishotcut",
+                "proxyCache",
+                "aiServer",
+            )
+        }
+
     monkeypatch.setattr("segment_studio_analysis.service.run_in_thread", run_inline)
+    monkeypatch.setattr("segment_studio_analysis.main.readiness_checks", all_ready)
     app = create_app(configured, service)
     request = {
         "schemaVersion": "1",
@@ -157,16 +171,13 @@ async def test_health_auth_validation_and_combined_golden(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             assert (await client.get("/healthz")).json() == {
-            "ok": True,
-            "serviceVersion": "0.1.0",
-            "schemaVersion": "1",
+                "ok": True,
+                "serviceVersion": "0.1.0",
+                "schemaVersion": "1",
             }
-            assert (await client.post("/v1/analyze-video", json=request)).status_code == 401
-            response = await client.post(
-                "/v1/analyze-video",
-                json=request,
-                headers={"Authorization": f"Bearer {configured.token}"},
-            )
+            assert (await client.get("/readyz")).status_code == 200
+            assert (await client.get("/v1/ai/catalog")).status_code == 200
+            response = await client.post("/v1/analyze-video", json=request)
             assert response.status_code == 200, response.text
             payload = response.json()
             assert payload["schemaVersion"] == "1"
@@ -176,20 +187,12 @@ async def test_health_auth_validation_and_combined_golden(
             assert payload["omnishotcut"]["boundaries"][-1]["endSeconds"] == 10
             assert "sourcePath" not in json.dumps(payload)
 
-            replay = await client.post(
-                "/v1/analyze-video",
-                json=request,
-                headers={"Authorization": f"Bearer {configured.token}"},
-            )
+            replay = await client.post("/v1/analyze-video", json=request)
             assert replay.json() == payload
             assert fake_ai.analyze_calls == 1
 
             conflicting = {**request, "analyses": ["aiTagging"]}
-            conflict = await client.post(
-                "/v1/analyze-video",
-                json=conflicting,
-                headers={"Authorization": f"Bearer {configured.token}"},
-            )
+            conflict = await client.post("/v1/analyze-video", json=conflicting)
             assert conflict.status_code == 409
             assert conflict.json()["code"] == "invalid_request"
 
@@ -216,7 +219,16 @@ async def test_unknown_request_fields_are_rejected(tmp_path: Path) -> None:
                     "analyses": ["aiTagging"],
                     "unknown": True,
                 },
-                headers={"Authorization": f"Bearer {configured.token}"},
             )
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_request"
+
+
+def test_api_contract_has_no_authentication_scheme(tmp_path: Path) -> None:
+    document = create_app(settings(tmp_path)).openapi()
+    assert "securitySchemes" not in document.get("components", {})
+    assert all(
+        "security" not in operation
+        for path in document["paths"].values()
+        for operation in path.values()
+    )

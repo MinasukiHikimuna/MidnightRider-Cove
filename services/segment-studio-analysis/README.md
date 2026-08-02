@@ -10,16 +10,13 @@ application's database.
 
 ## HTTP API
 
-- `GET /healthz` is unauthenticated process liveness.
-- `GET /readyz` requires bearer authentication and checks runtime readiness.
+- `GET /healthz` reports process liveness.
+- `GET /readyz` checks runtime readiness.
 - `GET /v1/ai/catalog` returns the sanitized NSFW AI v4 model catalog.
 - `POST /v1/analyze-video` performs one synchronous analysis.
 
-All `/v1/*` requests and `/readyz` require:
-
-```text
-Authorization: Bearer <SEGMENT_STUDIO_ANALYSIS_TOKEN>
-```
+The service does not authenticate requests. Restrict access at the network or
+reverse-proxy boundary when deploying it outside a trusted network.
 
 The generated contract is in `openapi.json`. Sanitized examples are under
 `fixtures/`.
@@ -63,8 +60,8 @@ docker compose \
 
 The first startup downloads the checkpoint pinned in `model-manifest.json`,
 verifies its SHA-256 digest, and stores it in the model-cache volume. Liveness
-is available during download/model load; authenticated readiness remains
-unavailable until CUDA and the warm model are ready.
+is available during download/model load; readiness remains unavailable until
+CUDA and the warm model are ready.
 
 The upstream NSFW AI v4 server currently has no path-mapping probe endpoint.
 `/readyz` therefore reports `aiProxyPathMapping.supported=false`; a first smoke
@@ -72,13 +69,11 @@ analysis must establish that both containers see the mapped proxy path.
 
 ## Smoke test
 
-Keep the bearer token and media path in ignored/private files or shell
-variables. The smoke script embeds neither:
+Keep the media path in a shell variable so it is not embedded in the script:
 
 ```fish
 scripts/smoke-test.fish \
     --base-url http://127.0.0.1:8766 \
-    --token-file private/token \
     --source-path "$test_video"
 ```
 

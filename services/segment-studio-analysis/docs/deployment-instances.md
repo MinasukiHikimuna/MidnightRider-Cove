@@ -3,7 +3,6 @@
 Run development, staging, and production as separate Compose projects from the
 same immutable image. Each instance must have its own:
 
-- 32-byte-or-longer bearer token;
 - environment file;
 - proxy-cache directory;
 - model-cache directory;
@@ -23,11 +22,8 @@ Keep actual values under the ignored `private/` directory:
 ```text
 private/
   dev.env
-  dev.token
   staging.env
-  staging.token
   production.env
-  production.token
 ```
 
 Start an instance with an explicit project name and its private environment:

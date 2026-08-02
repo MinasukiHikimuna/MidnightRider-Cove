@@ -854,12 +854,6 @@
         "title": "ValidationError",
         "type": "object"
       }
-    },
-    "securitySchemes": {
-      "HTTPBearer": {
-        "scheme": "bearer",
-        "type": "http"
-      }
     }
   },
   "info": {
@@ -901,11 +895,6 @@
             "description": "Successful Response"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Readyz"
       }
     },
@@ -928,11 +917,6 @@
             "description": "Successful Response"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Ai Catalog"
       }
     },
@@ -971,11 +955,6 @@
             "description": "Validation Error"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Analyze Video"
       }
     }

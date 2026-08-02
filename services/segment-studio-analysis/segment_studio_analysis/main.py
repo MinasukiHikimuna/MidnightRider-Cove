@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import shutil
 import subprocess
 from contextlib import asynccontextmanager
@@ -9,13 +8,12 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 import httpx
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import SCHEMA_VERSION, SERVICE_VERSION
-from .config import ConfigurationError, Settings, load_settings
+from .config import Settings, load_settings
 from .errors import ServiceError
 from .logging_config import configure_logging
 from .models import AnalyzeVideoRequest, AnalyzeVideoResponse, CatalogModel
@@ -66,7 +64,7 @@ def create_app(
             "schemaVersion": SCHEMA_VERSION,
         }
 
-    @app.get("/readyz", dependencies=[Depends(authenticate)])
+    @app.get("/readyz")
     async def readyz(request: Request) -> JSONResponse:
         state = get_service(request)
         checks = await readiness_checks(state)
@@ -82,7 +80,6 @@ def create_app(
 
     @app.get(
         "/v1/ai/catalog",
-        dependencies=[Depends(authenticate)],
         response_model=list[CatalogModel],
         response_model_exclude_none=True,
     )
@@ -91,7 +88,6 @@ def create_app(
 
     @app.post(
         "/v1/analyze-video",
-        dependencies=[Depends(authenticate)],
         response_model=AnalyzeVideoResponse,
         response_model_exclude_none=True,
     )
@@ -101,22 +97,6 @@ def create_app(
         return await get_service(request).analyze(payload)
 
     return app
-
-
-bearer = HTTPBearer(auto_error=False)
-
-
-async def authenticate(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-) -> None:
-    settings: Settings = request.app.state.settings
-    token = credentials.credentials if credentials and credentials.scheme == "Bearer" else ""
-    if not hmac.compare_digest(token.encode(), settings.token.encode()):
-        raise ServiceError(
-            "unauthorized", "Unauthorized", 401,
-            "A valid bearer token is required.",
-        )
 
 
 def get_service(request: Request) -> AnalysisService:

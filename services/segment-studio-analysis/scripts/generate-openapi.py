@@ -11,7 +11,6 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     private = root / ".openapi-private"
     environment = {
-        "SEGMENT_STUDIO_ANALYSIS_TOKEN": "x" * 32,
         "SEGMENT_STUDIO_MEDIA_ROOTS": json.dumps([str(private / "media")]),
         "SEGMENT_STUDIO_PROXY_CACHE_ROOT": str(private / "cache" / "proxies"),
         "SEGMENT_STUDIO_MODEL_CACHE_ROOT": str(private / "cache" / "models"),
