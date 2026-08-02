@@ -2,7 +2,7 @@ import { findAdjacentShot, findEditorShortcut, frameStepSeconds, readShortcutBin
 import { shouldHandleEditorShortcut } from "../../shared/presentation.js";
 import { percentageSeekTime } from "../model/selection.js";
 import { findAdjacentSegmentGroupKey, findSwimlaneRangeSelection, findSwimlaneSelection, toggleAllCollapsedSegmentGroups } from "../model/swimlanes.js";
-import { clampTimelineZoom, findSegmentFromPlayhead, findSegmentNearPlayhead, findUnreviewedSelection } from "../model/timeline.js";
+import { clampTimelineZoom, findNearestSegmentInCurrentSwimlane, findSegmentFromPlayhead, findSegmentNearPlayhead, findUnreviewedSelection } from "../model/timeline.js";
 import { readTimingClipboard, writeTimingClipboard } from "../model/layout.js";
 
 function createShortcutHandler(context) {
@@ -74,6 +74,11 @@ function createShortcutHandler(context) {
       };
       if (shortcut.id === "navigation.previousAtPlayhead" || shortcut.id === "navigation.nextAtPlayhead") action = () => {
         const target = findSegmentFromPlayhead(visibleSegments, currentTime, shortcut.id === "navigation.previousAtPlayhead" ? -1 : 1, selectedSegment?.id);
+        if (target) selectSegment(target, { focusEditor: true, seekToSegment: false });
+      };
+      if (shortcut.id === "navigation.nearestInCurrentSwimlane") action = () => {
+        const target = findNearestSegmentInCurrentSwimlane(
+          swimlanes, selectedSegment?.id, currentTime);
         if (target) selectSegment(target, { focusEditor: true, seekToSegment: false });
       };
       if (shortcut.id.includes("Unreviewed")) action = () => {

@@ -314,6 +314,31 @@ test("incorrect examples group repeated tags like multi-selection summaries", ()
   assert.doesNotMatch(source, /`\$\{example\.tagName \|\| "Tag segment"\} ·/);
 });
 
+test("collected AI feedback can be hidden from review without changing its data", () => {
+  const collected = { id: "collected", itemId: 11, reviewState: "rejected" };
+  const ordinary = { id: "ordinary", itemId: 22, reviewState: "rejected" };
+  assert.deepEqual(
+    ui.hideCollectedFeedbackSegments(
+      [collected, ordinary],
+      [{ id: 101, itemId: 11 }],
+      true,
+    ),
+    [ordinary],
+  );
+  assert.deepEqual(
+    ui.hideCollectedFeedbackSegments(
+      [collected, ordinary],
+      [{ id: 101, itemId: 11 }],
+      false,
+    ),
+    [collected, ordinary],
+  );
+  assert.deepEqual(ui.hideCollectedFeedbackSegments(null, null, true), []);
+  assert.match(source, /Hide collected from review/);
+  assert.match(source, /Show collected in review/);
+  assert.match(source, /hideCollectedFeedbackSegments\([\s\S]*incorrectExamples[\s\S]*hideIncorrectExamples/);
+});
+
 test("feedback downloads retain the server's unique ZIP filename", () => {
   assert.equal(
     ui.downloadFileNameFromContentDisposition(

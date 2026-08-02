@@ -189,6 +189,9 @@ their full time span. The native confirmation dialog explains the destructive
 change and can disable future merge confirmations. Restore the dialog with
 **Confirm segment merges** in Segment Studio settings.
 
+Press **P** to activate the segment nearest the playhead in the currently
+selected swimlane without moving playback.
+
 In either mode, select one or more segments and press **C** to collect them as
 incorrect examples. The selection can span any number of swimlanes. Segment
 Studio verifies registered AI provenance for every candidate on the server;
@@ -209,7 +212,10 @@ When the video has collected examples, the header also shows an **AI feedback**
 button with the collection count; it opens the same dialog as **Shift+C**.
 The dialog groups examples by tag, showing the tag and count once above its
 individual time ranges. Tag sections start collapsed; expand one to inspect or
-remove its examples.
+remove its examples. Choose **Hide collected from review** to clear the
+collected Full items from the editor's review swimlanes without deleting the
+segments or discarding their feedback data. Reopen the dialog and choose
+**Show collected in review** to restore them to the working view.
 
 Press **Shift+X** to permanently delete rejected segments. After deletion,
 Segment Studio focuses the first unapproved segment in the first affected

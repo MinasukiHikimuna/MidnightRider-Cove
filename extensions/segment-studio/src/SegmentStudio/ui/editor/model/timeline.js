@@ -64,6 +64,27 @@ export function findSegmentNearPlayhead(lanes, currentTime, direction, selectedI
     ?? otherLanes[0].segment;
 }
 
+export function findNearestSegmentInCurrentSwimlane(lanes, selectedId, currentTime) {
+  const time = Number(currentTime);
+  if (!Number.isFinite(time) || selectedId == null) return null;
+  const lane = (Array.isArray(lanes) ? lanes : []).find((candidate) =>
+    candidate.markers?.some(({ segment }) => segment.id === selectedId));
+  if (!lane) return null;
+  return lane.markers
+    .map(({ segment }) => {
+      const start = Number(segment.startSec);
+      const endValue = segment.endSec == null ? start : Number(segment.endSec);
+      const end = Number.isFinite(endValue) && endValue >= start ? endValue : start;
+      const distance = time < start ? start - time : time > end ? time - end : 0;
+      return { segment, distance, startDistance: Math.abs(start - time) };
+    })
+    .filter((candidate) => Number.isFinite(candidate.distance))
+    .sort((left, right) => left.distance - right.distance
+      || left.startDistance - right.startDistance
+      || String(left.segment.id).localeCompare(String(right.segment.id)))[0]
+    ?.segment ?? null;
+}
+
 export function clampTimelineZoom(value) {
   return Math.min(8, Math.max(1, Math.round(Number(value) * 4) / 4));
 }

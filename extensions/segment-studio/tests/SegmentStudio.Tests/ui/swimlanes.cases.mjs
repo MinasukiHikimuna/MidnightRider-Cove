@@ -393,6 +393,27 @@ test("Tab cycles through swimlanes whose segments are near the playhead", () => 
   assert.equal(ui.findSegmentNearPlayhead(invertedLane, 7, 1, null), null);
 });
 
+test("P selects the segment nearest the playhead in the current swimlane", () => {
+  const shortcut = ui.findEditorShortcut(
+    { key: "p", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false },
+    false,
+  );
+  assert.equal(shortcut?.id, "navigation.nearestInCurrentSwimlane");
+  const lanes = [
+    { key: "one", markers: [
+      { segment: { id: 1, startSec: 1, endSec: 3 } },
+      { segment: { id: 2, startSec: 8, endSec: 10 } },
+    ] },
+    { key: "two", markers: [
+      { segment: { id: 3, startSec: 5, endSec: 6 } },
+    ] },
+  ];
+  assert.equal(ui.findNearestSegmentInCurrentSwimlane(lanes, 1, 7)?.id, 2);
+  assert.equal(ui.findNearestSegmentInCurrentSwimlane(lanes, 2, 2)?.id, 1);
+  assert.equal(ui.findNearestSegmentInCurrentSwimlane(lanes, 3, 7)?.id, 3);
+  assert.equal(ui.findNearestSegmentInCurrentSwimlane(lanes, null, 7), null);
+});
+
 test("F opens fuzzy segment quick search inside the editor", () => {
   const event = { key: "f", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false };
   assert.equal(ui.findEditorShortcut(event, false)?.id, "navigation.quickSearch");

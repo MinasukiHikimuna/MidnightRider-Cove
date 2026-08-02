@@ -38,6 +38,19 @@ export function feedbackResultMatchesAction(action, result) {
   return result?.collected === (action === "collect");
 }
 
+export function hideCollectedFeedbackSegments(segments, incorrectExamples, hide) {
+  const candidates = Array.isArray(segments) ? segments : [];
+  if (!hide) return candidates;
+  const collectedItemIds = new Set(
+    (Array.isArray(incorrectExamples) ? incorrectExamples : [])
+      .map((example) => example?.itemId)
+      .filter((itemId) => itemId != null),
+  );
+  if (collectedItemIds.size === 0) return candidates;
+  return candidates.filter((segment) =>
+    segment?.itemId == null || !collectedItemIds.has(segment.itemId));
+}
+
 export function groupIncorrectExamplesByTag(examples) {
   if (!Array.isArray(examples)) return [];
   const groups = [];

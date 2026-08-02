@@ -38,6 +38,7 @@ export const SEGMENT_STUDIO_SHORTCUTS = [
   { id: "navigation.extendSwimlaneRight", category: "Selection", bindings: [{ key: "ArrowRight", shift: true }], description: "Extend selection to the next segment in this swimlane" },
   { id: "navigation.previousAtPlayhead", category: "Selection", bindings: [{ key: "[" }], description: "Select previous segment at the playhead" },
   { id: "navigation.nextAtPlayhead", category: "Selection", bindings: [{ key: "]" }], description: "Select next segment at the playhead" },
+  { id: "navigation.nearestInCurrentSwimlane", category: "Selection", bindings: [{ key: "p" }], description: "Select the segment nearest the playhead in this swimlane" },
   { id: "navigation.previousUnreviewedInSwimlane", category: "Selection", bindings: [{ key: "n" }], description: "Select previous unreviewed segment in this swimlane", reviewOnly: true },
   { id: "navigation.previousUnreviewedGlobal", category: "Selection", bindings: [{ key: "n", shift: true }], description: "Select previous unreviewed segment across swimlanes", reviewOnly: true },
   { id: "navigation.nextUnreviewedInSwimlane", category: "Selection", bindings: [{ key: "m" }], description: "Select next unreviewed segment in this swimlane", reviewOnly: true },
