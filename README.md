@@ -9,6 +9,7 @@ descriptor under `extensions/<extension-id>/`.
 | Hash The Cove | `extensions/hash-the-cove` | `com.midnightrider.hash-the-cove/v<version>` |
 | Complete the Cove | `extensions/complete-the-cove` | `com.midnightrider.complete-the-cove/v<version>` |
 | Animated Tag Previews | `extensions/animated-tag-previews` | `com.midnightrider.animated-tag-previews/v<version>` |
+| Stash Filter Importer | `extensions/stash-filter-importer` | `com.midnightrider.stash-filter-importer/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing
