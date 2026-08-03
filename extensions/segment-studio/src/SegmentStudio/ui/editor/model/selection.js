@@ -1,5 +1,7 @@
 import { HIDE_DERIVED_SEGMENTS_STORAGE_KEY, MERGE_CONFIRMATION_STORAGE_KEY, REVIEW_STATES } from "../../shared/constants.js";
 
+export const CLEARED_SEGMENT_SELECTION_ID = "__segment-studio-cleared-selection__";
+
 export function parseHideDerivedSegmentsPreference(value) {
   return value === "true";
 }
@@ -191,6 +193,7 @@ export function updateDualRangeValues(minimum, maximum, kind, value) {
 }
 
 export function resolveVisibleSelectedSegment(segments, selectedSegmentId) {
+  if (selectedSegmentId === CLEARED_SEGMENT_SELECTION_ID) return null;
   return segments.find((segment) => segment.id === selectedSegmentId) || segments[0] || null;
 }
 
@@ -377,6 +380,16 @@ export function nextSegmentAfterRemoval(lanes, removedSegmentIds, activeSegmentI
       || Number(left.index < activeLaneIndex) - Number(right.index < activeLaneIndex)
       || left.index - right.index)[0]?.lane;
   return closestSegmentOnTimeline(fallbackLane?.markers, activeSegment, removedIds);
+}
+
+export function nextUnreviewedAfterRemoval(lanes, removedSegmentIds, activeSegmentId) {
+  const removedIds = new Set(removedSegmentIds || []);
+  const ordered = (lanes || []).flatMap((lane) =>
+    (lane.markers || []).map(({ segment }) => segment).filter(Boolean));
+  const activeIndex = ordered.findIndex((segment) => segment.id === activeSegmentId);
+  const candidates = activeIndex < 0 ? ordered : ordered.slice(activeIndex + 1);
+  return candidates.find((segment) =>
+    !removedIds.has(segment.id) && segment.reviewState === "unreviewed") ?? null;
 }
 
 export function percentageSeekTime(duration, digit) {

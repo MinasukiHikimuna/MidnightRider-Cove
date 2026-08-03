@@ -3,7 +3,7 @@ import { findSegmentByStableIdentity, shouldRestoreTransitionSelection } from ".
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { segmentsHistoryState } from "../model/history.js";
 import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
-import { nextSegmentAfterRemoval } from "../model/selection.js";
+import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
 
@@ -106,23 +106,60 @@ function createWorkflowActions(context) {
         if (completed.some(({ result }) =>
           result.representation === "basicNativeBin"))
           notifyRecyclingBinChanged();
+        const transitionSelectionOwned = shouldRestoreTransitionSelection(
+          selectedSegmentIdRef.current, activeIdentity.id,
+        );
+        const activeCollected = plan.action === "collect"
+          && completed.some(({ segment }) => segment.id === activeIdentity.id);
+        const completedIds = completed.map(({ segment }) => segment.id);
+        const nextCandidate = activeCollected
+          ? nextUnreviewedAfterRemoval(
+            allSwimlanes, completedIds, activeIdentity.id)
+          : null;
+        const selectionGuardId = activeCollected
+          ? nextCandidate?.id ?? null
+          : activeIdentity.id;
+        if (transitionSelectionOwned && activeCollected) {
+          setSelectedSegmentIds(nextCandidate ? [nextCandidate.id] : []);
+          setSelectedSegmentId(nextCandidate?.id ?? CLEARED_SEGMENT_SELECTION_ID);
+          selectionAnchorIdRef.current = nextCandidate?.id ?? null;
+          selectionRangeBaseIdsRef.current = [];
+        }
         const examples = await requestJson(`/videos/${video.id}/incorrect-examples`);
         setIncorrectExamples(examples);
         const loaded = await onReload();
-        if (shouldRestoreTransitionSelection(
-          selectedSegmentIdRef.current, activeIdentity.id,
+        if (transitionSelectionOwned && shouldRestoreTransitionSelection(
+          selectedSegmentIdRef.current, selectionGuardId,
         )) {
-          const reloadedSelection = identities
-            .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
-            .filter(Boolean);
-          const reloadedActive =
-            findSegmentByStableIdentity(loaded?.segments, activeIdentity)
-            || reloadedSelection[0]
-            || null;
+          let reloadedSelection;
+          let reloadedActive;
+          if (activeCollected) {
+            reloadedActive = nextCandidate
+              ? findSegmentByStableIdentity(loaded?.segments, {
+                id: nextCandidate.id,
+                itemId: nextCandidate.itemId,
+                nativeSegmentId: nextCandidate.nativeSegmentId,
+              })
+              : null;
+            reloadedSelection = reloadedActive ? [reloadedActive] : [];
+          } else {
+            reloadedSelection = identities
+              .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
+              .filter(Boolean);
+            reloadedActive =
+              findSegmentByStableIdentity(loaded?.segments, activeIdentity)
+              || reloadedSelection[0]
+              || null;
+          }
           setSelectedSegmentIds(reloadedSelection.map((segment) => segment.id));
-          setSelectedSegmentId(reloadedActive?.id ?? null);
+          setSelectedSegmentId(reloadedActive?.id
+            ?? (activeCollected ? CLEARED_SEGMENT_SELECTION_ID : null));
           selectionAnchorIdRef.current = reloadedActive?.id ?? null;
           selectionRangeBaseIdsRef.current = [];
+          setSelectedSegmentGroupKey(reloadedActive
+            ? segmentGroupKeyForSegment(allSwimlanes, reloadedActive.id)
+            : null);
+          if (reloadedActive) revealSegmentGroupForSelection(reloadedActive.id);
         }
         if (failures.length > 0) {
           const detail = failures[0]?.message

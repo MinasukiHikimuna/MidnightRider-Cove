@@ -24,6 +24,7 @@ function SegmentActiveEditor({
   const slotDialogRef = useRef(null);
   const confirmSlotButtonRef = useRef(null);
   const recommendationShortcutRef = useRef(null);
+  const multiRecommendationShortcutRef = useRef(null);
   const [slotsOpen, setSlotsOpen] = useState(false);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -115,7 +116,19 @@ function SegmentActiveEditor({
         key: "performer-slot-dialog-overlay",
         className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
         onMouseDown: (event) => { if (event.target === event.currentTarget) closeSlots(); },
-        onKeyDownCapture: (event) => handleModalKey(event, { onCancel: closeSlots }),
+        onKeyDownCapture: (event) => {
+          const editable = typeof event.target?.closest === "function"
+            ? event.target.closest("input, textarea, select, [contenteditable='true']")
+            : null;
+          if (!editable && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+              && /^[1-9]$/.test(event.key)
+              && multiRecommendationShortcutRef.current?.(Number(event.key) - 1)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          handleModalKey(event, { onCancel: closeSlots });
+        },
       }, h("section", {
         ref: slotDialogRef,
         role: "dialog",
@@ -135,6 +148,7 @@ function SegmentActiveEditor({
           videoId: video.id,
           targets: slotTargets,
           performerCandidates: detail.performerCandidates || [],
+          shortcutRef: multiRecommendationShortcutRef,
           onSaved: async ({ beforeState, afterState }) => {
             await onRecordHistory(
               "performer-slots.assign",

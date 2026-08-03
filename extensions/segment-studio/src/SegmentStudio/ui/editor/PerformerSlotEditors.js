@@ -165,9 +165,13 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
   ]);
 }
 
-function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandidates, onSaved, onConflict }) {
+function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandidates, onSaved, onConflict, shortcutRef }) {
   const commonSlots = targets[0]?.slots || [];
   const videoPerformers = videoPerformerOptions(performerCandidates);
+  const recommendations = generatePerformerSlotAssignmentRecommendations(
+    commonSlots,
+    videoPerformers,
+  );
   const mixedValue = "__mixed__";
   const initialAssignments = () => Object.fromEntries(commonSlots.map((slot, index) => {
     const performerIds = targets.map((target) => String(target.slots[index]?.performerId || ""));
@@ -185,7 +189,7 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
     setAssignments(initialAssignments());
   }, [targetIdentity]);
 
-  async function save() {
+  async function save(nextAssignments = assignments) {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
@@ -194,7 +198,7 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
     try {
       for (const target of targets) {
         const targetAssignments = target.slots.map((slot, index) => {
-          const selected = assignments[commonSlots[index].slotDefinitionId];
+          const selected = nextAssignments[commonSlots[index].slotDefinitionId];
           return {
             slotDefinitionId: slot.slotDefinitionId,
             performerId: selected === mixedValue
@@ -238,9 +242,46 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
     }
   }
 
+  function applyRecommendation(recommendation, index) {
+    setMessage(`Option ${index + 1} applied; save to confirm.`);
+    setAssignments({ ...assignments, ...recommendation.assignments });
+  }
+
+  async function applyAndSaveRecommendation(recommendation) {
+    const nextAssignments = { ...assignments, ...recommendation.assignments };
+    setAssignments(nextAssignments);
+    await save(nextAssignments);
+  }
+
+  useEffect(() => {
+    if (!shortcutRef) return undefined;
+    shortcutRef.current = (index) => {
+      if (savingRef.current || !recommendations[index]) return false;
+      void applyAndSaveRecommendation(recommendations[index]);
+      return true;
+    };
+    return () => { shortcutRef.current = null; };
+  });
+
   return h("div", { className: "space-y-3" }, [
     h("p", { key: "scope", className: "text-xs text-secondary" },
       `Changes apply to all ${targets.length} selected segments. Mixed values remain unchanged unless replaced.`),
+    recommendations.length ? h("section", { key: "recommendations", className: "rounded-md bg-surface p-3", "aria-label": "Auto-assignment options" }, [
+      h("h3", { key: "heading", className: "mb-2 text-sm font-semibold text-green-400" }, "Auto-assignment options"),
+      h("div", { key: "options", className: "space-y-2" }, recommendations.map((recommendation, index) =>
+        h("button", {
+          key: index,
+          type: "button",
+          disabled: saving,
+          onClick: () => applyRecommendation(recommendation, index),
+          className: "flex w-full items-center rounded-md bg-muted/40 px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted/70 disabled:opacity-50",
+          "aria-label": `Apply option ${index + 1} to all selected segments: ${recommendation.description}`,
+        }, [
+          h("span", { key: "number", className: "mr-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-green-600 text-[10px] font-bold text-white" }, index + 1),
+          h("span", { key: "description" }, recommendation.description),
+        ]))),
+      h("p", { key: "hint", className: "mt-2 text-xs text-secondary" }, `Press number keys 1-${recommendations.length} to apply and save across the selection`),
+    ]) : null,
     h("div", { key: "slots", className: "grid gap-2" }, commonSlots.map((slot) => h("label", {
       key: slot.slotDefinitionId,
       className: "space-y-1 rounded-md border border-border bg-surface p-2 text-xs text-secondary",
@@ -268,7 +309,7 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
         key: "save",
         type: "button",
         disabled: saving,
-        onClick: save,
+        onClick: () => save(),
         className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50",
       }, "Save performer slots"),
       h("span", { key: "message", role: "status", className: "text-xs text-secondary" }, message),

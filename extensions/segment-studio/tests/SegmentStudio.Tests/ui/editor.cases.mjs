@@ -212,6 +212,35 @@ test("recycling-bin selection stays in the current swimlane before moving to a n
   assert.match(source, /nextSegmentAfterRemoval\(allSwimlanes, selectedIds, selectedSegment\.id\)/);
 });
 
+test("collecting AI feedback advances to the next unreviewed segment below the selection", () => {
+  const lanes = [
+    { key: "current", markers: [
+      { segment: { id: 1, reviewState: "approved" } },
+      { segment: { id: 2, reviewState: "unreviewed" } },
+      { segment: { id: 3, reviewState: "unreviewed" } },
+    ] },
+    { key: "below", markers: [
+      { segment: { id: 4, reviewState: "approved" } },
+      { segment: { id: 5, reviewState: "unreviewed" } },
+    ] },
+    { key: "farther-below", markers: [
+      { segment: { id: 6, reviewState: "unreviewed" } },
+    ] },
+  ];
+  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2], 2)?.id, 3);
+  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3], 2)?.id, 5);
+  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3, 5], 2)?.id, 6);
+  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3, 5, 6], 2), null);
+  assert.equal(ui.resolveVisibleSelectedSegment(
+    lanes.flatMap((lane) => lane.markers.map(({ segment }) => segment)),
+    ui.CLEARED_SEGMENT_SELECTION_ID,
+  ), null);
+  assert.match(source, /nextUnreviewedAfterRemoval\(\s*allSwimlanes, completedIds, activeIdentity\.id\)/);
+  assert.match(source, /const transitionSelectionOwned = shouldRestoreTransitionSelection\([\s\S]*const selectionGuardId/);
+  assert.match(source, /shouldRestoreTransitionSelection\(\s*selectedSegmentIdRef\.current, selectionGuardId/);
+  assert.match(source, /activeCollected \? CLEARED_SEGMENT_SELECTION_ID : null/);
+});
+
 test("shift-click selects a contiguous range within one timeline swimlane", () => {
   assert.deepEqual(ui.updateSegmentRangeSelection([11], 11, 13, [11, 12, 13, 14]), {
     selectedSegmentIds: [11, 12, 13],
@@ -457,6 +486,17 @@ test("bulk performer assignment requires every selected segment to share one slo
   assert.equal(ui.multiSelectionActionHint({
     mergeable: false, reviewable: true, tagEditable: true, slotsEditable: true,
   }), "Selected segments can be retagged (Q), approved (Z), rejected (X) or assigned performers (G).");
+  const slotEditors = sourceByModule["editor/PerformerSlotEditors.js"];
+  const multiEditor = slotEditors.slice(
+    slotEditors.indexOf("function MultiPerformerSlotAssignmentEditor"),
+    slotEditors.indexOf("export { ReviewButton"),
+  );
+  assert.match(multiEditor, /generatePerformerSlotAssignmentRecommendations\([\s\S]*commonSlots[\s\S]*videoPerformers/);
+  assert.match(multiEditor, /Auto-assignment options/);
+  assert.match(multiEditor, /applyAndSaveRecommendation/);
+  assert.match(multiEditor, /Press number keys 1-/);
+  const activeEditor = sourceByModule["editor/SegmentActiveEditor.js"];
+  assert.match(activeEditor, /multiRecommendationShortcutRef[\s\S]*\^\[1-9\]\$[\s\S]*Number\(event\.key\) - 1/);
 });
 
 test("selected segment details mirror segment groups and swimlanes", () => {
