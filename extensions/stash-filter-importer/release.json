@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.stash-filter-importer",
+  "name": "StashFilterImporter",
+  "tagPrefix": "com.midnightrider.stash-filter-importer/",
+  "solution": "StashFilterImporter.slnx",
+  "project": "src/StashFilterImporter/StashFilterImporter.csproj",
+  "manifest": "src/StashFilterImporter/extension.json",
+  "readme": "README.md",
+  "ui": "src/StashFilterImporter/ui",
+  "uiBuildDirectory": "ui-build",
+  "uiTest": "tests/StashFilterImporter.Ui.Tests.mjs"
+}

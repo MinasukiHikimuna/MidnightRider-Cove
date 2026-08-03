@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/StashFilterImporter/StashFilterImporter.csproj" />
+  <Project Path="tests/StashFilterImporter.Tests/StashFilterImporter.Tests.csproj" />
+</Solution>

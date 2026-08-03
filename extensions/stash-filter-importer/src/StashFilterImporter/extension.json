@@ -1,0 +1,19 @@
+{
+  "id": "com.midnightrider.stash-filter-importer",
+  "name": "Stash Filter Importer",
+  "version": "1.0.0",
+  "description": "Reviews compatible saved scene, performer, image, gallery, tag, studio, and scene-marker filters from a read-only Stash backup and imports them into Cove.",
+  "author": "MidnightRider",
+  "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "categories": ["metadata", "tools"],
+  "minCoveVersion": "1.1.1-dev.0",
+  "entryDll": "StashFilterImporter.dll",
+  "jsBundle": "ui/StashFilterImporter.js",
+  "cssBundle": "ui/StashFilterImporter.css",
+  "dependencies": {},
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

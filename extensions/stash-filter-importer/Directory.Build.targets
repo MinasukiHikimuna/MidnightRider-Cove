@@ -1,0 +1,23 @@
+<Project>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json') and '$(UseLocalCoveSource)' == 'true'">
+    <ProjectReference Include="$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json') and '$(UseLocalCoveSource)' != 'true'">
+    <PackageReference Include="Cove.Sdk" Version="$(CoveSdkVersion)" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json') and '$(UseLocalCoveCore)' == 'true'">
+    <ProjectReference Include="$(CoveSourceRoot)\src\Cove.Core\Cove.Core.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json') and '$(UseLocalCoveCore)' != 'true'">
+    <PackageReference Include="Cove.Core" Version="$(CoveCoreVersion)" />
+  </ItemGroup>
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json')">
+    <CoveHostProvidedAssemblies>;Cove.Core;Cove.Plugins;Cove.Sdk;Microsoft.EntityFrameworkCore;Microsoft.EntityFrameworkCore.Abstractions;Microsoft.EntityFrameworkCore.Relational;Npgsql;Npgsql.EntityFrameworkCore.PostgreSQL;Pgvector;Pgvector.EntityFrameworkCore;MediatR.Contracts;</CoveHostProvidedAssemblies>
+  </PropertyGroup>
+  <Target Name="CoveStripHostProvidedCopyLocal" AfterTargets="ResolveReferences" Condition="Exists('$(MSBuildProjectDirectory)\extension.json')">
+    <ItemGroup><ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="$(CoveHostProvidedAssemblies.Contains(';%(ReferenceCopyLocalPaths.FileName);'))" /></ItemGroup>
+  </Target>
+  <Target Name="CoveStripHostProvidedPublish" AfterTargets="ComputeFilesToPublish" Condition="Exists('$(MSBuildProjectDirectory)\extension.json')">
+    <ItemGroup><ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$(CoveHostProvidedAssemblies.Contains(';%(ResolvedFileToPublish.FileName);'))" /></ItemGroup>
+  </Target>
+</Project>

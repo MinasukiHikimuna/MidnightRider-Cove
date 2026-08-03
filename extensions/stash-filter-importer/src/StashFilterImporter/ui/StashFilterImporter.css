@@ -1,0 +1,134 @@
+.stash-filter-importer-page {
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 1.5rem;
+}
+.stash-filter-importer-page > header {
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+}
+.stash-filter-importer-page > header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+}
+.stash-filter-importer-page > header p {
+  color: var(--color-secondary);
+  line-height: 1.55;
+  margin: .55rem 0 0;
+  max-width: 56rem;
+}
+.stash-filter-importer-analyze {
+  align-items: end;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: .75rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: auto 1fr auto;
+  margin: 0 0 1.25rem;
+  padding: 1rem;
+}
+.stash-filter-importer-analyze label { display: grid; gap: .4rem; }
+.stash-filter-importer-analyze input {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: .4rem;
+  padding: .65rem .75rem;
+  width: 100%;
+}
+.stash-filter-importer-page button {
+  align-items: center;
+  background: var(--color-accent);
+  border-radius: .4rem;
+  color: white;
+  display: inline-flex;
+  gap: .35rem;
+  padding: .65rem .9rem;
+}
+.stash-filter-importer-page button:disabled { cursor: not-allowed; opacity: .5; }
+.stash-filter-importer-database-icon { height: 1.5rem; margin-bottom: .55rem; width: 1.5rem; }
+.stash-filter-importer-icon { height: 1rem; width: 1rem; }
+.stash-filter-importer-summary {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin: .8rem 0;
+}
+.stash-filter-importer-summary-primary {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 0;
+}
+.stash-filter-importer-summary-notes { display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .78rem; }
+.stash-filter-importer-summary-adapted { color: #fde047; }
+.stash-filter-importer-summary-unsupported { color: var(--color-secondary); }
+.stash-filter-importer-summary-compact { gap: .2rem; margin: .35rem 0 0; }
+.stash-filter-importer-summary-compact .stash-filter-importer-summary-primary { font-size: .85rem; }
+.stash-filter-importer-summary-compact .stash-filter-importer-summary-notes { font-size: .72rem; }
+.stash-filter-importer-toolbar {
+  align-items: center;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: .6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  justify-content: space-between;
+  margin: 1rem 0 1.25rem;
+  padding: .65rem .75rem;
+}
+.stash-filter-importer-toolbar-actions { align-items: center; display: flex; gap: .75rem; }
+.stash-filter-importer-status-filter { align-items: center; border: 0; display: flex; flex-wrap: wrap; gap: .35rem .75rem; margin: 0; padding: 0; }
+.stash-filter-importer-status-filter legend { font-size: .78rem; padding: 0; width: 100%; }
+.stash-filter-importer-status-filter label { align-items: center; cursor: pointer; display: inline-flex; font-size: .82rem; gap: .3rem; }
+.stash-filter-importer-status-filter input { accent-color: var(--color-accent); height: .9rem; margin: 0; width: .9rem; }
+.stash-filter-importer-selection-toggle { align-items: center; cursor: pointer; display: inline-flex; gap: .45rem; }
+.stash-filter-importer-selection-toggle:has(input:disabled) { cursor: not-allowed; opacity: .6; }
+.stash-filter-importer-selection-toggle input { accent-color: var(--color-accent); height: 1rem; width: 1rem; }
+.stash-filter-importer-entity-sections { display: grid; gap: 1.25rem; }
+.stash-filter-importer-entity-section {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: .7rem;
+  overflow: hidden;
+}
+.stash-filter-importer-entity-header {
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: .75rem .85rem;
+}
+.stash-filter-importer-entity-summary { min-width: 0; }
+.stash-filter-importer-entity-title { align-items: baseline; display: flex; }
+.stash-filter-importer-entity-title h2 { font-size: 1rem; font-weight: 650; margin: 0; }
+.stash-filter-importer-list { display: grid; }
+.stash-filter-importer-row { border-bottom: 1px solid var(--color-border); }
+.stash-filter-importer-row:last-child { border-bottom: 0; }
+.stash-filter-importer-row-main { align-items: center; display: flex; gap: .6rem; padding: .62rem .75rem; }
+.stash-filter-importer-row-main > input { accent-color: var(--color-accent); height: 1rem; width: 1rem; }
+.stash-filter-importer-expand { background: transparent !important; color: inherit !important; padding: .2rem !important; }
+.stash-filter-importer-identity { flex: 1; min-width: 0; }
+.stash-filter-importer-identity strong { min-width: 0; overflow-wrap: anywhere; }
+.stash-filter-importer-badge { border-radius: 999px; font-size: .72rem; padding: .2rem .5rem; text-transform: capitalize; }
+.stash-filter-importer-badge-direct { background: #14532d; color: #bbf7d0; }
+.stash-filter-importer-badge-adapted { background: #713f12; color: #fef08a; }
+.stash-filter-importer-badge-unsupported { background: #7f1d1d; color: #fecaca; }
+.stash-filter-importer-rules { border-top: 1px solid var(--color-border); display: grid; gap: .6rem; margin: 0; padding: .8rem 1rem .8rem 3.25rem; }
+.stash-filter-importer-rules li { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; }
+.stash-filter-importer-rules li > span:last-child { color: var(--color-secondary); width: 100%; }
+.stash-filter-importer-empty { color: var(--color-secondary); margin: 0; padding: .8rem .85rem; }
+.stash-filter-importer-result-failure, .stash-filter-importer-error { color: #fca5a5; }
+.stash-filter-importer-completion { font-size: .85rem; line-height: 1; width: 1rem; }
+.stash-filter-importer-result-success { color: #86efac; }
+@media (max-width: 700px) {
+  .stash-filter-importer-analyze { grid-template-columns: 1fr; }
+  .stash-filter-importer-database-icon { display: none; }
+  .stash-filter-importer-entity-header { align-items: flex-start; flex-direction: column; }
+  .stash-filter-importer-row-main { align-items: flex-start; flex-wrap: wrap; }
+  .stash-filter-importer-identity { flex-basis: calc(100% - 5rem); }
+}
