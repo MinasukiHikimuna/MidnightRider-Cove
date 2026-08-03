@@ -55,8 +55,7 @@ function KeyboardShortcutsDialog({ reviewMode, overrides, onClose }) {
 }
 
 function IncorrectExamplesDialog({
-  examples, exporting, hidingFromReview, removingExampleId, onExport,
-  onRemove, onToggleReviewVisibility, onClose,
+  examples, exporting, removingExampleId, onExport, onRemove, onClose,
 }) {
   const exampleGroups = groupIncorrectExamplesByTag(examples);
   const [expandedTagNames, setExpandedTagNames] = useState([]);
@@ -126,9 +125,9 @@ function IncorrectExamplesDialog({
                 type: "button",
                 disabled: exporting || removingExampleId != null,
                 onClick: () => onRemove(example),
-                "aria-label": `${removing ? "Restoring" : "Remove"} ${group.tagName} example at ${timeLabel}`,
+                "aria-label": `${removing ? "Restoring" : "Restore to review"} ${group.tagName} example at ${timeLabel}`,
                 className: "rounded border border-border px-2 py-1 text-xs font-medium disabled:opacity-50",
-              }, removing ? "Restoring…" : "Remove"),
+              }, removing ? "Restoring…" : "Restore to review"),
             ]);
           })) : null,
         ]);
@@ -136,25 +135,14 @@ function IncorrectExamplesDialog({
       : [h("p", { key: "empty", className: "text-sm text-secondary" }, "Select one or more segments and press C to collect incorrect examples.")]),
     h("p", { key: "artifact-help", className: "mt-4 text-xs text-secondary" },
       "The ZIP contains sampled JPEG frames, legacy metadata.json, and a provenance-rich manifest.json. Download it for manual submission; Segment Studio does not upload it automatically."),
-    h("div", { key: "actions", className: "mt-5 flex flex-wrap justify-end gap-2" }, [
+    h("div", { key: "actions", className: "mt-5 flex justify-end" },
       h("button", {
-        key: "review-visibility",
-        type: "button",
-        disabled: examples.length === 0,
-        onClick: onToggleReviewVisibility,
-        className: "rounded-md border border-border px-3 py-2 text-sm font-medium disabled:opacity-50",
-      }, hidingFromReview
-        ? "Show collected in review"
-        : "Hide collected from review"),
-      h("button", {
-        key: "export",
         type: "button",
         disabled: exporting || removingExampleId != null
           || examples.length === 0,
         onClick: onExport,
         className: "rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50",
-      }, exporting ? "Capturing frames…" : "Download AI Feedback ZIP"),
-    ]),
+      }, exporting ? "Capturing frames…" : "Download AI Feedback ZIP")),
   ]));
 }
 

@@ -70,7 +70,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const [incorrectExamplesOpen, setIncorrectExamplesOpen] = useState(false);
-  const [hideIncorrectExamples, setHideIncorrectExamples] = useState(false);
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [autoAssignError, setAutoAssignError] = useState("");
@@ -298,7 +297,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
         segmentGroups,
       ),
       incorrectExamples,
-      hideIncorrectExamples,
+      true,
     ),
     [
       segments,
@@ -308,17 +307,20 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       segmentGroups,
       compatibilityMode,
       incorrectExamples,
-      hideIncorrectExamples,
     ],
   );
   const visibleCounts = Object.fromEntries(REVIEW_STATES.map((state) =>
     [state, visibleSegments.filter((segment) => segment.reviewState === state).length]));
-  const approvalFacetSegments = filterEditorSegments(
-    segments,
-    performerSlots,
-    { ...editorFilters, reviewStates: REVIEW_STATES },
-    compatibilityMode && hideDerivedSegments,
-    segmentGroups,
+  const approvalFacetSegments = hideCollectedFeedbackSegments(
+    filterEditorSegments(
+      segments,
+      performerSlots,
+      { ...editorFilters, reviewStates: REVIEW_STATES },
+      compatibilityMode && hideDerivedSegments,
+      segmentGroups,
+    ),
+    incorrectExamples,
+    true,
   );
   const approvalFacetCounts = Object.fromEntries(REVIEW_STATES.map((state) =>
     [state, approvalFacetSegments.filter((segment) => segment.reviewState === state).length]));
@@ -753,7 +755,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     importNativeSegments,
     incorrectExamples,
     incorrectExamplesOpen,
-    hideIncorrectExamples,
     removingExampleId,
     lineage,
     markerRailWidth,
@@ -815,7 +816,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setHideDerivedSegments,
     setHistoryOpen,
     setIncorrectExamplesOpen,
-    setHideIncorrectExamples,
     setQuickSearchOpen,
     setRailViewport,
     setSelectedSegmentGroupKey,

@@ -205,17 +205,18 @@ image, and collection-time provenance in a durable snapshot. When every
 selected Full item is already collected, pressing **C** removes all of them
 from the collection instead.
 
-Press **Shift+C** to manage the video's collection. **Remove** atomically
+Press **Shift+C** to manage the video's collection. **Restore to review** atomically
 restores a Basic native example with its original content and provenance, or
 returns a Full example to unreviewed without changing extension ownership.
 When the video has collected examples, the header also shows an **AI feedback**
 button with the collection count; it opens the same dialog as **Shift+C**.
 The dialog groups examples by tag, showing the tag and count once above its
 individual time ranges. Tag sections start collapsed; expand one to inspect or
-remove its examples. Choose **Hide collected from review** to clear the
-collected Full items from the editor's review swimlanes without deleting the
-segments or discarding their feedback data. Reopen the dialog and choose
-**Show collected in review** to restore them to the working view.
+remove its examples. Collected Full items are hidden from the editor's review
+swimlanes automatically without deleting the segments or discarding their
+feedback data. Restoring a working example returns it to unreviewed and makes
+it visible again. Completing its ZIP export clears the working reference and
+makes the still-rejected segment visible for normal cleanup.
 
 Press **Shift+X** to permanently delete rejected segments. After deletion,
 Segment Studio focuses the first unapproved segment in the first affected
