@@ -1341,8 +1341,7 @@ class PostgreSqlReplacementTarget:
                 ('segment_studio_derivation_edges', 'rule_version_at_creation'),
                 ('segment_studio_lineage_issues', 'id'),
                 ('segment_studio_lineage_scan_runs', 'id'),
-                ('segment_studio_segment_operations', 'operation_id'),
-                ('segment_studio_slot_import_runs', 'plan_fingerprint')
+                ('segment_studio_segment_operations', 'operation_id')
             )
             SELECT count(*)
             FROM required
@@ -1435,13 +1434,19 @@ class PostgreSqlReplacementTarget:
             DELETE FROM segment_studio_lineage_nodes;
             DELETE FROM segment_studio_provenance_activities;
             DELETE FROM segment_studio_derivation_rules;
-            DELETE FROM segment_studio_workspace_markers;
-            DELETE FROM segment_studio_workspaces;
             DELETE FROM segment_studio_sources;
             DELETE FROM segment_studio_segment_operations;
-            DELETE FROM segment_studio_slot_import_runs;
             DO $cleanup$
             BEGIN
+                IF to_regclass('segment_studio_workspace_markers') IS NOT NULL THEN
+                    EXECUTE 'DELETE FROM segment_studio_workspace_markers';
+                END IF;
+                IF to_regclass('segment_studio_workspaces') IS NOT NULL THEN
+                    EXECUTE 'DELETE FROM segment_studio_workspaces';
+                END IF;
+                IF to_regclass('segment_studio_slot_import_runs') IS NOT NULL THEN
+                    EXECUTE 'DELETE FROM segment_studio_slot_import_runs';
+                END IF;
                 IF to_regclass('segment_studio_marker_migration_provenance') IS NOT NULL THEN
                     EXECUTE 'DELETE FROM segment_studio_marker_migration_provenance';
                 END IF;
@@ -1497,7 +1502,6 @@ class PostgreSqlReplacementTarget:
                 (slot_definition_id, gender_hint)
             SELECT "slotDefinitionId", "genderHint" FROM rows;
         """, [canonical_bytes(plan.gender_hints).decode()])
-        self.write_shot_boundaries(plan.shot_boundaries)
         self.connection.execute(r"""
             CREATE TEMP TABLE segment_studio_replacement_created (
                 create_token TEXT PRIMARY KEY, item_id BIGINT NOT NULL,
@@ -2040,8 +2044,12 @@ def apply_reviewed_plan(
             "ownedUnreviewedCount": plan.result["plannedOwnedUnreviewedCount"],
             "ownedRejectedCount": plan.result["plannedOwnedRejectedCount"],
             "slotCount": plan.result["plannedSlotAssignmentCount"],
-            "shotBoundaryCount": plan.result["plannedShotBoundaryCount"],
-            "shotBoundaryFingerprint": plan.result["plannedShotBoundaryFingerprint"],
+            "shotBoundaryCount": before.get(
+                "shotBoundaryCount", len(before.get("shotBoundaries", []))
+            ),
+            "shotBoundaryFingerprint": shot_boundary_state_fingerprint(
+                before.get("shotBoundaries", [])
+            ),
             "receiptCount": plan.result["sourceMarkerCount"],
             "normalizationReady": True,
         }
@@ -2054,7 +2062,13 @@ def apply_reviewed_plan(
             })
         if any(actual.get(key) != value for key, value in expected.items()):
             raise ValidationError("The replacement post-check counts do not match the reviewed plan.")
-        result = {**plan.result, "postCheck": actual}
+        result = {
+            **plan.result,
+            "appliedMode": "segments-only",
+            "shotBoundariesApplied": False,
+            "deferredShotBoundaryCount": len(plan.shot_boundaries),
+            "postCheck": actual,
+        }
         target.record_run(plan, result, source)
         target.commit()
         return result

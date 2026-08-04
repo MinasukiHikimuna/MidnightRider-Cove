@@ -2729,7 +2729,13 @@ def parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--reviewed-manifest", required=True)
     plan_parser.add_argument("--report-output")
 
-    apply_parser = commands.add_parser("apply", help="Apply one exact reviewed plan transactionally.")
+    apply_parser = commands.add_parser(
+        "apply",
+        help=(
+            "Apply reviewed segment replacement transactionally; "
+            "shot boundaries remain deferred."
+        ),
+    )
     apply_parser.add_argument("--source-document", required=True)
     apply_parser.add_argument("--reviewed-manifest", required=True)
     apply_parser.add_argument("--expected-plan-fingerprint", required=True)
