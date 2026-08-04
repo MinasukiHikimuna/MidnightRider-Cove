@@ -22,7 +22,7 @@ public static class BasicNativeRecycleBinService
         DbContext db,
         int videoId,
         int segmentId,
-        MoveToBinRequest request,
+        NativeToOwnedTransitionRequest request,
         CovePrincipal? principal,
         IAuthorizationService authorization,
         IBlobService blobs,
@@ -125,10 +125,10 @@ public static class BasicNativeRecycleBinService
         return result;
     }
 
-    public static async Task<BulkMoveToBinResult> MoveManyAsync(
+    public static async Task<NativeToOwnedTransitionBatchResult> MoveManyAsync(
         DbContext db,
         int videoId,
-        BulkMoveToBinRequest request,
+        NativeToOwnedTransitionBatchRequest request,
         CovePrincipal? principal,
         IAuthorizationService authorization,
         IBlobService blobs,
@@ -152,7 +152,7 @@ public static class BasicNativeRecycleBinService
         if (!access.Allowed)
             return new(SegmentTransitionStatus.Forbidden,
                 Error: access.Reason ?? "You cannot delete segments for this video.");
-        var replay = await ReplayAsync<BulkMoveToBinResult>(
+        var replay = await ReplayAsync<NativeToOwnedTransitionBatchResult>(
             db, request.OperationId, BulkMoveKind, fingerprint, principal, ct);
         if (replay is not null)
             return replay;
@@ -205,9 +205,9 @@ public static class BasicNativeRecycleBinService
             db.Remove(segment);
         }
         var items = segments.Zip(entries, (segment, entry) =>
-            new BulkMoveToBinItemResult(
+            new NativeToOwnedTransitionItemResult(
                 segment.Id, entry.Id, entry.Revision)).ToArray();
-        var result = new BulkMoveToBinResult(
+        var result = new NativeToOwnedTransitionBatchResult(
             SegmentTransitionStatus.Updated, items, videoId);
         db.Add(Receipt(
             request.OperationId, BulkMoveKind, fingerprint, principal,
@@ -839,8 +839,8 @@ public static class BasicNativeRecycleBinService
 
     private static T Conflict<T>() where T : class
     {
-        object value = typeof(T) == typeof(BulkMoveToBinResult)
-            ? new BulkMoveToBinResult(
+        object value = typeof(T) == typeof(NativeToOwnedTransitionBatchResult)
+            ? new NativeToOwnedTransitionBatchResult(
                 SegmentTransitionStatus.Conflict,
                 Error: "The operation ID was already used for a different request.")
             : typeof(T) == typeof(EmptyBinResult)

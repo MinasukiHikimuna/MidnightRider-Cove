@@ -2,6 +2,7 @@ using System.Text.Json;
 using Cove.Core.Entities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SegmentStudio;
 
 namespace SegmentStudio.Tests;
@@ -150,6 +151,145 @@ public sealed class NativeAiProvenanceIngestionServiceTests
         Assert.Equal(2,
             await fixture.Context.Set<SegmentStudioSegmentProvenance>().CountAsync());
         Assert.Single(await fixture.Context.Set<SegmentStudioProvenanceActivity>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ExplicitSegmentBatchIngestsOnlySelectedSegments()
+    {
+        await using var fixture = await AiFixture.CreateAsync();
+        fixture.AddRun("run-selected", """[{"identifier":525,"version":1,"categories":["actions"]}]""");
+        var first = fixture.AddSegment(1, "run-selected", 0.5f, """{"modelKey":"actions"}""");
+        fixture.AddSegment(2, "run-selected", 0.6f, """{"modelKey":"actions"}""");
+        var third = fixture.AddSegment(3, "run-selected", 0.7f, """{"modelKey":"actions"}""");
+        await fixture.Context.SaveChangesAsync();
+
+        var result = await fixture.Service.IngestAsync(
+            fixture.Context,
+            new NativeAiIngestionRequest(
+                VideoId: 7,
+                BatchSize: 2,
+                OnlyMissingProvenance: true,
+                SegmentIds: [first.Id, third.Id]),
+            CancellationToken.None);
+
+        Assert.Equal(2, result.ProcessedCount);
+        Assert.False(result.HasMore);
+        Assert.Equal(
+            [first.Id, third.Id],
+            await fixture.Context.Set<SegmentStudioItem>()
+                .OrderBy(item => item.NativeSegmentId)
+                .Select(item => item.NativeSegmentId!.Value)
+                .ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentPostgresAnchorCreationIsAdoptedByBatchIngestion()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+                "COVE__Postgres__ConnectionString")
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var schema = $"segment_studio_ai_ingestion_test_{Guid.NewGuid():N}";
+        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            SearchPath = schema,
+        };
+        await using var admin = new NpgsqlConnection(connectionString);
+        await admin.OpenAsync();
+        await using (var createSchema = new NpgsqlCommand(
+                         $"CREATE SCHEMA \"{schema}\"", admin))
+            await createSchema.ExecuteNonQueryAsync();
+
+        try
+        {
+            var options = new DbContextOptionsBuilder<AiDbContext>()
+                .UseNpgsql(builder.ConnectionString)
+                .Options;
+            int segmentId;
+            await using (var setup = new AiDbContext(options))
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    setup.Database.GenerateCreateScript());
+                setup.Add(new AiRun
+                {
+                    RunKey = "concurrent-run",
+                    SourceKey = "ext:ai.tagging",
+                    TargetType = AiRunTargetType.Video,
+                    TargetId = 7,
+                    Status = AiRunStatus.Completed,
+                    Models = JsonDocument.Parse(
+                        """[{"identifier":530,"version":1,"categories":["actions"]}]"""),
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+                var segment = new Segment
+                {
+                    HostType = SegmentHostType.Video,
+                    HostId = 7,
+                    StartSec = 1,
+                    EndSec = 2,
+                    TagId = 11,
+                    Kind = "tag",
+                    SourceKey = "ext:ai.tagging",
+                    SourceRunId = "concurrent-run",
+                    Payload = JsonDocument.Parse("""{"modelKey":"actions"}"""),
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                setup.Add(segment);
+                await setup.SaveChangesAsync();
+                segmentId = segment.Id;
+            }
+
+            await using var writer = new AiDbContext(options);
+            await using var ingestionContext = new AiDbContext(options);
+            await using var writerTransaction =
+                await writer.Database.BeginTransactionAsync();
+            writer.Add(new SegmentStudioItem
+            {
+                NativeSegmentId = segmentId,
+                RepresentationSchemaVersion = 1,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            await writer.SaveChangesAsync();
+
+            var service = new NativeAiProvenanceIngestionService(
+                new SegmentSourceRegistry(),
+                new ProvenanceActivityService(),
+                new LineageNodeService(),
+                new SegmentProvenanceService());
+            var ingestionTask = service.IngestAsync(
+                ingestionContext,
+                new NativeAiIngestionRequest(
+                    VideoId: 7,
+                    BatchSize: 1,
+                    OnlyMissingProvenance: true,
+                    SegmentIds: [segmentId]),
+                CancellationToken.None);
+            await Task.Delay(100);
+            Assert.False(ingestionTask.IsCompleted);
+
+            await writerTransaction.CommitAsync();
+            var result = await ingestionTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, result.ProcessedCount);
+            Assert.Equal(0, result.CreatedItemCount);
+            Assert.Equal(1, await ingestionContext.Set<SegmentStudioItem>()
+                .CountAsync(item => item.NativeSegmentId == segmentId));
+            Assert.Single(await ingestionContext.Set<SegmentStudioLineageNode>()
+                .ToListAsync());
+            Assert.Single(await ingestionContext
+                .Set<SegmentStudioSegmentProvenance>().ToListAsync());
+        }
+        finally
+        {
+            await using var dropSchema = new NpgsqlCommand(
+                $"DROP SCHEMA \"{schema}\" CASCADE", admin);
+            await dropSchema.ExecuteNonQueryAsync();
+        }
     }
 
     [Fact]
@@ -432,31 +572,139 @@ public sealed class NativeAiProvenanceIngestionServiceTests
         {
             modelBuilder.Entity<SegmentStudioItem>(builder =>
             {
+                builder.ToTable("segment_studio_items");
                 builder.HasKey(item => item.Id);
+                builder.Property(item => item.Id).HasColumnName("id");
+                builder.Property(item => item.NativeSegmentId).HasColumnName("native_segment_id");
+                builder.Property(item => item.ReviewState).HasColumnName("review_state");
+                builder.Property(item => item.RepresentationSchemaVersion).HasColumnName("representation_schema_version");
+                builder.Property(item => item.VideoId).HasColumnName("video_id");
+                builder.Property(item => item.StartSec).HasColumnName("start_sec");
+                builder.Property(item => item.EndSec).HasColumnName("end_sec");
+                builder.Property(item => item.TagId).HasColumnName("tag_id");
+                builder.Property(item => item.Kind).HasColumnName("kind");
+                builder.Property(item => item.RefId).HasColumnName("ref_id");
+                builder.Property(item => item.PayloadJson).HasColumnName("payload").HasColumnType("jsonb");
+                builder.Property(item => item.SourceKey).HasColumnName("source_key");
+                builder.Property(item => item.SourceRunId).HasColumnName("source_run_id");
+                builder.Property(item => item.Confidence).HasColumnName("confidence");
+                builder.Property(item => item.Title).HasColumnName("title");
+                builder.Property(item => item.ColorHint).HasColumnName("color_hint");
+                builder.Property(item => item.ExtensionImageBlobId).HasColumnName("extension_image_blob_id");
+                builder.Property(item => item.Revision).HasColumnName("revision");
+                builder.Property(item => item.CreatedAt).HasColumnName("created_at");
+                builder.Property(item => item.UpdatedAt).HasColumnName("updated_at");
                 builder.HasIndex(item => item.NativeSegmentId).IsUnique();
                 builder.Ignore(item => item.Slots);
             });
             modelBuilder.Entity<SegmentStudioSource>(builder =>
             {
+                builder.ToTable("segment_studio_sources");
                 builder.HasKey(source => source.Id);
+                builder.Property(source => source.Id).HasColumnName("id");
+                builder.Property(source => source.Key).HasColumnName("key");
+                builder.Property(source => source.DisplayName).HasColumnName("display_name");
+                builder.Property(source => source.Category).HasColumnName("category");
+                builder.Property(source => source.Provider).HasColumnName("provider");
+                builder.Property(source => source.DefaultModelIdentifier).HasColumnName("default_model_identifier");
+                builder.Property(source => source.Description).HasColumnName("description");
+                builder.Property(source => source.MetadataJson).HasColumnName("metadata").HasColumnType("jsonb");
+                builder.Property(source => source.CreatedAt).HasColumnName("created_at");
+                builder.Property(source => source.UpdatedAt).HasColumnName("updated_at");
                 builder.HasIndex(source => source.Key).IsUnique();
             });
             modelBuilder.Entity<SegmentStudioProvenanceActivity>(builder =>
             {
+                builder.ToTable("segment_studio_provenance_activities");
                 builder.HasKey(activity => activity.Id);
+                builder.Property(activity => activity.Id).HasColumnName("id");
+                builder.Property(activity => activity.Key).HasColumnName("key");
+                builder.Property(activity => activity.Kind).HasColumnName("kind");
+                builder.Property(activity => activity.SourceId).HasColumnName("source_id");
+                builder.Property(activity => activity.ExternalRunId).HasColumnName("external_run_id");
+                builder.Property(activity => activity.Status).HasColumnName("status");
+                builder.Property(activity => activity.StartedAt).HasColumnName("started_at");
+                builder.Property(activity => activity.CompletedAt).HasColumnName("completed_at");
+                builder.Property(activity => activity.RequestJson).HasColumnName("request").HasColumnType("jsonb");
+                builder.Property(activity => activity.ModelsJson).HasColumnName("models").HasColumnType("jsonb");
+                builder.Property(activity => activity.SummaryJson).HasColumnName("summary").HasColumnType("jsonb");
+                builder.Property(activity => activity.MetadataJson).HasColumnName("metadata").HasColumnType("jsonb");
+                builder.Property(activity => activity.CreatedAt).HasColumnName("created_at");
+                builder.Property(activity => activity.UpdatedAt).HasColumnName("updated_at");
                 builder.HasIndex(activity => activity.Key).IsUnique();
+                builder.HasIndex(activity => new { activity.SourceId, activity.ExternalRunId })
+                    .IsUnique()
+                    .HasFilter("external_run_id IS NOT NULL");
             });
             modelBuilder.Entity<SegmentStudioLineageNode>(builder =>
             {
+                builder.ToTable("segment_studio_lineage_nodes");
                 builder.HasKey(node => node.Id);
-                builder.HasIndex(node => node.ItemId).IsUnique();
+                builder.Property(node => node.Id).HasColumnName("id");
+                builder.Property(node => node.ItemId).HasColumnName("item_id");
+                builder.Property(node => node.State).HasColumnName("state");
+                builder.Property(node => node.LastKnownVideoId).HasColumnName("last_known_video_id");
+                builder.Property(node => node.LastKnownTagId).HasColumnName("last_known_tag_id");
+                builder.Property(node => node.LastKnownStartSec).HasColumnName("last_known_start_sec");
+                builder.Property(node => node.LastKnownEndSec).HasColumnName("last_known_end_sec");
+                builder.Property(node => node.MissingSince).HasColumnName("missing_since");
+                builder.Property(node => node.CreatedAt).HasColumnName("created_at");
+                builder.Property(node => node.UpdatedAt).HasColumnName("updated_at");
+                builder.HasIndex(node => node.ItemId)
+                    .IsUnique()
+                    .HasFilter("item_id IS NOT NULL");
             });
-            modelBuilder.Entity<SegmentStudioSegmentProvenance>(
-                builder => builder.HasKey(assertion => assertion.Id));
-            modelBuilder.Entity<SegmentStudioDerivationEdge>(
-                builder => builder.HasKey(edge => edge.Id));
+            modelBuilder.Entity<SegmentStudioSegmentProvenance>(builder =>
+            {
+                builder.ToTable("segment_studio_segment_provenance");
+                builder.HasKey(assertion => assertion.Id);
+                builder.Property(assertion => assertion.Id).HasColumnName("id");
+                builder.Property(assertion => assertion.LineageNodeId).HasColumnName("lineage_node_id");
+                builder.Property(assertion => assertion.SourceId).HasColumnName("source_id");
+                builder.Property(assertion => assertion.Relation).HasColumnName("relation");
+                builder.Property(assertion => assertion.ActivityId).HasColumnName("activity_id");
+                builder.Property(assertion => assertion.ModelKey).HasColumnName("model_key");
+                builder.Property(assertion => assertion.ModelIdentifier).HasColumnName("model_identifier");
+                builder.Property(assertion => assertion.ModelVersion).HasColumnName("model_version");
+                builder.Property(assertion => assertion.Confidence).HasColumnName("confidence");
+                builder.Property(assertion => assertion.RecordedAt).HasColumnName("recorded_at");
+                builder.Property(assertion => assertion.MetadataJson).HasColumnName("metadata").HasColumnType("jsonb");
+                builder.Property(assertion => assertion.SupersededAt).HasColumnName("superseded_at");
+                builder.Property(assertion => assertion.CreatedAt).HasColumnName("created_at");
+                builder.Property(assertion => assertion.UpdatedAt).HasColumnName("updated_at");
+                builder.HasIndex(assertion => new
+                    {
+                        assertion.LineageNodeId,
+                        assertion.SourceId,
+                        assertion.Relation,
+                        assertion.ActivityId,
+                        assertion.ModelKey,
+                        assertion.ModelIdentifier,
+                        assertion.ModelVersion,
+                    })
+                    .IsUnique()
+                    .HasFilter("superseded_at IS NULL");
+            });
+            modelBuilder.Entity<SegmentStudioDerivationEdge>(builder =>
+            {
+                builder.ToTable("segment_studio_derivation_edges");
+                builder.HasKey(edge => edge.Id);
+                builder.Property(edge => edge.Id).HasColumnName("id");
+                builder.Property(edge => edge.SourceNodeId).HasColumnName("source_node_id");
+                builder.Property(edge => edge.DerivedNodeId).HasColumnName("derived_node_id");
+                builder.Property(edge => edge.RuleId).HasColumnName("rule_id");
+                builder.Property(edge => edge.RuleVersionAtCreation).HasColumnName("rule_version_at_creation");
+                builder.Property(edge => edge.SourceTagIdAtCreation).HasColumnName("source_tag_id_at_creation");
+                builder.Property(edge => edge.DerivedTagIdAtCreation).HasColumnName("derived_tag_id_at_creation");
+                builder.Property(edge => edge.ActivityId).HasColumnName("activity_id");
+                builder.Property(edge => edge.RecordedAt).HasColumnName("recorded_at");
+                builder.Property(edge => edge.MetadataJson).HasColumnName("metadata").HasColumnType("jsonb");
+                builder.Property(edge => edge.CreatedAt).HasColumnName("created_at");
+                builder.Property(edge => edge.UpdatedAt).HasColumnName("updated_at");
+            });
             modelBuilder.Entity<Segment>(builder =>
             {
+                builder.ToTable("segments");
                 builder.HasKey(segment => segment.Id);
                 builder.Ignore(segment => segment.Tag);
                 builder.Property(segment => segment.Payload).HasConversion(

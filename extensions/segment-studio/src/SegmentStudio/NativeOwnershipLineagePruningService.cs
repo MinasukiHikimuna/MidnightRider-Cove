@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SegmentStudio;
 
-public sealed record BasicBinLineagePruningResult(
+public sealed record NativeOwnershipLineagePruningResult(
     bool Succeeded,
     int DeletedDerivedSegmentCount = 0,
     int RemovedEdgeCount = 0,
@@ -12,9 +12,9 @@ public sealed record BasicBinLineagePruningResult(
     string? Code = null,
     string? Error = null);
 
-public static class BasicBinLineagePruningService
+public static class NativeOwnershipLineagePruningService
 {
-    public static async Task<BasicBinLineagePruningResult> ApplyAsync(
+    public static async Task<NativeOwnershipLineagePruningResult> ApplyAsync(
         DbContext db,
         IReadOnlyCollection<long> sourceItemIds,
         CovePrincipal? principal,

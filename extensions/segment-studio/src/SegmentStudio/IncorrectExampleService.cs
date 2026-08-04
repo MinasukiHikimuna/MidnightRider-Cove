@@ -886,7 +886,7 @@ public static class IncorrectExampleService
                 Revision: moved.Revision);
         }
 
-        var transition = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var transition = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             db,
             videoId,
             nativeSegmentId,

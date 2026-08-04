@@ -18,24 +18,24 @@ public enum SegmentTransitionStatus
     MissingImage,
 }
 
-public sealed record MoveToBinRequest(
+public sealed record NativeToOwnedTransitionRequest(
     Guid OperationId,
     DateTime ExpectedUpdatedAt,
     bool DiscardMissingImage = false,
     string ReviewState = "rejected",
     Guid? HistoryReceiptId = null,
     bool PreserveLineage = false);
-public sealed record BulkMoveToBinItem(int SegmentId, DateTime ExpectedUpdatedAt);
-public sealed record BulkMoveToBinRequest(
+public sealed record NativeToOwnedTransitionItem(int SegmentId, DateTime ExpectedUpdatedAt);
+public sealed record NativeToOwnedTransitionBatchRequest(
     Guid OperationId,
-    IReadOnlyList<BulkMoveToBinItem> Segments,
+    IReadOnlyList<NativeToOwnedTransitionItem> Segments,
     bool DiscardMissingImage = false,
     string ReviewState = "rejected",
     Guid? HistoryReceiptId = null);
-public sealed record BulkMoveToBinItemResult(int SegmentId, long ItemId, long Revision);
-public sealed record BulkMoveToBinResult(
+public sealed record NativeToOwnedTransitionItemResult(int SegmentId, long ItemId, long Revision);
+public sealed record NativeToOwnedTransitionBatchResult(
     SegmentTransitionStatus Status,
-    IReadOnlyList<BulkMoveToBinItemResult>? Items = null,
+    IReadOnlyList<NativeToOwnedTransitionItemResult>? Items = null,
     int? VideoId = null,
     string? Error = null,
     bool Replayed = false,
@@ -80,17 +80,19 @@ public sealed record RejectedSegmentItem(
 
 public static class SegmentOwnershipTransitionService
 {
-    private const string MoveKind = "move-to-bin";
-    private const string BulkMoveKind = "bulk-move-to-bin";
+    private const string NativeToOwnedKind = "native-to-owned";
+    private const string NativeToOwnedBatchKind = "native-to-owned-batch";
+    private const string LegacyNativeToOwnedKind = "move-to-bin";
+    private const string LegacyNativeToOwnedBatchKind = "bulk-move-to-bin";
     private const string RestoreKind = "restore-from-bin";
     private const string PurgeKind = "purge-bin-item";
     private const string EmptyBinKind = "empty-bin";
 
-    public static async Task<SegmentTransitionResult> MoveToBinAsync(
+    public static async Task<SegmentTransitionResult> MoveNativeToOwnedAsync(
         DbContext db,
         int videoId,
         int segmentId,
-        MoveToBinRequest request,
+        NativeToOwnedTransitionRequest request,
         CovePrincipal? principal,
         IAuthorizationService authorization,
         IBlobService blobs,
@@ -98,9 +100,14 @@ public static class SegmentOwnershipTransitionService
     {
         if (request.ReviewState is not ("unreviewed" or "rejected"))
             return new(SegmentTransitionStatus.Invalid, Error: "Native segments can only move to Unreviewed or Rejected draft state.");
-        var fingerprint = Fingerprint(MoveKind, videoId, segmentId, request.ExpectedUpdatedAt,
+        var fingerprint = Fingerprint(NativeToOwnedKind, videoId, segmentId, request.ExpectedUpdatedAt,
             request.DiscardMissingImage, request.ReviewState, request.PreserveLineage);
-        var replay = await ReplayAsync(db, request.OperationId, MoveKind, fingerprint, principal, ct);
+        var legacyFingerprint = Fingerprint(
+            LegacyNativeToOwnedKind, videoId, segmentId, request.ExpectedUpdatedAt,
+            request.DiscardMissingImage, request.ReviewState, request.PreserveLineage);
+        var replay = await ReplayAsync(
+            db, request.OperationId, NativeToOwnedKind, fingerprint, principal, ct,
+            LegacyNativeToOwnedKind, legacyFingerprint);
         if (!await db.Set<Video>().AsNoTracking().AnyAsync(video => video.Id == videoId, ct))
             return new(SegmentTransitionStatus.NotFound, Error: "Video not found.");
         var access = await authorization.AuthorizeAsync(
@@ -112,7 +119,9 @@ public static class SegmentOwnershipTransitionService
 
         await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
         await LockNativeSegmentAsync(db, segmentId, ct);
-        replay = await ReplayAsync(db, request.OperationId, MoveKind, fingerprint, principal, ct);
+        replay = await ReplayAsync(
+            db, request.OperationId, NativeToOwnedKind, fingerprint, principal, ct,
+            LegacyNativeToOwnedKind, legacyFingerprint);
         if (replay is not null)
             return replay;
 
@@ -126,7 +135,7 @@ public static class SegmentOwnershipTransitionService
             return new(SegmentTransitionStatus.NotFound, Error: "Segment not found.");
         if (segment.UpdatedAt != request.ExpectedUpdatedAt)
             return new(SegmentTransitionStatus.Conflict, NativeSegmentId: segment.Id, VideoId: videoId,
-                Error: "This segment changed in another session. Reload it before moving it to the bin.");
+                Error: "This segment changed in another session. Reload it before changing its review ownership.");
         if (!await db.Set<Tag>().AsNoTracking().AnyAsync(tag => tag.Id == segment.TagId, ct))
             return new(SegmentTransitionStatus.Invalid, Error: "The segment tag no longer exists.");
 
@@ -137,7 +146,7 @@ public static class SegmentOwnershipTransitionService
         var item = await db.Set<SegmentStudioItem>().SingleOrDefaultAsync(candidate => candidate.NativeSegmentId == segmentId, ct);
         if (item is not null && !request.PreserveLineage)
         {
-            var pruning = await BasicBinLineagePruningService.ApplyAsync(
+            var pruning = await NativeOwnershipLineagePruningService.ApplyAsync(
                 db, [item.Id], principal, authorization, ct);
             if (!pruning.Succeeded)
                 return new(
@@ -171,15 +180,17 @@ public static class SegmentOwnershipTransitionService
         db.Remove(segment);
         var result = new SegmentTransitionResult(
             SegmentTransitionStatus.Updated, item.Id, null, item.Revision, videoId);
-        db.Add(CreateReceipt(request.OperationId, MoveKind, fingerprint, principal, item.Id, segmentId, null, result));
+        db.Add(CreateReceipt(
+            request.OperationId, NativeToOwnedKind, fingerprint, principal,
+            item.Id, segmentId, null, result));
         await db.SaveChangesAsync(ct);
         return result;
     }
 
-    public static async Task<BulkMoveToBinResult> MoveManyToBinAsync(
+    public static async Task<NativeToOwnedTransitionBatchResult> MoveManyNativeToOwnedAsync(
         DbContext db,
         int videoId,
-        BulkMoveToBinRequest request,
+        NativeToOwnedTransitionBatchRequest request,
         CovePrincipal? principal,
         IAuthorizationService authorization,
         IBlobService blobs,
@@ -195,8 +206,14 @@ public static class SegmentOwnershipTransitionService
             return new(SegmentTransitionStatus.Invalid, Error: "A native segment can only appear once.");
 
         var orderedRequests = request.Segments.OrderBy(item => item.SegmentId).ToArray();
-        var fingerprint = Fingerprint(BulkMoveKind, videoId, orderedRequests, request.DiscardMissingImage, request.ReviewState);
-        var replay = await ReplayBulkAsync(db, request.OperationId, fingerprint, principal, ct);
+        var fingerprint = Fingerprint(
+            NativeToOwnedBatchKind, videoId, orderedRequests,
+            request.DiscardMissingImage, request.ReviewState);
+        var legacyFingerprint = Fingerprint(
+            LegacyNativeToOwnedBatchKind, videoId, orderedRequests,
+            request.DiscardMissingImage, request.ReviewState);
+        var replay = await ReplayBulkAsync(
+            db, request.OperationId, fingerprint, principal, ct, legacyFingerprint);
         if (!await db.Set<Video>().AsNoTracking().AnyAsync(video => video.Id == videoId, ct))
             return new(SegmentTransitionStatus.NotFound, Error: "Video not found.");
         var access = await authorization.AuthorizeAsync(
@@ -208,7 +225,8 @@ public static class SegmentOwnershipTransitionService
 
         await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
         await LockNativeSegmentsAsync(db, orderedRequests.Select(item => item.SegmentId).ToArray(), ct);
-        replay = await ReplayBulkAsync(db, request.OperationId, fingerprint, principal, ct);
+        replay = await ReplayBulkAsync(
+            db, request.OperationId, fingerprint, principal, ct, legacyFingerprint);
         if (replay is not null)
             return replay;
 
@@ -226,7 +244,7 @@ public static class SegmentOwnershipTransitionService
             return new(SegmentTransitionStatus.NotFound, Error: "One or more selected segments no longer exist.");
         if (segments.Any(segment => segment.UpdatedAt != requestedById[segment.Id].ExpectedUpdatedAt))
             return new(SegmentTransitionStatus.Conflict, VideoId: videoId,
-                Error: "One or more selected segments changed in another session. Reload before moving them to the bin.",
+                Error: "One or more selected segments changed in another session. Reload before changing their review ownership.",
                 Code: "CANONICAL_SEGMENT_CHANGED");
 
         var tagIds = segments.Select(segment => segment.TagId!.Value).Distinct().ToArray();
@@ -244,7 +262,7 @@ public static class SegmentOwnershipTransitionService
             .Where(item => item.NativeSegmentId != null && segmentIds.Contains(item.NativeSegmentId.Value))
             .ToDictionaryAsync(item => item.NativeSegmentId!.Value, ct);
         var existingItemIds = itemsByNativeId.Values.Select(item => item.Id).ToArray();
-        var pruning = await BasicBinLineagePruningService.ApplyAsync(
+        var pruning = await NativeOwnershipLineagePruningService.ApplyAsync(
             db, existingItemIds, principal, authorization, ct);
         if (!pruning.Succeeded)
             return new(
@@ -253,7 +271,7 @@ public static class SegmentOwnershipTransitionService
                 Error: pruning.Error,
                 Code: pruning.Code);
         var now = DateTime.UtcNow;
-        BulkMoveToBinItemResult[] movedItems;
+        NativeToOwnedTransitionItemResult[] movedItems;
         if (db.Database.IsRelational())
         {
             var unregisteredSegments = segments
@@ -314,7 +332,7 @@ public static class SegmentOwnershipTransitionService
             movedItems = segments.Select(segment =>
             {
                 var item = itemsByNativeId[segment.Id];
-                return new BulkMoveToBinItemResult(segment.Id, item.Id, item.Revision + 1);
+                return new NativeToOwnedTransitionItemResult(segment.Id, item.Id, item.Revision + 1);
             }).ToArray();
         }
         else
@@ -351,17 +369,17 @@ public static class SegmentOwnershipTransitionService
             movedItems = trackedSegments.Select(segment =>
             {
                 var item = trackedItems[segment.Id];
-                return new BulkMoveToBinItemResult(segment.Id, item.Id, item.Revision);
+                return new NativeToOwnedTransitionItemResult(segment.Id, item.Id, item.Revision);
             }).ToArray();
         }
-        var result = new BulkMoveToBinResult(
+        var result = new NativeToOwnedTransitionBatchResult(
             SegmentTransitionStatus.Updated,
             movedItems,
             videoId);
         db.Add(new SegmentStudioSegmentOperation
         {
             OperationId = request.OperationId,
-            Kind = BulkMoveKind,
+            Kind = NativeToOwnedBatchKind,
             ActorUserId = principal?.UserId,
             RequestFingerprint = fingerprint,
             ResultPayloadJson = JsonSerializer.Serialize(result),
@@ -836,22 +854,27 @@ public static class SegmentOwnershipTransitionService
         item.UpdatedAt = now;
     }
 
-    private static async Task<BulkMoveToBinResult?> ReplayBulkAsync(
+    private static async Task<NativeToOwnedTransitionBatchResult?> ReplayBulkAsync(
         DbContext db,
         Guid operationId,
         string fingerprint,
         CovePrincipal? principal,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? legacyFingerprint = null)
     {
         var receipt = await db.Set<SegmentStudioSegmentOperation>().AsNoTracking()
             .SingleOrDefaultAsync(operation => operation.OperationId == operationId, ct);
         if (receipt is null)
             return null;
-        if (receipt.Kind != BulkMoveKind
-            || receipt.RequestFingerprint != fingerprint
+        var matchesCurrent = receipt.Kind == NativeToOwnedBatchKind
+            && receipt.RequestFingerprint == fingerprint;
+        var matchesLegacy = legacyFingerprint is not null
+            && receipt.Kind == LegacyNativeToOwnedBatchKind
+            && receipt.RequestFingerprint == legacyFingerprint;
+        if ((!matchesCurrent && !matchesLegacy)
             || receipt.ActorUserId != principal?.UserId)
             return new(SegmentTransitionStatus.Conflict, Error: "The operation ID was already used for a different request.");
-        var result = JsonSerializer.Deserialize<BulkMoveToBinResult>(receipt.ResultPayloadJson!);
+        var result = JsonSerializer.Deserialize<NativeToOwnedTransitionBatchResult>(receipt.ResultPayloadJson!);
         return result is null
             ? new(SegmentTransitionStatus.Conflict, Error: "The saved operation result could not be read.")
             : result with { Replayed = true };
@@ -863,7 +886,9 @@ public static class SegmentOwnershipTransitionService
         string kind,
         string fingerprint,
         CovePrincipal? principal,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? legacyKind = null,
+        string? legacyFingerprint = null)
     {
         if (operationId == Guid.Empty)
             return new(SegmentTransitionStatus.Invalid, Error: "Operation ID is required.");
@@ -871,8 +896,13 @@ public static class SegmentOwnershipTransitionService
             .SingleOrDefaultAsync(operation => operation.OperationId == operationId, ct);
         if (receipt is null)
             return null;
-        if (receipt.Kind != kind
-            || receipt.RequestFingerprint != fingerprint
+        var matchesCurrent = receipt.Kind == kind
+            && receipt.RequestFingerprint == fingerprint;
+        var matchesLegacy = legacyKind is not null
+            && legacyFingerprint is not null
+            && receipt.Kind == legacyKind
+            && receipt.RequestFingerprint == legacyFingerprint;
+        if ((!matchesCurrent && !matchesLegacy)
             || receipt.ActorUserId != principal?.UserId)
             return new(SegmentTransitionStatus.Conflict, Error: "The operation ID was already used for a different request.");
         var result = receipt.ResultPayloadJson is null

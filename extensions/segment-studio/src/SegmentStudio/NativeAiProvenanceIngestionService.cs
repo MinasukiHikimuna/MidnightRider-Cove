@@ -10,7 +10,8 @@ public sealed record NativeAiIngestionRequest(
     int? VideoId = null,
     int? AfterSegmentId = null,
     int BatchSize = 200,
-    bool OnlyMissingProvenance = false);
+    bool OnlyMissingProvenance = false,
+    IReadOnlyList<int>? SegmentIds = null);
 
 public sealed record NativeAiEnrichmentIssue(
     int SegmentId,
@@ -40,7 +41,7 @@ public sealed class NativeAiProvenanceIngestionService(
     ISegmentProvenanceService provenanceService)
     : INativeAiProvenanceIngestionService
 {
-    private const int MaximumBatchSize = 1000;
+    public const int MaximumBatchSize = 1000;
 
     public async Task<NativeAiIngestionResult> IngestAsync(
         DbContext db,
@@ -50,6 +51,21 @@ public sealed class NativeAiProvenanceIngestionService(
         if (request.BatchSize is < 1 or > MaximumBatchSize)
             throw new ArgumentOutOfRangeException(
                 nameof(request), $"Batch size must be between 1 and {MaximumBatchSize}.");
+        if (request.SegmentIds is { } segmentIds)
+        {
+            if (segmentIds.Count is < 1 or > MaximumBatchSize)
+                throw new ArgumentOutOfRangeException(
+                    nameof(request), $"Select between 1 and {MaximumBatchSize} segment IDs.");
+            if (request.SegmentId is not null || request.AfterSegmentId is not null)
+                throw new ArgumentException(
+                    "Explicit segment IDs cannot be combined with a segment ID or cursor.",
+                    nameof(request));
+            if (segmentIds.Distinct().Count() != segmentIds.Count)
+                throw new ArgumentException("A segment ID can only appear once.", nameof(request));
+            if (request.BatchSize < segmentIds.Count)
+                throw new ArgumentException(
+                    "Batch size must include every explicit segment ID.", nameof(request));
+        }
 
         if (db.Database.CurrentTransaction is not null)
             return await IngestCoreAsync(db, request, new IngestionAttempt(), ct);
@@ -86,6 +102,8 @@ public sealed class NativeAiProvenanceIngestionService(
                 && segment.SourceKey.StartsWith("ext:ai."));
         if (request.SegmentId is int segmentId)
             query = query.Where(segment => segment.Id == segmentId);
+        if (request.SegmentIds is { } segmentIds)
+            query = query.Where(segment => segmentIds.Contains(segment.Id));
         if (request.VideoId is int videoId)
             query = query.Where(segment => segment.HostId == videoId);
         if (request.AfterSegmentId is int afterSegmentId)
@@ -135,63 +153,81 @@ public sealed class NativeAiProvenanceIngestionService(
             .Where(segment => attempt.CandidateIds.Contains(segment.Id))
             .OrderBy(segment => segment.Id)
             .ToListAsync(ct);
-        if (attempt.CreatedItemSegmentIds is null)
+        attempt.CreatedItemCount = 0;
+        var itemsBySegmentId = await db.Set<SegmentStudioItem>()
+            .AsNoTracking()
+            .Where(item => item.NativeSegmentId != null
+                && attempt.CandidateIds.Contains(item.NativeSegmentId.Value))
+            .ToDictionaryAsync(item => item.NativeSegmentId!.Value, ct);
+        var missingSegments = candidates
+            .Where(segment => !itemsBySegmentId.ContainsKey(segment.Id))
+            .ToArray();
+        if (missingSegments.Length > 0)
         {
-            var existingItemSegmentIds = await db.Set<SegmentStudioItem>()
+            var now = DateTime.UtcNow;
+            if (db.Database.ProviderName?.Contains(
+                    "Npgsql", StringComparison.Ordinal) == true)
+            {
+                var missingSegmentIds = missingSegments
+                    .Select(segment => segment.Id)
+                    .ToArray();
+                attempt.CreatedItemCount =
+                    await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO segment_studio_items
+                        (native_segment_id, representation_schema_version,
+                         revision, created_at, updated_at)
+                    SELECT segment."Id", 1, 0, {now}, {now}
+                    FROM segments AS segment
+                    WHERE segment."Id" = ANY ({missingSegmentIds})
+                    ON CONFLICT (native_segment_id) DO NOTHING
+                    """, ct);
+            }
+            else
+            {
+                db.AddRange(missingSegments.Select(segment =>
+                    new SegmentStudioItem
+                    {
+                        NativeSegmentId = segment.Id,
+                        RepresentationSchemaVersion = 1,
+                        Revision = 0,
+                        CreatedAt = now,
+                        UpdatedAt = now,
+                    }));
+                await db.SaveChangesAsync(ct);
+                attempt.CreatedItemCount = missingSegments.Length;
+            }
+            itemsBySegmentId = await db.Set<SegmentStudioItem>()
                 .AsNoTracking()
                 .Where(item => item.NativeSegmentId != null
                     && attempt.CandidateIds.Contains(item.NativeSegmentId.Value))
-                .Select(item => item.NativeSegmentId!.Value)
-                .ToListAsync(ct);
-            attempt.CreatedItemSegmentIds = attempt.CandidateIds
-                .Except(existingItemSegmentIds)
-                .ToHashSet();
+                .ToDictionaryAsync(item => item.NativeSegmentId!.Value, ct);
         }
 
         var issues = new List<NativeAiEnrichmentIssue>();
+        var sourcesByKey = new Dictionary<string, SegmentStudioSource>(StringComparer.Ordinal);
+        var runsByKey = new Dictionary<(string RunKey, int VideoId), AiRun?>();
+        var activitiesByKey = new Dictionary<
+            (long SourceId, string RunKey, int VideoId),
+            SegmentStudioProvenanceActivity>();
         foreach (var segment in candidates)
         {
             var sourceKey = segment.SourceKey.Trim().ToLowerInvariant();
-            var source = await sourceRegistry.RegisterAsync(
-                db,
-                new SegmentSourceRegistration(
-                    sourceKey,
-                    sourceKey == "ext:ai.tagging" ? "Cove AI Tagging" : sourceKey,
-                    "ai",
-                    "Cove",
-                    null,
-                    "Native Cove AI segment source.",
-                    "{}"),
-                ct);
-
-            var item = await db.Set<SegmentStudioItem>()
-                .SingleOrDefaultAsync(candidate => candidate.NativeSegmentId == segment.Id, ct);
-            if (item is null)
+            if (!sourcesByKey.TryGetValue(sourceKey, out var source))
             {
-                var now = DateTime.UtcNow;
-                item = new SegmentStudioItem
-                {
-                    NativeSegmentId = segment.Id,
-                    RepresentationSchemaVersion = 1,
-                    Revision = 0,
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                };
-                db.Add(item);
-                try
-                {
-                    await db.SaveChangesAsync(ct);
-                }
-                catch (DbUpdateException)
-                {
-                    db.Entry(item).State = EntityState.Detached;
-                    item = await db.Set<SegmentStudioItem>()
-                        .SingleOrDefaultAsync(
-                            candidate => candidate.NativeSegmentId == segment.Id, ct);
-                    if (item is null)
-                        throw;
-                }
+                source = await sourceRegistry.RegisterAsync(
+                    db,
+                    new SegmentSourceRegistration(
+                        sourceKey,
+                        sourceKey == "ext:ai.tagging" ? "Cove AI Tagging" : sourceKey,
+                        "ai",
+                        "Cove",
+                        null,
+                        "Native Cove AI segment source.",
+                        "{}"),
+                    ct);
+                sourcesByKey.Add(sourceKey, source);
             }
+            var item = itemsBySegmentId[segment.Id];
             var node = await lineageNodeService.EnsureAsync(db, item.Id, ct);
 
             var modelKey = ReadStringProperty(segment.Payload, "modelKey");
@@ -214,13 +250,18 @@ public sealed class NativeAiProvenanceIngestionService(
             }
             else
             {
-                run = await db.Set<AiRun>()
-                    .AsNoTracking()
-                    .SingleOrDefaultAsync(candidate =>
-                        candidate.RunKey == segment.SourceRunId
-                        && candidate.TargetType == AiRunTargetType.Video
-                        && candidate.TargetId == segment.HostId,
-                        ct);
+                var runCacheKey = (segment.SourceRunId, segment.HostId);
+                if (!runsByKey.TryGetValue(runCacheKey, out run))
+                {
+                    run = await db.Set<AiRun>()
+                        .AsNoTracking()
+                        .SingleOrDefaultAsync(candidate =>
+                            candidate.RunKey == segment.SourceRunId
+                            && candidate.TargetType == AiRunTargetType.Video
+                            && candidate.TargetId == segment.HostId,
+                            ct);
+                    runsByKey.Add(runCacheKey, run);
+                }
                 if (run is null)
                 {
                     issues.Add(new NativeAiEnrichmentIssue(
@@ -228,8 +269,14 @@ public sealed class NativeAiProvenanceIngestionService(
                         "missing-run",
                         "The referenced AI run is unavailable."));
                 }
-                activity = await CaptureActivityAsync(
-                    db, source, segment.SourceRunId, run, ct);
+                var activityCacheKey = (
+                    source.Id, segment.SourceRunId, segment.HostId);
+                if (!activitiesByKey.TryGetValue(activityCacheKey, out activity))
+                {
+                    activity = await CaptureActivityAsync(
+                        db, source, segment.SourceRunId, run, ct);
+                    activitiesByKey.Add(activityCacheKey, activity);
+                }
             }
 
             var resolution = run?.Models is not null
@@ -282,7 +329,7 @@ public sealed class NativeAiProvenanceIngestionService(
         var result = new NativeAiIngestionResult(
             candidates.Count,
             candidates.Count,
-            attempt.CreatedItemSegmentIds.Count,
+            attempt.CreatedItemCount,
             candidates.Count == 0 ? request.AfterSegmentId : candidates[^1].Id,
             attempt.HasMore,
             issues);
@@ -293,7 +340,7 @@ public sealed class NativeAiProvenanceIngestionService(
     private sealed class IngestionAttempt
     {
         public List<int>? CandidateIds { get; set; }
-        public HashSet<int>? CreatedItemSegmentIds { get; set; }
+        public int CreatedItemCount { get; set; }
         public bool HasMore { get; set; }
     }
 

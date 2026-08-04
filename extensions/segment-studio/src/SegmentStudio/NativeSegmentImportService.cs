@@ -50,47 +50,60 @@ public sealed class NativeSegmentImportService(
 
         await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
         var segments = await EligibleUnimported(db, videoId)
+            .AsNoTracking()
             .OrderBy(segment => segment.Id)
             .ToListAsync(ct);
-        foreach (var segment in segments)
+        var aiSegmentIds = segments
+            .Where(segment => segment.SourceKey.StartsWith(
+                "ext:ai.", StringComparison.OrdinalIgnoreCase))
+            .Select(segment => segment.Id)
+            .ToArray();
+        foreach (var batch in aiSegmentIds.Chunk(
+                     NativeAiProvenanceIngestionService.MaximumBatchSize))
         {
-            if (segment.SourceKey.StartsWith("ext:ai.", StringComparison.OrdinalIgnoreCase))
-            {
-                await nativeAiIngestion.IngestAsync(
-                    db,
-                    new NativeAiIngestionRequest(
-                        SegmentId: segment.Id,
-                        VideoId: videoId,
-                        BatchSize: 1,
-                        OnlyMissingProvenance: true),
-                    ct);
-            }
-            var item = await db.Set<SegmentStudioItem>()
-                .SingleOrDefaultAsync(candidate => candidate.NativeSegmentId == segment.Id, ct);
-            if (item is null)
-            {
-                var now = DateTime.UtcNow;
-                item = new SegmentStudioItem
+            await nativeAiIngestion.IngestAsync(
+                db,
+                new NativeAiIngestionRequest(
+                    VideoId: videoId,
+                    BatchSize: batch.Length,
+                    OnlyMissingProvenance: true,
+                    SegmentIds: batch),
+                ct);
+        }
+        if (request.ReviewState == "approved")
+        {
+            var segmentIds = segments.Select(segment => segment.Id).ToArray();
+            var anchoredIds = await db.Set<SegmentStudioItem>()
+                .AsNoTracking()
+                .Where(item => item.NativeSegmentId != null
+                    && segmentIds.Contains(item.NativeSegmentId.Value))
+                .Select(item => item.NativeSegmentId!.Value)
+                .ToListAsync(ct);
+            var anchored = anchoredIds.ToHashSet();
+            var now = DateTime.UtcNow;
+            db.AddRange(segments
+                .Where(segment => !anchored.Contains(segment.Id))
+                .Select(segment => new SegmentStudioItem
                 {
                     NativeSegmentId = segment.Id,
                     RepresentationSchemaVersion = 1,
                     Revision = 0,
                     CreatedAt = now,
                     UpdatedAt = now,
-                };
-                db.Add(item);
-                await db.SaveChangesAsync(ct);
-            }
-            if (request.ReviewState == "approved")
-                continue;
+                }));
+            await db.SaveChangesAsync(ct);
+            return new NativeSegmentImportResult(segments.Count, request.ReviewState);
+        }
 
-            var transition = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        foreach (var batch in segments.Chunk(5000))
+        {
+            var transition = await SegmentOwnershipTransitionService.MoveManyNativeToOwnedAsync(
                 db,
                 videoId,
-                segment.Id,
-                new MoveToBinRequest(
-                    ChildOperationId(request.OperationId, segment.Id),
-                    segment.UpdatedAt,
+                new NativeToOwnedTransitionBatchRequest(
+                    ChildOperationId(request.OperationId, batch[0].Id),
+                    batch.Select(segment => new NativeToOwnedTransitionItem(
+                        segment.Id, segment.UpdatedAt)).ToArray(),
                     ReviewState: "unreviewed"),
                 principal,
                 authorization,
@@ -98,7 +111,7 @@ public sealed class NativeSegmentImportService(
                 ct);
             if (transition.Status != SegmentTransitionStatus.Updated)
                 throw new InvalidOperationException(
-                    transition.Error ?? $"Native segment {segment.Id} could not be imported.");
+                    transition.Error ?? "The native segments could not be imported.");
         }
         return new NativeSegmentImportResult(segments.Count, request.ReviewState);
     }

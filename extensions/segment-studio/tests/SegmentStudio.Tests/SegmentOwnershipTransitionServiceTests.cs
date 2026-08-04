@@ -44,7 +44,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
         await fixture.Context.SaveChangesAsync();
         fixture.Context.ChangeTracker.Clear();
 
-        var moved = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
 
@@ -61,7 +61,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
-    public async Task BulkMoveToBinRetainsDerivedSegmentsSupportedByAnotherNativeSource()
+    public async Task BulkNativeToOwnedTransitionRetainsDerivedSegmentsSupportedByAnotherNativeSource()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
         var now = fixture.UpdatedAt;
@@ -127,10 +127,10 @@ public sealed class SegmentOwnershipTransitionServiceTests
         await fixture.Context.SaveChangesAsync();
         fixture.Context.ChangeTracker.Clear();
 
-        var moved = await SegmentOwnershipTransitionService.MoveManyToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveManyNativeToOwnedAsync(
             fixture.Context,
             fixture.VideoId,
-            new BulkMoveToBinRequest(
+            new NativeToOwnedTransitionBatchRequest(
                 Guid.NewGuid(),
                 [new(fixture.SegmentId, fixture.UpdatedAt)]),
             CovePrincipal.System(),
@@ -1141,12 +1141,12 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
-    public async Task MoveToBinAndRestorePreserveCanonicalContentAndStableItem()
+    public async Task NativeToOwnedTransitionAndRestorePreserveCanonicalContentAndStableItem()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
         var moveOperationId = Guid.NewGuid();
 
-        var moved = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(moveOperationId, fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1193,12 +1193,12 @@ public sealed class SegmentOwnershipTransitionServiceTests
     {
         await using var fixture = await TransitionFixture.CreateAsync();
         var operationId = Guid.NewGuid();
-        var request = new MoveToBinRequest(operationId, fixture.UpdatedAt);
+        var request = new NativeToOwnedTransitionRequest(operationId, fixture.UpdatedAt);
 
-        var first = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var first = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId, request,
             CovePrincipal.System(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
-        var retry = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var retry = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId, request,
             CovePrincipal.System(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
 
@@ -1248,17 +1248,17 @@ public sealed class SegmentOwnershipTransitionServiceTests
             await using var retryContext = new TransitionDbContext(options);
             await using var firstTransaction = await firstContext.Database.BeginTransactionAsync();
             var operationId = Guid.NewGuid();
-            var request = new MoveToBinRequest(operationId, new DateTime(2026, 7, 22, 9, 0, 0, DateTimeKind.Utc));
+            var request = new NativeToOwnedTransitionRequest(operationId, new DateTime(2026, 7, 22, 9, 0, 0, DateTimeKind.Utc));
             var authorization = new RecordingAuthorization();
             var blobs = new FakeBlobService(exists: true);
 
-            var first = await SegmentOwnershipTransitionService.MoveToBinAsync(
+            var first = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
                 firstContext, 21, 101, request, CovePrincipal.System(),
                 authorization, blobs, CancellationToken.None);
             Assert.Equal(SegmentTransitionStatus.Updated, first.Status);
 
             await using var retryTransaction = await retryContext.Database.BeginTransactionAsync();
-            var retryTask = SegmentOwnershipTransitionService.MoveToBinAsync(
+            var retryTask = SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
                 retryContext, 21, 101, request, CovePrincipal.System(),
                 authorization, blobs, CancellationToken.None);
             await Task.Delay(100);
@@ -1305,12 +1305,12 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task ReplayedMoveStillRequiresDeleteAuthorization()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        var request = new MoveToBinRequest(Guid.NewGuid(), fixture.UpdatedAt);
-        await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var request = new NativeToOwnedTransitionRequest(Guid.NewGuid(), fixture.UpdatedAt);
+        await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId, request,
             CovePrincipal.System(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
 
-        var denied = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var denied = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId, request,
             CovePrincipal.System(), new DeniedAuthorization(), fixture.Blobs, CancellationToken.None);
 
@@ -1321,7 +1321,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task RepeatedRestoreAndPurgeOperationsReplayTheirReceipts()
     {
         await using var restoreFixture = await TransitionFixture.CreateAsync();
-        var moved = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             restoreFixture.Context, restoreFixture.VideoId, restoreFixture.SegmentId,
             new(Guid.NewGuid(), restoreFixture.UpdatedAt), CovePrincipal.System(),
             restoreFixture.Authorization, restoreFixture.Blobs, CancellationToken.None);
@@ -1337,7 +1337,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
         Assert.Single(await restoreFixture.Context.Set<Segment>().ToListAsync());
 
         await using var purgeFixture = await TransitionFixture.CreateAsync();
-        var rejected = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var rejected = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             purgeFixture.Context, purgeFixture.VideoId, purgeFixture.SegmentId,
             new(Guid.NewGuid(), purgeFixture.UpdatedAt), CovePrincipal.System(),
             purgeFixture.Authorization, purgeFixture.Blobs, CancellationToken.None);
@@ -1358,7 +1358,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     {
         await using var fixture = await TransitionFixture.CreateAsync();
 
-        var result = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var result = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt.AddSeconds(-1)), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1373,7 +1373,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     {
         await using var fixture = await TransitionFixture.CreateAsync(blobExists: false);
 
-        var result = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var result = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1387,7 +1387,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task PurgeDeletesRejectedItemAndQueuesBlobCleanup()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        var moved = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1405,7 +1405,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task BinListingOmitsRejectedItemsFromInaccessibleVideos()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        await SegmentOwnershipTransitionService.MoveToBinAsync(
+        await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1430,7 +1430,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task BinSnapshotHasStableFingerprintAndAtomicEmptyReplay()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        await SegmentOwnershipTransitionService.MoveToBinAsync(
+        await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1469,7 +1469,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task EmptyBinRejectsStaleFingerprintWithoutDeletingAnything()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        await SegmentOwnershipTransitionService.MoveToBinAsync(
+        await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1491,7 +1491,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task EmptyBinAuthorizationFailureDoesNotPartiallyDelete()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        await SegmentOwnershipTransitionService.MoveToBinAsync(
+        await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -1511,7 +1511,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     public async Task EmptyBinLeavesEveryItemWhenAnIncorrectExampleIsProtected()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        var moved = await SegmentOwnershipTransitionService.MoveToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, fixture.SegmentId,
             new(Guid.NewGuid(), fixture.UpdatedAt), CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
@@ -2234,7 +2234,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
-    public async Task BulkMoveToBinConvertsEveryNativeSegmentInOneIdempotentOperation()
+    public async Task BulkNativeToOwnedTransitionConvertsEveryNativeSegmentInOneIdempotentOperation()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
         var secondUpdatedAt = fixture.UpdatedAt.AddSeconds(1);
@@ -2258,14 +2258,14 @@ public sealed class SegmentOwnershipTransitionServiceTests
             });
         await fixture.Context.SaveChangesAsync();
         fixture.Context.ChangeTracker.Clear();
-        var request = new BulkMoveToBinRequest(
+        var request = new NativeToOwnedTransitionBatchRequest(
             Guid.NewGuid(),
             [new(fixture.SegmentId, fixture.UpdatedAt), new(102, secondUpdatedAt)]);
 
-        var moved = await SegmentOwnershipTransitionService.MoveManyToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveManyNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, request, CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
-        var replay = await SegmentOwnershipTransitionService.MoveManyToBinAsync(
+        var replay = await SegmentOwnershipTransitionService.MoveManyNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, request, CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
 
@@ -2286,14 +2286,14 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
-    public async Task BulkMoveToBinTransparentlyArchivesUnregisteredNativeSegments()
+    public async Task BulkNativeToOwnedTransitionTransparentlyArchivesUnregisteredNativeSegments()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
-        var request = new BulkMoveToBinRequest(
+        var request = new NativeToOwnedTransitionBatchRequest(
             Guid.NewGuid(),
             [new(fixture.SegmentId, fixture.UpdatedAt)]);
 
-        var moved = await SegmentOwnershipTransitionService.MoveManyToBinAsync(
+        var moved = await SegmentOwnershipTransitionService.MoveManyNativeToOwnedAsync(
             fixture.Context, fixture.VideoId, request, CovePrincipal.System(),
             fixture.Authorization, fixture.Blobs, CancellationToken.None);
 
@@ -2732,6 +2732,69 @@ public sealed class SegmentOwnershipTransitionServiceTests
         Assert.Equal("producer/example", draft.SourceKey);
     }
 
+    [Fact]
+    public async Task NativeImportForReviewBatchesAiProvenanceAndPreservesUnrelatedRejectedItem()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var first = await fixture.Context.Set<Segment>()
+            .SingleAsync(segment => segment.Id == fixture.SegmentId);
+        first.SourceKey = "ext:ai.tagging";
+        var secondUpdatedAt = fixture.UpdatedAt.AddSeconds(1);
+        fixture.Context.AddRange(
+            new Segment
+            {
+                Id = 102, HostType = SegmentHostType.Video, HostId = fixture.VideoId,
+                StartSec = 12, EndSec = 14, TagId = 11, Kind = "tag",
+                SourceKey = "ext:ai.tagging", SourceRunId = "run-3", Confidence = 0.7f,
+                CreatedAt = fixture.UpdatedAt, UpdatedAt = secondUpdatedAt,
+            },
+            new SegmentStudioItem
+            {
+                Id = 900, VideoId = fixture.VideoId, StartSec = 20, EndSec = 21,
+                TagId = 11, Kind = "tag", SourceKey = "producer/example",
+                ReviewState = "rejected", Revision = 7,
+                PayloadJson = "{\"unrelated\":true}",
+                CreatedAt = fixture.UpdatedAt, UpdatedAt = fixture.UpdatedAt,
+            });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var callerEditedTag = await fixture.Context.Set<Tag>()
+            .SingleAsync(tag => tag.Id == 11);
+        callerEditedTag.Name = "Caller edit retained";
+        var ingestion = new RecordingNativeAiIngestion();
+        var importer = new NativeSegmentImportService(ingestion);
+
+        var result = await importer.ImportAsync(
+            fixture.Context, fixture.VideoId,
+            new(Guid.NewGuid(), "unreviewed"), CovePrincipal.System(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.Equal(2, result.ImportedCount);
+        var ingestionRequest = Assert.Single(ingestion.Requests);
+        Assert.Null(ingestionRequest.SegmentId);
+        Assert.Equal(fixture.VideoId, ingestionRequest.VideoId);
+        Assert.Equal(2, ingestionRequest.BatchSize);
+        Assert.Equal([fixture.SegmentId, 102], ingestionRequest.SegmentIds);
+        Assert.Empty(await fixture.Context.Set<Segment>().ToListAsync());
+        var imported = await fixture.Context.Set<SegmentStudioItem>()
+            .Where(item => item.ReviewState == "unreviewed")
+            .OrderBy(item => item.StartSec)
+            .ToListAsync();
+        Assert.Equal(2, imported.Count);
+        Assert.All(imported, item => Assert.Null(item.NativeSegmentId));
+        var unrelated = await fixture.Context.Set<SegmentStudioItem>()
+            .SingleAsync(item => item.Id == 900);
+        Assert.Equal("rejected", unrelated.ReviewState);
+        Assert.Equal(7, unrelated.Revision);
+        Assert.Equal("{\"unrelated\":true}", unrelated.PayloadJson);
+        Assert.Equal(20, unrelated.StartSec);
+        Assert.Equal(21, unrelated.EndSec);
+        Assert.Equal(
+            "Caller edit retained",
+            (await fixture.Context.Set<Tag>().AsNoTracking()
+                .SingleAsync(tag => tag.Id == 11)).Name);
+    }
+
     private static CovePrincipal UserPrincipal() => new()
     {
         UserId = 7,
@@ -2751,6 +2814,18 @@ public sealed class SegmentOwnershipTransitionServiceTests
         public Task<NativeAiIngestionResult> IngestAsync(
             DbContext db, NativeAiIngestionRequest request, CancellationToken ct) =>
             Task.FromResult(new NativeAiIngestionResult(0, 0, 0, null, false, []));
+    }
+
+    private sealed class RecordingNativeAiIngestion : INativeAiProvenanceIngestionService
+    {
+        public List<NativeAiIngestionRequest> Requests { get; } = [];
+
+        public Task<NativeAiIngestionResult> IngestAsync(
+            DbContext db, NativeAiIngestionRequest request, CancellationToken ct)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new NativeAiIngestionResult(0, 0, 0, null, false, []));
+        }
     }
 
     private sealed class TransitionFixture : IAsyncDisposable

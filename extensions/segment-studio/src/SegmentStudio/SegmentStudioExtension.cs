@@ -3716,7 +3716,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
         endpoints.MapPost(
                 "/api/plugins/segment-studio/videos/{videoId:int}/segments/move-to-bin",
-                async Task<IResult> (int videoId, BulkMoveToBinRequest request, DbContext db,
+                async Task<IResult> (int videoId, NativeToOwnedTransitionBatchRequest request, DbContext db,
                     ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
                     [FromServices] IBlobService blobs, [FromServices] ISegmentSpanCacheInvalidator spanCacheInvalidator, CancellationToken ct) =>
                 {
@@ -3745,7 +3745,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 : null;
                         if (basicHistory?.Exists == true)
                         {
-                            return new BulkMoveToBinResult(
+                            return new NativeToOwnedTransitionBatchResult(
                                 SegmentTransitionStatus.Conflict,
                                 VideoId: videoId,
                                 Error: BasicHistoryReceiptReplayError,
@@ -3755,7 +3755,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             ? await BasicNativeRecycleBinService.MoveManyAsync(
                                 db, videoId, request, principalAccessor.Current,
                                 authorization, blobs, ct)
-                            : await SegmentOwnershipTransitionService.MoveManyToBinAsync(
+                            : await SegmentOwnershipTransitionService.MoveManyNativeToOwnedAsync(
                                 db, videoId, request, principalAccessor.Current,
                                 authorization, blobs, ct);
                         if (transition.Status == SegmentTransitionStatus.Updated)
@@ -3799,7 +3799,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
         endpoints.MapPost(
                 "/api/plugins/segment-studio/videos/{videoId:int}/segments/{segmentId:int}/move-to-bin",
-                async Task<IResult> (int videoId, int segmentId, MoveToBinRequest request, DbContext db,
+                async Task<IResult> (int videoId, int segmentId, NativeToOwnedTransitionRequest request, DbContext db,
                     ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
                     [FromServices] IBlobService blobs, [FromServices] ISegmentSpanCacheInvalidator spanCacheInvalidator, CancellationToken ct) =>
                 {
@@ -3837,7 +3837,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             ? await BasicNativeRecycleBinService.MoveAsync(
                                 db, videoId, segmentId, request,
                                 principalAccessor.Current, authorization, blobs, ct)
-                            : await SegmentOwnershipTransitionService.MoveToBinAsync(
+                            : await SegmentOwnershipTransitionService.MoveNativeToOwnedAsync(
                                 db, videoId, segmentId, request,
                                 principalAccessor.Current, authorization, blobs, ct);
                         if (transition.Status == SegmentTransitionStatus.Updated)

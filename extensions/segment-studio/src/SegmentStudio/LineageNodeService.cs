@@ -16,6 +16,7 @@ public sealed class LineageNodeService : ILineageNodeService
         CancellationToken ct)
     {
         var item = await db.Set<SegmentStudioItem>()
+            .AsNoTracking()
             .SingleOrDefaultAsync(candidate => candidate.Id == itemId, ct)
             ?? throw new KeyNotFoundException("Segment Studio item was not found.");
         var videoId = item.VideoId;
