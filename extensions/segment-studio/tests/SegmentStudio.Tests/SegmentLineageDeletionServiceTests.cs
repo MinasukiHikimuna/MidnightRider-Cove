@@ -149,6 +149,279 @@ public sealed class SegmentLineageDeletionServiceTests
     }
 
     [Fact]
+    public async Task RejectedDeletionSkipsComponentsWithCollectedIncorrectExamples()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var protectedRoot = await fixture.AddItemNodeAsync(10);
+        var protectedDependent = await fixture.AddItemNodeAsync(20);
+        var independent = await fixture.AddItemNodeAsync(30);
+        await fixture.AddEdgeAsync(protectedRoot.Node, protectedDependent.Node);
+        protectedRoot.Item.ReviewState = "rejected";
+        protectedDependent.Item.ReviewState = "rejected";
+        independent.Item.ReviewState = "rejected";
+        await fixture.ProtectIncorrectExampleAsync(protectedRoot.Item);
+        var service = new SegmentLineageDeletionService();
+
+        var preview = await service.PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal(1, preview.SelectedSegmentCount);
+        Assert.Equal(1, preview.DeletedSegmentCount);
+        Assert.Equal(1, preview.ProtectedIncorrectExampleCount);
+        Assert.Equal(2, preview.DeferredRejectedSegmentCount);
+
+        var result = await service.ExecuteRejectedAsync(
+            fixture.Context,
+            1,
+            new SegmentDependencyDeleteExecuteRequest(Guid.NewGuid(), preview.Fingerprint),
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal(1, result.DeletedSegmentCount);
+        var remainingIds = await fixture.Context.Set<SegmentStudioItem>()
+            .Select(item => item.Id)
+            .ToListAsync();
+        Assert.Equal(
+            new[] { protectedRoot.Item.Id, protectedDependent.Item.Id }.Order(),
+            remainingIds.Order());
+        Assert.Single(await fixture.Context.Set<SegmentStudioIncorrectExample>()
+            .ToListAsync());
+        Assert.Single(await fixture.Context.Set<SegmentStudioDerivationEdge>()
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task RejectedDeletionReturnsAZeroPlanWhenEveryComponentIsProtected()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var protectedItem = await fixture.AddItemNodeAsync(10);
+        protectedItem.Item.ReviewState = "rejected";
+        await fixture.ProtectIncorrectExampleAsync(protectedItem.Item);
+
+        var preview = await new SegmentLineageDeletionService().PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal(0, preview.SelectedSegmentCount);
+        Assert.Equal(0, preview.DeletedSegmentCount);
+        Assert.Equal(1, preview.ProtectedIncorrectExampleCount);
+        Assert.Equal(1, preview.DeferredRejectedSegmentCount);
+        Assert.False(preview.RequiresTypedConfirmation);
+    }
+
+    [Fact]
+    public async Task ClearedFeedbackProtectionMakesTheRejectedComponentEligibleAgain()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var protectedRoot = await fixture.AddItemNodeAsync(10);
+        var protectedDependent = await fixture.AddItemNodeAsync(20);
+        await fixture.AddEdgeAsync(protectedRoot.Node, protectedDependent.Node);
+        protectedRoot.Item.ReviewState = "rejected";
+        protectedDependent.Item.ReviewState = "rejected";
+        await fixture.ProtectIncorrectExampleAsync(protectedRoot.Item);
+        var service = new SegmentLineageDeletionService();
+        var protectedPreview = await service.PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+        fixture.Context.Remove(await fixture.Context
+            .Set<SegmentStudioIncorrectExample>().SingleAsync());
+        await fixture.Context.SaveChangesAsync();
+
+        var conflict = await Assert.ThrowsAsync<LineageConflictException>(() =>
+            service.ExecuteRejectedAsync(
+                fixture.Context,
+                1,
+                new SegmentDependencyDeleteExecuteRequest(
+                    Guid.NewGuid(), protectedPreview.Fingerprint),
+                fixture.Principal,
+                fixture.Authorization,
+                CancellationToken.None));
+
+        var eligiblePreview = await service.PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal("LINEAGE_COMPONENT_CHANGED", conflict.Code);
+        Assert.NotEqual(protectedPreview.Fingerprint, eligiblePreview.Fingerprint);
+        Assert.Equal(2, eligiblePreview.SelectedSegmentCount);
+        Assert.Equal(2, eligiblePreview.DeletedSegmentCount);
+        Assert.Equal(0, eligiblePreview.ProtectedIncorrectExampleCount);
+        Assert.Equal(0, eligiblePreview.DeferredRejectedSegmentCount);
+    }
+
+    [Fact]
+    public async Task RejectedDeletionProtectsCrossVideoFeedbackComponents()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Context.Add(new Video { Id = 2, Title = "Two" });
+        await fixture.Context.SaveChangesAsync();
+        var rejectedRoot = await fixture.AddItemNodeAsync(10, videoId: 1);
+        var protectedDependent = await fixture.AddItemNodeAsync(20, videoId: 2);
+        var independent = await fixture.AddItemNodeAsync(30, videoId: 1);
+        await fixture.AddEdgeAsync(rejectedRoot.Node, protectedDependent.Node);
+        rejectedRoot.Item.ReviewState = "rejected";
+        independent.Item.ReviewState = "rejected";
+        await fixture.ProtectIncorrectExampleAsync(protectedDependent.Item);
+        var service = new SegmentLineageDeletionService();
+
+        var preview = await service.PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal(1, preview.SelectedSegmentCount);
+        Assert.Equal(1, preview.DeletedSegmentCount);
+        Assert.Equal(1, preview.ProtectedIncorrectExampleCount);
+        Assert.Equal(1, preview.DeferredRejectedSegmentCount);
+
+        var result = await service.ExecuteRejectedAsync(
+            fixture.Context,
+            1,
+            new SegmentDependencyDeleteExecuteRequest(Guid.NewGuid(), preview.Fingerprint),
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal(1, result.DeletedSegmentCount);
+        var remainingIds = await fixture.Context.Set<SegmentStudioItem>()
+            .Select(item => item.Id)
+            .ToListAsync();
+        Assert.Equal(
+            new[] { rejectedRoot.Item.Id, protectedDependent.Item.Id }.Order(),
+            remainingIds.Order());
+        Assert.Single(await fixture.Context.Set<SegmentStudioIncorrectExample>()
+            .ToListAsync());
+        Assert.Single(await fixture.Context.Set<SegmentStudioDerivationEdge>()
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task ClearedCrossVideoProtectionInvalidatesRejectedPreview()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Context.Add(new Video { Id = 2, Title = "Two" });
+        await fixture.Context.SaveChangesAsync();
+        var rejectedRoot = await fixture.AddItemNodeAsync(10, videoId: 1);
+        var protectedDependent = await fixture.AddItemNodeAsync(20, videoId: 2);
+        await fixture.AddEdgeAsync(rejectedRoot.Node, protectedDependent.Node);
+        rejectedRoot.Item.ReviewState = "rejected";
+        await fixture.ProtectIncorrectExampleAsync(protectedDependent.Item);
+        var service = new SegmentLineageDeletionService();
+        var protectedPreview = await service.PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+        fixture.Context.Remove(await fixture.Context
+            .Set<SegmentStudioIncorrectExample>().SingleAsync());
+        await fixture.Context.SaveChangesAsync();
+
+        var conflict = await Assert.ThrowsAsync<LineageConflictException>(() =>
+            service.ExecuteRejectedAsync(
+                fixture.Context,
+                1,
+                new SegmentDependencyDeleteExecuteRequest(
+                    Guid.NewGuid(), protectedPreview.Fingerprint),
+                fixture.Principal,
+                fixture.Authorization,
+                CancellationToken.None));
+
+        var eligiblePreview = await service.PreviewRejectedAsync(
+            fixture.Context,
+            1,
+            fixture.Principal,
+            fixture.Authorization,
+            CancellationToken.None);
+
+        Assert.Equal("LINEAGE_COMPONENT_CHANGED", conflict.Code);
+        Assert.NotEqual(protectedPreview.Fingerprint, eligiblePreview.Fingerprint);
+        Assert.Equal(1, eligiblePreview.SelectedSegmentCount);
+        Assert.Equal(2, eligiblePreview.DeletedSegmentCount);
+        Assert.Equal(0, eligiblePreview.ProtectedIncorrectExampleCount);
+        Assert.Equal(0, eligiblePreview.DeferredRejectedSegmentCount);
+    }
+
+    [Fact]
+    public async Task SingleDeletionRejectsDirectlyProtectedItem()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var protectedItem = await fixture.AddItemNodeAsync(10);
+        await fixture.ProtectIncorrectExampleAsync(protectedItem.Item);
+
+        var conflict = await Assert.ThrowsAsync<LineageConflictException>(() =>
+            new SegmentLineageDeletionService().PreviewAsync(
+                fixture.Context,
+                protectedItem.Item.Id,
+                new SegmentDependencyDeletePreviewRequest(1),
+                fixture.Principal,
+                fixture.Authorization,
+                CancellationToken.None));
+
+        Assert.Equal("INCORRECT_EXAMPLE_PROTECTED", conflict.Code);
+    }
+
+    [Fact]
+    public async Task SingleDeletionRejectsComponentContainingProtectedFeedback()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var selected = await fixture.AddItemNodeAsync(10);
+        var sharedParent = await fixture.AddItemNodeAsync(11);
+        var protectedDependent = await fixture.AddItemNodeAsync(20);
+        await fixture.AddEdgeAsync(selected.Node, protectedDependent.Node);
+        await fixture.AddEdgeAsync(sharedParent.Node, protectedDependent.Node);
+        await fixture.ProtectIncorrectExampleAsync(protectedDependent.Item);
+
+        var conflict = await Assert.ThrowsAsync<LineageConflictException>(() =>
+            new SegmentLineageDeletionService().PreviewAsync(
+                fixture.Context,
+                selected.Item.Id,
+                new SegmentDependencyDeletePreviewRequest(1),
+                fixture.Principal,
+                fixture.Authorization,
+                CancellationToken.None));
+
+        Assert.Equal("INCORRECT_EXAMPLE_PROTECTED", conflict.Code);
+    }
+
+    [Fact]
+    public async Task RepairDeletionRejectsComponentContainingProtectedFeedback()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var protectedRoot = await fixture.AddItemNodeAsync(10);
+        var selected = await fixture.AddItemNodeAsync(20);
+        await fixture.AddEdgeAsync(protectedRoot.Node, selected.Node);
+        await fixture.ProtectIncorrectExampleAsync(protectedRoot.Item);
+
+        var conflict = await Assert.ThrowsAsync<LineageConflictException>(() =>
+            new SegmentLineageDeletionService().PreviewRepairAsync(
+                fixture.Context,
+                selected.Item.Id,
+                expectedRevision: 1,
+                fixture.Principal,
+                fixture.Authorization,
+                CancellationToken.None));
+
+        Assert.Equal("INCORRECT_EXAMPLE_PROTECTED", conflict.Code);
+    }
+
+    [Fact]
     public async Task PreviewRejectsAComponentBeyondTheResponseBound()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -605,6 +878,19 @@ public sealed class SegmentLineageDeletionServiceTests
                 MetadataJson = "{}",
                 CreatedAt = now,
                 UpdatedAt = now,
+            });
+            await Context.SaveChangesAsync();
+        }
+
+        public async Task ProtectIncorrectExampleAsync(SegmentStudioItem item)
+        {
+            Context.Add(new SegmentStudioIncorrectExample
+            {
+                ItemId = item.Id,
+                VideoId = item.VideoId!.Value,
+                SnapshotJson = "{}",
+                Revision = 1,
+                CreatedAt = DateTime.UtcNow,
             });
             await Context.SaveChangesAsync();
         }

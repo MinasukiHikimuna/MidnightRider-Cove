@@ -280,7 +280,9 @@ function createWorkflowActions(context) {
     async function deleteRejectedSegments() {
       const rejectedSegments = segments.filter((segment) => segment.reviewState === "rejected");
       const rejectedCount = rejectedSegments.length;
-      if (rejectedCount === 0) {
+      const hasProtectedFullExamples = incorrectExamples.some((example) =>
+        example.representation === "fullItem");
+      if (rejectedCount === 0 && !hasProtectedFullExamples) {
         setSaveMessage("There are no rejected segments to delete.");
         return;
       }
@@ -288,6 +290,19 @@ function createWorkflowActions(context) {
       setSaveMessage("Preparing deletion summary…");
       try {
         const preview = await requestJson(`/videos/${video.id}/rejected/deletion/preview`, { method: "POST" });
+        const deletedCount = Number(preview.deletedSegmentCount) || 0;
+        const deferredCount = Number(preview.deferredRejectedSegmentCount) || 0;
+        const protectedExampleCount = Number(preview.protectedIncorrectExampleCount) || 0;
+        if (deletedCount === 0) {
+          if (deferredCount > 0) {
+            setSaveMessage(
+              `${deferredCount} feedback-protected rejected segment${deferredCount === 1 ? "" : "s"} kept. ${protectedExampleCount} AI feedback example${protectedExampleCount === 1 ? "" : "s"} must be exported before ${deferredCount === 1 ? "this segment can" : "these segments can"} be deleted.`,
+            );
+          } else {
+            setSaveMessage("There are no rejected segments to delete.");
+          }
+          return;
+        }
         if (!dependencyDeletionAllowed(preview, setSaveMessage)
             || !confirmDependencyDeletion(preview))
           return;
@@ -305,7 +320,10 @@ function createWorkflowActions(context) {
         await onReload();
         if (result.deletedSegmentCount > 0)
           acceptHistory(EMPTY_EDITOR_HISTORY);
-        setSaveMessage(`${result.deletedSegmentCount} segment${result.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.`);
+        const retainedMessage = deferredCount > 0
+          ? ` ${deferredCount} feedback-protected rejected segment${deferredCount === 1 ? " was" : "s were"} kept for a later post-export batch.`
+          : "";
+        setSaveMessage(`${result.deletedSegmentCount} segment${result.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${retainedMessage}`);
       } catch (error) {
         setSaveMessage(error.message || "Unable to delete rejected segments.");
       } finally {

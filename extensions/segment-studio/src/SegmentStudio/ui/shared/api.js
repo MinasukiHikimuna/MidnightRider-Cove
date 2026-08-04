@@ -180,6 +180,7 @@ function confirmDependencyDeletion(preview) {
   const dependent = Number(preview.dependentSegmentCount) || 0;
   const total = Number(preview.deletedSegmentCount) || selected + dependent;
   const shared = Number(preview.retainedSharedSegmentCount) || 0;
+  const deferred = Number(preview.deferredRejectedSegmentCount) || 0;
   const selectedLabel = `${selected} selected segment${selected === 1 ? "" : "s"}`;
   const dependentLabel = dependent > 0
     ? ` and ${dependent} dependent derived segment${dependent === 1 ? "" : "s"}`
@@ -187,8 +188,11 @@ function confirmDependencyDeletion(preview) {
   const retainedNote = shared > 0
     ? ` ${shared} shared derived segment${shared === 1 ? "" : "s"} will be kept.`
     : "";
+  const feedbackNote = deferred > 0
+    ? ` ${deferred} feedback-protected rejected segment${deferred === 1 ? "" : "s"} will be kept until ${deferred === 1 ? "its" : "their"} AI feedback is exported.`
+    : "";
   if (!window.confirm(
-    `Permanently delete ${selectedLabel}${dependentLabel} (${total} total)?${retainedNote} This cannot be undone.`,
+    `Permanently delete ${selectedLabel}${dependentLabel} (${total} total)?${retainedNote}${feedbackNote} This cannot be undone.`,
   )) return false;
   return true;
 }

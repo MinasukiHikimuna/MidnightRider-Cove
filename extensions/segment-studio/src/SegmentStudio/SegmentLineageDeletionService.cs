@@ -23,7 +23,9 @@ public sealed record SegmentDependencyDeletePreview(
     int AffectedVideoCount,
     int PermissionFailureCount,
     IReadOnlyList<string> IntegrityWarnings,
-    bool RequiresTypedConfirmation);
+    bool RequiresTypedConfirmation,
+    int ProtectedIncorrectExampleCount = 0,
+    int DeferredRejectedSegmentCount = 0);
 
 public sealed record SegmentDependencyDeleteResult(
     int DeletedSegmentCount,
@@ -95,6 +97,7 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
         var selection = await LoadSingleSelectionAsync(db, itemId, ct);
         if (selection.SelectedItems.Single().Revision != request.ExpectedRevision)
             throw Changed();
+        EnsureNoProtectedIncorrectExamples(selection);
         var plan = await BuildPlanAsync(db, selection, removeWholeComponent: false, ct);
         return await BuildPreviewAsync(plan, principal, authorization, ct);
     }
@@ -154,6 +157,7 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
         var selection = await LoadSingleSelectionAsync(db, itemId, ct);
         if (selection.SelectedItems.Single().Revision != expectedRevision)
             throw Changed();
+        EnsureNoProtectedIncorrectExamples(selection);
         var plan = await BuildPlanAsync(db, selection, removeWholeComponent: true, ct);
         return await BuildPreviewAsync(plan, principal, authorization, ct);
     }
@@ -292,6 +296,8 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
         var selection = target.VideoId is int videoId
             ? await LoadRejectedSelectionAsync(db, videoId, ct)
             : await LoadSingleSelectionAsync(db, target.ItemId!.Value, ct);
+        if (target.VideoId is null)
+            EnsureNoProtectedIncorrectExamples(selection);
         return await BuildPlanAsync(db, selection, target.RemoveWholeComponent, ct);
     }
 
@@ -304,7 +310,29 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
             .AsNoTracking()
             .SingleOrDefaultAsync(candidate => candidate.Id == itemId, ct)
             ?? throw new KeyNotFoundException("Segment Studio item was not found.");
-        return new([item], [], 1, $"item:{itemId}");
+        var selectedNodes = await db.Set<SegmentStudioLineageNode>().AsNoTracking()
+            .Where(node => node.ItemId == itemId)
+            .ToListAsync(ct);
+        var selectedNodeIds = selectedNodes.Select(node => node.Id).ToArray();
+        var componentEdges = selectedNodeIds.Length == 0
+            ? []
+            : await LineageScaleQueries.LoadComponentEdgesAsync(
+                db, selectedNodeIds, tracking: false, ct);
+        var componentNodeIds = componentEdges
+            .SelectMany(edge => new[] { edge.SourceNodeId, edge.DerivedNodeId })
+            .Concat(selectedNodeIds)
+            .ToHashSet();
+        var componentItemIds = componentNodeIds.Count == 0
+            ? []
+            : await db.Set<SegmentStudioLineageNode>().AsNoTracking()
+                .Where(node => componentNodeIds.Contains(node.Id) && node.ItemId != null)
+                .Select(node => node.ItemId!.Value)
+                .ToListAsync(ct);
+        var protectedExamples = await LoadProtectionAsync(
+            db,
+            componentItemIds.Append(itemId).Distinct().ToArray(),
+            ct);
+        return new([item], [], 1, $"item:{itemId}", protectedExamples, 0);
     }
 
     private static async Task<Selection> LoadRejectedSelectionAsync(
@@ -353,19 +381,58 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
             .GroupBy(item => item.Id)
             .Select(group => group.First())
             .ToArray();
-        var selectedItemIds = items.Select(item => item.Id).ToArray();
-        if (selectedItemIds.Length > 0
-            && await db.Set<SegmentStudioIncorrectExample>().AsNoTracking()
-                .AnyAsync(example => example.ItemId != null
-                    && selectedItemIds.Contains(example.ItemId.Value), ct))
-            throw new LineageConflictException(
-                "INCORRECT_EXAMPLE_PROTECTED",
-                "Remove collected incorrect examples before deleting rejected segments.");
+        var candidateItemIds = items.Select(item => item.Id).ToArray();
+        var candidateNodes = candidateItemIds.Length == 0
+            ? []
+            : await db.Set<SegmentStudioLineageNode>().AsNoTracking()
+                .Where(node => node.ItemId != null
+                    && candidateItemIds.Contains(node.ItemId.Value))
+                .ToListAsync(ct);
+        var candidateRootNodeIds = candidateNodes.Select(node => node.Id).ToArray();
+        var candidateComponentEdges = candidateRootNodeIds.Length == 0
+            ? []
+            : await LineageScaleQueries.LoadComponentEdgesAsync(
+                db, candidateRootNodeIds, tracking: false, ct);
+        var candidateComponentNodeIds = candidateComponentEdges
+            .SelectMany(edge => new[] { edge.SourceNodeId, edge.DerivedNodeId })
+            .Concat(candidateRootNodeIds)
+            .ToHashSet();
+        var candidateComponentNodes = candidateComponentNodeIds.Count == 0
+            ? []
+            : await db.Set<SegmentStudioLineageNode>().AsNoTracking()
+                .Where(node => candidateComponentNodeIds.Contains(node.Id))
+                .ToListAsync(ct);
+        var relevantItemIds = candidateComponentNodes
+            .Where(node => node.ItemId != null)
+            .Select(node => node.ItemId!.Value)
+            .Concat(candidateItemIds)
+            .Distinct()
+            .ToArray();
+        var protection = await LoadProtectionAsync(db, relevantItemIds, ct);
+        var protectedItemIds = protection.Select(state => state.ItemId).ToHashSet();
+        var protectedNodes = candidateComponentNodes
+            .Where(node => node.ItemId != null
+                && protectedItemIds.Contains(node.ItemId.Value))
+            .ToArray();
+        var protectedRootNodeIds = protectedNodes.Select(node => node.Id).ToArray();
+        var protectedComponentNodeIds = ConnectedNodeIds(
+            candidateComponentEdges,
+            protectedRootNodeIds);
+        var deferredItemIds = candidateNodes
+            .Where(node => protectedComponentNodeIds.Contains(node.Id))
+            .Select(node => node.ItemId!.Value)
+            .Concat(candidateItemIds.Where(protectedItemIds.Contains))
+            .ToHashSet();
+        var eligibleItems = items
+            .Where(item => !deferredItemIds.Contains(item.Id))
+            .ToArray();
         return new(
-            items,
+            eligibleItems,
             looseNative,
-            rejectedNative.Length + rejectedOwned.Count,
-            $"video:{videoId}:rejected");
+            eligibleItems.Length + looseNative.Length,
+            $"video:{videoId}:rejected",
+            protection,
+            deferredItemIds.Count);
     }
 
     private static async Task<DeletionPlan> BuildPlanAsync(
@@ -374,10 +441,35 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
         bool removeWholeComponent,
         CancellationToken ct)
     {
-        if (selection.SelectedSegmentCount == 0)
+        if (selection.SelectedSegmentCount == 0
+            && selection.DeferredRejectedSegmentCount == 0)
             throw new LineageConflictException(
                 "NO_SEGMENTS_SELECTED",
                 "There are no rejected segments to delete.");
+        if (selection.SelectedSegmentCount == 0)
+        {
+            var emptyFingerprint = Fingerprint(JsonSerializer.Serialize(new
+            {
+                selection.ScopeKey,
+                protectedIncorrectExamples = selection.ProtectedIncorrectExamples
+                    .OrderBy(example => example.Id),
+                selection.DeferredRejectedSegmentCount,
+            }));
+            return new(
+                selection,
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                0,
+                0,
+                emptyFingerprint);
+        }
         var selectedItemIds = selection.SelectedItems.Select(item => item.Id).ToArray();
         var selectedItems = await db.Set<SegmentStudioItem>()
             .Where(item => selectedItemIds.Contains(item.Id))
@@ -432,6 +524,8 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
         var deletedItems = await db.Set<SegmentStudioItem>()
             .Where(item => deletedItemIds.Contains(item.Id))
             .ToListAsync(ct);
+        if ((await LoadProtectionAsync(db, deletedItemIds, ct)).Count > 0)
+            throw ProtectedIncorrectExample();
         var nativeIds = deletedItems
             .Where(item => item.NativeSegmentId is not null)
             .Select(item => item.NativeSegmentId!.Value)
@@ -536,6 +630,9 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
                 issue.Id,
                 UpdatedAtTicks = issue.UpdatedAtValue.Ticks,
             }),
+            protectedIncorrectExamples = selection.ProtectedIncorrectExamples
+                .OrderBy(example => example.Id),
+            selection.DeferredRejectedSegmentCount,
         }));
         return new(
             selection,
@@ -583,7 +680,9 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
             plan.VideoIds.Count,
             failures,
             plan.Warnings,
-            plan.DeletedSegmentCount >= 10);
+            plan.DeletedSegmentCount >= 10,
+            plan.Selection.ProtectedIncorrectExamples.Count,
+            plan.Selection.DeferredRejectedSegmentCount);
     }
 
     private static async Task<SegmentDependencyDeleteResult> ApplyPlanAsync(
@@ -702,6 +801,68 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
     private static LineageConflictException Changed() =>
         new("LINEAGE_COMPONENT_CHANGED", "The deletion inputs changed after preview.");
 
+    private static void EnsureNoProtectedIncorrectExamples(Selection selection)
+    {
+        if (selection.ProtectedIncorrectExamples.Count > 0)
+            throw ProtectedIncorrectExample();
+    }
+
+    private static LineageConflictException ProtectedIncorrectExample() =>
+        new(
+            "INCORRECT_EXAMPLE_PROTECTED",
+            "Export collected incorrect examples before deleting segments in this lineage component.");
+
+    private static async Task<IReadOnlyList<ProtectionState>> LoadProtectionAsync(
+        DbContext db,
+        IReadOnlyCollection<long> itemIds,
+        CancellationToken ct)
+    {
+        if (itemIds.Count == 0
+            || db.Model.FindEntityType(typeof(SegmentStudioIncorrectExample)) is null)
+            return [];
+        return await db.Set<SegmentStudioIncorrectExample>()
+            .AsNoTracking()
+            .Where(example => example.ItemId != null
+                && itemIds.Contains(example.ItemId.Value))
+            .OrderBy(example => example.Id)
+            .Select(example => new ProtectionState(
+                example.Id,
+                example.Revision,
+                example.ItemId!.Value))
+            .ToListAsync(ct);
+    }
+
+    private static HashSet<Guid> ConnectedNodeIds(
+        IReadOnlyList<SegmentStudioDerivationEdge> edges,
+        IEnumerable<Guid> roots)
+    {
+        var connected = roots.ToHashSet();
+        if (connected.Count == 0)
+            return connected;
+        var adjacency = new Dictionary<Guid, List<Guid>>();
+        foreach (var edge in edges)
+        {
+            if (!adjacency.TryGetValue(edge.SourceNodeId, out var derived))
+                adjacency[edge.SourceNodeId] = derived = [];
+            derived.Add(edge.DerivedNodeId);
+            if (!adjacency.TryGetValue(edge.DerivedNodeId, out var sources))
+                adjacency[edge.DerivedNodeId] = sources = [];
+            sources.Add(edge.SourceNodeId);
+        }
+        var frontier = new Queue<Guid>(connected);
+        while (frontier.TryDequeue(out var nodeId))
+        {
+            if (!adjacency.TryGetValue(nodeId, out var neighbours))
+                continue;
+            foreach (var neighbour in neighbours)
+            {
+                if (connected.Add(neighbour))
+                    frontier.Enqueue(neighbour);
+            }
+        }
+        return connected;
+    }
+
     private sealed record NativeState(
         int Id,
         int VideoId,
@@ -710,11 +871,15 @@ public class SegmentLineageDeletionService : ISegmentLineageDeletionService
 
     private sealed record IssueState(Guid Id, DateTime UpdatedAtValue);
 
+    private sealed record ProtectionState(long Id, long Revision, long ItemId);
+
     private sealed record Selection(
         IReadOnlyList<SegmentStudioItem> SelectedItems,
         IReadOnlyList<NativeState> LooseNativeSegments,
         int SelectedSegmentCount,
-        string ScopeKey);
+        string ScopeKey,
+        IReadOnlyList<ProtectionState> ProtectedIncorrectExamples,
+        int DeferredRejectedSegmentCount);
 
     private sealed record DeletionPlan(
         Selection Selection,

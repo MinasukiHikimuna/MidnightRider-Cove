@@ -372,6 +372,10 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
   assert.match(source, /rejected\/deletion\/preview/);
   assert.match(source, /rejected\/deletion\/execute/);
   assert.match(source, /confirmDependencyDeletion\(preview\)/);
+  assert.match(source, /preview\.deferredRejectedSegmentCount/);
+  assert.match(source, /preview\.protectedIncorrectExampleCount/);
+  assert.match(source, /must be exported before/);
+  assert.match(source, /feedback-protected rejected segment/);
   assert.match(source, /await onReload\(\)/);
   const lanes = ui.groupSegmentsIntoSwimlanes([
     { id: 1, tagId: 10, tagName: "First", startSec: 1, reviewState: "approved" },
