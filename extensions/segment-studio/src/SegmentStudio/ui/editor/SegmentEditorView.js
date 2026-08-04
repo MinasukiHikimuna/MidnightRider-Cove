@@ -155,7 +155,7 @@ function SegmentEditorView(props) {
                 onClick: () => startFullAnalysis(),
                 title: analysisStatus?.error
                   || "Run AI tagging and shot boundary analysis into the Full review workflow",
-                className: "inline-flex items-center justify-center rounded-l-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50",
+                className: "segment-studio-full-scan-run inline-flex items-center justify-center bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50",
               }, analysisStatus?.configured === false
               ? "Full Scan not configured"
               : analysisStatus?.ready === false
@@ -186,7 +186,7 @@ function SegmentEditorView(props) {
                         || analysisRun?.status === "queued"
                         || analysisRun?.status === "running")) event.preventDefault();
                   },
-                  className: `inline-flex list-none items-center justify-center border-l border-white/30 rounded-r-lg bg-accent px-2 py-1.5 text-white marker:hidden [&::-webkit-details-marker]:hidden ${analysisStatus?.configured === false
+                  className: `segment-studio-full-scan-arrow inline-flex list-none items-center justify-center border-l border-white/30 bg-accent px-2 py-1.5 text-white marker:hidden [&::-webkit-details-marker]:hidden ${analysisStatus?.configured === false
                     || analysisStatus?.ready === false
                     || analysisRun?.status === "queued"
                     || analysisRun?.status === "running"

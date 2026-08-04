@@ -188,7 +188,7 @@ function DiscoveryFilters({ objectFilter, setObjectFilter, onClear, compatibilit
     ]),
     h("fieldset", { key: "video-metadata", className: "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" }, [
       h("legend", { key: "legend", className: "mb-2 text-sm font-semibold text-foreground" }, "Video metadata"),
-      h("label", { key: "video-tags", className: "space-y-1 text-xs text-secondary" }, [
+      h("label", { key: "video-tags", className: "segment-studio-reference-filter space-y-1 text-xs text-secondary" }, [
         h("span", { key: "label" }, "Video tags"),
         h(EntityReferenceMultiSelector, {
           key: "control",
@@ -201,7 +201,7 @@ function DiscoveryFilters({ objectFilter, setObjectFilter, onClear, compatibilit
           allowCreate: false,
         }),
       ]),
-      h("label", { key: "performers", className: "space-y-1 text-xs text-secondary" }, [
+      h("label", { key: "performers", className: "segment-studio-reference-filter space-y-1 text-xs text-secondary" }, [
         h("span", { key: "label" }, "Performers"),
         h(EntityReferenceMultiSelector, {
           key: "control",
@@ -214,7 +214,7 @@ function DiscoveryFilters({ objectFilter, setObjectFilter, onClear, compatibilit
           allowCreate: false,
         }),
       ]),
-      h("label", { key: "studio", className: "space-y-1 text-xs text-secondary" }, [
+      h("label", { key: "studio", className: "segment-studio-reference-filter space-y-1 text-xs text-secondary" }, [
         h("span", { key: "label" }, "Studio"),
         h(EntityReferenceSelector, {
           key: "control",

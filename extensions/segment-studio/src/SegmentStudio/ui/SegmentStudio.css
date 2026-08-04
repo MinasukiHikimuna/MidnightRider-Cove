@@ -1,0 +1,16 @@
+.segment-studio-full-scan-run {
+  border-radius: 0.375rem 0 0 0.375rem;
+}
+
+.segment-studio-full-scan-arrow {
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+.segment-studio-reference-filter > div > input,
+.segment-studio-reference-filter > div > div:has(> input) {
+  order: 1;
+}
+
+.segment-studio-reference-filter > div > div:not(:has(> input)) {
+  order: 2;
+}

@@ -38,8 +38,8 @@ test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   assert.match(view, /import \{ ChevronDown \} from "@cove\/runtime\/lucide-react"/);
   assert.match(view, /aria-label": "Choose Full Scan analyses"/);
   assert.match(view, /h\(ChevronDown, \{ className: "h-4 w-4" \}\)/);
-  assert.match(view, /rounded-l-lg[^"\n]*px-3 py-1\.5 text-xs/);
-  assert.match(view, /border-l border-white\/30[^"\n]*rounded-r-lg[^"\n]*py-1\.5/);
+  assert.match(view, /segment-studio-full-scan-run[^"\n]*px-3 py-1\.5 text-xs/);
+  assert.match(view, /segment-studio-full-scan-arrow[^"\n]*border-l border-white\/30[^"\n]*py-1\.5/);
   assert.match(view, /\["AI analysis only", \["aiTagging"\]\]/);
   assert.match(view, /\["Shot boundaries only", \["omnishotcut"\]\]/);
   assert.match(analysis, /async function startFullAnalysis\(analyses = null\)/);

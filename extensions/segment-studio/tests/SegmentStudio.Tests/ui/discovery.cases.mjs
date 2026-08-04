@@ -64,6 +64,7 @@ test("video discovery uses URL-backed Cove entity selectors and focused clear be
   assert.match(filters, /"Video metadata"/);
   assert.match(filters, /h\(EntityReferenceSelector/);
   assert.match(filters, /h\(EntityReferenceMultiSelector/);
+  assert.equal((filters.match(/segment-studio-reference-filter/g) || []).length, 3);
   assert.match(filters, /entityType: "performer"/);
   assert.match(filters, /entityType: "studio"/);
   assert.match(filters, /placeholder: "Search Segment tags…"/);
