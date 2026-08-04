@@ -15,6 +15,7 @@ import { DEFAULT_EDITOR_LAYOUT } from "../shared/constants.js";
 import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
 import { readShortcutBindingOverrides } from "./model/shortcuts.js";
+import { ChevronDown } from "@cove/runtime/lucide-react";
 
 function SegmentEditorView(props) {
   const { activeFilterCount, allSwimlanes, analysisError, analysisProvenanceRepair, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, backfillAnalysisProvenance, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closeTagEditing, collapsedSegmentGroups, compatibilityMode, completeReview, configuringTag, createSegment, currentTime, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onNavigate, onReload, onSlotsChanged, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
@@ -154,7 +155,7 @@ function SegmentEditorView(props) {
                 onClick: () => startFullAnalysis(),
                 title: analysisStatus?.error
                   || "Run AI tagging and shot boundary analysis into the Full review workflow",
-                className: "rounded-l-md border border-cyan-400/60 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-cyan-500/25 disabled:opacity-50",
+                className: "inline-flex items-center justify-center rounded-l-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50",
               }, analysisStatus?.configured === false
               ? "Full Scan not configured"
               : analysisStatus?.ready === false
@@ -164,7 +165,7 @@ function SegmentEditorView(props) {
               : analysisRun?.status === "running"
                 ? "Full Scan running…"
                 : "Full Scan"),
-              h("details", { key: "choices", className: "relative" }, [
+              h("details", { key: "choices", className: "relative flex" }, [
                 h("summary", {
                   "aria-label": "Choose Full Scan analyses",
                   "aria-disabled": analysisStatus?.configured === false
@@ -185,15 +186,15 @@ function SegmentEditorView(props) {
                         || analysisRun?.status === "queued"
                         || analysisRun?.status === "running")) event.preventDefault();
                   },
-                  className: `flex h-full list-none items-center rounded-r-md border border-l-0 border-cyan-400/60 bg-cyan-500/15 px-2 text-xs text-foreground marker:hidden ${analysisStatus?.configured === false
+                  className: `inline-flex list-none items-center justify-center border-l border-white/30 rounded-r-lg bg-accent px-2 py-1.5 text-white marker:hidden [&::-webkit-details-marker]:hidden ${analysisStatus?.configured === false
                     || analysisStatus?.ready === false
                     || analysisRun?.status === "queued"
                     || analysisRun?.status === "running"
                     ? "pointer-events-none cursor-default opacity-50"
-                    : "cursor-pointer hover:bg-cyan-500/25"}`,
-                }, "▾"),
+                    : "cursor-pointer hover:opacity-90"}`,
+                }, h(ChevronDown, { className: "h-4 w-4" })),
                 h("div", {
-                  className: "absolute left-0 z-50 mt-1 min-w-48 rounded-md border border-border bg-card p-1 shadow-xl",
+                  className: "absolute right-0 top-full z-50 mt-1 min-w-48 whitespace-nowrap rounded-md border border-border bg-card p-1 shadow-xl",
                 }, [
                   ["AI analysis only", ["aiTagging"]],
                   ["Shot boundaries only", ["omnishotcut"]],
