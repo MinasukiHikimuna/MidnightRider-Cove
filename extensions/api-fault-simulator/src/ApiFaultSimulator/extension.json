@@ -1,0 +1,19 @@
+{
+  "id": "com.midnightrider.api-fault-simulator",
+  "name": "API Fault Simulator",
+  "version": "1.0.0",
+  "minCoveVersion": "1.1.1-dev.81",
+  "description": "Simulates browser-local API faults for development and troubleshooting.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "categories": ["tools"],
+  "entryDll": "ApiFaultSimulator.dll",
+  "jsBundle": "dist/ui.mjs",
+  "cssBundle": "dist/ui.css",
+  "dependencies": {},
+  "externalDependencies": [],
+  "settings": [],
+  "tutorialTopics": [],
+  "sharedAssemblies": [],
+  "permissions": { "network": [], "scraperRuntime": [], "downloaderRuntime": [] }
+}

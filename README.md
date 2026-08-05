@@ -10,6 +10,7 @@ descriptor under `extensions/<extension-id>/`.
 | Complete the Cove | `extensions/complete-the-cove` | `com.midnightrider.complete-the-cove/v<version>` |
 | Animated Tag Previews | `extensions/animated-tag-previews` | `com.midnightrider.animated-tag-previews/v<version>` |
 | Stash Filter Importer | `extensions/stash-filter-importer` | `com.midnightrider.stash-filter-importer/v<version>` |
+| API Fault Simulator | `extensions/api-fault-simulator` | `com.midnightrider.api-fault-simulator/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing

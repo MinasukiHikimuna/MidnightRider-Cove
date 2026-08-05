@@ -1,0 +1,34 @@
+<Project>
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/bin/**;**/obj/**</DefaultItemExcludes>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <CoveMinVersion Condition="'$(CoveMinVersion)' == ''">1.1.0</CoveMinVersion>
+    <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
+    <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
+    <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>
+    <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">$(MSBuildThisFileDirectory)..\..\..\cove</CoveSourceRoot>
+    <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj')">true</UseLocalCoveSource>
+    <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == ''">false</UseLocalCoveSource>
+    <UseLocalCoveCore Condition="'$(UseLocalCoveCore)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Core\Cove.Core.csproj')">true</UseLocalCoveCore>
+    <UseLocalCoveCore Condition="'$(UseLocalCoveCore)' == ''">false</UseLocalCoveCore>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json')">
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\extension.json')">
+    <None Include="extension.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\dist')">
+    <None Include="dist\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\docs')">
+    <None Include="docs\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

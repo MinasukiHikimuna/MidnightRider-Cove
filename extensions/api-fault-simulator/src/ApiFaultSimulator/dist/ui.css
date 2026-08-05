@@ -1,0 +1,126 @@
+.cove-api-fault-tools {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 250;
+  color: #f1f5f9;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+.cove-api-fault-panel {
+  width: min(24rem, calc(100vw - 2rem));
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #a78bfa66;
+  border-radius: 0.75rem;
+  background: #020617f2;
+  box-shadow: 0 20px 35px #0008;
+}
+
+.cove-api-fault-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid #ffffff1a;
+}
+
+.cove-api-fault-panel label {
+  display: block;
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+}
+
+.cove-api-fault-panel select,
+.cove-api-fault-panel input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem;
+  border: 1px solid #ffffff26;
+  border-radius: 0.35rem;
+  background: #0f172a;
+  color: inherit;
+}
+
+.cove-api-fault-panel small {
+  display: block;
+  margin-top: 0.3rem;
+  color: #94a3b8;
+}
+
+.cove-api-fault-panel .cove-api-fault-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.cove-api-fault-panel .cove-api-fault-checkbox input {
+  display: inline;
+  width: auto;
+  margin: 0.15rem 0 0;
+  padding: 0;
+}
+
+.cove-api-fault-panel .cove-api-fault-checkbox small {
+  margin-top: 0.1rem;
+}
+
+.cove-api-fault-recovery-note {
+  margin: 0.45rem 1rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.cove-api-fault-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 0;
+}
+
+.cove-api-fault-panel .cove-api-fault-actions button {
+  flex: 1;
+  margin: 0;
+}
+
+.cove-api-fault-panel .cove-api-fault-actions .primary {
+  border-color: #a78bfa99;
+  background: #6d28d9;
+}
+
+.cove-api-fault-panel .cove-api-fault-preset-note {
+  margin: 0.35rem 1rem 0.75rem;
+}
+
+.cove-api-fault-panel button,
+.cove-api-fault-toggle {
+  margin: 0.75rem 1rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #ffffff26;
+  border-radius: 0.4rem;
+  background: #1e293b;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cove-api-fault-panel header button {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  font-size: 1.25rem;
+}
+
+.cove-api-fault-toggle {
+  display: block;
+  margin-left: auto;
+  border-color: #a78bfa66;
+  background: #020617;
+  color: #ddd6fe;
+  font-weight: 600;
+}
+
+.cove-api-fault-toggle.active {
+  border-color: #fcd34d99;
+  color: #fef3c7;
+}

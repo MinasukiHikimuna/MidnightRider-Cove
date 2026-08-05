@@ -1,0 +1,11 @@
+{
+  "id": "com.midnightrider.api-fault-simulator",
+  "name": "ApiFaultSimulator",
+  "tagPrefix": "com.midnightrider.api-fault-simulator/",
+  "solution": "ApiFaultSimulator.slnx",
+  "project": "src/ApiFaultSimulator/ApiFaultSimulator.csproj",
+  "manifest": "src/ApiFaultSimulator/extension.json",
+  "readme": "README.md",
+  "ui": "src/ApiFaultSimulator/dist",
+  "uiTest": "tests/ui.test.mjs"
+}
