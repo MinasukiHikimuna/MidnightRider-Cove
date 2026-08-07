@@ -81,6 +81,23 @@ The upstream NSFW AI v4 server currently has no path-mapping probe endpoint.
 `/readyz` therefore reports `aiProxyPathMapping.supported=false`; a first smoke
 analysis must establish that both containers see the mapped proxy path.
 
+`SEGMENT_STUDIO_READINESS_MEDIA_PATH` optionally names a small, valid video
+inside one of `SEGMENT_STUDIO_MEDIA_ROOTS`. When it is unset, `/readyz` reports:
+
+```json
+{"checks":{"mediaProbe":{"ok":true,"configured":false}}}
+```
+
+When configured, every readiness request resolves, reads, and FFprobes that
+file with the service's runtime identity. A successful check reports
+`configured`, `readable`, and `probeable` as `true`. A failed check makes
+readiness return HTTP 503 and includes a sanitized `errorCode`, such as
+`source_not_readable`, without returning the path or media metadata. Choose a
+small file below the same directory-permission boundary as real media so the
+probe remains inexpensive while exercising the relevant bind mount. FFprobe is
+terminated after `SEGMENT_STUDIO_READINESS_MEDIA_TIMEOUT_SECONDS` (10 seconds
+by default); a timeout reports the retryable `probe_timeout` code.
+
 ## Connect Cove
 
 Put Cove and this service on the same private Docker network. In Cove, open
@@ -106,10 +123,18 @@ into both containers at the same absolute path and include that path in
 `/media/library`, the analysis container must also see those files below
 `/media/library`.
 
+The image runs as `analysis:analysis` by default. Bind-mounted directories must
+grant that identity traversal and read access, and the proxy/model caches must
+remain writable. When owner-only host permissions require a matching numeric
+identity, set `SEGMENT_STUDIO_ANALYSIS_RUNTIME_USER` in the ignored deployment
+environment to the matching `<host-uid>:<host-gid>`. Do not replace the
+repository default with a machine-specific UID/GID.
+
 Verify connectivity with `GET /healthz`, then verify runtime readiness with
 `GET /readyz`. A ready response requires ffmpeg, ffprobe, CUDA, the warm
-OmniShotCut model, a writable proxy cache, and the NSFW AI v4 server. The AI
-proxy path mapping is verified by the first smoke scan.
+OmniShotCut model, a writable proxy cache, the NSFW AI v4 server, and a
+successful media probe when one is configured. The AI proxy path mapping is
+verified by the first smoke scan.
 
 ## Smoke test
 

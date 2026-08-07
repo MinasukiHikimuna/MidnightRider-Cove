@@ -1,6 +1,7 @@
 services:
   segment-studio-analysis:
     image: ${SEGMENT_STUDIO_ANALYSIS_IMAGE:?Set an immutable image reference}
+    user: "${SEGMENT_STUDIO_ANALYSIS_RUNTIME_USER:-analysis:analysis}"
     restart: unless-stopped
     env_file:
       - ${SEGMENT_STUDIO_ANALYSIS_ENV_FILE:-.env}

@@ -72,6 +72,21 @@ The analysis container must mount the media library at the same absolute paths
 stored by Cove, because Segment Studio sends those paths without rewriting
 them.
 
+The image defaults to the unprivileged `analysis:analysis` user. If a host's
+bind-mounted media uses owner-only permissions, set the Compose interpolation
+variable `SEGMENT_STUDIO_ANALYSIS_RUNTIME_USER` to the matching numeric
+`UID:GID` in that instance's ignored environment file. Confirm that the same
+identity can write the proxy and model caches. Numeric identities are
+host-specific and must not be committed as repository defaults.
+
+For deployments where mount traversal can differ from root-directory access,
+set `SEGMENT_STUDIO_READINESS_MEDIA_PATH` to a small valid video beneath the
+same permission boundary as the library. The optional `/readyz` `mediaProbe`
+check validates path resolution, read access, and FFprobe access without
+exposing the configured path. Keep the configured file small; the FFprobe call
+uses `SEGMENT_STUDIO_READINESS_MEDIA_TIMEOUT_SECONDS` as a hard subprocess
+timeout.
+
 The analysis-to-AI proxy mapping deserves special care. The proxy cache must be
 mounted somewhere the NSFW AI server can read. If the containers cannot use the
 same absolute path, set `SEGMENT_STUDIO_AI_PATH_FROM` to the analysis-container

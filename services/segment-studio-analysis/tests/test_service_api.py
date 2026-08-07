@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -11,7 +12,7 @@ import httpx
 from segment_studio_analysis.ai import AiClient
 from segment_studio_analysis.config import Settings
 from segment_studio_analysis.errors import ServiceError
-from segment_studio_analysis.main import create_app
+from segment_studio_analysis.main import create_app, media_probe_check
 from segment_studio_analysis.models import AnalyzeVideoRequest
 from segment_studio_analysis.proxy_cache import ProxyInfo, ProxySet
 from segment_studio_analysis.service import AnalysisService
@@ -146,6 +147,141 @@ def settings(tmp_path: Path) -> Settings:
     )
 
 
+async def test_media_probe_check_is_optional_and_sanitized(
+    tmp_path: Path, monkeypatch
+) -> None:
+    configured = settings(tmp_path)
+    assert await media_probe_check(configured) == {
+        "ok": True,
+        "configured": False,
+    }
+
+    source = configured.media_roots[0] / "private-library-name.mp4"
+    source.write_bytes(b"video")
+    configured = replace(configured, readiness_media_path=source)
+    def successful_probe(_: Path, timeout_seconds: float | None = None) -> SourceInfo:
+        assert timeout_seconds == configured.readiness_media_timeout_seconds
+        return SourceInfo(
+            "sha256:source", 5, 1, 10.0, 25.0, 1920, 1080, 250
+        )
+
+    monkeypatch.setattr("segment_studio_analysis.main.probe_source", successful_probe)
+    assert await media_probe_check(configured) == {
+        "ok": True,
+        "configured": True,
+        "readable": True,
+        "probeable": True,
+    }
+
+    def fail_probe(_: Path, __: float | None = None) -> SourceInfo:
+        raise ServiceError(
+            "probe_failed",
+            "Source probe failed",
+            422,
+            "private-library-name.mp4",
+        )
+
+    monkeypatch.setattr("segment_studio_analysis.main.probe_source", fail_probe)
+    failed_probe = await media_probe_check(configured)
+    assert failed_probe == {
+        "ok": False,
+        "configured": True,
+        "readable": True,
+        "probeable": False,
+        "errorCode": "probe_failed",
+    }
+    assert "private-library-name.mp4" not in json.dumps(failed_probe)
+
+    def lose_source(_: Path, __: float | None = None) -> SourceInfo:
+        raise ServiceError(
+            "source_not_readable",
+            "Source not readable",
+            403,
+            "private-library-name.mp4",
+        )
+
+    monkeypatch.setattr("segment_studio_analysis.main.probe_source", lose_source)
+    lost_source = await media_probe_check(configured)
+    assert lost_source == {
+        "ok": False,
+        "configured": True,
+        "readable": False,
+        "probeable": False,
+        "errorCode": "source_not_readable",
+    }
+    assert "private-library-name.mp4" not in json.dumps(lost_source)
+
+    def deny_source(*_: object) -> Path:
+        raise ServiceError(
+            "source_not_readable",
+            "Source not readable",
+            403,
+            "private-library-name.mp4",
+        )
+
+    monkeypatch.setattr("segment_studio_analysis.main.resolve_source", deny_source)
+    failed = await media_probe_check(configured)
+    assert failed == {
+        "ok": False,
+        "configured": True,
+        "readable": False,
+        "probeable": False,
+        "errorCode": "source_not_readable",
+    }
+    assert "private-library-name.mp4" not in json.dumps(failed)
+
+
+async def test_readyz_requires_a_configured_media_probe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    configured = settings(tmp_path)
+    service = AnalysisService(
+        configured,
+        ai_client=FakeAiClient(),  # type: ignore[arg-type]
+        adapter=FakeAdapter(),  # type: ignore[arg-type]
+        proxy_cache=FakeProxyCache(configured.proxy_cache_root),  # type: ignore[arg-type]
+    )
+
+    async def failed_media_readiness(
+        _: AnalysisService,
+    ) -> dict[str, dict[str, object]]:
+        checks = {
+            name: {"ok": True}
+            for name in (
+                "ffmpeg",
+                "ffprobe",
+                "cuda",
+                "omnishotcut",
+                "proxyCache",
+                "aiServer",
+            )
+        }
+        checks["mediaProbe"] = {
+            "ok": False,
+            "configured": True,
+            "readable": False,
+            "probeable": False,
+            "errorCode": "source_not_readable",
+        }
+        return checks
+
+    monkeypatch.setattr(
+        "segment_studio_analysis.main.readiness_checks", failed_media_readiness
+    )
+    app = create_app(configured, service)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json()["ok"] is False
+    assert response.json()["checks"]["mediaProbe"]["errorCode"] == (
+        "source_not_readable"
+    )
+
+
 async def test_health_and_combined_golden(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -180,6 +316,7 @@ async def test_health_and_combined_golden(
                 "omnishotcut",
                 "proxyCache",
                 "aiServer",
+                "mediaProbe",
             )
         }
 

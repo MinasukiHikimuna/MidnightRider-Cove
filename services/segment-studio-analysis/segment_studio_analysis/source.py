@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import subprocess
 from dataclasses import asdict, dataclass
 from fractions import Fraction
@@ -46,7 +47,17 @@ def resolve_source(source_path: str, allowed_roots: tuple[Path, ...]) -> Path:
             404,
             "The requested source file does not exist.",
         ) from error
-    if not resolved.is_file():
+    except PermissionError as error:
+        raise source_not_readable() from error
+    except OSError as error:
+        raise source_unavailable() from error
+    try:
+        source_stat = resolved.stat()
+    except PermissionError as error:
+        raise source_not_readable() from error
+    except OSError as error:
+        raise source_unavailable() from error
+    if not stat.S_ISREG(source_stat.st_mode):
         raise ServiceError(
             "source_not_found", "Source not found", 404, "The requested source is not a file."
         )
@@ -57,7 +68,40 @@ def resolve_source(source_path: str, allowed_roots: tuple[Path, ...]) -> Path:
             403,
             "The requested source is outside the configured media roots.",
         )
+    try:
+        with resolved.open("rb") as source:
+            source.read(1)
+    except FileNotFoundError as error:
+        raise ServiceError(
+            "source_not_found",
+            "Source not found",
+            404,
+            "The requested source file does not exist.",
+        ) from error
+    except PermissionError as error:
+        raise source_not_readable() from error
+    except OSError as error:
+        raise source_unavailable() from error
     return resolved
+
+
+def source_not_readable() -> ServiceError:
+    return ServiceError(
+        "source_not_readable",
+        "Source not readable",
+        403,
+        "The analysis service cannot read the requested source file.",
+    )
+
+
+def source_unavailable() -> ServiceError:
+    return ServiceError(
+        "source_unavailable",
+        "Source unavailable",
+        503,
+        "The requested source file is temporarily unavailable.",
+        retryable=True,
+    )
 
 
 def source_fingerprint(path: Path) -> tuple[str, int, int]:
@@ -71,7 +115,7 @@ def source_fingerprint(path: Path) -> tuple[str, int, int]:
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}", stat.st_size, stat.st_mtime_ns
 
 
-def probe_source(path: Path) -> SourceInfo:
+def probe_source(path: Path, timeout_seconds: float | None = None) -> SourceInfo:
     command = [
         "ffprobe",
         "-v",
@@ -87,7 +131,13 @@ def probe_source(path: Path) -> SourceInfo:
         str(path),
     ]
     try:
-        completed = subprocess.run(command, check=True, capture_output=True, text=True)
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
         payload = json.loads(completed.stdout)
         stream = payload["streams"][0]
         duration = positive_float(stream.get("duration")) or positive_float(
@@ -103,6 +153,14 @@ def probe_source(path: Path) -> SourceInfo:
             frame_count = round(duration * fps)
         if None in {duration, fps, width, height, frame_count}:
             raise ValueError("required video metadata is missing")
+    except subprocess.TimeoutExpired as error:
+        raise ServiceError(
+            "probe_timeout",
+            "Source probe timed out",
+            504,
+            "The source video metadata probe exceeded its time limit.",
+            retryable=True,
+        ) from error
     except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError, ValueError, IndexError, KeyError) as error:
         raise ServiceError(
             "probe_failed",
@@ -110,7 +168,19 @@ def probe_source(path: Path) -> SourceInfo:
             422,
             "The source video metadata could not be read.",
         ) from error
-    fingerprint, size, mtime_ns = source_fingerprint(path)
+    try:
+        fingerprint, size, mtime_ns = source_fingerprint(path)
+    except FileNotFoundError as error:
+        raise ServiceError(
+            "source_not_found",
+            "Source not found",
+            404,
+            "The requested source file does not exist.",
+        ) from error
+    except PermissionError as error:
+        raise source_not_readable() from error
+    except OSError as error:
+        raise source_unavailable() from error
     return SourceInfo(
         fingerprint=fingerprint,
         size_bytes=size,

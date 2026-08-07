@@ -35,6 +35,8 @@ class Settings:
     omnishotcut_backbone_url: str
     omnishotcut_backbone_sha256: str
     load_model: bool = True
+    readiness_media_path: Path | None = None
+    readiness_media_timeout_seconds: float = 10.0
 
     def map_ai_path(self, local_path: Path) -> Path:
         canonical = local_path.resolve(strict=False)
@@ -52,6 +54,7 @@ class Settings:
             "aiServerBaseUrl": "[URL]",
             "maxQueueLength": self.max_queue_length,
             "logLevel": self.log_level,
+            "readinessMediaPathConfigured": self.readiness_media_path is not None,
         }
 
 
@@ -165,6 +168,16 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
             "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec",
         ).lower(),
         load_model=parse_bool(env.get("SEGMENT_STUDIO_LOAD_MODEL", "true")),
+        readiness_media_path=optional_absolute_path(
+            env.get("SEGMENT_STUDIO_READINESS_MEDIA_PATH"),
+            "SEGMENT_STUDIO_READINESS_MEDIA_PATH",
+        ),
+        readiness_media_timeout_seconds=number(
+            env,
+            "SEGMENT_STUDIO_READINESS_MEDIA_TIMEOUT_SECONDS",
+            10.0,
+            minimum=0.1,
+        ),
     )
 
 
@@ -180,6 +193,15 @@ def absolute_path(value: str, key: str) -> Path:
     if not path.is_absolute():
         raise ConfigurationError(f"{key} must be absolute")
     return path.resolve(strict=False)
+
+
+def optional_absolute_path(value: str | None, key: str) -> Path | None:
+    if value is None or not value.strip():
+        return None
+    path = Path(value.strip())
+    if not path.is_absolute():
+        raise ConfigurationError(f"{key} must be absolute")
+    return path
 
 
 def is_under(path: Path, root: Path) -> bool:

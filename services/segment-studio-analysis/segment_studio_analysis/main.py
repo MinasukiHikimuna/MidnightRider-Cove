@@ -19,6 +19,7 @@ from .errors import ServiceError
 from .logging_config import configure_logging
 from .models import AnalysisRunStatus, AnalyzeVideoRequest, CatalogModel
 from .service import AnalysisService
+from .source import probe_source, resolve_source
 
 
 def create_app(
@@ -69,7 +70,15 @@ def create_app(
     async def readyz(request: Request) -> JSONResponse:
         state = get_service(request)
         checks = await readiness_checks(state)
-        required = ["ffmpeg", "ffprobe", "cuda", "omnishotcut", "proxyCache", "aiServer"]
+        required = [
+            "ffmpeg",
+            "ffprobe",
+            "cuda",
+            "omnishotcut",
+            "proxyCache",
+            "aiServer",
+            "mediaProbe",
+        ]
         ok = all(bool(checks[name].get("ok")) for name in required)
         payload = {
             "ok": ok,
@@ -134,6 +143,7 @@ async def readiness_checks(service: AnalysisService) -> dict[str, dict[str, obje
     checks: dict[str, dict[str, object]] = {}
     checks["ffmpeg"] = executable_check("ffmpeg")
     checks["ffprobe"] = executable_check("ffprobe")
+    checks["mediaProbe"] = await media_probe_check(settings)
     checks["cuda"] = cuda_check()
     checks["omnishotcut"] = {
         "ok": service.model_loaded and service.model_error is None,
@@ -160,6 +170,51 @@ async def readiness_checks(service: AnalysisService) -> dict[str, dict[str, obje
         "detail": "The AI server does not expose a path-mapping probe endpoint.",
     }
     return checks
+
+
+async def media_probe_check(settings: Settings) -> dict[str, object]:
+    path = settings.readiness_media_path
+    if path is None:
+        return {"ok": True, "configured": False}
+
+    try:
+        resolved = await asyncio.to_thread(
+            resolve_source, str(path), settings.media_roots
+        )
+    except ServiceError as error:
+        return failed_media_probe(error.code, readable=False)
+    except OSError:
+        return failed_media_probe("source_unavailable", readable=False)
+
+    try:
+        await asyncio.to_thread(
+            probe_source, resolved, settings.readiness_media_timeout_seconds
+        )
+        return {
+            "ok": True,
+            "configured": True,
+            "readable": True,
+            "probeable": True,
+        }
+    except ServiceError as error:
+        readable = error.code not in {
+            "source_not_found",
+            "source_not_readable",
+            "source_unavailable",
+        }
+        return failed_media_probe(error.code, readable=readable)
+    except OSError:
+        return failed_media_probe("source_unavailable", readable=True)
+
+
+def failed_media_probe(error_code: str, *, readable: bool) -> dict[str, object]:
+    return {
+        "ok": False,
+        "configured": True,
+        "readable": readable,
+        "probeable": False,
+        "errorCode": error_code,
+    }
 
 
 def executable_check(name: str) -> dict[str, object]:
