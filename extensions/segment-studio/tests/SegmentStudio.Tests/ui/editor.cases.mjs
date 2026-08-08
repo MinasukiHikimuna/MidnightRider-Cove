@@ -69,8 +69,9 @@ test("Full mode exposes optional corresponding-tag mapping and explicit conversi
   assert.match(dialog, /Convert unreviewed/);
   assert.match(dialog, /Convert approved/);
   assert.match(dialog, /does not change any segments until you choose a conversion action/i);
-  assert.match(dialog, /max-h-\[calc\(100dvh-2rem\)\]/);
-  assert.match(dialog, /overflow-y-auto/);
+  assert.match(dialog, /style: \{ maxHeight: "calc\(100dvh - 2rem\)" \}/);
+  assert.match(dialog, /key: "rows", className: "min-h-0 flex-1 overflow-y-auto p-4"/);
+  assert.match(dialog, /fixed inset-0[^"\n]*items-center[^"\n]*overflow-hidden/);
   assert.match(controller, /if \(result\.history\) acceptHistory\(result\.history\)/);
   assert.match(controller, /slotPermissionProtectedCount/);
   assert.match(controller, /currentHistory/);
