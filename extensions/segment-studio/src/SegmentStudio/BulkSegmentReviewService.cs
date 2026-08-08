@@ -43,6 +43,7 @@ public sealed record BulkSegmentReviewResult(
     int UpdatedCount = 0,
     IReadOnlyList<BulkSegmentReviewItemResult>? Items = null,
     SegmentStudioHistoryView? History = null,
+    string? ApprovedSetVersion = null,
     string? Error = null,
     bool Replayed = false,
     string? Code = null);
@@ -285,6 +286,8 @@ public static class BulkSegmentReviewService
                 History: history.Value,
                 Error: history.Error ?? "Editor history changed. Reload before updating review state.");
 
+        var approvedSetVersion = await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
+            db, videoId, ct);
         var result = new BulkSegmentReviewResult(
             BulkSegmentReviewStatus.Updated,
             changedRows.Length,
@@ -295,7 +298,8 @@ public static class BulkSegmentReviewService
                 row.ItemId,
                 row.Revision,
                 row.UpdatedAt)).ToArray(),
-            history.Value);
+            history.Value,
+            approvedSetVersion);
         db.Add(new SegmentStudioSegmentOperation
         {
             OperationId = request.OperationId,

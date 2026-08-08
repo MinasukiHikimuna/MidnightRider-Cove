@@ -180,6 +180,7 @@ function createReviewActions(context) {
         if (reviewState === "approved") {
           onDetailChange((current) => ({
             ...current,
+            approvedSetVersion: result.approvedSetVersion || current.approvedSetVersion,
             segments: (current.segments || []).map((segment) => {
               const item = resultByIdentity.get(segment.nativeSegmentId != null
                 ? `native:${segment.nativeSegmentId}`

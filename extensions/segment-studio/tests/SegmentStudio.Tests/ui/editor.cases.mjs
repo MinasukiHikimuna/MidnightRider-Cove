@@ -398,6 +398,7 @@ test("selection review shortcuts apply a state and reset only when every segment
   assert.match(handler, /expectedHistoryRevision:\s*historyRef\.current\.revision/);
   assert.match(handler, /if \(result\.history\) acceptHistory\(result\.history\)/);
   assert.match(handler, /if \(reviewState === "approved"\)[\s\S]*onDetailChange/);
+  assert.match(handler, /approvedSetVersion: result\.approvedSetVersion/);
   assert.match(handler, /else[\s\S]*await onReload\(\)/);
   assert.doesNotMatch(handler, /for \(const segment of candidates/);
   assert.doesNotMatch(handler, /Partially updated/);

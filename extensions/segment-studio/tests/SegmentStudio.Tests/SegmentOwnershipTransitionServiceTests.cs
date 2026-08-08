@@ -2741,7 +2741,12 @@ public sealed class SegmentOwnershipTransitionServiceTests
 
         Assert.Equal(BulkSegmentReviewStatus.Updated, updated.Status);
         Assert.Equal(2, updated.UpdatedCount);
+        Assert.Equal(
+            await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
+                fixture.Context, fixture.VideoId, CancellationToken.None),
+            updated.ApprovedSetVersion);
         Assert.True(replay.Replayed);
+        Assert.Equal(updated.ApprovedSetVersion, replay.ApprovedSetVersion);
         var drafts = await fixture.Context.Set<SegmentStudioItem>()
             .Where(item => item.Id >= 501 && item.Id <= 503)
             .OrderBy(item => item.Id)
