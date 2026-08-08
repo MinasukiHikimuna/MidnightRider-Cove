@@ -1782,15 +1782,23 @@ public sealed class SegmentOwnershipTransitionServiceTests
             new(Guid.NewGuid(), 11, 14.5, 20.0), CovePrincipal.System(),
             fixture.Authorization, CancellationToken.None);
 
+        var operationId = Guid.NewGuid();
         var approved = await SegmentStudioDraftService.UpdateAsync(
             fixture.Context, fixture.VideoId, created.Draft!.ItemId,
-            new(Guid.NewGuid(), created.Draft.Revision, 14.5, 20.0, 11, "approved"),
+            new(operationId, created.Draft.Revision, 14.5, 20.0, 11, "approved"),
+            CovePrincipal.System(), fixture.Authorization, CancellationToken.None);
+        var replay = await SegmentStudioDraftService.UpdateAsync(
+            fixture.Context, fixture.VideoId, created.Draft.ItemId,
+            new(operationId, created.Draft.Revision, 14.5, 20.0, 11, "approved"),
             CovePrincipal.System(), fixture.Authorization, CancellationToken.None);
 
         Assert.Equal(SegmentDraftMutationStatus.Updated, approved.Status);
         Assert.Equal("approved", approved.Draft!.ReviewState);
         Assert.False(approved.Draft.Published);
         Assert.Null(approved.Draft.NativeSegmentId);
+        Assert.NotNull(approved.ApprovedSetVersion);
+        Assert.True(replay.Replayed);
+        Assert.Equal(approved.ApprovedSetVersion, replay.ApprovedSetVersion);
         Assert.False(await fixture.Context.Set<Segment>().AnyAsync(segment => segment.StartSec == 14.5));
     }
 

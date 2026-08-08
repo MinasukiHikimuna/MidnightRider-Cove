@@ -2275,6 +2275,11 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         principalAccessor.Current, authorization, videoId, ct);
                     if (!access.Allowed)
                         return Results.Json(new { error = access.Reason ?? "You cannot view segments for this video." }, statusCode: StatusCodes.Status403Forbidden);
+                    var provenanceAccess = await authorization.AuthorizeAsync(
+                        principalAccessor.Current,
+                        ProvenanceReadPermission,
+                        entity: null,
+                        ct);
                     if (!fullWorkflow)
                     {
                         var basicRows = await db.Set<Segment>()
@@ -2306,8 +2311,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 segment.CreatedAt))
                             .ToListAsync(ct);
                         var basicIds = basicRows.Select(row => row.Id).ToArray();
-                        var fieldProvenance = db.Model.FindEntityType(
-                                typeof(FieldProvenance)) is null
+                        var fieldProvenance = !provenanceAccess.Allowed
+                            || db.Model.FindEntityType(typeof(FieldProvenance)) is null
                             ? []
                             : await db.Set<FieldProvenance>().AsNoTracking()
                                 .Where(row =>
@@ -2362,7 +2367,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             SegmentStudioModes.Basic,
                             video,
                             basicSegments,
-                            basicSegmentGroups));
+                            basicSegmentGroups,
+                            provenanceAccess.Allowed));
                     }
 
                     var rows = await db.Set<Segment>()
@@ -2480,6 +2486,15 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         ? await PerformerSlotEditorService.LoadCandidatesAsync(db, videoId, ct)
                         : [];
                     var shotBoundaries = await ShotBoundaryService.ListAsync(db, videoId, ct);
+                    var itemMetadata = provenanceAccess.Allowed
+                        ? await SegmentEditorMetadataService.LoadAsync(
+                            db,
+                            videoId,
+                            editorItemIds,
+                            provenanceAccess.Allowed,
+                            provenanceAccess.Allowed,
+                            ct)
+                        : new Dictionary<long, SegmentEditorItemMetadata>();
                     return Results.Ok(new SegmentStudioEditorResponse(
                         SegmentStudioModes.Full,
                         video,
@@ -2490,6 +2505,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         performerSlotRevisions,
                         performerCandidates,
                         performerAccess.Allowed,
+                        provenanceAccess.Allowed,
+                        provenanceAccess.Allowed,
+                        itemMetadata,
                         fullWorkflow
                             ? await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(db, videoId, ct)
                             : null,
@@ -2788,6 +2806,15 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             await transaction.CommitAsync(ct);
                         return mutation;
                     });
+                    if (result.Status == SegmentDraftMutationStatus.Updated
+                        && result.Replayed
+                        && result.Draft?.ReviewState == "approved"
+                        && result.ApprovedSetVersion is null)
+                        return Results.Conflict(new
+                        {
+                            error = "This saved draft predates local completion-state synchronization. Reload the editor.",
+                            code = "DRAFT_REPLAY_RELOAD_REQUIRED",
+                        });
                     if (result.Status == SegmentDraftMutationStatus.Updated)
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
                     return ToDraftHttpResult(result);
@@ -3243,6 +3270,11 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 {
                     var preserveExtensionMetadata = await UsesFullWorkflowAsync(
                         db, principalAccessor, ct);
+                    var provenanceAccess = await authorization.AuthorizeAsync(
+                        principalAccessor.Current,
+                        ProvenanceReadPermission,
+                        entity: null,
+                        ct);
                     var strategy = db.Database.CreateExecutionStrategy();
                     return await strategy.ExecuteAsync(async () =>
                     {
@@ -3282,6 +3314,17 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 "user",
                                 cancellationToken: ct);
                             await db.SaveChangesAsync(ct);
+                            if (provenanceAccess.Allowed)
+                                result = result with
+                            {
+                                Segment = result.Segment with
+                                {
+                                    FieldProvenance = await fieldProvenance.GetForHostAsync(
+                                        AffinityHostType.Segment,
+                                        segmentId,
+                                        ct),
+                                },
+                            };
                         }
                         if (result.Status == DirectSegmentMutationStatus.Updated)
                         {
@@ -4281,6 +4324,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         IReadOnlyDictionary<long, string> PerformerSlotRevisions,
         IReadOnlyList<PerformerSlotCandidate> PerformerCandidates,
         bool PerformerSlotsAvailable,
+        bool ItemMetadataAvailable,
+        bool LineageMetadataAvailable,
+        IReadOnlyDictionary<long, SegmentEditorItemMetadata> ItemMetadata,
         string? ApprovedSetVersion,
         int NativeImportCount);
 
@@ -4288,7 +4334,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         string Mode,
         SegmentStudioEditorVideo Video,
         IReadOnlyList<SegmentStudioBasicEditorItem> Segments,
-        IReadOnlyList<SegmentGroupResponse> SegmentGroups);
+        IReadOnlyList<SegmentGroupResponse> SegmentGroups,
+        bool ItemMetadataAvailable);
 
     private sealed record SegmentStudioBasicEditorItem(
         string Key,
@@ -4334,13 +4381,24 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
     private sealed record SegmentStudioBasicFieldProvenance(
         int NativeSegmentId,
         string FieldKey,
-        string? ValueJson,
+        [property: JsonIgnore] string? ValueJson,
         string SourceKey,
         string SourceRunId,
         string ModelKey,
         float? Confidence,
         DateTime CreatedAt,
-        DateTime UpdatedAt);
+        DateTime UpdatedAt)
+    {
+        [JsonPropertyName("value")]
+        public JsonElement? Value => ParseValue(ValueJson);
+
+        private static JsonElement? ParseValue(string? json)
+        {
+            if (json is null) return null;
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+    }
 
     private sealed record BasicHistoryPreparation(
         Guid ReceiptId,

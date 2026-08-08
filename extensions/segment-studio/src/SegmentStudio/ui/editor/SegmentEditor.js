@@ -95,8 +95,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [incorrectExamples, setIncorrectExamples] = useState([]);
   const [exportingExamples, setExportingExamples] = useState(false);
   const [removingExampleId, setRemovingExampleId] = useState(null);
-  const [provenance, setProvenance] = useState({ key: null, loading: false, error: null, items: [] });
-  const [lineage, setLineage] = useState({ loading: false, error: null, data: null });
   const wideLayout = useWideEditorLayout();
   const seekRef = useRef(null);
   const playbackControlsRef = useRef(null);
@@ -397,44 +395,36 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     });
   }, [visibleSegmentIdsFingerprint, selectedSegment?.id]);
 
-  useEffect(() => {
-    const itemId = selectedSegment?.itemId;
-    const nativeSegmentId = selectedSegment?.nativeSegmentId;
-    const provenanceKey = itemId != null
-      ? `item:${itemId}`
-      : nativeSegmentId != null
-        ? `native:${nativeSegmentId}`
-        : null;
-    if (provenanceKey == null) {
-      setProvenance({ key: null, loading: false, error: "Provenance is unavailable for this segment.", items: [] });
-      setLineage({ loading: false, error: "Lineage is unavailable until this segment has a stable Segment Studio item.", data: null });
-      return undefined;
-    }
-    const controller = new AbortController();
-    setProvenance({ key: provenanceKey, loading: true, error: null, items: [] });
-    requestJson(itemId != null
-      ? `/items/${itemId}/provenance`
-      : `/videos/${video.id}/segments/${nativeSegmentId}/provenance`, {
-      signal: controller.signal,
-    })
-      .then((items) => setProvenance({ key: provenanceKey, loading: false, error: null, items: items || [] }))
-      .catch((error) => {
-        if (error.name !== "AbortError")
-          setProvenance({ key: provenanceKey, loading: false, error: "Provenance could not be loaded.", items: [] });
-      });
-    if (itemId != null) {
-      setLineage({ loading: true, error: null, data: null });
-      requestJson(`/items/${itemId}/lineage`, { signal: controller.signal })
-        .then((data) => setLineage({ loading: false, error: null, data }))
-        .catch((error) => {
-          if (error.name !== "AbortError")
-            setLineage({ loading: false, error: "Lineage could not be loaded.", data: null });
-        });
-    } else {
-      setLineage({ loading: false, error: "Lineage is available in Full mode.", data: null });
-    }
-    return () => controller.abort();
-  }, [selectedSegment?.itemId, selectedSegment?.nativeSegmentId, video.id]);
+  const selectedItemMetadata = selectedSegment?.itemId == null
+    ? null
+    : detail.itemMetadata?.[selectedSegment.itemId] || null;
+  const provenance = {
+    key: selectedSegment?.itemId != null
+      ? `item:${selectedSegment.itemId}`
+      : selectedSegment?.nativeSegmentId != null
+        ? `native:${selectedSegment.nativeSegmentId}`
+        : null,
+    loading: false,
+    error: detail.itemMetadataAvailable === false
+      ? "Provenance is unavailable."
+      : null,
+    items: detail.itemMetadataAvailable
+      ? selectedItemMetadata?.provenance
+        || selectedSegment?.fieldProvenance
+        || []
+      : [],
+  };
+  const lineage = selectedSegment?.itemId != null
+    ? {
+        loading: false,
+        error: detail.lineageMetadataAvailable === false ? "Lineage is unavailable." : null,
+        data: detail.lineageMetadataAvailable ? selectedItemMetadata?.lineage || null : null,
+      }
+    : {
+        loading: false,
+        error: "Lineage is available in Full mode.",
+        data: null,
+      };
 
   useEffect(() => {
     setStartInput(selectedSegment == null ? "" : String(selectedSegment.startSec));
@@ -543,6 +533,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const { closeMergeConfirmation, mergeSelectedSwimlane, saveSelectedReviewState } = createReviewActions({
     acceptHistory,
     compatibilityMode,
+    detail,
     detailPanelRef,
     historyRef,
     mergeSavingRef,

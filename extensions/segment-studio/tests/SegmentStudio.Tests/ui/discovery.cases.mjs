@@ -123,9 +123,11 @@ test("workflow settings explain the Basic and Full storage boundary", () => {
   assert.match(settings, /Materialized derivations remain Segment Studio-owned and appear only in Full/);
 });
 
-test("selected segments load and render provenance without inventing unknown evidence", () => {
-  assert.match(source, /itemId != null[\s\S]*`\/items\/\$\{itemId\}\/provenance`/);
-  assert.match(source, /`\/videos\/\$\{video\.id\}\/segments\/\$\{nativeSegmentId\}\/provenance`/);
+test("selected segments render preloaded provenance without per-selection requests", () => {
+  assert.match(source, /detail\.itemMetadata\?\.\[selectedSegment\.itemId\]/);
+  assert.match(source, /selectedSegment\?\.fieldProvenance/);
+  assert.doesNotMatch(sourceByModule["editor/SegmentEditor.js"], /`\/items\/\$\{itemId\}\/provenance`/);
+  assert.doesNotMatch(sourceByModule["editor/SegmentEditor.js"], /`\/videos\/\$\{video\.id\}\/segments\/\$\{nativeSegmentId\}\/provenance`/);
   assert.match(source, /aria-label": "Segment provenance"/);
   assert.equal(ui.provenanceSourceLabel("ext:segment-studio:stash-marker-studio"), "Stash Marker Studio · legacy");
   assert.equal(ui.provenanceSourceLabel("segment-studio/user"), "Manual");
@@ -143,8 +145,9 @@ test("selected segments load and render provenance without inventing unknown evi
   assert.doesNotMatch(source, /Source \$\{segment\.sourceKey \|\| "unknown"\}/);
 });
 
-test("selected segments load lineage and derived tags are read-only", () => {
-  assert.match(source, /requestJson\(`\/items\/\$\{itemId\}\/lineage`/);
+test("selected segments use preloaded lineage and derived tags are read-only", () => {
+  assert.match(source, /selectedItemMetadata\?\.lineage \|\| null/);
+  assert.doesNotMatch(sourceByModule["editor/SegmentEditor.js"], /requestJson\(`\/items\/\$\{itemId\}\/lineage`/);
   assert.match(source, /"aria-label": "Segment lineage"/);
   assert.match(source, /function DerivedSegmentIcon/);
   assert.match(source, /title: "Derived segment"/);

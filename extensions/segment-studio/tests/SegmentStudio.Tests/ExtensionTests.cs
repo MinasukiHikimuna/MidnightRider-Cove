@@ -463,6 +463,19 @@ public sealed class ExtensionTests
     }
 
     [Fact]
+    public void EditorPreloadsItemMetadataInOneProjection()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "SegmentStudio", "SegmentStudioExtension.cs"));
+
+        Assert.Contains("SegmentEditorMetadataService.LoadAsync", source);
+        Assert.Contains("provenanceAccess.Allowed", source);
+        Assert.Contains("IReadOnlyDictionary<long, SegmentEditorItemMetadata> ItemMetadata", source);
+    }
+
+    [Fact]
     public void QueuedAnalysisRechecksModeWhileHoldingSharedModeLock()
     {
         var source = File.ReadAllText(Path.Combine(

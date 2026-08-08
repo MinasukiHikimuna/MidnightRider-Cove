@@ -6,7 +6,7 @@ import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledS
 import { segmentsHistoryState } from "../model/history.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, compatibilityMode, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -177,35 +177,41 @@ function createReviewActions(context) {
           identity.itemId = item.itemId;
         });
         if (result.history) acceptHistory(result.history);
-        if (reviewState === "approved") {
-          onDetailChange((current) => ({
-            ...current,
-            approvedSetVersion: result.approvedSetVersion || current.approvedSetVersion,
-            segments: (current.segments || []).map((segment) => {
+        const requiresProjectionReload = reviewState === "rejected"
+          || (result.items || []).some((item) => item.requestedNativeSegmentId != null
+            && item.nativeSegmentId !== item.requestedNativeSegmentId);
+        if (requiresProjectionReload) {
+          restoreSelection(await onReload());
+          setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
+          return;
+        }
+        const updatedDetail = {
+            ...detail,
+            approvedSetVersion: result.approvedSetVersion || detail.approvedSetVersion,
+            segments: (detail.segments || []).map((segment) => {
               const item = resultByIdentity.get(segment.nativeSegmentId != null
                 ? `native:${segment.nativeSegmentId}`
                 : `item:${segment.itemId}`);
               return item ? {
                 ...segment,
+                id: item.nativeSegmentId != null ? item.nativeSegmentId : -item.itemId,
                 itemId: item.itemId,
                 nativeSegmentId: item.nativeSegmentId,
                 published: item.nativeSegmentId != null,
                 reviewState,
-                revision: item.revision,
+                revision: item.nativeSegmentId != null ? segment.revision : item.revision,
                 updatedAt: item.updatedAt,
               } : segment;
             }),
-          }), video.id);
-        } else {
-          const loaded = await onReload();
-          restoreSelection(loaded);
-        }
+          };
+        onDetailChange(updatedDetail, video.id);
+        restoreSelection(updatedDetail);
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
         if (error.status === 409 && error.payload?.currentHistory)
           acceptHistory(error.payload.currentHistory);
-        const loaded = error.status === 409 ? await onConflict() : await onReload();
-        restoreSelection(loaded);
+        if (error.status === 409)
+          restoreSelection(await onConflict());
         setSaveMessage(error.message || "Unable to update the selected segments.");
       } finally {
         reviewSavingRef.current = false;

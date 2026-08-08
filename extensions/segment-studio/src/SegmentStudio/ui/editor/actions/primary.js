@@ -7,7 +7,8 @@ import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
 
 function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
-  return true;
+  return values.tagId !== segment.tagId
+    || (values.reviewState != null && values.reviewState !== segment.reviewState);
 }
 
 function createPrimarySegmentActions(context) {
@@ -72,19 +73,35 @@ function createPrimarySegmentActions(context) {
             }),
           });
           completeOperation(operationKey);
+          const updatedDraft = {
+            ...segment,
+            ...result.draft,
+            id: segment.id,
+            itemId: segment.itemId,
+          };
           if (recordHistory)
             await recordHistoryAction(
               "segment.update",
               historyLabel || "Changed segment",
               segmentHistoryState(segment, compatibilityMode),
               segmentHistoryState(
-                { ...segment, ...result.draft },
+                updatedDraft,
                 compatibilityMode,
               ),
             );
-          await onReload();
+          if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) {
+            await onReload();
+          } else {
+            onDetailChange({
+              ...detail,
+              approvedSetVersion: result.approvedSetVersion || detail.approvedSetVersion,
+              segments: segments
+                .map((item) => item.id === segment.id ? updatedDraft : item)
+                .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
+            }, video.id);
+          }
           setSaveMessage(result.draft?.reviewState === "approved" ? "Approved draft saved" : "Draft saved");
-          return result.draft;
+          return updatedDraft;
         }
         const saved = await requestJson(`/videos/${video.id}/segments/${segment.id}`, {
           method: "PUT",
@@ -95,8 +112,13 @@ function createPrimarySegmentActions(context) {
             historyReceiptId,
           }),
         });
+        const updatedSegment = {
+          ...segment,
+          ...saved,
+          reviewState: values.reviewState ?? segment.reviewState,
+        };
         const nextSegments = segments
-          .map((item) => item.id === segment.id ? saved : item)
+          .map((item) => item.id === segment.id ? updatedSegment : item)
           .sort((left, right) => left.startSec - right.startSec || left.id - right.id);
         if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) await onReload();
         else onDetailChange({ ...detail, segments: nextSegments }, video.id);
@@ -106,13 +128,13 @@ function createPrimarySegmentActions(context) {
             historyLabel || "Changed segment",
             segmentHistoryState(segment, compatibilityMode),
             segmentHistoryState(
-              { ...segment, ...saved },
+              updatedSegment,
               compatibilityMode,
             ),
             historyReceiptId,
           );
         setSaveMessage(recordHistory ? "Saved to Cove" : "History restored");
-        return saved;
+        return updatedSegment;
       } catch (requestError) {
         if (requestError.status === 409) {
           setSaveMessage("Conflict — loading the latest segment…");

@@ -18,12 +18,23 @@ test("editor controller imports the provenance label used by source filtering", 
   assert.match(controller, /provenanceSourceLabel\(left\)\.localeCompare\(provenanceSourceLabel\(right\)\)/);
 });
 
-test("native mutations reload the mode-specific editor projection", () => {
-  const segment = { tagId: 10 };
+test("native mutations update the local projection without reloading the editor", () => {
+  const segment = { tagId: 10, reviewState: "approved", nativeSegmentId: 12 };
 
   assert.equal(ui.shouldReloadAfterSegmentMutation(segment, { tagId: 11 }, false), true);
-  assert.equal(ui.shouldReloadAfterSegmentMutation(segment, { tagId: 10 }, false), true);
-  assert.equal(ui.shouldReloadAfterSegmentMutation(segment, { tagId: 10 }, true), true);
+  assert.equal(ui.shouldReloadAfterSegmentMutation(segment, { tagId: 10, startSec: 2, endSec: 3 }, false), false);
+  assert.equal(ui.shouldReloadAfterSegmentMutation(segment, { tagId: 10, reviewState: "rejected" }, false), true);
+  assert.equal(ui.shouldReloadAfterSegmentMutation(segment, { tagId: 10 }, true), false);
+  assert.equal(ui.shouldReloadAfterSegmentMutation({ ...segment, nativeSegmentId: null }, { tagId: 10 }, true), false);
+  const primaryActions = sourceByModule["editor/actions/primary.js"];
+  assert.match(primaryActions, /reviewState: values\.reviewState \?\? segment\.reviewState/);
+  assert.match(primaryActions, /id: segment\.id,[\s\S]*itemId: segment\.itemId/);
+  const draftUpdate = primaryActions.slice(
+    primaryActions.indexOf("const updatedDraft ="),
+    primaryActions.indexOf("const saved = await requestJson"),
+  );
+  assert.match(draftUpdate, /shouldReloadAfterSegmentMutation/);
+  assert.match(draftUpdate, /onDetailChange\(/);
 });
 
 test("Basic omitted collections use stable fallbacks across renders", () => {
@@ -382,11 +393,27 @@ test("selection review shortcuts apply a state and reset only when every segment
   assert.match(handler, /segments:\s*selectedSegments\.map/);
   assert.match(handler, /expectedHistoryRevision:\s*historyRef\.current\.revision/);
   assert.match(handler, /if \(result\.history\) acceptHistory\(result\.history\)/);
-  assert.match(handler, /if \(reviewState === "approved"\)[\s\S]*onDetailChange/);
+  assert.match(handler, /onDetailChange\(updatedDetail, video\.id\)/);
   assert.match(handler, /approvedSetVersion: result\.approvedSetVersion/);
-  assert.match(handler, /else[\s\S]*await onReload\(\)/);
+  assert.match(handler, /restoreSelection\(updatedDetail\)/);
   assert.doesNotMatch(handler, /for \(const segment of candidates/);
   assert.doesNotMatch(handler, /Partially updated/);
+});
+
+test("bulk review patches safe decisions locally and reloads cascading or identity-changing decisions", () => {
+  const reviewActions = sourceByModule["editor/actions/review.js"];
+  const saveReview = reviewActions.slice(
+    reviewActions.indexOf("async function saveSelectedReviewState"),
+    reviewActions.indexOf("return { closeMergeConfirmation"),
+  );
+
+  assert.match(saveReview, /reviewState === "rejected"/);
+  assert.match(saveReview, /item\.requestedNativeSegmentId != null/);
+  assert.match(saveReview, /restoreSelection\(await onReload\(\)\)/);
+  assert.match(saveReview, /id: item\.nativeSegmentId != null \? item\.nativeSegmentId : -item\.itemId/);
+  assert.match(saveReview, /revision: item\.nativeSegmentId != null \? segment\.revision : item\.revision/);
+  assert.match(saveReview, /restoreSelection\(updatedDetail\)/);
+  assert.doesNotMatch(saveReview, /error\.status === 409 \? await onConflict\(\) : await onReload\(\)/);
 });
 
 test("one selected swimlane can be merged into its full selected time span", () => {

@@ -74,7 +74,8 @@ public sealed record SegmentDraftMutationResult(
     string? Error = null,
     bool Replayed = false,
     SegmentDraftSnapshot? CreatedDraft = null,
-    string? Code = null);
+    string? Code = null,
+    string? ApprovedSetVersion = null);
 
 public static class SegmentStudioDraftService
 {
@@ -230,7 +231,14 @@ public static class SegmentStudioDraftService
             if (nextReviewState == "rejected")
                 await DerivedSegmentRejectionService.RejectDescendantsAsync(db, item.Id, ct);
         }
-        var result = new SegmentDraftMutationResult(SegmentDraftMutationStatus.Updated, ToSnapshot(item));
+        await db.SaveChangesAsync(ct);
+        var result = new SegmentDraftMutationResult(
+            SegmentDraftMutationStatus.Updated,
+            ToSnapshot(item),
+            ApprovedSetVersion: item.ReviewState == "approved"
+                ? await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
+                    db, videoId, ct)
+                : null);
         db.Add(CreateReceipt(request.OperationId, UpdateKind, fingerprint, principal, item.Id, result));
         await db.SaveChangesAsync(ct);
         return result;

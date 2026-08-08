@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using System.Text;
 using Cove.Core.Auth;
+using Cove.Core.DTOs;
 using Cove.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -62,7 +63,8 @@ public sealed record DirectSegmentSnapshot(
     DateTime UpdatedAt,
     string SourceKey,
     string? SourceRunId,
-    float? Confidence);
+    float? Confidence,
+    IReadOnlyList<FieldProvenanceDto>? FieldProvenance = null);
 
 public sealed record DirectSegmentMutationResult(
     DirectSegmentMutationStatus Status,
