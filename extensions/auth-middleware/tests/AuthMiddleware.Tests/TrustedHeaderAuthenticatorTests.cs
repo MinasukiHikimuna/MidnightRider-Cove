@@ -54,6 +54,7 @@ public sealed class TrustedHeaderAuthenticatorTests
         Assert.Equal(" authority-subject ", assertion.Subject);
         Assert.Equal("existing-user", assertion.AccountLabel);
         Assert.Equal("trusted-header", assertion.Method);
+        Assert.True(assertion.IsAuthoritative);
     }
 
     [Fact]

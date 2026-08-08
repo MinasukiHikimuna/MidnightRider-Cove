@@ -39,7 +39,10 @@ internal sealed class TrustedHeaderAuthenticator(IAuthMiddlewareSettingsProvider
             subject,
             "trusted-header",
             current.TrustedHeaderLabel,
-            accountLabel);
+            accountLabel)
+        {
+            IsAuthoritative = true,
+        };
         return true;
     }
 
