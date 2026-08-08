@@ -1,6 +1,16 @@
 import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 
+test("editor loading state uses the native centered loading indicator", () => {
+  const editorPage = sourceByModule["editor/SegmentStudioEditorPage.js"];
+
+  assert.match(editorPage, /import \{ Loader2 \} from "@cove\/runtime\/lucide-react"/);
+  assert.match(editorPage, /role: "status"/);
+  assert.match(editorPage, /min-h-\[50vh\][^"\n]*items-center justify-center/);
+  assert.match(editorPage, /h\(Loader2, \{[^\n]*"aria-hidden": true[^\n]*animate-spin text-muted/);
+  assert.match(editorPage, /className: "sr-only" \}, "Loading editor…"/);
+});
+
 test("editor controller imports the provenance label used by source filtering", () => {
   const controller = sourceByModule["editor/SegmentEditor.js"];
 

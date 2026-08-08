@@ -2,7 +2,10 @@ const runtimeModules = {
   "@cove/runtime/react": "export default globalThis.__segmentStudioReact;",
   "@cove/runtime/react-dom": "export const createPortal = (child) => child;",
   "@cove/runtime/api": "export const extensionFetch = async () => { throw new Error('not used'); };",
-  "@cove/runtime/lucide-react": "export const ChevronDown = () => null;",
+  "@cove/runtime/lucide-react": [
+    "export const ChevronDown = () => null;",
+    "export const Loader2 = () => null;",
+  ].join("\n"),
   "@cove/runtime/components": [
     "export const DetailListPagination = () => null;",
     "export const DetailListToolbar = () => null;",

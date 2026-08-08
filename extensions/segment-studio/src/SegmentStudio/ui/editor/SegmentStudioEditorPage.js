@@ -1,5 +1,7 @@
 import { h, useEffect, useRef, useState } from "../shared/runtime.js";
 
+import { Loader2 } from "@cove/runtime/lucide-react";
+
 import { requestJson } from "../shared/api.js";
 
 import { requestedOwnedItemId, requestedSegmentId } from "../discovery/model.js";
@@ -90,7 +92,14 @@ function SegmentStudioEditorPage({
     } : undefined,
   }, [
     error ? h("div", { key: "error", className: "rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300" }, error) : null,
-    loading ? h("p", { key: "loading", role: "status", className: "text-sm text-secondary" }, "Loading editor…") : null,
+    loading ? h("div", {
+      key: "loading",
+      role: "status",
+      className: "flex min-h-[50vh] w-full items-center justify-center",
+    }, [
+      h(Loader2, { key: "indicator", "aria-hidden": true, className: "h-6 w-6 animate-spin text-muted" }),
+      h("span", { key: "label", className: "sr-only" }, "Loading editor…"),
+    ]) : null,
     detail ? h(SegmentEditor, {
       key: detail.video.id,
       detail,
