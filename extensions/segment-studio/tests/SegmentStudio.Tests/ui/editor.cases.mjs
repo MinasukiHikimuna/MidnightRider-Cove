@@ -56,34 +56,6 @@ test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   assert.match(analysis, /analyses: analyses \|\| \(fullMode/);
 });
 
-test("Full mode exposes optional corresponding-tag mapping and explicit conversions", () => {
-  const controller = sourceByModule["editor/SegmentEditor.js"];
-  const view = sourceByModule["editor/SegmentEditorView.js"];
-  const dialog = sourceByModule["editor/dialogs/CorrespondingTagsDialog.js"];
-  const hook = sourceByModule["editor/hooks/useCorrespondingTags.js"];
-  const history = sourceByModule["editor/actions/history-and-layout.js"];
-
-  assert.match(view, /`Corresponding tags \(\$\{correspondingTags\.sourceTagCount\}\)`/);
-  assert.match(view, /compatibilityMode && correspondingTags\.sourceTagCount > 0/);
-  assert.match(dialog, /Save mappings/);
-  assert.match(dialog, /Convert unreviewed/);
-  assert.match(dialog, /Convert approved/);
-  assert.match(dialog, /does not change any segments until you choose a conversion action/i);
-  assert.match(dialog, /style: \{ maxHeight: "calc\(100dvh - 2rem\)" \}/);
-  assert.match(dialog, /key: "rows", className: "min-h-0 flex-1 overflow-y-auto p-4"/);
-  assert.match(dialog, /fixed inset-0[^"\n]*items-center[^"\n]*overflow-hidden/);
-  assert.match(controller, /if \(result\.history\) acceptHistory\(result\.history\)/);
-  assert.match(controller, /slotPermissionProtectedCount/);
-  assert.match(controller, /currentHistory/);
-  assert.match(hook, /operationIdFor\(operationKey\)/);
-  assert.match(hook, /correspondingTagId: row\.correspondingTagId/);
-  assert.match(hook, /expectedUpdatedAt: row\.mappingUpdatedAt/);
-  assert.match(hook, /currentMappings/);
-  assert.match(hook, /expectedHistoryRevision/);
-  assert.match(history, /state\?\.type === "composite"/);
-  assert.match(history, /for \(const \[index, childState\]/);
-});
-
 test("Basic structural commands record native history and use native restoration", () => {
   const primaryActions = sourceByModule["editor/actions/primary.js"];
   const reviewActions = sourceByModule["editor/actions/review.js"];
@@ -857,6 +829,14 @@ test("segment rail virtualization preserves grouped row geometry and overscan", 
     ui.visibleVirtualRows(expanded.rows, 100, 20, 0).map((row) => row.key),
     ["segment:10", "segment:11"],
   );
+});
+
+test("legacy composite history remains replayable after removing its originating workflow", () => {
+  const historyActions = sourceByModule["editor/actions/history-and-layout.js"];
+
+  assert.match(historyActions, /state\?\.type === "composite"/);
+  assert.match(historyActions, /for \(const \[index, childState\] of \(state\.states \|\| \[\]\)\.entries\(\)\)/);
+  assert.match(historyActions, /current = await applyHistoryState\(/);
 });
 
 test("timeline virtualization preserves variable lane heights and collapsed groups", () => {

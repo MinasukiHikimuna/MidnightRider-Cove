@@ -41,12 +41,15 @@ public sealed class SegmentStudioBaselineMigrationTests
                 await new NpgsqlCommand(migration.UpSql, connection)
                     .ExecuteNonQueryAsync();
 
-            Assert.Equal(33, await CountAsync(
+            Assert.Equal(32, await CountAsync(
                 connection,
                 "SELECT count(*) FROM pg_tables WHERE schemaname = current_schema() AND tablename LIKE 'segment_studio_%'"));
             Assert.Equal(1, await CountAsync(
                 connection,
                 "SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'segment_studio_analysis_candidates' AND column_name = 'source_tag_id'"));
+            Assert.Equal(0, await CountAsync(
+                connection,
+                "SELECT count(*) FROM pg_tables WHERE schemaname = current_schema() AND tablename = 'segment_studio_corresponding_tag_mappings'"));
             Assert.Equal(10, await CountAsync(
                 connection,
                 "SELECT source_tag_id FROM segment_studio_analysis_candidates WHERE candidate_key = 'retagged-before-upgrade'"));
@@ -104,6 +107,14 @@ public sealed class SegmentStudioBaselineMigrationTests
         """;
 
     private const string UpgradeFixture = """
+        CREATE TABLE segment_studio_corresponding_tag_mappings (
+            source_tag_id integer PRIMARY KEY REFERENCES tags("Id") ON DELETE CASCADE,
+            corresponding_tag_id integer NOT NULL REFERENCES tags("Id") ON DELETE CASCADE,
+            created_at timestamp with time zone NOT NULL,
+            updated_at timestamp with time zone NOT NULL,
+            CONSTRAINT "CK_segment_studio_corresponding_tag_mappings_distinct_tags"
+                CHECK (source_tag_id <> corresponding_tag_id)
+        );
         INSERT INTO videos ("Id") VALUES (7);
         INSERT INTO files ("Id") VALUES (1);
         INSERT INTO tags ("Id", "Name") VALUES

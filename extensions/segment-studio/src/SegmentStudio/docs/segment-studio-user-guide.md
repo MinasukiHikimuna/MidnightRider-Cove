@@ -316,23 +316,12 @@ assignment, and the other filters available to the current Segment Studio
 version. Filters and counts cover both published native segments and unpublished
 drafts.
 
-### Run Full Scan and map model labels
+### Run Full Scan
 
 **Full Scan** can add shot boundaries and extension-owned AI drafts to the Full
 review workflow. When an AI model emits a label that is not yet a Cove tag,
 Segment Studio creates that source tag so the result is not silently discarded.
 Basic mode does not expose Full Scan or this review workflow.
-
-When unconverted model-label drafts are present, the toolbar shows
-**Corresponding tags (N)**. Open it to optionally associate any source tag with
-the long-term library tag you prefer across Full scans. Saving mappings does not retag segments.
-You can review first, convert unreviewed drafts first, convert approved drafts
-after review, or leave the source tags unchanged.
-
-**Convert unreviewed** and **Convert approved** are separate bulk actions. A
-conversion keeps each draft's review state and original model provenance while
-changing its current tag. The conversion is recorded as one editor history
-action. Corresponding tags are optional and never block completing a review.
 
 ### Create and edit a draft
 

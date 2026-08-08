@@ -1,4 +1,4 @@
-import { EntityReferenceSelector, h, useEffect, useState } from "../shared/runtime.js";
+import { h, useEffect, useState } from "../shared/runtime.js";
 
 import { readMergeConfirmationPreference, writeMergeConfirmationPreference } from "../editor/model/selection.js";
 
@@ -31,10 +31,6 @@ import { SegmentStudioModeSelector } from "../shared/navigation.js";
 function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
   const [groups, setGroups] = useState([]);
-  const [correspondingTagMappings, setCorrespondingTagMappings] = useState({});
-  const [correspondingTagBusy, setCorrespondingTagBusy] = useState(false);
-  const [correspondingSourceTag, setCorrespondingSourceTag] = useState(null);
-  const [correspondingTargetTag, setCorrespondingTargetTag] = useState(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newName, setNewName] = useState("");
   const [pickerGroupId, setPickerGroupId] = useState(null);
@@ -63,41 +59,8 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
   }, [profile.effectiveMode]);
 
   async function loadGroups(signal) {
-    const options = signal ? { signal } : undefined;
-    const [loaded, mappings] = await Promise.all([
-      requestJson("/segment-groups", options),
-      requestJson("/corresponding-tag-mappings", options),
-    ]);
+    const loaded = await requestJson("/segment-groups", signal ? { signal } : undefined);
     setGroups(loaded || []);
-    setCorrespondingTagMappings(Object.fromEntries((mappings || []).map((mapping) => [mapping.sourceTagId, mapping])));
-  }
-
-  async function changeCorrespondingTag(sourceTagId, correspondingTagId) {
-    const current = correspondingTagMappings[sourceTagId] || null;
-    setCorrespondingTagBusy(true);
-    setMessage("");
-    try {
-      const mappings = await requestJson("/corresponding-tag-mappings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mappings: [{
-          sourceTagId,
-          correspondingTagId,
-          expectedUpdatedAt: current?.updatedAt ?? null,
-        }] }),
-      });
-      setCorrespondingTagMappings(Object.fromEntries((mappings || []).map((mapping) => [mapping.sourceTagId, mapping])));
-      setMessage(correspondingTagId == null ? "Corresponding tag cleared." : "Corresponding tag saved.");
-      if (correspondingTagId != null) {
-        setCorrespondingSourceTag(null);
-        setCorrespondingTargetTag(null);
-      }
-    } catch (error) {
-      setMessage(error.message || "Unable to save corresponding tag.");
-      try { await loadGroups(); } catch {}
-    } finally {
-      setCorrespondingTagBusy(false);
-    }
   }
 
   useEffect(() => {
@@ -570,91 +533,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
           className: "rounded-md border border-border px-3 py-2 text-sm font-medium text-secondary hover:bg-muted/40",
         }, "Cancel"),
       ]) : null,
-    ]),
-    h("section", { key: "corresponding-tags", hidden: activeSettingsTab !== "corresponding-tags", className: "space-y-3 rounded-lg border border-border bg-surface p-4" }, [
-      h("div", { key: "heading" }, [
-        h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "Corresponding tags"),
-        h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
-          "Map model or source tags to the long-term library tags used when segments are converted."),
-      ]),
-      h("div", { key: "create-scroll", className: "overflow-x-auto" }, h("div", {
-        className: "grid min-w-[42rem] items-center gap-2",
-        style: { gridTemplateColumns: "minmax(12rem, 1fr) auto minmax(12rem, 1fr) auto" },
-      }, [
-        h("label", { key: "source", className: "min-w-0" }, [
-          h("span", { key: "label", className: "sr-only" }, "Source tag"),
-          h(EntityReferenceSelector, {
-            key: `source:${correspondingSourceTag?.id ?? "none"}`,
-            entityType: "tag",
-            value: correspondingSourceTag?.id ?? null,
-            selectedDisplay: "input",
-            selectedLabel: correspondingSourceTag?.label || "",
-            onChange: (tagId, option) => setCorrespondingSourceTag(tagId == null ? null : { id: Number(tagId), label: option?.label || `Tag ${tagId}` }),
-            disabled: correspondingTagBusy,
-            excludeIds: [
-              ...Object.keys(correspondingTagMappings).map(Number),
-              ...(correspondingTargetTag ? [correspondingTargetTag.id] : []),
-            ],
-            placeholder: "Choose source tag…",
-            creatable: false,
-            allowCreate: false,
-          }),
-        ]),
-        h("span", { key: "arrow", "aria-hidden": "true", className: "hidden text-center text-secondary md:block" }, "→"),
-        h("label", { key: "target", className: "min-w-0" }, [
-          h("span", { key: "label", className: "sr-only" }, "Corresponding library tag"),
-          h(EntityReferenceSelector, {
-            key: `target:${correspondingTargetTag?.id ?? "none"}`,
-            entityType: "tag",
-            value: correspondingTargetTag?.id ?? null,
-            selectedDisplay: "input",
-            selectedLabel: correspondingTargetTag?.label || "",
-            onChange: (tagId, option) => setCorrespondingTargetTag(tagId == null ? null : { id: Number(tagId), label: option?.label || `Tag ${tagId}` }),
-            disabled: correspondingTagBusy,
-            excludeIds: correspondingSourceTag ? [correspondingSourceTag.id] : [],
-            placeholder: "Choose corresponding tag…",
-            creatable: false,
-            allowCreate: false,
-          }),
-        ]),
-        h("button", {
-          key: "save",
-          type: "button",
-          disabled: correspondingTagBusy || !correspondingSourceTag || !correspondingTargetTag
-            || correspondingSourceTag.id === correspondingTargetTag.id,
-          onClick: () => changeCorrespondingTag(correspondingSourceTag.id, correspondingTargetTag.id),
-          className: "rounded-md border border-accent bg-accent/15 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent/25 disabled:opacity-50",
-        }, correspondingTagBusy ? "Saving…" : "Add mapping"),
-      ])),
-      h("div", { key: "mappings", className: "space-y-2 overflow-x-auto" }, Object.values(correspondingTagMappings).length === 0
-        ? h("p", { className: "rounded-md border border-dashed border-border p-4 text-center text-sm text-secondary" }, "No corresponding tags configured yet.")
-        : Object.values(correspondingTagMappings)
-            .sort((left, right) => left.sourceTagName.localeCompare(right.sourceTagName, undefined, { numeric: true, sensitivity: "base" }))
-            .map((mapping) => h("div", {
-              key: mapping.sourceTagId,
-              className: "grid min-w-[42rem] items-center gap-2 rounded-md border border-border bg-card p-2",
-              style: { gridTemplateColumns: "minmax(12rem, 1fr) auto minmax(12rem, 1fr) auto" },
-            }, [
-              h("span", { key: "source", className: "min-w-0 truncate text-sm font-medium text-foreground", title: mapping.sourceTagName }, mapping.sourceTagName),
-              h("span", { key: "arrow", "aria-hidden": "true", className: "hidden text-center text-secondary md:block" }, "→"),
-              h("label", { key: "target", className: "min-w-0" }, [
-                h("span", { key: "label", className: "sr-only" }, `Corresponding tag for ${mapping.sourceTagName}`),
-                h(EntityReferenceSelector, {
-                  key: `mapping:${mapping.sourceTagId}:${mapping.correspondingTagId}`,
-                  entityType: "tag",
-                  value: mapping.correspondingTagId,
-                  selectedDisplay: "input",
-                  selectedLabel: mapping.correspondingTagName,
-                  onChange: (tagId) => changeCorrespondingTag(mapping.sourceTagId, tagId == null ? null : Number(tagId)),
-                  disabled: correspondingTagBusy,
-                  excludeIds: [mapping.sourceTagId],
-                  placeholder: "Choose corresponding tag…",
-                  creatable: false,
-                  allowCreate: false,
-                }),
-              ]),
-              h("button", { key: "clear", type: "button", disabled: correspondingTagBusy, onClick: () => changeCorrespondingTag(mapping.sourceTagId, null), className: "rounded-md border border-border px-3 py-2 text-xs text-secondary hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50" }, "Clear"),
-            ]))),
     ]),
     message ? h("p", { key: "message", role: "status", className: "rounded-md border border-border bg-card px-3 py-2 text-sm text-secondary" }, message) : null,
     activeSettingsTab === "organization" && loading ? h("p", { key: "loading", role: "status", className: "text-sm text-secondary" }, "Loading Segment groups…") : null,

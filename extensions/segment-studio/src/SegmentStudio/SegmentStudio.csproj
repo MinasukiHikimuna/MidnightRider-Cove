@@ -8,7 +8,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="SegmentStudioBaseline.sql" />
-    <EmbeddedResource Include="SegmentStudioCorrespondingTags.sql" />
+    <EmbeddedResource Include="SegmentStudioAnalysisSourceTags.sql" />
+    <EmbeddedResource Include="SegmentStudioRemoveCorrespondingTags.sql" />
   </ItemGroup>
 
 </Project>

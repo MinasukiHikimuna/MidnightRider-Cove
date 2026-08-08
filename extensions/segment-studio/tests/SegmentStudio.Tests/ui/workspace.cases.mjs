@@ -291,11 +291,11 @@ test("settings expose only sections present in the server feature profile", () =
   };
   assert.deepEqual(
     ui.visibleSegmentStudioSettingsTabs(basicProfile).map(([key]) => key),
-    ["general", "shortcuts", "organization", "corresponding-tags"],
+    ["general", "shortcuts", "organization"],
   );
   assert.deepEqual(
     ui.visibleSegmentStudioSettingsTabs(fullProfile).map(([key]) => key),
-    ["general", "shortcuts", "organization", "corresponding-tags", "performer-slots", "derivation"],
+    ["general", "shortcuts", "organization", "performer-slots", "derivation"],
   );
   assert.match(settings, /visibleSegmentStudioSettingsTabs\(profile\)/);
   assert.match(settings, /Analysis service/);
@@ -348,15 +348,6 @@ test("Organization settings use a drag-first card organizer with on-demand tag p
   assert.match(card, /Rename group/);
   assert.match(card, /Delete group/);
   assert.match(card, /selectedTagIds/);
-  assert.match(settings, /corresponding-tag-mappings/);
-  assert.match(settings, /Corresponding tags/);
-  assert.match(settings, /Choose source tag/);
-  assert.match(settings, /Choose corresponding tag/);
-  assert.match(settings, /No corresponding tags configured yet/);
-  assert.match(settings, /activeSettingsTab !== "corresponding-tags"/);
-  assert.equal([
-    ...settings.matchAll(/gridTemplateColumns: "minmax\(12rem, 1fr\) auto minmax\(12rem, 1fr\) auto"/g),
-  ].length, 2);
   assert.doesNotMatch(card, /Move .* up|Move .* down|Add or move Segment tag/);
   assert.doesNotMatch(card, /renderTagDropLine|group\.tags\.flatMap/);
   assert.match(card, /data-segment-tag-drop-indicator/);

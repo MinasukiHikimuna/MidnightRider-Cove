@@ -30,7 +30,6 @@ import { createWorkflowActions } from "./actions/workflow.js";
 import { createHistoryAndLayoutActions } from "./actions/history-and-layout.js";
 import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
-import { useCorrespondingTags } from "./hooks/useCorrespondingTags.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
@@ -133,22 +132,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   }, [materializeOpen, materializeLoading]);
   const video = detail.video;
   const segments = detail.segments || EMPTY_EDITOR_COLLECTION;
-  const correspondingTagsRefreshKey = useMemo(() => segments.map((segment) =>
-    `${segment.itemId ?? ""}:${segment.tagId}:${segment.reviewState}:${segment.revision}`).join("|"),
-  [segments]);
-  const {
-    correspondingTags,
-    correspondingTagsBusy,
-    correspondingTagsError,
-    correspondingTagsOpen,
-    convertCorrespondingTagMappings,
-    saveCorrespondingTagMappings,
-    setCorrespondingTagsOpen,
-  } = useCorrespondingTags(
-    detail.video.id,
-    compatibilityMode,
-    correspondingTagsRefreshKey,
-  );
   const segmentGroups = detail.segmentGroups || EMPTY_EDITOR_COLLECTION;
   const performerSlots = detail.performerSlots || EMPTY_EDITOR_COLLECTION;
   const performerSlotsAvailable = compatibilityMode
@@ -187,37 +170,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
   }
 
-  async function convertCorrespondingTags(reviewStates) {
-    if (savingSegmentId != null || correspondingTagsBusy) return;
-    setSavingSegmentId(-1);
-    setSaveMessage("Converting corresponding tags…");
-    try {
-      const result = await convertCorrespondingTagMappings(
-        reviewStates,
-        historyRef.current.revision,
-      );
-      if (!result) {
-        setSaveMessage("Corresponding-tag conversion did not complete.");
-        return;
-      }
-      if (result.history) acceptHistory(result.history);
-      await onReload();
-      const lineageMessage = result.lineageProtectedCount
-        ? ` ${result.lineageProtectedCount} lineage-protected segment${result.lineageProtectedCount === 1 ? " was" : "s were"} skipped.`
-        : "";
-      const slotPermissionMessage = result.slotPermissionProtectedCount
-        ? ` ${result.slotPermissionProtectedCount} segment${result.slotPermissionProtectedCount === 1 ? " needs" : "s need"} performer-slot write access and ${result.slotPermissionProtectedCount === 1 ? "was" : "were"} skipped.`
-        : "";
-      setSaveMessage(`${result.convertedCount} segment${result.convertedCount === 1 ? "" : "s"} converted.${lineageMessage}${slotPermissionMessage}`);
-    } catch (error) {
-      if (error.status === 409 && error.payload?.currentHistory)
-        acceptHistory(error.payload.currentHistory);
-      setSaveMessage(error.message || "Unable to finish corresponding-tag conversion.");
-      await onReload();
-    } finally {
-      setSavingSegmentId(null);
-    }
-  }
 
   function closeEditorFilters() {
     setFiltersOpen(false);
@@ -780,11 +732,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     collapsedSegmentGroups,
     compatibilityMode,
     completeReview,
-    correspondingTags,
-    correspondingTagsBusy,
-    correspondingTagsError,
-    correspondingTagsOpen,
-    convertCorrespondingTags,
     configuringTag,
     createSegment,
     currentTime,
@@ -846,7 +793,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     restoreHistoryTarget,
     saveMessage,
     saveTag,
-    saveCorrespondingTagMappings,
     saveTiming,
     savingSegmentId,
     seekRef,
@@ -866,7 +812,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setAutoAssignError,
     setAutoAssignOpen,
     setConfiguringTag,
-    setCorrespondingTagsOpen,
     setCurrentTime,
     setEditorFilters,
     setEditorLayout,

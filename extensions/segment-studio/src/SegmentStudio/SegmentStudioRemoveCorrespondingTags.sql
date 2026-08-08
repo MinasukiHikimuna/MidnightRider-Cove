@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS segment_studio_corresponding_tag_mappings;

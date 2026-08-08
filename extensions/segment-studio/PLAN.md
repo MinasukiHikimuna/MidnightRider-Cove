@@ -93,8 +93,8 @@ Segment Studio 0.7 is implemented as a MidnightRider full extension.
 - Cove's normal global sidebar remains present. The state-colored marker rail is
   available beside the primary pane but can be collapsed; its visibility and the
   timeline split are remembered in browser-local storage. Marker creation, splitting,
-  duplication, deletion, and legacy corresponding-tag controls are not
-  part of this direct-canonical slice.
+  duplication, deletion, and legacy marker-conversion controls are not part of
+  this direct-canonical slice.
 - Approve, reject, unreview, start-time edits, and end-time edits save immediately
   to the canonical segment.
 - Each mutation requires `segments.write` on the owning video and respects Cove's

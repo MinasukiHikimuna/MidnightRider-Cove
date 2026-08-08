@@ -134,12 +134,20 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         using var reader = new StreamReader(stream);
         Migration("001_initial_schema", reader.ReadToEnd());
 
-        using var correspondingTagsStream = typeof(SegmentStudioExtension).Assembly
-            .GetManifestResourceStream("SegmentStudio.SegmentStudioCorrespondingTags.sql")
+        using var analysisSourceTagsStream = typeof(SegmentStudioExtension).Assembly
+            .GetManifestResourceStream("SegmentStudio.SegmentStudioAnalysisSourceTags.sql")
             ?? throw new InvalidOperationException(
-                "The embedded Segment Studio corresponding-tags migration is missing.");
-        using var correspondingTagsReader = new StreamReader(correspondingTagsStream);
-        Migration("002_corresponding_tags", correspondingTagsReader.ReadToEnd());
+                "The embedded Segment Studio analysis source-tag migration is missing.");
+        using var analysisSourceTagsReader = new StreamReader(analysisSourceTagsStream);
+        Migration("002_corresponding_tags", analysisSourceTagsReader.ReadToEnd());
+
+        using var removeCorrespondingTagsStream = typeof(SegmentStudioExtension).Assembly
+            .GetManifestResourceStream("SegmentStudio.SegmentStudioRemoveCorrespondingTags.sql")
+            ?? throw new InvalidOperationException(
+                "The embedded Segment Studio mapping cleanup migration is missing.");
+        using var removeCorrespondingTagsReader = new StreamReader(removeCorrespondingTagsStream);
+        Migration("003_remove_corresponding_tags", removeCorrespondingTagsReader.ReadToEnd());
+
     }
 
     public override UIManifest GetUIManifest() =>
@@ -1737,113 +1745,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.LineageManage);
 
-        endpoints.MapGet(
-                "/api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags",
-                async (int videoId, DbContext db, CancellationToken ct) =>
-                    Results.Ok(await CorrespondingTagService.GetSummaryAsync(
-                        db, videoId, ct)))
-            .RequireAuthorization()
-            .RequireCovePermission(
-                PermissionMode.All,
-                Permissions.SegmentsRead,
-                Permissions.TagsRead)
-            .RequireCoveEntityAccess(
-                EntityKinds.Video,
-                "videoId",
-                Permissions.VideosRead)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
-
-        endpoints.MapPut(
-                "/api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags",
-                async Task<IResult> (int videoId,
-                    [FromBody] SaveCorrespondingTagMappingsRequest request,
-                    DbContext db,
-                    CancellationToken ct) =>
-                {
-                    var result = await CorrespondingTagService.SaveMappingsAsync(
-                        db,
-                        videoId,
-                        request.Mappings ?? [],
-                        ct);
-                    return result.Success
-                        ? Results.Ok(result.Value)
-                        : result.Conflict
-                            ? Results.Conflict(new
-                            {
-                                error = result.Error,
-                                current = result.Value,
-                            })
-                            : Results.BadRequest(new { error = result.Error });
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(
-                PermissionMode.All,
-                Permissions.SegmentsWrite,
-                Permissions.TagsRead,
-                Permissions.TagsWrite)
-            .RequireCoveEntityAccess(
-                EntityKinds.Video,
-                "videoId",
-                Permissions.VideosWrite)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
-
-        endpoints.MapPost(
-                "/api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags/convert",
-                async Task<IResult> (int videoId,
-                    [FromBody] ConvertCorrespondingTagsRequest request,
-                    DbContext db,
-                    ICurrentPrincipalAccessor principalAccessor,
-                    Cove.Core.Auth.IAuthorizationService authorization,
-                    [FromServices] ISegmentSpanCacheInvalidator spanCacheInvalidator,
-                    CancellationToken ct) =>
-                {
-                    if (principalAccessor.Current?.UserId is not int userId)
-                        return Results.Unauthorized();
-                    var slotAccess =
-                        await SegmentStudioAuthorization.AuthorizePerformerSlotAssignmentWriteAsync(
-                            principalAccessor.Current,
-                            authorization,
-                            videoId,
-                            ct);
-                    var result = await CorrespondingTagService.ConvertAsync(
-                        db,
-                        videoId,
-                        request,
-                        userId,
-                        slotAccess.Allowed,
-                        ct);
-                    if (result.Success && result.ConvertedCount > 0)
-                        PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return result.Success
-                        ? Results.Ok(result)
-                        : result.HistoryConflict
-                            ? Results.Conflict(new
-                            {
-                                error = result.Error,
-                                currentHistory = result.History,
-                            })
-                            : result.MappingConflict
-                                ? Results.Conflict(new
-                                {
-                                    error = result.Error,
-                                    currentMappings = result.Value,
-                                })
-                                : Results.BadRequest(new { error = result.Error });
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(
-                PermissionMode.All,
-                Permissions.SegmentsWrite,
-                Permissions.TagsRead)
-            .RequireCoveEntityAccess(
-                EntityKinds.Video,
-                "videoId",
-                Permissions.VideosWrite)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
-
         endpoints.MapPost(
                 "/api/plugins/segment-studio/items/{itemId:long}/tag-change/preview",
                 async (long itemId, TagChangePreviewRequest request, DbContext db,
@@ -2159,40 +2060,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 PermissionMode.All,
                 LineageMaintenancePermission,
                 LineageManagePermission);
-
-        endpoints.MapGet(
-                "/api/plugins/segment-studio/corresponding-tag-mappings",
-                async (DbContext db, ICurrentPrincipalAccessor principalAccessor,
-                    Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
-                {
-                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupReadAsync(
-                        principalAccessor.Current, authorization, ct);
-                    return access.Allowed
-                        ? Results.Ok(await CorrespondingTagService.ListMappingsAsync(db, ct))
-                        : Results.Json(new { error = access.Reason ?? "You cannot view corresponding tags." }, statusCode: StatusCodes.Status403Forbidden);
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsRead, Permissions.TagsRead)
-            .RequireSegmentStudioCapability(SegmentStudioCapabilities.SegmentGroupsManage);
-
-        endpoints.MapPut(
-                "/api/plugins/segment-studio/corresponding-tag-mappings",
-                async Task<IResult> ([FromBody] SaveCorrespondingTagMappingsRequest request, DbContext db,
-                    ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
-                    CancellationToken ct) =>
-                {
-                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupWriteAsync(
-                        principalAccessor.Current, authorization, ct);
-                    if (!access.Allowed)
-                        return Results.Json(new { error = access.Reason ?? "You cannot change corresponding tags." }, statusCode: StatusCodes.Status403Forbidden);
-                    var result = await CorrespondingTagService.SaveGlobalMappingsAsync(db, request.Mappings ?? [], ct);
-                    return result.Success
-                        ? Results.Ok(result.Rows)
-                        : Results.BadRequest(new { error = result.Error, current = result.Rows });
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.TagsRead, Permissions.TagsWrite)
-            .RequireSegmentStudioCapability(SegmentStudioCapabilities.SegmentGroupsManage);
 
         endpoints.MapGet(
                 "/api/plugins/segment-studio/segment-groups",
