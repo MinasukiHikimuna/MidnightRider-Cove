@@ -354,7 +354,9 @@ test("Organization settings use a drag-first card organizer with on-demand tag p
   assert.match(settings, /Choose corresponding tag/);
   assert.match(settings, /No corresponding tags configured yet/);
   assert.match(settings, /activeSettingsTab !== "corresponding-tags"/);
-  assert.match(settings, /min-w-\[42rem\] grid-cols/);
+  assert.equal([
+    ...settings.matchAll(/gridTemplateColumns: "minmax\(12rem, 1fr\) auto minmax\(12rem, 1fr\) auto"/g),
+  ].length, 2);
   assert.doesNotMatch(card, /Move .* up|Move .* down|Add or move Segment tag/);
   assert.doesNotMatch(card, /renderTagDropLine|group\.tags\.flatMap/);
   assert.match(card, /data-segment-tag-drop-indicator/);

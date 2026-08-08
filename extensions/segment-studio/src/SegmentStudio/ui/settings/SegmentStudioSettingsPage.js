@@ -577,7 +577,10 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
         h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
           "Map model or source tags to the long-term library tags used when segments are converted."),
       ]),
-      h("div", { key: "create-scroll", className: "overflow-x-auto" }, h("div", { className: "grid min-w-[42rem] grid-cols-[minmax(12rem,1fr)_auto_minmax(12rem,1fr)_auto] items-center gap-2" }, [
+      h("div", { key: "create-scroll", className: "overflow-x-auto" }, h("div", {
+        className: "grid min-w-[42rem] items-center gap-2",
+        style: { gridTemplateColumns: "minmax(12rem, 1fr) auto minmax(12rem, 1fr) auto" },
+      }, [
         h("label", { key: "source", className: "min-w-0" }, [
           h("span", { key: "label", className: "sr-only" }, "Source tag"),
           h(EntityReferenceSelector, {
@@ -627,7 +630,11 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
         ? h("p", { className: "rounded-md border border-dashed border-border p-4 text-center text-sm text-secondary" }, "No corresponding tags configured yet.")
         : Object.values(correspondingTagMappings)
             .sort((left, right) => left.sourceTagName.localeCompare(right.sourceTagName, undefined, { numeric: true, sensitivity: "base" }))
-            .map((mapping) => h("div", { key: mapping.sourceTagId, className: "grid min-w-[42rem] grid-cols-[minmax(12rem,1fr)_auto_minmax(12rem,1fr)_auto] items-center gap-2 rounded-md border border-border bg-card p-2" }, [
+            .map((mapping) => h("div", {
+              key: mapping.sourceTagId,
+              className: "grid min-w-[42rem] items-center gap-2 rounded-md border border-border bg-card p-2",
+              style: { gridTemplateColumns: "minmax(12rem, 1fr) auto minmax(12rem, 1fr) auto" },
+            }, [
               h("span", { key: "source", className: "min-w-0 truncate text-sm font-medium text-foreground", title: mapping.sourceTagName }, mapping.sourceTagName),
               h("span", { key: "arrow", "aria-hidden": "true", className: "hidden text-center text-secondary md:block" }, "→"),
               h("label", { key: "target", className: "min-w-0" }, [
