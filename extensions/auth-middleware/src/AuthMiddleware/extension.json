@@ -1,0 +1,49 @@
+{
+  "id": "com.midnightrider.auth-middleware",
+  "name": "Authentication Middleware",
+  "version": "0.1.0",
+  "description": "Adds generic OpenID Connect login and trusted reverse-proxy username authentication while Cove retains local account and permission control.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "minCoveVersion": "1.1.1-dev.134",
+  "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "dependencies": {},
+  "externalDependencies": [
+    {
+      "id": "openid-provider",
+      "name": "OpenID Connect provider",
+      "kind": "service",
+      "required": false,
+      "description": "Required only when OIDC login is enabled. The Cove backend and browser must both reach the configured issuer.",
+      "installHint": "Configure an Authorization Code provider with PKCE and an exact Cove callback URI.",
+      "dockerHint": "Run the identity provider on a host reachable from both the browser and the Cove container.",
+      "url": "https://openid.net/developers/how-connect-works/"
+    },
+    {
+      "id": "authenticated-reverse-proxy",
+      "name": "Authenticated reverse proxy",
+      "kind": "service",
+      "required": false,
+      "description": "Required only for trusted-header mode. It must authenticate requests, remove client-supplied identity headers, and set one canonical username header.",
+      "installHint": "Keep Cove's direct upstream private and trust only the proxy's narrow direct-peer IP or CIDR.",
+      "dockerHint": "If the proxy is containerized, give it explicit network paths to Cove and the authentication outpost.",
+      "url": "https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth/"
+    }
+  ],
+  "settings": [],
+  "entryDll": "AuthMiddleware.dll",
+  "sharedAssemblies": [],
+  "jsBundle": "dist/ui.mjs",
+  "cssBundle": "dist/ui.css",
+  "categories": [
+    "security",
+    "integration"
+  ],
+  "permissions": {
+    "network": [
+      "configured OpenID Connect issuer"
+    ],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

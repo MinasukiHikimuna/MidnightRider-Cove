@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.auth-middleware",
+  "name": "AuthMiddleware",
+  "tagPrefix": "com.midnightrider.auth-middleware/",
+  "solution": "AuthMiddleware.slnx",
+  "project": "src/AuthMiddleware/AuthMiddleware.csproj",
+  "manifest": "src/AuthMiddleware/extension.json",
+  "readme": "README.md",
+  "ui": "src/AuthMiddleware/dist",
+  "uiPackagePath": "dist",
+  "uiBuildDirectory": "src/AuthMiddleware/ui"
+}

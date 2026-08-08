@@ -3,6 +3,7 @@
 artifacts/
 extensions/animated-tag-previews/src/AnimatedTagPreviews/dist/
 extensions/animated-tag-previews/src/AnimatedTagPreviews/ui/node_modules/
+extensions/auth-middleware/src/AuthMiddleware/ui/node_modules/
 *.zip
 .DS_Store
 **/.venv/
