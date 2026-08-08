@@ -6,7 +6,7 @@ import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledS
 import { segmentsHistoryState } from "../model/history.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, compatibilityMode, detailPanelRef, historyRef, mergeSavingRef, onConflict, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, compatibilityMode, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -177,8 +177,28 @@ function createReviewActions(context) {
           identity.itemId = item.itemId;
         });
         if (result.history) acceptHistory(result.history);
-        const loaded = await onReload();
-        restoreSelection(loaded);
+        if (reviewState === "approved") {
+          onDetailChange((current) => ({
+            ...current,
+            segments: (current.segments || []).map((segment) => {
+              const item = resultByIdentity.get(segment.nativeSegmentId != null
+                ? `native:${segment.nativeSegmentId}`
+                : `item:${segment.itemId}`);
+              return item ? {
+                ...segment,
+                itemId: item.itemId,
+                nativeSegmentId: item.nativeSegmentId,
+                published: item.nativeSegmentId != null,
+                reviewState,
+                revision: item.revision,
+                updatedAt: item.updatedAt,
+              } : segment;
+            }),
+          }), video.id);
+        } else {
+          const loaded = await onReload();
+          restoreSelection(loaded);
+        }
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
         if (error.status === 409 && error.payload?.currentHistory)

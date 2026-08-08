@@ -157,6 +157,29 @@ function createHistoryAndLayoutActions(context) {
       const sourceState = step.direction === "backward"
         ? step.action.afterState
         : step.action.beforeState;
+      if (state?.type === "composite") {
+        let current = loaded;
+        const sourceStates = sourceState?.type === "composite"
+          ? sourceState.states || []
+          : [];
+        for (const [index, childState] of (state.states || []).entries()) {
+          const sourceChild = sourceStates[index];
+          current = await applyHistoryState({
+            ...step,
+            state: childState,
+            action: {
+              ...step.action,
+              beforeState: step.direction === "backward"
+                ? childState
+                : sourceChild,
+              afterState: step.direction === "backward"
+                ? sourceChild
+                : childState,
+            },
+          }, current, pendingOperationKeys);
+        }
+        return current;
+      }
       if (state?.type === "segment" || state?.type === "segments")
         return applySegmentHistoryState(
           state,

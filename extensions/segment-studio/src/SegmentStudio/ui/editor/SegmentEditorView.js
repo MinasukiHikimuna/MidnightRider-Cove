@@ -14,11 +14,12 @@ import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
 import { DEFAULT_EDITOR_LAYOUT } from "../shared/constants.js";
 import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
+import { CorrespondingTagsDialog } from "./dialogs/CorrespondingTagsDialog.js";
 import { readShortcutBindingOverrides } from "./model/shortcuts.js";
 import { ChevronDown } from "@cove/runtime/lucide-react";
 
 function SegmentEditorView(props) {
-  const { activeFilterCount, allSwimlanes, analysisError, analysisProvenanceRepair, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, backfillAnalysisProvenance, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closeTagEditing, collapsedSegmentGroups, compatibilityMode, completeReview, configuringTag, createSegment, currentTime, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onNavigate, onReload, onSlotsChanged, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
+  const { activeFilterCount, allSwimlanes, analysisError, analysisProvenanceRepair, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, backfillAnalysisProvenance, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closeTagEditing, collapsedSegmentGroups, compatibilityMode, completeReview, configuringTag, correspondingTags, correspondingTagsBusy, correspondingTagsError, correspondingTagsOpen, convertCorrespondingTags, createSegment, currentTime, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onNavigate, onReload, onSlotsChanged, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveCorrespondingTagMappings, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCorrespondingTagsOpen, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
 
   function renderSegmentRailItem(segment) {
       const selected = selectedSegmentIds.includes(segment.id);
@@ -167,6 +168,7 @@ function SegmentEditorView(props) {
                 : "Full Scan"),
               h("details", { key: "choices", className: "relative flex" }, [
                 h("summary", {
+                  key: "summary",
                   "aria-label": "Choose Full Scan analyses",
                   "aria-disabled": analysisStatus?.configured === false
                     || analysisStatus?.ready === false
@@ -194,6 +196,7 @@ function SegmentEditorView(props) {
                     : "cursor-pointer hover:opacity-90"}`,
                 }, h(ChevronDown, { className: "h-4 w-4" })),
                 h("div", {
+                  key: "menu",
                   className: "absolute right-0 top-full z-50 mt-1 min-w-48 whitespace-nowrap rounded-md border border-border bg-card p-1 shadow-xl",
                 }, [
                   ["AI analysis only", ["aiTagging"]],
@@ -235,6 +238,14 @@ function SegmentEditorView(props) {
               : analysisProvenanceRepair === "queueing"
                 ? "Queueing repair…"
                 : "Repair provenance") : null,
+            compatibilityMode && correspondingTags.sourceTagCount > 0 ? h("button", {
+              key: "corresponding-tags",
+              type: "button",
+              disabled: savingSegmentId != null,
+              onClick: () => setCorrespondingTagsOpen(true),
+              title: "Optionally map Full Scan model labels to long-term library tags",
+              className: "rounded-md border border-cyan-400/60 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-cyan-500/20 disabled:opacity-50",
+            }, `Corresponding tags (${correspondingTags.sourceTagCount})`) : null,
             compatibilityMode ? h("button", {
               key: "auto-assign-performers",
               type: "button",
@@ -422,6 +433,15 @@ function SegmentEditorView(props) {
         cancelButtonRef: materializeCancelButtonRef,
         onConfirm: materializeDerivedSegments,
         onClose: () => { if (!materializing) closeMaterializeDialog(); },
+      }) : null,
+      correspondingTagsOpen ? h(CorrespondingTagsDialog, {
+        key: "corresponding-tags-dialog",
+        summary: correspondingTags,
+        busy: correspondingTagsBusy,
+        error: correspondingTagsError,
+        onSave: saveCorrespondingTagMappings,
+        onConvert: convertCorrespondingTags,
+        onClose: () => setCorrespondingTagsOpen(false),
       }) : null,
       h("div", {
         key: "workspace",

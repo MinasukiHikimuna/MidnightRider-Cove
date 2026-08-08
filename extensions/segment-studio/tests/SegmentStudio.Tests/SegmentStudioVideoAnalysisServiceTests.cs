@@ -3,6 +3,8 @@ namespace SegmentStudio.Tests;
 using System.Net;
 using System.Text.Json;
 using Cove.Core.Entities;
+using Cove.Core.Interfaces;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -33,7 +35,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
         await db.SaveChangesAsync();
         var client = new FakeClient(Response() with { Ai = null, OmniShotCut = null });
-        var service = CreateService(client);
+        var service = CreateService(client, db);
 
         var run = await service.CreateRunAsync(
             db, 8, new([SegmentStudioAnalysisKind.AiTagging]), default);
@@ -53,7 +55,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         db.Add(new Tag { Id = 20, Name = "Example tag" });
         await db.SaveChangesAsync();
         var client = new FakeClient(Response());
-        var service = CreateService(client);
+        var service = CreateService(client, db);
 
         var run = await service.CreateRunAsync(db, 7, new(), default);
         await service.ExecuteRunAsync(db, run.Id, new(), default);
@@ -83,6 +85,131 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
     }
 
     [Fact]
+    public async Task FullRunCreatesMissingModelTagsAndRecordsTheirSourceIdentity()
+    {
+        await using var db = CreateContext();
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        await db.SaveChangesAsync();
+        var service = CreateService(new FakeClient(Response()), db);
+
+        var run = await service.CreateRunAsync(db, 7, new(), default);
+        await service.ExecuteRunAsync(db, run.Id, new(), default);
+
+        var tag = Assert.Single(await db.Set<Tag>().ToListAsync());
+        Assert.Equal("Example tag", tag.Name);
+        var candidate = Assert.Single(
+            await db.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Equal(tag.Id, candidate.SourceTagId);
+        Assert.Equal(tag.Id,
+            Assert.Single(await db.Set<SegmentStudioItem>().ToListAsync()).TagId);
+    }
+
+    [Fact]
+    public async Task FullRunLeavesAmbiguousCaseInsensitiveModelTagsUnresolved()
+    {
+        await using var db = CreateContext();
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        db.Add(new Tag { Id = 20, Name = "Example Tag" });
+        db.Add(new Tag { Id = 21, Name = "EXAMPLE TAG" });
+        await db.SaveChangesAsync();
+        var response = Response() with
+        {
+            Ai = Response().Ai! with
+            {
+                Segments = [new(
+                    "candidate-1", "tag", "example tag", "Example", 1, 4,
+                    .8, "Example tag", 2)],
+            },
+        };
+        var service = CreateService(new FakeClient(response), db);
+
+        var run = await service.CreateRunAsync(db, 7, new(), default);
+        await service.ExecuteRunAsync(db, run.Id, new(), default);
+
+        var candidate = Assert.Single(
+            await db.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Null(candidate.SourceTagId);
+        Assert.Null(candidate.ItemId);
+        Assert.Empty(await db.Set<SegmentStudioItem>().ToListAsync());
+        Assert.Equal("completed", (await db.Set<SegmentStudioAnalysisRun>()
+            .SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task FullRunPreservesExactIdentityForCaseVariantModelTags()
+    {
+        await using var db = CreateContext();
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        db.Add(new Tag { Id = 20, Name = "Example Tag" });
+        db.Add(new Tag { Id = 21, Name = "example tag" });
+        await db.SaveChangesAsync();
+        var response = Response() with
+        {
+            Ai = Response().Ai! with
+            {
+                Segments =
+                [
+                    new("candidate-1", "tag", "Example Tag", "First", 1, 4,
+                        .8, "Example tag", 2),
+                    new("candidate-2", "tag", "example tag", "Second", 5, 8,
+                        .7, "Example tag", 2),
+                ],
+            },
+        };
+        var service = CreateService(new FakeClient(response), db);
+
+        var run = await service.CreateRunAsync(db, 7, new(), default);
+        await service.ExecuteRunAsync(db, run.Id, new(), default);
+
+        var candidates = await db.Set<SegmentStudioAnalysisCandidate>()
+            .OrderBy(candidate => candidate.CandidateKey)
+            .ToListAsync();
+        Assert.Equal([20, 21], candidates.Select(candidate => candidate.SourceTagId));
+        Assert.Equal(
+            [20, 21],
+            (await db.Set<SegmentStudioItem>().OrderBy(item => item.StartSec)
+                .ToListAsync()).Select(item => item.TagId));
+    }
+
+    [Fact]
+    public async Task FailedFullRunRollsBackTagsCreatedForModelLabels()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new AnalysisDbContext(
+            new DbContextOptionsBuilder<AnalysisDbContext>()
+                .UseSqlite(connection)
+                .Options);
+        await db.Database.EnsureCreatedAsync();
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile
+        {
+            Id = 10,
+            VideoId = 7,
+            Path = "/mnt/media/source.mp4",
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(
+            new FakeClient(Response()),
+            db,
+            new ThrowingProvenanceService());
+        var run = await service.CreateRunAsync(db, 7, new(), default);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ExecuteRunAsync(db, run.Id, new(), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.Set<Tag>().ToListAsync());
+        Assert.Empty(await db.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Empty(await db.Set<SegmentStudioItem>().ToListAsync());
+        Assert.Equal("failed", (await db.Set<SegmentStudioAnalysisRun>()
+            .SingleAsync()).Status);
+    }
+
+    [Fact]
     public async Task BasicRunCreatesIdempotentNativeSegmentsWithoutReviewOrShots()
     {
         await using var db = CreateContext();
@@ -93,7 +220,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         db.Add(new Tag { Id = 20, Name = "Example tag" });
         await db.SaveChangesAsync();
         var client = new FakeClient(Response());
-        var service = CreateService(client);
+        var service = CreateService(client, db);
 
         var first = await service.CreateRunAsync(
             db, 7, new(), SegmentStudioModes.Basic, default);
@@ -156,7 +283,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
         db.Add(new Tag { Id = 20, Name = "Example tag" });
         await db.SaveChangesAsync();
-        var service = CreateService(new FakeClient(Response()));
+        var service = CreateService(new FakeClient(Response()), db);
 
         var first = await service.CreateRunAsync(db, 7, new(), default);
         await service.ExecuteRunAsync(db, first.Id, new(), default);
@@ -195,7 +322,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
             Revision = 1, CreatedAt = now, UpdatedAt = now,
         });
         await db.SaveChangesAsync();
-        var service = CreateService(new FakeClient(Response()));
+        var service = CreateService(new FakeClient(Response()), db);
 
         var run = await service.CreateRunAsync(db, 7, new(), default);
         await service.ExecuteRunAsync(db, run.Id, new(), default);
@@ -216,7 +343,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         await db.SaveChangesAsync();
         var service = CreateService(new FakeClient(
             new SegmentStudioAnalysisServiceException(
-                HttpStatusCode.ServiceUnavailable, "gpu_busy", "Analysis service is busy.", true)));
+                HttpStatusCode.ServiceUnavailable, "gpu_busy", "Analysis service is busy.", true)), db);
         var run = await service.CreateRunAsync(
             db, 7, new([SegmentStudioAnalysisKind.OmniShotCut]), default);
 
@@ -238,7 +365,7 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
         db.Add(new Tag { Id = 20, Name = "Example tag" });
         await db.SaveChangesAsync();
-        var service = CreateService(new FakeClient(Response()));
+        var service = CreateService(new FakeClient(Response()), db);
         var run = await service.CreateRunAsync(db, 7, new(), default);
         await service.ExecuteRunAsync(db, run.Id, new(), default);
 
@@ -264,14 +391,97 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
     private static SegmentStudioVideoAnalysisService CreateService(
-        ISegmentStudioAnalysisClient client) => new(
+        ISegmentStudioAnalysisClient client,
+        AnalysisDbContext db,
+        ISegmentStudioAnalysisProvenanceService? provenance = null) => new(
         client,
-        new SegmentStudioAnalysisProvenanceService(
-            new SegmentSourceRegistry(),
-            new ProvenanceActivityService(),
-            new LineageNodeService(),
-            new SegmentProvenanceService()),
+        new TestTagRepository(db),
+        provenance ?? new SegmentStudioAnalysisProvenanceService(
+                new SegmentSourceRegistry(),
+                new ProvenanceActivityService(),
+                new LineageNodeService(),
+                new SegmentProvenanceService()),
         NullLogger<SegmentStudioVideoAnalysisService>.Instance);
+
+    private sealed class ThrowingProvenanceService
+        : ISegmentStudioAnalysisProvenanceService
+    {
+        public Task<int> ProjectAsync(
+            DbContext db,
+            SegmentStudioAnalysisRun run,
+            SegmentStudioAnalyzeVideoRequest request,
+            SegmentStudioAnalyzeVideoResponse response,
+            IReadOnlyList<SegmentStudioAnalysisCandidate> candidates,
+            CancellationToken ct) => throw new InvalidOperationException(
+                "Synthetic provenance failure after tag creation.");
+
+        public Task<int> BackfillAsync(
+            DbContext db,
+            Guid runId,
+            CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class TestTagRepository(AnalysisDbContext db) : ITagRepository
+    {
+        private AnalysisDbContext Context => db;
+
+        public async Task<Dictionary<string, Tag>> FindOrCreateByNamesAsync(
+            IReadOnlyList<string> names,
+            CancellationToken ct = default)
+        {
+            var normalized = names.Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var existing = await Context.Set<Tag>().ToListAsync(ct);
+            var byName = existing.ToDictionary(
+                tag => tag.Name,
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var name in normalized)
+            {
+                if (byName.ContainsKey(name)) continue;
+                var tag = new Tag { Name = name, SortName = name };
+                Context.Add(tag);
+                byName[name] = tag;
+            }
+            await Context.SaveChangesAsync(ct);
+            return byName;
+        }
+
+        public Task<Tag?> GetByIdAsync(int id, CancellationToken ct = default) =>
+            Context.Set<Tag>().FindAsync([id], ct).AsTask();
+        public Task<IReadOnlyList<Tag>> GetAllAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Tag>>(Context.Set<Tag>().ToList());
+        public Task<Tag> AddAsync(Tag entity, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task UpdateAsync(Tag entity, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task DeleteAsync(int id, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<int> CountAsync(CancellationToken ct = default) =>
+            Context.Set<Tag>().CountAsync(ct);
+        public Task<(IReadOnlyList<Tag> Items, int TotalCount)> FindAsync(
+            TagFilter? filter,
+            FindFilter? findFilter,
+            CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Tag?> GetByIdWithRelationsAsync(
+            int id,
+            CancellationToken ct = default) => GetByIdAsync(id, ct);
+        public Task<Tag?> GetByNameAsync(
+            string name,
+            CancellationToken ct = default) => Context.Set<Tag>()
+                .FirstOrDefaultAsync(tag => tag.Name == name, ct);
+        public async Task<IReadOnlyList<Tag>> FindByNamesAsync(
+            IReadOnlyList<string> names,
+            CancellationToken ct = default)
+        {
+            var normalized = names.Select(name => name.ToLowerInvariant())
+                .ToArray();
+            return await Context.Set<Tag>()
+                .Where(tag => normalized.Contains(tag.Name.ToLower()))
+                .ToListAsync(ct);
+        }
+    }
 
     private static SegmentStudioAnalyzeVideoResponse Response() => new(
         "1",

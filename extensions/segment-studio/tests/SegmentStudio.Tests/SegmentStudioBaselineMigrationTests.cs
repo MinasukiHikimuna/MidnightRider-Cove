@@ -5,7 +5,7 @@ namespace SegmentStudio.Tests;
 public sealed class SegmentStudioBaselineMigrationTests
 {
     [Fact]
-    public async Task InitialSchemaAppliesToFreshPostgreSqlSchema()
+    public async Task SchemaMigrationsApplyToFreshPostgreSqlSchema()
     {
         var connectionString =
             Environment.GetEnvironmentVariable("COVE__Postgres__ConnectionString")
@@ -32,14 +32,24 @@ public sealed class SegmentStudioBaselineMigrationTests
             await connection.OpenAsync();
             await new NpgsqlCommand(CoreSchema, connection).ExecuteNonQueryAsync();
 
-            var migration = Assert.Single(
-                new SegmentStudioExtension().GetMigrations());
-            await new NpgsqlCommand(migration.UpSql, connection)
+            var migrations = new SegmentStudioExtension().GetMigrations().ToArray();
+            await new NpgsqlCommand(migrations[0].UpSql, connection)
                 .ExecuteNonQueryAsync();
+            await new NpgsqlCommand(UpgradeFixture, connection)
+                .ExecuteNonQueryAsync();
+            foreach (var migration in migrations.Skip(1))
+                await new NpgsqlCommand(migration.UpSql, connection)
+                    .ExecuteNonQueryAsync();
 
-            Assert.Equal(32, await CountAsync(
+            Assert.Equal(33, await CountAsync(
                 connection,
                 "SELECT count(*) FROM pg_tables WHERE schemaname = current_schema() AND tablename LIKE 'segment_studio_%'"));
+            Assert.Equal(1, await CountAsync(
+                connection,
+                "SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'segment_studio_analysis_candidates' AND column_name = 'source_tag_id'"));
+            Assert.Equal(10, await CountAsync(
+                connection,
+                "SELECT source_tag_id FROM segment_studio_analysis_candidates WHERE candidate_key = 'retagged-before-upgrade'"));
             Assert.Equal(1, await CountAsync(
                 connection,
                 "SELECT count(*) FROM pg_views WHERE schemaname = current_schema() AND viewname = 'segment_studio_review_segments'"));
@@ -77,7 +87,7 @@ public sealed class SegmentStudioBaselineMigrationTests
 
     private const string CoreSchema = """
         CREATE TABLE videos ("Id" INTEGER PRIMARY KEY);
-        CREATE TABLE tags ("Id" INTEGER PRIMARY KEY);
+        CREATE TABLE tags ("Id" INTEGER PRIMARY KEY, "Name" TEXT NOT NULL);
         CREATE TABLE performers ("Id" INTEGER PRIMARY KEY);
         CREATE TABLE users ("Id" INTEGER PRIMARY KEY);
         CREATE TABLE files ("Id" INTEGER PRIMARY KEY);
@@ -91,5 +101,52 @@ public sealed class SegmentStudioBaselineMigrationTests
             "StartSec" DOUBLE PRECISION NOT NULL,
             "SourceKey" TEXT NULL
         );
+        """;
+
+    private const string UpgradeFixture = """
+        INSERT INTO videos ("Id") VALUES (7);
+        INSERT INTO files ("Id") VALUES (1);
+        INSERT INTO tags ("Id", "Name") VALUES
+            (10, 'Raw model label'),
+            (20, 'Retagged destination');
+        INSERT INTO segment_studio_analysis_runs (
+            id, video_id, video_file_id, status, analyses, created_at, updated_at)
+        VALUES (
+            '11111111-1111-1111-1111-111111111111',
+            7,
+            1,
+            'completed',
+            '["aiTagging"]'::jsonb,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP);
+        INSERT INTO segment_studio_items (
+            id, review_state, video_id, start_sec, end_sec, tag_id, kind,
+            source_key, revision)
+        VALUES (
+            100,
+            'approved',
+            7,
+            1,
+            2,
+            20,
+            'tag',
+            'ext:ai.tagging',
+            2);
+        INSERT INTO segment_studio_analysis_candidates (
+            run_id, video_id, candidate_key, kind, tag_name, title, start_sec,
+            end_sec, model_key, observation_count, created_at, item_id)
+        VALUES (
+            '11111111-1111-1111-1111-111111111111',
+            7,
+            'retagged-before-upgrade',
+            'tag',
+            'Raw model label',
+            'Raw model label',
+            1,
+            2,
+            'model',
+            1,
+            CURRENT_TIMESTAMP,
+            100);
         """;
 }

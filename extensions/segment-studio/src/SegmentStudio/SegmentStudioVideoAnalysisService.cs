@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Diagnostics;
 using Cove.Core.Entities;
+using Cove.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -71,6 +72,7 @@ public interface ISegmentStudioVideoAnalysisService
 
 public sealed class SegmentStudioVideoAnalysisService(
     ISegmentStudioAnalysisClient client,
+    ITagRepository tags,
     ISegmentStudioAnalysisProvenanceService provenance,
     ILogger<SegmentStudioVideoAnalysisService> logger) : ISegmentStudioVideoAnalysisService
 {
@@ -172,7 +174,6 @@ public sealed class SegmentStudioVideoAnalysisService(
                 run.Id, sourcePath, analyses, Ai: request.Ai, OmniShotCut: request.OmniShotCut),
                 progress,
                 ct);
-
             var strategy = db.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
@@ -182,6 +183,18 @@ public sealed class SegmentStudioVideoAnalysisService(
                 await using var transaction = db.Database.IsRelational()
                     ? await db.Database.BeginTransactionAsync(ct)
                     : null;
+                var modelTagIdsByName = new Dictionary<string, int>(
+                    StringComparer.Ordinal);
+                if (normalizedMode == SegmentStudioModes.Full
+                    && response.Ai is not null)
+                {
+                    modelTagIdsByName = await ResolveModelTagIdsAsync(
+                        db,
+                        response.Ai.Segments
+                            .Select(candidate => candidate.TagName)
+                            .ToArray(),
+                        ct);
+                }
                 SegmentStudioAnalysisCandidate[] candidates = [];
                 if (response.Ai is not null)
                 {
@@ -222,17 +235,7 @@ public sealed class SegmentStudioVideoAnalysisService(
                     }).ToArray();
                     db.AddRange(candidates);
 
-                    var requestedTagNames = candidates.Select(candidate => candidate.TagName.ToUpper())
-                        .Distinct().ToArray();
-                    var matchingTags = await db.Set<Tag>().AsNoTracking()
-                        .Where(tag => requestedTagNames.Contains(tag.Name.ToUpper()))
-                        .Select(tag => new { tag.Id, tag.Name })
-                        .ToListAsync(ct);
-                    var tagsByName = matchingTags
-                        .GroupBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)
-                        .Where(group => group.Count() == 1)
-                        .ToDictionary(group => group.Key, group => group.Single().Id, StringComparer.OrdinalIgnoreCase);
-                    var matchingTagIds = tagsByName.Values.Distinct().ToArray();
+                    var matchingTagIds = modelTagIdsByName.Values.Distinct().ToArray();
                     var reusableItems = await db.Set<SegmentStudioItem>()
                         .Where(item => item.VideoId == persistedRun.VideoId
                             && item.TagId != null
@@ -240,9 +243,10 @@ public sealed class SegmentStudioVideoAnalysisService(
                         .ToListAsync(ct);
                     var now = DateTime.UtcNow;
                     foreach (var candidate in candidates
-                                 .Where(candidate => tagsByName.ContainsKey(candidate.TagName)))
+                                 .Where(candidate => modelTagIdsByName.ContainsKey(candidate.TagName.Trim())))
                     {
-                        var tagId = tagsByName[candidate.TagName];
+                        var tagId = modelTagIdsByName[candidate.TagName.Trim()];
+                        candidate.SourceTagId = tagId;
                         var reusable = reusableItems.FirstOrDefault(item =>
                             item.TagId == tagId
                             && item.StartSec == candidate.StartSec
@@ -388,6 +392,63 @@ public sealed class SegmentStudioVideoAnalysisService(
                 Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             throw;
         }
+    }
+
+    private async Task<Dictionary<string, int>> ResolveModelTagIdsAsync(
+        DbContext db,
+        IReadOnlyList<string> names,
+        CancellationToken ct)
+    {
+        var requested = names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var normalized = requested.Select(name => name.ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var existing = await db.Set<Tag>()
+            .Where(tag => normalized.Contains(tag.Name.Trim().ToLower()))
+            .ToListAsync(ct);
+        var existingByName = existing
+            .GroupBy(tag => tag.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+        var resolved = new Dictionary<string, int>(
+            StringComparer.Ordinal);
+        var missing = new List<string>();
+        foreach (var name in requested)
+        {
+            if (!existingByName.TryGetValue(name, out var matches))
+            {
+                missing.Add(name);
+                continue;
+            }
+            if (matches.Length == 1)
+            {
+                resolved[name] = matches[0].Id;
+                continue;
+            }
+            var exact = matches.Where(tag => string.Equals(
+                    tag.Name.Trim(), name, StringComparison.Ordinal))
+                .ToArray();
+            if (exact.Length == 1)
+                resolved[name] = exact[0].Id;
+        }
+        var creatable = missing
+            .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Single())
+            .ToArray();
+        if (creatable.Length == 0)
+            return resolved;
+        var created = await tags.FindOrCreateByNamesAsync(creatable, ct);
+        foreach (var name in creatable)
+        {
+            if (created.TryGetValue(name, out var tag))
+                resolved[name] = tag.Id;
+        }
+        return resolved;
     }
 
     public async Task<int> BackfillProvenanceAsync(

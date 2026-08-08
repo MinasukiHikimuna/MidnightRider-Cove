@@ -66,7 +66,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(95, endpoints.Length);
+        Assert.Equal(98, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -131,6 +131,18 @@ public sealed class ExtensionTests
             [SegmentStudioCapabilities.FeedbackManage],
             capabilityRequirements[
                 "POST /api/plugins/segment-studio/training-exports/{exportId:guid}/complete"]);
+        Assert.Equal(
+            [SegmentStudioCapabilities.AnalysisFullScan],
+            capabilityRequirements[
+                "GET /api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags"]);
+        Assert.Equal(
+            [SegmentStudioCapabilities.AnalysisFullScan],
+            capabilityRequirements[
+                "PUT /api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags"]);
+        Assert.Equal(
+            [SegmentStudioCapabilities.AnalysisFullScan],
+            capabilityRequirements[
+                "POST /api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags/convert"]);
 
         var missingPolicies = endpoints
             .Where(endpoint =>
@@ -159,6 +171,12 @@ public sealed class ExtensionTests
                 new([Permissions.SegmentsWrite, Permissions.JobsRun], EntityKinds.Video, "videoId", Permissions.VideosWrite),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/analysis-runs/{runId:guid}/provenance"] =
                 new([Permissions.SegmentsWrite, Permissions.JobsRun], EntityKinds.Video, "videoId", Permissions.VideosWrite),
+            ["GET /api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags"] =
+                new([Permissions.SegmentsRead, Permissions.TagsRead], EntityKinds.Video, "videoId", Permissions.VideosRead),
+            ["PUT /api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags"] =
+                new([Permissions.SegmentsWrite, Permissions.TagsRead, Permissions.TagsWrite], EntityKinds.Video, "videoId", Permissions.VideosWrite),
+            ["POST /api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags/convert"] =
+                new([Permissions.SegmentsWrite, Permissions.TagsRead], EntityKinds.Video, "videoId", Permissions.VideosWrite),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/native-segments/import"] =
                 new([Permissions.SegmentsWrite], EntityKinds.Video, "videoId", Permissions.VideosWrite),
             ["GET /api/plugins/segment-studio/compatibility"] =
@@ -424,9 +442,11 @@ public sealed class ExtensionTests
         string? EntityPermission = null);
 
     [Fact]
-    public void DefinesSingleCleanInitialSchemaMigration()
+    public void DefinesCleanSchemaMigrations()
     {
-        var migration = Assert.Single(CreateExtension().GetMigrations());
+        var migrations = CreateExtension().GetMigrations().ToArray();
+        Assert.Equal(2, migrations.Length);
+        var migration = migrations[0];
 
         Assert.Equal("001_initial_schema", migration.Name);
         Assert.Equal(32, migration.UpSql.Split("CREATE TABLE ").Length - 1);
@@ -453,6 +473,12 @@ public sealed class ExtensionTests
         Assert.DoesNotContain("segment_studio_marker_replacement_runs", migration.UpSql);
         Assert.DoesNotContain("segment_studio_marker_replacement_receipts", migration.UpSql);
         Assert.DoesNotContain("segment_studio_slot_import_runs", migration.UpSql);
+
+        Assert.Equal("002_corresponding_tags", migrations[1].Name);
+        Assert.Contains(
+            "CREATE TABLE segment_studio_corresponding_tag_mappings",
+            migrations[1].UpSql);
+        Assert.Contains("ADD COLUMN source_tag_id", migrations[1].UpSql);
     }
 
     [Fact]
@@ -555,6 +581,32 @@ public sealed class ExtensionTests
         Assert.Contains(
             "await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);",
             source);
+    }
+
+    [Fact]
+    public void CorrespondingTagConversionInvalidatesSegmentSpanCaches()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "src",
+            "SegmentStudio",
+            "SegmentStudioExtension.cs"));
+        var start = source.IndexOf(
+            "\"/api/plugins/segment-studio/videos/{videoId:int}/corresponding-tags/convert\"",
+            StringComparison.Ordinal);
+        var end = source.IndexOf(
+            "\"/api/plugins/segment-studio/items/{itemId:long}/tag-change/preview\"",
+            start,
+            StringComparison.Ordinal);
+        var handler = source[start..end];
+
+        Assert.Contains("ISegmentSpanCacheInvalidator spanCacheInvalidator", handler);
+        Assert.Contains("PublishSegmentInvalidation(spanCacheInvalidator, videoId)", handler);
     }
 
     [Fact]

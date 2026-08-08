@@ -215,6 +215,18 @@ public static class SegmentStudioDraftService
             item.ReviewState = nextReviewState;
             item.Revision++;
             item.UpdatedAt = DateTime.UtcNow;
+            if (tagChanged
+                && db.Model.FindEntityType(typeof(SegmentStudioLineageNode)) is not null)
+            {
+                var lineageNode = await db.Set<SegmentStudioLineageNode>()
+                    .SingleOrDefaultAsync(node =>
+                        node.ItemId == item.Id && node.State == "live", ct);
+                if (lineageNode is not null)
+                {
+                    lineageNode.LastKnownTagId = request.TagId;
+                    lineageNode.UpdatedAt = item.UpdatedAt;
+                }
+            }
             if (nextReviewState == "rejected")
                 await DerivedSegmentRejectionService.RejectDescendantsAsync(db, item.Id, ct);
         }

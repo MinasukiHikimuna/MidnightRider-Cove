@@ -145,6 +145,7 @@ public sealed class SegmentStudioAnalysisCandidate
     public long Id { get; set; }
     public Guid RunId { get; set; }
     public long? ItemId { get; set; }
+    public int? SourceTagId { get; set; }
     public int VideoId { get; set; }
     public string CandidateKey { get; set; } = "";
     public string Kind { get; set; } = "";
@@ -159,6 +160,14 @@ public sealed class SegmentStudioAnalysisCandidate
     public DateTime CreatedAt { get; set; }
     public SegmentStudioAnalysisRun Run { get; set; } = null!;
     public SegmentStudioItem? Item { get; set; }
+}
+
+public sealed class SegmentStudioCorrespondingTagMapping
+{
+    public int SourceTagId { get; set; }
+    public int CorrespondingTagId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 public sealed class SegmentStudioHistorySession
@@ -685,6 +694,7 @@ public static class SegmentStudioModelConfiguration
             builder.Property(candidate => candidate.Id).HasColumnName("id");
             builder.Property(candidate => candidate.RunId).HasColumnName("run_id");
             builder.Property(candidate => candidate.ItemId).HasColumnName("item_id");
+            builder.Property(candidate => candidate.SourceTagId).HasColumnName("source_tag_id");
             builder.Property(candidate => candidate.VideoId).HasColumnName("video_id");
             builder.Property(candidate => candidate.CandidateKey).HasColumnName("candidate_key");
             builder.Property(candidate => candidate.Kind).HasColumnName("kind").HasMaxLength(64);
@@ -699,10 +709,30 @@ public static class SegmentStudioModelConfiguration
             builder.Property(candidate => candidate.CreatedAt).HasColumnName("created_at");
             builder.HasIndex(candidate => new { candidate.RunId, candidate.CandidateKey }).IsUnique();
             builder.HasIndex(candidate => candidate.ItemId);
+            builder.HasIndex(candidate => candidate.SourceTagId);
             builder.HasIndex(candidate => new { candidate.VideoId, candidate.ReviewState });
             builder.HasOne(candidate => candidate.Run).WithMany().HasForeignKey(candidate => candidate.RunId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne(candidate => candidate.Item).WithMany().HasForeignKey(candidate => candidate.ItemId).OnDelete(DeleteBehavior.SetNull);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(candidate => candidate.SourceTagId).OnDelete(DeleteBehavior.SetNull);
             builder.HasOne<Video>().WithMany().HasForeignKey(candidate => candidate.VideoId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SegmentStudioCorrespondingTagMapping>(builder =>
+        {
+            builder.ToTable("segment_studio_corresponding_tag_mappings", table =>
+                table.HasCheckConstraint(
+                    "CK_segment_studio_corresponding_tag_mappings_distinct_tags",
+                    "source_tag_id <> corresponding_tag_id"));
+            builder.HasKey(mapping => mapping.SourceTagId);
+            builder.Property(mapping => mapping.SourceTagId).HasColumnName("source_tag_id");
+            builder.Property(mapping => mapping.CorrespondingTagId).HasColumnName("corresponding_tag_id");
+            builder.Property(mapping => mapping.CreatedAt).HasColumnName("created_at");
+            builder.Property(mapping => mapping.UpdatedAt).HasColumnName("updated_at");
+            builder.HasIndex(mapping => mapping.CorrespondingTagId);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(mapping => mapping.SourceTagId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(mapping => mapping.CorrespondingTagId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioHistorySession>(builder =>

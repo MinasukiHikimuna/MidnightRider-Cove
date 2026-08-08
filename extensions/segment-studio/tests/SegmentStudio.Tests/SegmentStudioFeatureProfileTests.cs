@@ -29,6 +29,7 @@ public sealed class SegmentStudioFeatureProfileTests
         Assert.False(profile.Has(SegmentStudioCapabilities.SegmentReview));
         Assert.False(profile.Has(SegmentStudioCapabilities.OwnedSegmentsRead));
         Assert.False(profile.Has(SegmentStudioCapabilities.ShotBoundariesManage));
+        Assert.False(profile.Has(SegmentStudioCapabilities.AnalysisFullScan));
         Assert.False(profile.Has(SegmentStudioCapabilities.SettingsPerformerSlots));
         Assert.False(profile.Has(SegmentStudioCapabilities.SettingsDerivation));
     }
@@ -51,6 +52,7 @@ public sealed class SegmentStudioFeatureProfileTests
         Assert.True(profile.Has(SegmentStudioCapabilities.SegmentReview));
         Assert.True(profile.Has(SegmentStudioCapabilities.OwnedSegmentsRead));
         Assert.True(profile.Has(SegmentStudioCapabilities.ShotBoundariesManage));
+        Assert.True(profile.Has(SegmentStudioCapabilities.AnalysisFullScan));
         Assert.True(profile.Has(SegmentStudioCapabilities.SettingsPerformerSlots));
         Assert.True(profile.Has(SegmentStudioCapabilities.SettingsDerivation));
         Assert.True(profile.Has(SegmentStudioCapabilities.FeedbackManage));
