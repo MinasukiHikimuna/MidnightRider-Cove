@@ -48,6 +48,13 @@ public sealed record CorrespondingTagSaveResult(
     string? Error = null,
     bool Conflict = false);
 
+public sealed record CorrespondingTagMappingRow(
+    int SourceTagId,
+    string SourceTagName,
+    int CorrespondingTagId,
+    string CorrespondingTagName,
+    DateTime UpdatedAt);
+
 public sealed record CorrespondingTagConversion(
     long ItemId,
     int SourceTagId,
@@ -81,6 +88,89 @@ public static class CorrespondingTagService
 {
     private const string ConversionOperationKind = "corresponding-tag-convert";
     private static readonly string[] ConvertibleReviewStates = ["unreviewed", "approved"];
+
+    public static async Task<IReadOnlyList<CorrespondingTagMappingRow>> ListMappingsAsync(
+        DbContext db,
+        CancellationToken ct)
+    {
+        var mappings = await db.Set<SegmentStudioCorrespondingTagMapping>()
+            .AsNoTracking()
+            .OrderBy(mapping => mapping.SourceTagId)
+            .ToArrayAsync(ct);
+        var tagIds = mappings.SelectMany(mapping => new[] { mapping.SourceTagId, mapping.CorrespondingTagId }).Distinct().ToArray();
+        var names = await db.Set<Tag>().AsNoTracking()
+            .Where(tag => tagIds.Contains(tag.Id))
+            .ToDictionaryAsync(tag => tag.Id, tag => tag.Name, ct);
+        return mappings.Select(mapping => new CorrespondingTagMappingRow(
+            mapping.SourceTagId,
+            names.GetValueOrDefault(mapping.SourceTagId) ?? $"Tag {mapping.SourceTagId}",
+            mapping.CorrespondingTagId,
+            names.GetValueOrDefault(mapping.CorrespondingTagId) ?? $"Tag {mapping.CorrespondingTagId}",
+            mapping.UpdatedAt)).ToArray();
+    }
+
+    public static async Task<(bool Success, string? Error, IReadOnlyList<CorrespondingTagMappingRow> Rows)> SaveGlobalMappingsAsync(
+        DbContext db,
+        IReadOnlyList<CorrespondingTagMappingUpdate> updates,
+        CancellationToken ct)
+    {
+        if (updates.Count == 0 || updates.GroupBy(update => update.SourceTagId).Any(group => group.Count() > 1)
+            || updates.Any(update => update.SourceTagId <= 0 || update.CorrespondingTagId is <= 0
+                || update.SourceTagId == update.CorrespondingTagId))
+            return (false, "Corresponding-tag mappings are invalid.", []);
+        var requestedTagIds = updates.Select(update => update.SourceTagId)
+            .Concat(updates.Where(update => update.CorrespondingTagId is not null)
+                .Select(update => update.CorrespondingTagId!.Value))
+            .Distinct().ToArray();
+        var existingTagCount = await db.Set<Tag>().AsNoTracking()
+            .CountAsync(tag => requestedTagIds.Contains(tag.Id), ct);
+        if (existingTagCount != requestedTagIds.Length)
+            return (false, "One or more selected tags no longer exist.", []);
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = db.Database.IsRelational()
+                ? await db.Database.BeginTransactionAsync(ct)
+                : null;
+            await AcquireMappingLockAsync(db, ct);
+            var sourceIds = updates.Select(update => update.SourceTagId).ToArray();
+            var existing = await db.Set<SegmentStudioCorrespondingTagMapping>()
+                .Where(mapping => sourceIds.Contains(mapping.SourceTagId))
+                .ToDictionaryAsync(mapping => mapping.SourceTagId, ct);
+            var pending = updates.Where(update => !MappingAlreadyHasDesiredValue(update, existing)).ToArray();
+            if (pending.Any(update => existing.TryGetValue(update.SourceTagId, out var mapping)
+                    ? update.ExpectedUpdatedAt is null || update.ExpectedUpdatedAt.Value != mapping.UpdatedAt
+                    : update.ExpectedUpdatedAt is not null))
+                return (false, "Corresponding-tag mappings changed in another session.", await ListMappingsAsync(db, ct));
+            var now = DateTime.UtcNow;
+            foreach (var update in pending)
+            {
+                if (update.CorrespondingTagId is null)
+                {
+                    if (existing.TryGetValue(update.SourceTagId, out var removed)) db.Remove(removed);
+                }
+                else if (existing.TryGetValue(update.SourceTagId, out var mapping))
+                {
+                    mapping.CorrespondingTagId = update.CorrespondingTagId.Value;
+                    mapping.UpdatedAt = now > mapping.UpdatedAt ? now : mapping.UpdatedAt.AddTicks(10);
+                }
+                else
+                {
+                    db.Add(new SegmentStudioCorrespondingTagMapping
+                    {
+                        SourceTagId = update.SourceTagId,
+                        CorrespondingTagId = update.CorrespondingTagId.Value,
+                        CreatedAt = now,
+                        UpdatedAt = now,
+                    });
+                }
+            }
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            return (true, (string?)null, await ListMappingsAsync(db, ct));
+        });
+    }
 
     public static async Task<CorrespondingTagSummary> GetSummaryAsync(
         DbContext db,

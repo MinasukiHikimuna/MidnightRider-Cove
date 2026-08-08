@@ -442,8 +442,16 @@ test("editor previews and confirms bulk performer auto-assignment like Marker St
   assert.match(source, /h\(SegmentStateBadge/);
   assert.match(source, /provenanceSourceLabel\(candidate\.sourceKey\)/);
   assert.match(source, /segments\/auto-assign-performer-slots/);
-  assert.match(source, /nativeSegmentIds: autoAssignCandidates/);
-  assert.match(source, /itemIds: autoAssignCandidates/);
+  assert.match(source, /nativeSegmentIds: candidates/);
+  assert.match(source, /itemIds: candidates/);
+  assert.match(source, /Include \$\{group\.tagName\} assignment: \$\{assignmentLabel\(group\)\}/);
+  assert.match(source, /"aria-expanded": expandedGroups\.has\(group\.key\)/);
+  assert.match(source, /"aria-controls": groupPanelId\(group\)/);
+  assert.match(source, /event\.target instanceof HTMLInputElement/);
+  assert.match(source, /onKeyDownCapture: trapModalFocus/);
+  assert.match(source, /flex min-w-0 flex-wrap items-center gap-2 border-b/);
+  assert.match(source, /onClick: \(\) => onConfirm\(group\.candidates\)/);
+  assert.match(source, /onConfirm\(selectedCandidates\)/);
   assert.match(source, /headers: \{ "Content-Type": "application\/json" \}/);
   assert.match(source, /role: "alert"/);
   assert.match(source, /assignedSegmentCount/);

@@ -331,8 +331,8 @@ function createWorkflowActions(context) {
       }
     }
 
-    async function autoAssignPerformers() {
-      if (autoAssigning || autoAssignCandidates.length === 0) return;
+    async function autoAssignPerformers(candidates = autoAssignCandidates) {
+      if (autoAssigning || candidates.length === 0) return;
       setAutoAssigning(true);
       setAutoAssignError("");
       try {
@@ -340,8 +340,8 @@ function createWorkflowActions(context) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            nativeSegmentIds: autoAssignCandidates.flatMap((segment) => segment.nativeSegmentId == null ? [] : [segment.nativeSegmentId]),
-            itemIds: autoAssignCandidates.flatMap((segment) => segment.published || segment.itemId == null ? [] : [segment.itemId]),
+            nativeSegmentIds: candidates.flatMap((segment) => segment.nativeSegmentId == null ? [] : [segment.nativeSegmentId]),
+            itemIds: candidates.flatMap((segment) => segment.published || segment.itemId == null ? [] : [segment.itemId]),
           }),
         });
         setAutoAssignOpen(false);

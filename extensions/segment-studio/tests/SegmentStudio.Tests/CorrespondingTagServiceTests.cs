@@ -6,6 +6,25 @@ using Microsoft.EntityFrameworkCore;
 public sealed class CorrespondingTagServiceTests
 {
     [Fact]
+    public async Task GlobalMappingsCanBeCreatedWithoutVideoDrafts()
+    {
+        await using var db = CreateContext();
+        var source = new Tag { Id = 10, Name = "Model label" };
+        var canonical = new Tag { Id = 20, Name = "Library destination" };
+        db.AddRange(source, canonical);
+        await db.SaveChangesAsync();
+
+        var result = await CorrespondingTagService.SaveGlobalMappingsAsync(
+            db, [new(source.Id, canonical.Id)], default);
+
+        Assert.True(result.Success);
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(source.Id, row.SourceTagId);
+        Assert.Equal(canonical.Id, row.CorrespondingTagId);
+        Assert.Equal(canonical.Name, row.CorrespondingTagName);
+    }
+
+    [Fact]
     public async Task SummaryCountsDistinctUnconvertedSourceTagsAndReadyStates()
     {
         await using var db = CreateContext();

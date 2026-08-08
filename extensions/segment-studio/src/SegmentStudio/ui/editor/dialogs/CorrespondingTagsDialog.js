@@ -39,7 +39,7 @@ function CorrespondingTagsDialog({
   const close = () => { if (!busy) onClose(); };
 
   return h("div", {
-    className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
+    className: "fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:items-center",
     onMouseDown: (event) => { if (event.target === event.currentTarget) close(); },
     onKeyDownCapture: (event) => handleModalKey(event, { onCancel: close }),
   }, h("section", {
@@ -48,7 +48,7 @@ function CorrespondingTagsDialog({
     "aria-labelledby": "segment-studio-corresponding-tags-title",
     tabIndex: -1,
     onKeyDownCapture: trapModalFocus,
-    className: "flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
+    className: "flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
   }, [
     h("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
       h("div", { key: "heading", className: "flex items-start justify-between gap-4" }, [

@@ -267,17 +267,40 @@ function SegmentQuickSearchDialog({ segments, onSelect, onClose }) {
 
 function AutoAssignPerformersDialog({ candidates, processing, error, onConfirm, onClose }) {
   const groups = groupAutoAssignCandidates(candidates);
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const [selectedGroups, setSelectedGroups] = useState(() => new Set(groups.map((group) => group.key)));
+  const selectedCandidates = groups.flatMap((group) => selectedGroups.has(group.key) ? group.candidates : []);
+  const toggleExpanded = (key) => setExpandedGroups((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+  const toggleSelected = (key) => setSelectedGroups((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+  const assignmentLabel = (group) => group.assignment.map(({ slot, performer }) =>
+    `${slot.label || `Slot ${slot.sortOrder + 1}`}: ${performer.name}`).join(", ");
+  const groupPanelId = (group) => `segment-studio-auto-assign-${group.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   return h("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
     onMouseDown: (event) => { if (event.target === event.currentTarget && !processing) onClose(); },
-    onKeyDownCapture: (event) => handleModalKey(event, {
-      onCancel: processing ? undefined : onClose,
-      onConfirm: candidates.length && !processing ? onConfirm : undefined,
-    }),
+    onKeyDownCapture: (event) => {
+      if (event.key === "Enter" && event.target instanceof HTMLInputElement) return;
+      handleModalKey(event, {
+        onCancel: processing ? undefined : onClose,
+        onConfirm: selectedCandidates.length && !processing ? () => onConfirm(selectedCandidates) : undefined,
+      });
+    },
   }, h("section", {
     role: "dialog",
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-auto-assign-title",
+    tabIndex: -1,
+    onKeyDownCapture: trapModalFocus,
     className: "flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
   }, [
     h("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
@@ -291,12 +314,31 @@ function AutoAssignPerformersDialog({ candidates, processing, error, onConfirm, 
             h("section", { key: group.key, className: "overflow-hidden rounded-md border border-border bg-surface" }, [
               h("header", {
                 key: "header",
-                className: "flex min-w-0 items-center gap-2 border-b border-border px-3 py-2",
+                className: "flex min-w-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2",
                 style: { background: segmentGroupHeaderBackground(false) },
               }, [
-                h("span", { key: "tag", className: "min-w-0 flex-1 truncate text-sm font-semibold text-foreground" },
+                h("input", {
+                  key: "selected",
+                  type: "checkbox",
+                  checked: selectedGroups.has(group.key),
+                  disabled: processing,
+                  onChange: () => toggleSelected(group.key),
+                  "aria-label": `Include ${group.tagName} assignment: ${assignmentLabel(group)}`,
+                  className: "h-4 w-4 shrink-0 accent-violet-500",
+                }),
+                h("button", {
+                  key: "toggle",
+                  type: "button",
+                  disabled: processing,
+                  "aria-expanded": expandedGroups.has(group.key),
+                  "aria-controls": groupPanelId(group),
+                  "aria-label": `${expandedGroups.has(group.key) ? "Collapse" : "Expand"} ${group.tagName} assignment: ${assignmentLabel(group)}`,
+                  onClick: () => toggleExpanded(group.key),
+                  className: "shrink-0 rounded px-1 text-sm text-secondary hover:bg-muted/50 hover:text-foreground disabled:opacity-50",
+                }, expandedGroups.has(group.key) ? "▾" : "▸"),
+                h("span", { key: "tag", className: "min-w-24 flex-1 truncate text-sm font-semibold text-foreground" },
                   group.tagName),
-                h("span", { key: "performers", className: "flex shrink-0 items-center gap-2" },
+                h("span", { key: "performers", className: "flex min-w-0 flex-wrap items-center gap-2" },
                   group.assignment.map(({ slot, performer }) => {
                     const slotLabel = slot.label || `Slot ${slot.sortOrder + 1}`;
                     return h("span", {
@@ -318,8 +360,16 @@ function AutoAssignPerformersDialog({ candidates, processing, error, onConfirm, 
                     ]);
                   })),
                 h(LaneReviewCounts, { key: "states", counts: group.counts }),
+                h("button", {
+                  key: "assign-group",
+                  type: "button",
+                  disabled: processing,
+                  onClick: () => onConfirm(group.candidates),
+                  "aria-label": `Auto-Assign ${group.tagName}: ${assignmentLabel(group)}`,
+                  className: "shrink-0 rounded-md border border-violet-400/60 bg-violet-500/15 px-2 py-1 text-[10px] font-medium text-foreground hover:bg-violet-500/25 disabled:opacity-50",
+                }, `Auto-Assign (${group.candidates.length})`),
               ]),
-              h("div", { key: "segments", className: "divide-y divide-border/70" },
+              expandedGroups.has(group.key) ? h("div", { key: "segments", id: groupPanelId(group), className: "divide-y divide-border/70" },
                 group.candidates.map((candidate) => {
                   const timeLabel = candidate.endSec == null
                     ? formatTime(candidate.startSec)
@@ -341,7 +391,7 @@ function AutoAssignPerformersDialog({ candidates, processing, error, onConfirm, 
                       title: provenanceLabel,
                     }, provenanceLabel),
                   ]);
-                })),
+                })) : null,
             ])))
         : h("p", { className: "rounded-md border border-dashed border-border p-6 text-center text-sm text-secondary" },
             "No segments have completely unfilled performer slots.")),
@@ -352,10 +402,10 @@ function AutoAssignPerformersDialog({ candidates, processing, error, onConfirm, 
         key: "confirm",
         type: "button",
         autoFocus: true,
-        disabled: processing || candidates.length === 0,
-        onClick: onConfirm,
+        disabled: processing || selectedCandidates.length === 0,
+        onClick: () => onConfirm(selectedCandidates),
         className: "rounded-md border border-violet-400/60 bg-violet-500/20 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-violet-500/30 disabled:opacity-50",
-      }, processing ? "Assigning…" : "Auto-Assign Performers"),
+      }, processing ? "Assigning…" : `Auto-Assign ${selectedCandidates.length} Segment${selectedCandidates.length === 1 ? "" : "s"}`),
     ]),
   ]));
 }

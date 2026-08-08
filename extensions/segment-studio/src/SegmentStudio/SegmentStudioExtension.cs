@@ -2161,6 +2161,40 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 LineageManagePermission);
 
         endpoints.MapGet(
+                "/api/plugins/segment-studio/corresponding-tag-mappings",
+                async (DbContext db, ICurrentPrincipalAccessor principalAccessor,
+                    Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
+                {
+                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupReadAsync(
+                        principalAccessor.Current, authorization, ct);
+                    return access.Allowed
+                        ? Results.Ok(await CorrespondingTagService.ListMappingsAsync(db, ct))
+                        : Results.Json(new { error = access.Reason ?? "You cannot view corresponding tags." }, statusCode: StatusCodes.Status403Forbidden);
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsRead, Permissions.TagsRead)
+            .RequireSegmentStudioCapability(SegmentStudioCapabilities.SegmentGroupsManage);
+
+        endpoints.MapPut(
+                "/api/plugins/segment-studio/corresponding-tag-mappings",
+                async Task<IResult> ([FromBody] SaveCorrespondingTagMappingsRequest request, DbContext db,
+                    ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
+                    CancellationToken ct) =>
+                {
+                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupWriteAsync(
+                        principalAccessor.Current, authorization, ct);
+                    if (!access.Allowed)
+                        return Results.Json(new { error = access.Reason ?? "You cannot change corresponding tags." }, statusCode: StatusCodes.Status403Forbidden);
+                    var result = await CorrespondingTagService.SaveGlobalMappingsAsync(db, request.Mappings ?? [], ct);
+                    return result.Success
+                        ? Results.Ok(result.Rows)
+                        : Results.BadRequest(new { error = result.Error, current = result.Rows });
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.TagsRead, Permissions.TagsWrite)
+            .RequireSegmentStudioCapability(SegmentStudioCapabilities.SegmentGroupsManage);
+
+        endpoints.MapGet(
                 "/api/plugins/segment-studio/segment-groups",
                 async (DbContext db, ICurrentPrincipalAccessor principalAccessor,
                     Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>

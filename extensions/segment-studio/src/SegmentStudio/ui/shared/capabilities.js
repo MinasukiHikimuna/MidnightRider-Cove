@@ -87,6 +87,7 @@ export function visibleSegmentStudioSettingsTabs(profile) {
     ["general", "General", SEGMENT_STUDIO_CAPABILITIES.settingsGeneral],
     ["shortcuts", "Shortcuts", SEGMENT_STUDIO_CAPABILITIES.settingsShortcuts],
     ["organization", "Organization", SEGMENT_STUDIO_CAPABILITIES.settingsOrganization],
+    ["corresponding-tags", "Corresponding tags", SEGMENT_STUDIO_CAPABILITIES.settingsOrganization],
     ["performer-slots", "Performer slots", SEGMENT_STUDIO_CAPABILITIES.settingsPerformerSlots],
     ["derivation", "Derivation", SEGMENT_STUDIO_CAPABILITIES.settingsDerivation],
   ];

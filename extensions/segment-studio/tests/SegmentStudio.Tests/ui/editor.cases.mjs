@@ -69,6 +69,8 @@ test("Full mode exposes optional corresponding-tag mapping and explicit conversi
   assert.match(dialog, /Convert unreviewed/);
   assert.match(dialog, /Convert approved/);
   assert.match(dialog, /does not change any segments until you choose a conversion action/i);
+  assert.match(dialog, /max-h-\[calc\(100dvh-2rem\)\]/);
+  assert.match(dialog, /overflow-y-auto/);
   assert.match(controller, /if \(result\.history\) acceptHistory\(result\.history\)/);
   assert.match(controller, /slotPermissionProtectedCount/);
   assert.match(controller, /currentHistory/);
