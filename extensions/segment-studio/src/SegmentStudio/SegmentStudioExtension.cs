@@ -3714,6 +3714,57 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentReview);
 
+        endpoints.MapPut(
+                "/api/plugins/segment-studio/videos/{videoId:int}/segments/review-state",
+                async Task<IResult> (int videoId, BulkSegmentReviewRequest request, DbContext db,
+                    ICurrentPrincipalAccessor principalAccessor,
+                    Cove.Core.Auth.IAuthorizationService authorization,
+                    [FromServices] IBlobService blobs,
+                    [FromServices] ISegmentSpanCacheInvalidator spanCacheInvalidator,
+                    CancellationToken ct) =>
+                {
+                    if (await SegmentStudioCompatibilityService.RequiresLegacyUiAsync(db, ct))
+                        return LegacyUiRequiredResult();
+                    var strategy = db.Database.CreateExecutionStrategy();
+                    var result = await strategy.ExecuteAsync(async () =>
+                    {
+                        await using var transaction = db.Database.IsRelational()
+                            ? await db.Database.BeginTransactionAsync(ct)
+                            : null;
+                        var mutation = await BulkSegmentReviewService.UpdateAsync(
+                            db, videoId, request, principalAccessor.Current,
+                            authorization, blobs, ct);
+                        if (mutation.Status == BulkSegmentReviewStatus.Updated
+                            && transaction is not null)
+                            await transaction.CommitAsync(ct);
+                        return mutation;
+                    });
+                    if (result.Status == BulkSegmentReviewStatus.Updated)
+                        PublishSegmentInvalidation(spanCacheInvalidator, videoId);
+                    return result.Status switch
+                    {
+                        BulkSegmentReviewStatus.Updated => Results.Ok(result),
+                        BulkSegmentReviewStatus.Invalid =>
+                            Results.BadRequest(new { error = result.Error, result.Code, result }),
+                        BulkSegmentReviewStatus.MissingImage =>
+                            Results.BadRequest(new { error = result.Error, code = "missing-image", result }),
+                        BulkSegmentReviewStatus.Forbidden => Results.Json(
+                            new { error = result.Error }, statusCode: StatusCodes.Status403Forbidden),
+                        BulkSegmentReviewStatus.Conflict => Results.Conflict(new
+                        {
+                            error = result.Error,
+                            result.Code,
+                            currentHistory = result.History,
+                        }),
+                        _ => Results.NotFound(new { error = result.Error }),
+                    };
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(Permissions.SegmentsWrite)
+            .RequireCoveEntityAccess(EntityKinds.Video, "videoId")
+            .RequireSegmentStudioCapability(
+                SegmentStudioCapabilities.SegmentReview);
+
         endpoints.MapPost(
                 "/api/plugins/segment-studio/videos/{videoId:int}/segments/move-to-bin",
                 async Task<IResult> (int videoId, NativeToOwnedTransitionBatchRequest request, DbContext db,

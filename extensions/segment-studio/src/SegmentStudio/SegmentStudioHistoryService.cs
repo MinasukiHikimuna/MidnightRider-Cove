@@ -261,6 +261,105 @@ public static class SegmentStudioHistoryService
         await MoveCursorAsync(
             db, userId, videoId, SegmentStudioModes.Full, request, ct);
 
+    public static async Task<SegmentStudioHistoryMutationResult> AppendTrustedFullWithinLockAsync(
+        DbContext db,
+        int userId,
+        int videoId,
+        long expectedRevision,
+        string kind,
+        string label,
+        JsonElement beforeState,
+        JsonElement afterState,
+        CancellationToken ct)
+    {
+        kind = kind.Trim();
+        label = label.Trim();
+        if (kind.Length is < 1 or > 64
+            || label.Length is < 1 or > 256
+            || beforeState.ValueKind is JsonValueKind.Undefined
+            || afterState.ValueKind is JsonValueKind.Undefined)
+        {
+            return new SegmentStudioHistoryMutationResult(
+                SegmentStudioHistoryMutationStatus.Invalid,
+                Error: "History action metadata is invalid.");
+        }
+
+        var session = await db.Set<SegmentStudioHistorySession>()
+            .SingleOrDefaultAsync(candidate =>
+                candidate.UserId == userId
+                && candidate.VideoId == videoId
+                && candidate.Mode == SegmentStudioModes.Full, ct);
+        if (session is null)
+        {
+            if (expectedRevision != 0)
+            {
+                return new SegmentStudioHistoryMutationResult(
+                    SegmentStudioHistoryMutationStatus.Conflict,
+                    Empty(),
+                    "History changed in another session.");
+            }
+            var createdAt = DateTime.UtcNow;
+            session = new SegmentStudioHistorySession
+            {
+                UserId = userId,
+                VideoId = videoId,
+                Mode = SegmentStudioModes.Full,
+                CursorSequence = 0,
+                Revision = 0,
+                CreatedAt = createdAt,
+                UpdatedAt = createdAt,
+            };
+            db.Add(session);
+            await db.SaveChangesAsync(ct);
+        }
+        else if (session.Revision != expectedRevision)
+        {
+            return new SegmentStudioHistoryMutationResult(
+                SegmentStudioHistoryMutationStatus.Conflict,
+                await BuildViewAsync(db, session, ct),
+                "History changed in another session.");
+        }
+
+        var future = await db.Set<SegmentStudioHistoryAction>()
+            .Where(action => action.SessionId == session.Id
+                && action.Sequence > session.CursorSequence)
+            .ToListAsync(ct);
+        db.RemoveRange(future);
+        var sequence = (await db.Set<SegmentStudioHistoryAction>()
+                .Where(action => action.SessionId == session.Id)
+                .Select(action => (long?)action.Sequence)
+                .MaxAsync(ct) ?? 0) + 1;
+        var now = DateTime.UtcNow;
+        db.Add(new SegmentStudioHistoryAction
+        {
+            SessionId = session.Id,
+            Sequence = sequence,
+            Kind = kind,
+            Label = label,
+            BeforeJson = beforeState.GetRawText(),
+            AfterJson = afterState.GetRawText(),
+            CreatedAt = now,
+        });
+        session.CursorSequence = sequence;
+        session.Revision++;
+        session.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        var stale = await db.Set<SegmentStudioHistoryAction>()
+            .Where(action => action.SessionId == session.Id)
+            .OrderByDescending(action => action.Sequence)
+            .Skip(RetainedActionCount)
+            .ToListAsync(ct);
+        if (stale.Count > 0)
+        {
+            db.RemoveRange(stale);
+            await db.SaveChangesAsync(ct);
+        }
+        return new SegmentStudioHistoryMutationResult(
+            SegmentStudioHistoryMutationStatus.Updated,
+            await BuildViewAsync(db, session, ct));
+    }
+
     public static async Task<SegmentStudioHistoryMutationResult> MoveCursorAsync(
         DbContext db,
         int userId,

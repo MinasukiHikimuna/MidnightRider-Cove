@@ -1,6 +1,7 @@
 import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 test("UI imports only components available in the declared Cove runtime", () => {
+  assert.equal(manifest.version, "0.70.0");
   assert.equal(manifest.minCoveVersion, "1.1.0");
   assert.match(source, /from "@cove\/runtime\/api"/);
   assert.doesNotMatch(source, /EntityTileFrame/);
@@ -86,7 +87,7 @@ test("database-backed history computes backward and forward restoration steps", 
   assert.match(source, /aria-label": "Editor history"/);
   assert.match(source, /Before recent changes/);
   assert.match(source, /acceptHistory\(EMPTY_EDITOR_HISTORY\)/);
-  assert.match(source, /Partially updated \$\{completedCandidates\.length\} of \$\{candidates\.length\} selected segments/);
+  assert.doesNotMatch(source, /Partially updated \$\{completedCandidates\.length\}/);
   assert.doesNotMatch(source, /UNDO_STORAGE_KEY|Undo recent/);
 });
 

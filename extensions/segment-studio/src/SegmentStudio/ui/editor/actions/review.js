@@ -6,7 +6,7 @@ import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledS
 import { segmentsHistoryState } from "../model/history.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, compatibilityMode, detailPanelRef, mergeSavingRef, onConflict, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, compatibilityMode, detailPanelRef, historyRef, mergeSavingRef, onConflict, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -140,106 +140,52 @@ function createReviewActions(context) {
         selectionAnchorIdRef.current = reloadedActive?.id ?? null;
         selectionRangeBaseIdsRef.current = [];
       };
-      const beforeState = segmentsHistoryState(candidates);
-      const completedCandidates = [];
       reviewSavingRef.current = true;
       setSavingSegmentId(selectedSegment?.id ?? candidates[0].id);
       setSaveMessage(`Updating ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
       try {
-        const publishedCandidates = candidates.filter((segment) => segment.published && reviewState !== "approved");
-        if (publishedCandidates.length > 0) {
-          const signature = publishedCandidates
-            .map((segment) => `${segment.nativeSegmentId}:${segment.updatedAt}`)
-            .sort()
-            .join(",");
-          const operationKey = `bulk-unpublish:${video.id}:${reviewState}:${signature}`;
-          const transition = await requestJson(`/videos/${video.id}/segments/move-to-bin`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              operationId: operationIdFor(operationKey),
-              reviewState,
-              segments: publishedCandidates.map((segment) => ({
-                segmentId: segment.nativeSegmentId,
-                expectedUpdatedAt: segment.updatedAt,
-              })),
-            }),
-          });
-          completeOperation(operationKey);
-          const resultsBySegmentId = new Map(
-            (transition.items || []).map((item) => [item.segmentId, item]),
-          );
-          publishedCandidates.forEach((segment) => {
-            const result = resultsBySegmentId.get(segment.nativeSegmentId);
-            const identity = identities.find((candidate) => candidate.id === segment.id);
-            if (identity && result) identity.itemId = result.itemId;
-            completedCandidates.push(segment);
-          });
-        }
-        const publishedCandidateIds = new Set(publishedCandidates.map((segment) => segment.id));
-        for (const segment of candidates.filter((candidate) => !publishedCandidateIds.has(candidate.id))) {
-          const values = {
+        const result = await requestJson(`/videos/${video.id}/segments/review-state`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            operationId: crypto.randomUUID(),
+            expectedHistoryRevision: historyRef.current.revision,
             reviewState,
-            startSec: segment.startSec,
-            endSec: segment.endSec,
-            tagId: segment.tagId,
-          };
-          if (!segment.published && segment.itemId != null) {
-            const operationKey = `draft-update:${video.id}:${segment.itemId}:${segment.revision}:${segment.tagId}:${segment.startSec}:${segment.endSec ?? "open"}:${reviewState}`;
-            const result = await requestJson(`/videos/${video.id}/drafts/${segment.itemId}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                operationId: operationIdFor(operationKey),
+            segments: selectedSegments.map((segment) => segment.published
+              ? {
+                nativeSegmentId: segment.nativeSegmentId,
+                expectedUpdatedAt: segment.updatedAt,
+              }
+              : {
+                itemId: segment.itemId,
                 expectedRevision: segment.revision,
-                ...values,
               }),
-            });
-            completeOperation(operationKey);
-          } else {
-            await requestJson(`/videos/${video.id}/segments/${segment.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ...values, expectedUpdatedAt: segment.updatedAt }),
-            });
-          }
-          completedCandidates.push(segment);
-        }
+          }),
+        });
+        const resultByIdentity = new Map((result.items || []).map((item) => [
+          item.requestedNativeSegmentId != null
+            ? `native:${item.requestedNativeSegmentId}`
+            : `item:${item.requestedItemId}`,
+          item,
+        ]));
+        identities.forEach((identity) => {
+          const item = resultByIdentity.get(identity.nativeSegmentId != null
+            ? `native:${identity.nativeSegmentId}`
+            : `item:${identity.itemId}`);
+          if (!item) return;
+          identity.nativeSegmentId = item.nativeSegmentId;
+          identity.itemId = item.itemId;
+        });
+        if (result.history) acceptHistory(result.history);
         const loaded = await onReload();
-        const changedSegments = identities
-          .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
-          .filter(Boolean);
-        await recordHistoryAction(
-          "segments.review",
-          reviewState === "approved"
-            ? `Approved ${candidates.length} segment${candidates.length === 1 ? "" : "s"}`
-            : reviewState === "rejected"
-              ? `Rejected ${candidates.length} segment${candidates.length === 1 ? "" : "s"}`
-              : `Reset ${candidates.length} segment${candidates.length === 1 ? "" : "s"} to unreviewed`,
-          beforeState,
-          segmentsHistoryState(changedSegments),
-        );
         restoreSelection(loaded);
-        setSaveMessage(`${candidates.length} selected segment${candidates.length === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
+        setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
+        if (error.status === 409 && error.payload?.currentHistory)
+          acceptHistory(error.payload.currentHistory);
         const loaded = error.status === 409 ? await onConflict() : await onReload();
-        if (completedCandidates.length > 0) {
-          const completedIds = new Set(completedCandidates.map((segment) => segment.id));
-          const completedIdentities = identities.filter((identity) => completedIds.has(identity.id));
-          const changedSegments = completedIdentities
-            .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
-            .filter(Boolean);
-          await recordHistoryAction(
-            "segments.review",
-            `Partially updated ${completedCandidates.length} of ${candidates.length} selected segments`,
-            segmentsHistoryState(completedCandidates),
-            segmentsHistoryState(changedSegments),
-          );
-        }
         restoreSelection(loaded);
-        setSaveMessage(completedCandidates.length > 0
-          ? `Updated ${completedCandidates.length} of ${candidates.length} selected segments; the remaining changes were not applied.`
-          : error.message || "Unable to update every selected segment.");
+        setSaveMessage(error.message || "Unable to update the selected segments.");
       } finally {
         reviewSavingRef.current = false;
         setSavingSegmentId(null);

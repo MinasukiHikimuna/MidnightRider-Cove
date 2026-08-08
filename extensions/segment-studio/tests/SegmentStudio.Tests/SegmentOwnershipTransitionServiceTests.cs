@@ -2713,6 +2713,243 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
+    public async Task BulkReviewAppliesOneStateToMixedDraftsAndReplaysOneHistoryAction()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.AddRange(
+            Draft(501, "approved", 2),
+            Draft(502, "unreviewed", 4),
+            Draft(503, "rejected", 6));
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var request = new BulkSegmentReviewRequest(
+            Guid.NewGuid(),
+            0,
+            "rejected",
+            [
+                new(null, 501, null, 2),
+                new(null, 502, null, 4),
+                new(null, 503, null, 6),
+            ]);
+
+        var updated = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId, request, UserPrincipal(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+        var replay = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId, request, UserPrincipal(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Updated, updated.Status);
+        Assert.Equal(2, updated.UpdatedCount);
+        Assert.True(replay.Replayed);
+        var drafts = await fixture.Context.Set<SegmentStudioItem>()
+            .Where(item => item.Id >= 501 && item.Id <= 503)
+            .OrderBy(item => item.Id)
+            .ToArrayAsync();
+        Assert.All(drafts, item => Assert.Equal("rejected", item.ReviewState));
+        Assert.Equal([3L, 5L, 6L], drafts.Select(item => item.Revision));
+        var action = Assert.Single(await fixture.Context.Set<SegmentStudioHistoryAction>().ToListAsync());
+        Assert.Equal("segments.review", action.Kind);
+        Assert.Equal("Rejected 2 segments", action.Label);
+        Assert.Single(await fixture.Context.Set<SegmentStudioSegmentOperation>()
+            .Where(operation => operation.Kind == "bulk-review-state").ToListAsync());
+
+        SegmentStudioItem Draft(long id, string state, long revision) => new()
+        {
+            Id = id,
+            VideoId = fixture.VideoId,
+            TagId = 11,
+            StartSec = id,
+            EndSec = id + 1,
+            Kind = "tag",
+            SourceKey = "user",
+            ReviewState = state,
+            Revision = revision,
+            CreatedAt = fixture.UpdatedAt,
+            UpdatedAt = fixture.UpdatedAt,
+        };
+    }
+
+    [Fact]
+    public async Task BulkReviewRejectsAStaleSelectionBeforeChangingAnyDraft()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.AddRange(
+            new SegmentStudioItem
+            {
+                Id = 511, VideoId = fixture.VideoId, TagId = 11,
+                StartSec = 1, EndSec = 2, Kind = "tag", SourceKey = "user",
+                ReviewState = "unreviewed", Revision = 1,
+                CreatedAt = fixture.UpdatedAt, UpdatedAt = fixture.UpdatedAt,
+            },
+            new SegmentStudioItem
+            {
+                Id = 512, VideoId = fixture.VideoId, TagId = 11,
+                StartSec = 2, EndSec = 3, Kind = "tag", SourceKey = "user",
+                ReviewState = "approved", Revision = 2,
+                CreatedAt = fixture.UpdatedAt, UpdatedAt = fixture.UpdatedAt,
+            });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        var result = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context,
+            fixture.VideoId,
+            new BulkSegmentReviewRequest(
+                Guid.NewGuid(), 0, "rejected",
+                [new(null, 511, null, 1), new(null, 512, null, 1)]),
+            UserPrincipal(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Conflict, result.Status);
+        var states = await fixture.Context.Set<SegmentStudioItem>()
+            .Where(item => item.Id == 511 || item.Id == 512)
+            .OrderBy(item => item.Id)
+            .Select(item => item.ReviewState)
+            .ToArrayAsync();
+        Assert.Equal(new string?[] { "unreviewed", "approved" }, states);
+        Assert.Empty(await fixture.Context.Set<SegmentStudioHistoryAction>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioSegmentOperation>()
+            .Where(operation => operation.Kind == "bulk-review-state").ToListAsync());
+    }
+
+    [Fact]
+    public async Task BulkReviewSupportsMoreThanFiveThousandDraftsInOneOperation()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        const int count = 5_001;
+        var drafts = Enumerable.Range(10_000, count).Select(id => new SegmentStudioItem
+        {
+            Id = id,
+            VideoId = fixture.VideoId,
+            TagId = 11,
+            StartSec = id,
+            EndSec = id + 1,
+            Kind = "tag",
+            SourceKey = "user",
+            ReviewState = "unreviewed",
+            Revision = 1,
+            CreatedAt = fixture.UpdatedAt,
+            UpdatedAt = fixture.UpdatedAt,
+        }).ToArray();
+        fixture.Context.AddRange(drafts);
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var request = new BulkSegmentReviewRequest(
+            Guid.NewGuid(),
+            0,
+            "rejected",
+            drafts.Select(item => new BulkSegmentReviewTarget(
+                null, item.Id, null, item.Revision)).ToArray());
+
+        var result = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId, request, UserPrincipal(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Updated, result.Status);
+        Assert.Equal(count, result.UpdatedCount);
+        Assert.Equal(count, await fixture.Context.Set<SegmentStudioItem>()
+            .CountAsync(item => item.Id >= 10_000 && item.ReviewState == "rejected"));
+        Assert.Single(await fixture.Context.Set<SegmentStudioHistoryAction>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task BulkReviewRejectsPublishedAndDraftSegmentsTogether()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.Add(new SegmentStudioItem
+        {
+            Id = 520,
+            VideoId = fixture.VideoId,
+            TagId = 11,
+            StartSec = 20,
+            EndSec = 21,
+            Kind = "tag",
+            SourceKey = "user",
+            ReviewState = "approved",
+            Revision = 3,
+            CreatedAt = fixture.UpdatedAt,
+            UpdatedAt = fixture.UpdatedAt,
+        });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        var result = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context,
+            fixture.VideoId,
+            new BulkSegmentReviewRequest(
+                Guid.NewGuid(),
+                0,
+                "rejected",
+                [
+                    new(fixture.SegmentId, null, fixture.UpdatedAt, null),
+                    new(null, 520, null, 3),
+                ]),
+            UserPrincipal(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Updated, result.Status);
+        Assert.Equal(2, result.UpdatedCount);
+        Assert.False(await fixture.Context.Set<Segment>()
+            .AnyAsync(segment => segment.Id == fixture.SegmentId));
+        var rejected = await fixture.Context.Set<SegmentStudioItem>()
+            .Where(item => item.ReviewState == "rejected")
+            .OrderBy(item => item.Id)
+            .ToArrayAsync();
+        Assert.Equal(2, rejected.Length);
+        Assert.Contains(result.Items!, item =>
+            item.RequestedNativeSegmentId == fixture.SegmentId
+            && item.NativeSegmentId == null
+            && item.ItemId != null);
+        Assert.Single(await fixture.Context.Set<SegmentStudioHistoryAction>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task BulkReviewApprovesPublishedAndDraftSegmentsTogether()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.Add(new SegmentStudioItem
+        {
+            Id = 521,
+            VideoId = fixture.VideoId,
+            TagId = 11,
+            StartSec = 22,
+            EndSec = 23,
+            Kind = "tag",
+            SourceKey = "user",
+            ReviewState = "rejected",
+            Revision = 4,
+            CreatedAt = fixture.UpdatedAt,
+            UpdatedAt = fixture.UpdatedAt,
+        });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        var result = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context,
+            fixture.VideoId,
+            new BulkSegmentReviewRequest(
+                Guid.NewGuid(),
+                0,
+                "approved",
+                [
+                    new(fixture.SegmentId, null, fixture.UpdatedAt, null),
+                    new(null, 521, null, 4),
+                ]),
+            UserPrincipal(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Updated, result.Status);
+        Assert.Equal(2, result.UpdatedCount);
+        var native = await fixture.Context.Set<Segment>()
+            .SingleAsync(segment => segment.Id == fixture.SegmentId);
+        Assert.Equal("approved", DirectSegmentReviewService.ReadReviewState(native.Payload));
+        Assert.Equal("approved", (await fixture.Context.Set<SegmentStudioItem>()
+            .SingleAsync(item => item.Id == 521)).ReviewState);
+        Assert.Single(await fixture.Context.Set<SegmentStudioHistoryAction>().ToListAsync());
+    }
+
+    [Fact]
     public async Task NativeImportForReviewMovesSegmentToUnreviewedDraft()
     {
         await using var fixture = await TransitionFixture.CreateAsync();

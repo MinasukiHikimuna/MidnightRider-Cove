@@ -177,13 +177,13 @@ test("select all targets every segment in the video and clears visibility filter
   assert.doesNotMatch(source, /key: "select-all"/);
 });
 
-test("selection lifecycle is explicit for filters, collapse, deletion, and partial review failure", () => {
+test("selection lifecycle is explicit for filters, collapse, and atomic review failure", () => {
   assert.deepEqual(ui.reconcileSelectedSegmentIds([1, 2, 9], [1, 2, 3], 2), [1, 2]);
   assert.deepEqual(ui.reconcileSelectedSegmentIds([1, 9], [2, 3], 2), [2]);
   assert.deepEqual(ui.reconcileSelectedSegmentIds([1, 9], [2, 3], null), [2]);
   assert.match(source, /Collapsed Segment groups keep their selected segments/);
-  assert.match(source, /completedCandidates\.push\(segment\)/);
-  assert.match(source, /Updated \$\{completedCandidates\.length\} of \$\{candidates\.length\} selected segments/);
+  assert.match(source, /Unable to update the selected segments/);
+  assert.doesNotMatch(source, /completedCandidates/);
 });
 
 test("recycling-bin selection stays in the current swimlane before moving to a nearby lane", () => {
@@ -368,9 +368,12 @@ test("selection review shortcuts apply a state and reset only when every segment
     source.indexOf("async function saveSelectedReviewState"),
     source.indexOf("async function toggleIncorrectExample"),
   );
-  assert.match(handler, /segments\/move-to-bin/);
-  assert.match(handler, /segments:\s*publishedCandidates\.map/);
-  assert.match(handler, /bulk-unpublish/);
+  assert.match(handler, /segments\/review-state/);
+  assert.match(handler, /segments:\s*selectedSegments\.map/);
+  assert.match(handler, /expectedHistoryRevision:\s*historyRef\.current\.revision/);
+  assert.match(handler, /if \(result\.history\) acceptHistory\(result\.history\)/);
+  assert.doesNotMatch(handler, /for \(const segment of candidates/);
+  assert.doesNotMatch(handler, /Partially updated/);
 });
 
 test("one selected swimlane can be merged into its full selected time span", () => {

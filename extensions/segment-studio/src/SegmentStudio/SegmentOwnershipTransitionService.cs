@@ -200,8 +200,8 @@ public static class SegmentOwnershipTransitionService
             return new(SegmentTransitionStatus.Invalid, Error: "Operation ID is required.");
         if (request.ReviewState is not ("unreviewed" or "rejected"))
             return new(SegmentTransitionStatus.Invalid, Error: "Native segments can only move to Unreviewed or Rejected draft state.");
-        if (request.Segments.Count is < 1 or > 5000)
-            return new(SegmentTransitionStatus.Invalid, Error: "Select between 1 and 5000 native segments.");
+        if (request.Segments.Count < 1)
+            return new(SegmentTransitionStatus.Invalid, Error: "Select at least one native segment.");
         if (request.Segments.Select(item => item.SegmentId).Distinct().Count() != request.Segments.Count)
             return new(SegmentTransitionStatus.Invalid, Error: "A native segment can only appear once.");
 

@@ -543,6 +543,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     acceptHistory,
     compatibilityMode,
     detailPanelRef,
+    historyRef,
     mergeSavingRef,
     onConflict,
     onReload,

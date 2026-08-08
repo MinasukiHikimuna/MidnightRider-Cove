@@ -83,10 +83,9 @@ the visible segments and keeps the first visible segment active when the prior
 selection becomes hidden. Collapsing a Segment group never changes selection.
 Changing videos starts a new selection, while deletion keeps surviving selected
 segments and falls back to the first remaining visible segment when necessary.
-If a bulk review operation fails after some segments were changed, those
-successful changes remain selected and receive their own history entry; the
-editor reports the completed and unattempted counts instead of presenting the
-whole operation as successful.
+Bulk review is atomic. Segment Studio validates the complete selection before
+changing it, and a stale or invalid segment leaves the entire selection
+unchanged so it can be reloaded and retried safely.
 
 The segment rail and swimlane timeline use the same Segment groups and tag
 ordering. Select a group heading in either surface, or press **B**, to
@@ -102,9 +101,8 @@ their hidden lanes.
 Choose **History** to inspect the ten most recent reversible editor actions.
 Selecting an older state reverses that action and every newer dependent action;
 selecting a newer state reapplies the required actions. A successful bulk
-operation is one history entry. If a sequential bulk review changes only part
-of its selection before a conflict or failure, the completed subset is recorded
-as a reversible partial action and the untouched remainder is reported.
+operation is one history entry. Bulk review changes and their history entry are
+saved together, so undo never represents a partially applied selection.
 
 History restoration uses the same item revisions and native update timestamps
 as ordinary editing. A concurrency conflict stops restoration, reloads current
