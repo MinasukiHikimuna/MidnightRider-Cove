@@ -7,8 +7,10 @@ public sealed class OidcFlowStoreTests
     {
         var time = new MutableTimeProvider(DateTimeOffset.UnixEpoch);
         var store = new OidcFlowStore(time);
+        var settings = AuthMiddlewareSettingsTests.ValidSettings();
         var flow = store.Create(
-            AuthMiddlewareSettings.Default,
+            settings,
+            Assert.Single(settings.OidcProviders),
             ProviderConfiguration(),
             "browser-binding",
             "/settings?tab=security");
@@ -30,11 +32,44 @@ public sealed class OidcFlowStoreTests
     {
         var time = new MutableTimeProvider(DateTimeOffset.UnixEpoch);
         var store = new OidcFlowStore(time);
-        var flow = store.Create(AuthMiddlewareSettings.Default, ProviderConfiguration(), "binding", null);
+        var settings = AuthMiddlewareSettingsTests.ValidSettings();
+        var flow = store.Create(
+            settings,
+            Assert.Single(settings.OidcProviders),
+            ProviderConfiguration(),
+            "binding",
+            null);
 
         time.Advance(TimeSpan.FromMinutes(11));
 
         Assert.Null(store.TryGet(flow.State));
+    }
+
+    [Fact]
+    public void Link_flow_requires_and_retains_its_one_time_intent()
+    {
+        var store = new OidcFlowStore(TimeProvider.System);
+        var settings = AuthMiddlewareSettingsTests.ValidSettings();
+
+        Assert.Throws<ArgumentException>(() => store.Create(
+            settings,
+            Assert.Single(settings.OidcProviders),
+            ProviderConfiguration(),
+            "binding",
+            null,
+            OidcFlowPurpose.Link));
+
+        var flow = store.Create(
+            settings,
+            Assert.Single(settings.OidcProviders),
+            ProviderConfiguration(),
+            "binding",
+            null,
+            OidcFlowPurpose.Link,
+            "intent-token");
+
+        Assert.Equal(OidcFlowPurpose.Link, flow.Purpose);
+        Assert.Equal("intent-token", flow.LinkIntentToken);
     }
 
     private static OidcProviderConfiguration ProviderConfiguration() => new(

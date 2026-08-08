@@ -2,10 +2,10 @@
   "id": "com.midnightrider.auth-middleware",
   "name": "Authentication Middleware",
   "version": "0.1.0",
-  "description": "Adds generic OpenID Connect login and trusted reverse-proxy username authentication while Cove retains local account and permission control.",
+  "description": "Adds multiple OpenID Connect and trusted reverse-proxy identities with explicit Cove account linking and local permission control.",
   "author": "MidnightRider",
   "kind": "extension",
-  "minCoveVersion": "1.1.1-dev.134",
+  "minCoveVersion": "1.1.1-dev.139",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
   "dependencies": {},
   "externalDependencies": [
@@ -24,7 +24,7 @@
       "name": "Authenticated reverse proxy",
       "kind": "service",
       "required": false,
-      "description": "Required only for trusted-header mode. It must authenticate requests, remove client-supplied identity headers, and set one canonical username header.",
+      "description": "Required only for trusted-header mode. It must authenticate requests, remove client-supplied identity headers, and set one canonical stable-subject header plus optional display metadata.",
       "installHint": "Keep Cove's direct upstream private and trust only the proxy's narrow direct-peer IP or CIDR.",
       "dockerHint": "If the proxy is containerized, give it explicit network paths to Cove and the authentication outpost.",
       "url": "https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth/"

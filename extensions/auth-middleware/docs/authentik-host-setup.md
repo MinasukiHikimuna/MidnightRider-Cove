@@ -1,37 +1,59 @@
 # Host-side Authentik setup for Cove authentication development
 
-This guide prepares Authentik outside the Cove devbox for the MidnightRider
-authentication extension. The devbox does not contain Docker, Podman, or a
-container socket, so Authentik must run on a host that the browser and the Cove
-backend can both reach.
+This guide prepares Authentik outside the Cove devbox and then moves existing Cove users to explicit
+external-identity links. The devbox does not provide a container engine, so Authentik and an optional
+forward-auth proxy must run on the host or another machine reachable by both the browser and Cove.
 
-OIDC is the recommended first path. It needs only Authentik. Trusted-header
-authentication is a second, optional path that also needs a reverse proxy and a
-network path whose direct peer Cove can safely identify.
+OIDC is the recommended first path. Trusted-header authentication is optional and requires a reverse
+proxy whose direct connection to Cove can be narrowly trusted.
 
-> This guide deliberately keeps hostnames, account names, client credentials,
-> and other environment-specific values out of source control. Keep the host
-> deployment and its secrets in ignored host-side state.
+Keep hostnames, account names, client credentials, passwords, and generated deployment files in
+ignored host-side state. Never paste them into issues, pull requests, screenshots, or tracked files.
+
+## Identity and recovery model
+
+Cove does not look up a user by an Authentik username or email:
+
+| Method | Stable identity key | Display-only value |
+| --- | --- | --- |
+| OIDC | Extension ID + exact issuer + exact `sub` | Configured claim, normally `preferred_username` |
+| Trusted header | Extension ID + configured authority ID + exact subject header | Optional display-name header |
+
+The link points to an existing Cove user. That user keeps the same roles, permissions, history,
+account status, and Cove sessions. One external identity can belong to only one Cove user, while one
+Cove user can link any number of identities from one or more providers.
+
+For a fresh Cove installation:
+
+1. Complete Cove's native Owner setup. Extensions cannot be installed before this step.
+2. Keep the Owner's local password. Every Cove user retains a local password.
+3. Install and configure this extension.
+4. While still signed in locally, link the Owner's Authentik identity from **Settings > My settings >
+   Account**.
+5. Sign out and verify Authentik login.
+
+Invited users create a Cove password while redeeming the invite, then link Authentik after their first
+local sign-in. External providers are additional sign-in methods, never replacements for the local
+password. Users can unlink identities, and administrators can disable providers or the extension,
+without removing local access.
+
+Keep local passwords in recoverable storage. During an Authentik or network outage, every user can
+use Cove's local sign-in; an administrator can issue a password-reset invite when needed.
 
 ## Values to choose
 
-Use placeholders while following this guide; do not commit the resulting
-values or secrets.
+Use placeholders while following this guide:
 
 | Placeholder | Meaning |
 | --- | --- |
-| `<AUTHENTIK_PUBLIC_URL>` | Browser-visible Authentik origin, with no trailing slash |
-| `<COVE_PUBLIC_URL>` | Browser-visible Cove origin, with no trailing slash |
+| `<AUTHENTIK_PUBLIC_URL>` | Browser-visible Authentik origin, without a trailing slash |
+| `<COVE_PUBLIC_URL>` | Browser-visible Cove origin, without a trailing slash |
 | `<COVE_UPSTREAM_URL>` | Cove address reached by an optional host reverse proxy |
 | `<COVE_PROXY_PUBLIC_URL>` | Browser-visible Cove origin used for forward-auth testing |
-| `<AUTHENTIK_INTERNAL_URL>` | Authentik address reached by the reverse proxy |
+| `<AUTHENTIK_INTERNAL_URL>` | Authentik/outpost address reached by the reverse proxy |
 
-The OIDC issuer must use one hostname that is reachable from both the browser
-and the Cove backend. Do not configure `localhost` as the issuer when Authentik
-runs on the container host: `localhost` inside the devbox refers to the devbox,
-not the host.
-
-The intended topology is:
+The OIDC issuer hostname must be reachable from both the browser and the Cove backend. Do not use
+`localhost` for a host-side Authentik issuer: inside the devbox, `localhost` refers to the devbox.
 
 ```text
 OIDC:
@@ -43,11 +65,18 @@ browser ───────> trusted reverse proxy ───────> Cove
                          └──────────────> Authentik outpost
 ```
 
-## 1. Start Authentik on the host
+## 1. Start or verify Authentik on the host
 
-Authentik's current Compose installation requires at least 2 CPU cores, 2 GB
-of RAM, and Docker Compose v2 or Podman Compose. Run these commands on the host,
-not in the Cove devbox:
+If a pinned Authentik deployment is already healthy, keep it and proceed to the next section. Useful
+host-side checks are:
+
+```bash
+docker compose ps
+docker compose logs --tail=200 server worker
+```
+
+For a new development deployment, start from Authentik's official Compose file rather than writing a
+stack from scratch:
 
 ```bash
 mkdir cove-authentik
@@ -68,222 +97,220 @@ docker compose up -d
 docker compose ps
 ```
 
-The downloaded file pins the then-current Authentik release. Keep that pin;
-do not replace it with `latest`. Re-download the official Compose file when
-upgrading. Do not add timezone mounts to the containers because Authentik's
-OAuth handling expects its internal services to use UTC.
-
-The official Compose file mounts the Docker socket into the worker so
-Authentik can deploy managed outposts. For OIDC alone, or when using only the
-embedded outpost, remove the `/var/run/docker.sock:/var/run/docker.sock` mount
-from the worker for least privilege. Keep it only if you intentionally want
-Authentik to manage separate Docker outpost containers.
-
-Open the host's Authentik URL on port 9000 and complete the initial setup for
-the `akadmin` account. Keep the generated `.env`, admin password, and later
-OIDC client secret outside source control.
+Pin the resulting image version; do not use `latest`. Authentik's official file mounts the Docker
+socket into the worker for managed outposts. Remove that mount if only OIDC or a manually managed
+outpost is needed. Do not mount host timezone files into Authentik containers; Authentik's internal
+services expect UTC.
 
 Official references:
 
 - [Docker Compose installation](https://docs.goauthentik.io/install-config/install/docker-compose/)
-- [Authentik configuration](https://docs.goauthentik.io/install-config/configuration/)
+- [Automated installation and hashed bootstrap passwords](https://docs.goauthentik.io/install-config/automated-install/)
+- [Release notes](https://docs.goauthentik.io/releases/)
 
-## 2. Give Authentik a URL both sides can reach
+## 2. Verify public discovery reachability
 
-For the cleanest test, put Authentik behind HTTPS at
-`<AUTHENTIK_PUBLIC_URL>` using a certificate trusted by both the browser and
-the devbox. Confirm all three of these paths before configuring OIDC:
+Put Authentik behind HTTPS at `<AUTHENTIK_PUBLIC_URL>` with a certificate trusted by both the browser
+and devbox. Before configuring Cove, confirm:
 
 1. The browser can open `<AUTHENTIK_PUBLIC_URL>`.
-2. Authentik can redirect a browser to `<COVE_PUBLIC_URL>`.
-3. The Cove backend can fetch `<AUTHENTIK_PUBLIC_URL>`.
+2. Authentik can redirect the browser to `<COVE_PUBLIC_URL>`.
+3. The Cove backend can resolve and fetch `<AUTHENTIK_PUBLIC_URL>`.
 
-If public DNS is unavailable, use a stable host DNS name or IP address that is
-reachable from both environments. Do not use different browser-facing and
-backend-facing issuer URLs: the `iss` value in the token must exactly match the
-configured issuer.
+Do not use different frontend and backend issuer URLs. The discovery issuer and token `iss` must
+exactly match the issuer saved in the extension, including its trailing-slash form.
 
-For a local-only HTTP experiment, the extension will expose an explicit
-**Allow an HTTP issuer and Cove URL for isolated development only** switch.
-Leave it off for HTTPS and for every non-development deployment. A private or
-self-signed HTTPS certificate must be added to the devbox trust store; do not
-solve that case by disabling certificate validation.
-
-From any machine that can reach Authentik, this should eventually return an
-OIDC discovery document:
+After the provider exists, this must return an OIDC discovery document:
 
 ```bash
 curl --fail --show-error \
   '<AUTHENTIK_PUBLIC_URL>/application/o/cove-dev/.well-known/openid-configuration'
 ```
 
-It is normal for that URL to return 404 until the provider in the next section
-exists.
+The extension has an explicit HTTP development override. Leave it disabled for HTTPS and every
+non-development deployment. Trust a private CA in the devbox rather than disabling TLS validation.
 
-## 3. Create the OIDC application and provider
+## 3. Create the Authentik OIDC application and provider
 
 In Authentik's Admin interface:
 
-1. Go to **Applications > Applications** and choose **New Provider**
-   (some releases label this **Create with provider**).
-2. Give the application a development-only name and use the slug `cove-dev`.
-3. Select **OAuth2/OIDC** as the provider type.
-4. Use the authorization-code flow and a **Confidential** client.
-5. Add exactly this **Strict** redirect URI, replacing the origin placeholder:
+1. Go to **Applications > Applications**, select **New Provider**, and create an application/provider
+   pair.
+2. Use an environment-specific application slug such as `cove-dev`.
+3. Select **OAuth2/OIDC**.
+4. Select the authorization-code flow and a **Confidential** client.
+5. Add exactly this **Strict** redirect URI:
 
    ```text
    <COVE_PUBLIC_URL>/api/plugins/com.midnightrider.auth-middleware/oidc/callback
    ```
 
-6. Select an asymmetric signing key so tokens can be verified through the
-   provider's JWKS document.
-7. Keep Authentik's default per-provider issuer mode.
-8. Include the `openid`, `profile`, and `email` scope mappings. `offline_access`
-   is not needed because the Cove extension does not retain Authentik refresh
-   tokens.
-9. Save the application, then record its client ID and client secret locally.
+6. Select an asymmetric signing key so Cove can validate ID tokens with the JWKS document.
+7. Keep the default per-provider issuer mode.
+8. Include `openid`, `profile`, and `email` scope mappings. `offline_access` is unnecessary because
+   the extension does not keep Authentik refresh tokens.
+9. Record the client ID and client secret in ignored host-side secret storage.
 
-Use an exact redirect URI rather than a regular expression. Authentik validates
-redirect URIs, and its default per-provider issuer for this slug is:
+The default issuer and discovery URL for the example slug are:
 
 ```text
 <AUTHENTIK_PUBLIC_URL>/application/o/cove-dev/
-```
-
-The discovery URL is:
-
-```text
 <AUTHENTIK_PUBLIC_URL>/application/o/cove-dev/.well-known/openid-configuration
 ```
 
-The extension will use Authorization Code with PKCE, and it will require and
-validate `state`, `nonce`, issuer, audience, signature, and token lifetime.
+Authentik can configure different `sub` modes. Cove treats whatever Authentik signs as `sub` as an
+opaque, case-sensitive identifier; changing Authentik's subject mode later makes it a different
+external identity and requires an explicit new link.
 
 Official references:
 
 - [Create an OAuth2/OIDC provider](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider)
-- [OAuth2/OIDC endpoints and issuer modes](https://docs.goauthentik.io/add-secure-apps/providers/oauth2)
+- [OAuth2/OIDC provider, issuer, and subject modes](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/)
 
-## 4. Create a matching test user
+## 4. Configure the Cove extension
 
-Create or select an Authentik user whose `preferred_username` matches an
-existing Cove username. Cove's normal username lookup is case-insensitive; no
-other alias or email matching is performed. The initial extension deliberately
-does not auto-provision accounts or map Authentik groups to Cove roles. Cove
-remains the source of truth for account status, roles, and permissions, and it
-rejects an unknown, inactive, or locked local user.
+Install and enable `com.midnightrider.auth-middleware`. In **Settings > External authentication**:
 
-Use a dedicated non-owner account for the first positive test. Also prepare an
-Authentik user with no matching Cove account for the negative test.
+1. Set the shared Cove public URL to `<COVE_PUBLIC_URL>`.
+2. Select **Add provider**.
+3. Enter:
 
-## 5. Configure the installed extension
+   | Setting | Value |
+   | --- | --- |
+   | Enabled | On |
+   | Login button label | `Sign in with Authentik` or another useful label |
+   | Issuer | `<AUTHENTIK_PUBLIC_URL>/application/o/cove-dev/` |
+   | Client ID | The Authentik provider client ID |
+   | Client secret | The Authentik provider client secret |
+   | Display claim | `preferred_username` |
+   | Scopes | `openid profile email` |
 
-Install and enable `com.midnightrider.auth-middleware`, then enter these values
-in its Cove settings page:
+4. Save. Cove generates the provider's internal route ID; the issuer becomes immutable.
+5. Run **Test saved provider**. Discovery and signing-key retrieval must pass.
 
-| Extension setting | Value |
-| --- | --- |
-| OIDC enabled | On |
-| Button label | `Sign in with Authentik` |
-| Issuer | `<AUTHENTIK_PUBLIC_URL>/application/o/cove-dev/` |
-| Client ID | The Authentik provider client ID |
-| Client secret | The Authentik provider client secret |
-| Cove public URL | `<COVE_PUBLIC_URL>` |
-| Username claim | `preferred_username` |
-| Scopes | `openid profile email` |
-| Allow HTTP for isolated development | Off for HTTPS; on only for an intentional local HTTP test |
+The client secret is write-only. Leaving it blank keeps the saved secret; clearing it requires the
+explicit clear checkbox. Public settings and namespaced secrets are stored separately by the
+extension and never returned together by its settings API.
 
-The client secret is write-only in the extension UI: leaving the field blank
-preserves the stored value. Do not paste it into an issue, pull request, chat,
-terminal transcript, or tracked file.
-
-The extension's anonymous routes will be:
+The routes for a generated provider ID are:
 
 ```text
-/api/plugins/com.midnightrider.auth-middleware/oidc/start
+/api/plugins/com.midnightrider.auth-middleware/oidc/<provider-id>/start
+/api/plugins/com.midnightrider.auth-middleware/oidc/<provider-id>/link/start
 /api/plugins/com.midnightrider.auth-middleware/oidc/callback
 ```
 
-## 6. Verify OIDC
+## 5. Link existing Cove users
 
-Once the Cove branch and extension are installed:
+Do not try external login first; an unlinked subject is intentionally rejected even when its Authentik
+username happens to equal a Cove username.
 
-1. In the extension settings, save the OIDC configuration and run **Test saved
-   OIDC configuration**. Discovery and signing-key retrieval must both pass.
-2. Open a private browser window at the exact `<COVE_PUBLIC_URL>/login` origin.
-   Do not start at a loopback URL or alternate hostname and return through the
-   public callback: the browser-binding cookie is intentionally origin-scoped.
-3. Confirm **Sign in with Authentik** appears in addition to Cove's local login.
-   The advertised start URL must be a local extension path, not an absolute
-   provider URL, and the provider response must be marked `no-store`.
-4. Start the flow as the matching non-owner user. Confirm the authorization
-   request uses Authorization Code with PKCE S256 and includes fresh `state`
-   and `nonce` values. Do not copy those values into a transcript.
-5. Approve consent if Authentik prompts for it. Confirm Cove signs in as the
-   existing local user, removes the callback fragment from the address bar,
-   and restores any relative Cove path requested before login. The one-time
-   code belongs in the URL fragment so it never reaches proxy access logs.
-6. Confirm the OIDC session resolves to the same Cove user, roles, permissions,
-   and read grants as a normal local login. Refresh the session once to verify
-   that it uses Cove's ordinary token rotation path.
-7. Sign out, then try the Authentik user without a matching Cove account.
-   Confirm Cove shows only a generic failure, creates neither a Cove user nor a
-   Cove session, and removes the callback error marker from the address bar.
-8. Start a login in one private window and try to finish or redeem it in a
-   second window. Confirm the second window is rejected and that the original
-   window can still redeem the ticket. A second redemption attempt in the
-   original window must also be rejected.
-9. Sign in once through Cove's original username/password form to confirm the
-   local login path remains available.
-10. Inspect Cove's audit log for an extension login success and an unknown-user
-    failure. Inspect Authentik's recent server and worker logs for unexpected
-    errors. Neither log should contain client secrets, passwords, tokens, or
-    authorization codes.
+For the Owner and each normal Cove user:
 
-Expected pre-install behavior is useful baseline evidence: there is no external
-login button, and the planned callback route returns 404.
+1. Sign in through Cove's local login or an already-linked provider.
+2. Open **Settings > My settings > Account**.
+3. Select **Link Sign in with Authentik**.
+4. Authenticate at Authentik. Link flows request account selection to reduce accidental linking of a
+   currently active Authentik session.
+5. Back in Cove, inspect the provider and display label, then select **Confirm link**. The provider
+   callback only prepares a candidate; it cannot persist a link without this same-user confirmation.
+6. Sign out and verify external login.
 
-## 7. Optional: forward-auth / trusted-header test
+Use a dedicated non-owner user for the first test. Also keep an Authentik user unlinked for the
+negative case. Verify both local-password login and at least one full external login for the linked
+user.
 
-Do this only after OIDC is working. Forward auth protects the whole application
-at the reverse proxy and passes an asserted username to Cove. It is not needed
-for the OIDC flow.
+## 6. Verify OIDC behavior
+
+Run this matrix from the exact `<COVE_PUBLIC_URL>` origin; the browser-binding cookie is intentionally
+origin-scoped.
+
+| Case | Expected result |
+| --- | --- |
+| Linked active user | Cove signs in as the linked user with unchanged Cove roles and grants |
+| Unlinked Authentik subject | Generic guidance to sign in locally and link; no user or Cove session is created |
+| Subject linked to another Cove user | Linking is rejected; the existing link is unchanged |
+| Inactive or locked Cove user | External login is rejected |
+| Legacy Cove user without a password | External login is rejected until an administrator issues a password invite |
+| Changed display username/email, same issuer and `sub` | Same Cove user; only display metadata changes on a confirmed relink |
+| Same `sub`, different issuer | Different external identity; explicit link required |
+| Same issuer, case- or whitespace-different `sub` | Different external identity; no normalization or fallback matching |
+| Callback opened in another browser | Rejected before exchanging the authorization code; original browser can continue |
+| Login ticket redeemed twice | Second redemption is rejected |
+| Query-carried Cove ticket | Rejected; Cove accepts the one-time ticket only from the URL fragment |
+
+Also verify:
+
+1. The login page offers every enabled OIDC provider plus Cove's local login.
+2. Authorization requests use code flow, PKCE S256, fresh state, fresh nonce, and (for linking)
+   account selection.
+3. Relative pre-login destinations are restored; absolute/external return URLs are rejected.
+4. The callback fragment is scrubbed from browser history after Cove consumes it.
+5. Cove's audit log contains generic external login/link events without subjects, tokens, codes, or
+   secrets.
+6. Client secrets, authorization codes, ID tokens, passwords, browser-binding cookies, and link codes
+   do not appear in Cove, proxy, or Authentik logs.
+
+Login/link flows and one-time tickets are process-local. If Cove runs multiple backend instances, use
+sticky routing for the start, callback, and redemption sequence until a shared ephemeral store is
+implemented.
+
+## 7. Multiple providers and provider replacement
+
+Add each OIDC provider separately. A single Cove user can link Authentik, a second OIDC provider, and
+a trusted-header identity at the same time. Login through any linked identity resolves the same Cove
+user and does not duplicate roles or history.
+
+To replace Authentik or change an issuer/subject mode:
+
+1. Keep the old provider enabled.
+2. Add the replacement as a new provider. Issuers cannot be edited in place because they are part of
+   identity.
+3. Ask every user to link and test the replacement.
+4. Disable the old provider. Existing links remain recorded but cannot authenticate while disabled.
+5. Users or an administrator unlink the old identities.
+6. Delete the old provider only after its link count is zero. Cove blocks earlier deletion.
+
+Disabling or uninstalling the extension does not delete Cove-owned identity links. Reinstalling the
+same extension and exact provider authority can use those links again. Every user retains a local
+password throughout provider migration, so disabling a provider or the extension removes only that
+alternative sign-in method. Verify the replacement before retiring the old provider so users get the
+intended SSO experience.
+
+## 8. Optional trusted-header / forward-auth setup
+
+Do this only after OIDC works. Authentik's proxy outpost emits both a display username and
+`X-authentik-uid`, which Authentik documents as a hashed user identifier. Configure Cove to use the UID
+as the stable subject and the username only as a display label.
 
 ### Authentik configuration
 
-1. Create another application with a **Proxy Provider**.
+1. Create an application with a **Proxy Provider**.
 2. Choose **Forward auth (single application)**.
 3. Set its external host to `<COVE_PROXY_PUBLIC_URL>`.
-4. Assign it to the embedded proxy outpost under **Applications > Outposts**.
-
-Authentik's outpost supplies `X-Authentik-Username`. The Cove extension will
-accept that header only when the request's direct network peer matches its
-trusted-proxy list.
+4. Assign it to the embedded or manually managed proxy outpost.
 
 Official references:
 
-- [Create a proxy provider](https://docs.goauthentik.io/add-secure-apps/providers/proxy/create-proxy-provider/)
-- [Forward auth](https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth)
-- [Headers emitted by a proxy provider](https://docs.goauthentik.io/add-secure-apps/providers/proxy/)
+- [Proxy provider and upstream headers](https://docs.goauthentik.io/add-secure-apps/providers/proxy/)
+- [Forward auth](https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth/)
 
 ### Reverse-proxy configuration
 
-The following minimal Caddy shape mirrors Authentik's official template. Run
-Caddy on the host or in a separate host-side container. Replace every
-angle-bracketed value:
+This minimal Caddy shape follows Authentik's forward-auth pattern. Replace every placeholder:
 
 ```caddyfile
 <COVE_PROXY_PUBLIC_HOST> {
     route {
-        # Never allow a browser-supplied identity header to survive.
+        # Never let browser-supplied identity headers survive.
+        request_header -X-Authentik-Uid
         request_header -X-Authentik-Username
 
-        # Authentik owns its callback/start paths on the protected Cove host.
         reverse_proxy /outpost.goauthentik.io/* <AUTHENTIK_INTERNAL_URL>
 
         forward_auth <AUTHENTIK_INTERNAL_URL> {
             uri /outpost.goauthentik.io/auth/caddy
-            copy_headers X-Authentik-Username
+            copy_headers X-Authentik-Uid X-Authentik-Username
         }
 
         reverse_proxy <COVE_UPSTREAM_URL>
@@ -291,76 +318,73 @@ angle-bracketed value:
 }
 ```
 
-If Caddy itself runs in Docker, its upstream addresses must be reachable from
-that container; `127.0.0.1` would refer to Caddy. A dedicated Docker network or
-an explicit host-gateway mapping is preferable to guessing addresses.
+If Caddy runs in Docker, `127.0.0.1` refers to the Caddy container. Use an explicit shared network or
+host-gateway route. Keep Cove's direct upstream private.
 
-Configure the extension with:
+Configure the extension:
 
-| Extension setting | Value |
+| Setting | Value |
 | --- | --- |
 | Trusted-header enabled | On |
-| Username header | `X-Authentik-Username` |
-| Trusted proxies | The narrowest CIDR containing the direct reverse-proxy peer, ideally one `/32` or `/128` |
+| Provider label | `Authentik forward auth` |
+| Authority ID | Let Cove generate it on first enable; disable and unlink every account before replacing it |
+| Stable subject header | `X-Authentik-Uid` |
+| Display-name header | `X-Authentik-Username` |
+| Trusted proxies | The narrowest direct Caddy peer `/32` or `/128` |
 
-Do not enter all private address ranges merely to make the test pass. Determine
-the address Cove actually sees for the reverse proxy. If another ingress sits
-between Caddy and Cove, Cove sees that ingress as its direct peer; the design is
-safe only if that entire path strips client-supplied identity headers and the
-trusted peer cannot be used by arbitrary clients to inject replacements.
+Do not trust all private ranges to make the test pass. Cove intentionally ignores forwarded-address
+headers when deciding whether the identity headers are trusted. Every ingress on the path must strip
+client-supplied identity headers.
 
-Keep the direct Cove upstream private or otherwise ensure direct requests do
-not arrive through a peer that Cove trusts for identity headers. Built-in Cove
-bearer/cookie authentication takes precedence over an extension assertion, and
-an absent or malformed trusted header does not authenticate a request.
+Trusted-header authentication is transparent, so it is not shown as a separate login button. It is
+shown as a link action in Account settings. While locally signed in through the proxy, select that
+link action and explicitly confirm the identity.
 
-Use a current patched Authentik release for forward auth. In particular,
-Authentik documents forward-auth bypass fixes in 2025.10.4/2025.12.4 for Caddy
-and Traefik, and 2025.12.5/2026.2.3 for nginx. The official current Compose file
-should be newer, but verify the pinned image before exposing the proxy.
+The trusted-header identity is authoritative on every request. If the proxy changes from one linked
+subject to another, Cove switches to the newly asserted Cove user instead of retaining a stale local
+cookie. An unlinked, inactive, or locked asserted subject fails closed. Explicit share links retain
+their restricted share scope, and a same-user API token retains its token scope.
 
-Security references:
+Verify:
 
-- [CVE-2026-25748: Caddy/Traefik forward-auth bypass](https://docs.goauthentik.io/security/cves/CVE-2026-25748/)
-- [GHSA-5wcc-hf24-rf5h: nginx forward-auth bypass](https://docs.goauthentik.io/security/cves/GHSA-5wcc-hf24-rf5h/)
+1. A linked user through the trusted proxy resolves to the expected Cove account.
+2. A direct request to Cove with forged UID and username headers remains anonymous.
+3. A request through the proxy without a valid Authentik session is rejected before Cove.
+4. Missing, duplicated, malformed, or comma-joined stable-subject headers fail closed.
+5. Changing only `X-authentik-username` does not change the linked identity.
 
-### Verify forward auth
+## Legacy settings migration
 
-1. Open `<COVE_PROXY_PUBLIC_URL>` in a private browser window.
-2. Confirm Authentik intercepts the request before Cove is shown.
-3. Authenticate as the user whose username matches an active Cove account.
-4. Confirm Cove resolves that local account and its Cove roles and permissions.
-5. Send a request directly to the Cove upstream with a forged
-   `X-Authentik-Username` header. Confirm it does not authenticate.
-6. Send a request through the proxy without a valid Authentik session. Confirm
-   the proxy redirects or rejects it rather than reaching Cove as a user.
+An older extension version stored one OIDC provider and authenticated by a username claim. On first
+load, the new version migrates that OIDC configuration into one named provider and moves its secret to
+a namespaced secret key. No external links are inferred from usernames; every Cove user must complete
+the explicit link flow.
+
+Legacy trusted-header mode is migrated disabled because its old header was documented as a username,
+not a stable subject. Review the proxy, configure `X-authentik-uid` (or another authority-owned stable
+identifier), and explicitly re-enable it.
 
 ## Operations and troubleshooting
-
-Inspect status and recent logs on the host with:
 
 ```bash
 docker compose ps
 docker compose logs --tail=200 server worker
+docker compose down       # keeps the database unless volumes are explicitly removed
+docker compose up --detach
 ```
-
-Stop the development stack without deleting its database:
-
-```bash
-docker compose down
-```
-
-Common failures:
 
 | Symptom | Check |
 | --- | --- |
-| Discovery fetch fails in Cove | The issuer hostname must resolve and its TLS chain must be trusted inside the devbox |
-| Authentik reports an invalid redirect URI | Match the exact Cove origin, scheme, port, path, and trailing-slash behavior shown above |
-| Token validation reports issuer mismatch | Keep default per-provider issuer mode and include the trailing slash in the configured issuer |
-| OIDC succeeds but Cove rejects the user | Match `preferred_username` to an existing active, unlocked Cove username |
-| Forward auth loops | Check the provider external host and that `/outpost.goauthentik.io/*` is routed directly to the outpost |
-| Forward auth reaches Cove anonymously | Check Caddy's copied-header capitalization and the extension's direct-peer trusted CIDR |
+| OIDC discovery fails | Issuer DNS and TLS must work inside the devbox; discovery issuer must match exactly |
+| Authentik reports invalid redirect URI | Match Cove origin, scheme, port, callback path, and slash behavior exactly |
+| OIDC succeeds but Cove reports unlinked identity | Sign in locally and complete Account settings link/confirmation; username matching is intentionally absent |
+| Link opens the wrong Authentik account | Sign out at Authentik and retry; link requests include account selection but provider policy still applies |
+| Provider cannot be deleted | Disable it, unlink all associated Cove identities, then delete it |
+| User record reports `password required` | Issue a password invite; external login is rejected until redemption |
+| Every external provider is unavailable | Users sign in with their Cove passwords |
+| Forward auth loops | Check proxy external host and direct routing of `/outpost.goauthentik.io/*` |
+| Forward auth reaches Cove anonymously | Verify both copied headers and the exact direct-peer CIDR Cove observes |
 
-Before sharing logs or screenshots, remove hostnames, IPs, usernames, client
-IDs, authorization codes, cookies, tokens, and library-specific details. Never
-share the client secret or Authentik `.env`.
+Before sharing diagnostics, remove hostnames, IPs, usernames, client IDs, issuer paths, authorization
+codes, cookies, tokens, link codes, and library-specific details. Rotate any credential exposed in a
+terminal or tool transcript.

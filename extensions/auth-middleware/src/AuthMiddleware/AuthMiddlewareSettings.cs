@@ -2,85 +2,125 @@ using System.Collections.ObjectModel;
 
 namespace AuthMiddleware;
 
+public sealed record OidcProviderSettings(
+    string Id,
+    bool Enabled,
+    string ButtonLabel,
+    string Issuer,
+    string ClientId,
+    string ClientSecret,
+    string DisplayClaim,
+    string[] Scopes)
+{
+    public bool IsReady(AuthMiddlewareSettings settings) => Enabled
+        && Issuer.Length > 0
+        && ClientId.Length > 0
+        && ClientSecret.Length > 0
+        && settings.CovePublicUrl.Length > 0
+        && Scopes.Contains("openid", StringComparer.Ordinal);
+}
+
 public sealed record AuthMiddlewareSettings(
-    bool OidcEnabled,
-    string OidcButtonLabel,
-    string OidcIssuer,
-    string OidcClientId,
-    string OidcClientSecret,
     string CovePublicUrl,
-    string UsernameClaim,
-    string[] Scopes,
     bool AllowInsecureDevelopmentIssuer,
+    OidcProviderSettings[] OidcProviders,
     bool TrustedHeaderEnabled,
-    string TrustedHeaderName,
+    string TrustedHeaderProviderId,
+    string TrustedHeaderLabel,
+    string TrustedHeaderSubjectName,
+    string TrustedHeaderDisplayName,
     string[] TrustedProxyCidrs)
 {
     public static AuthMiddlewareSettings Default => new(
-        OidcEnabled: false,
-        OidcButtonLabel: "Sign in with OpenID Connect",
-        OidcIssuer: string.Empty,
-        OidcClientId: string.Empty,
-        OidcClientSecret: string.Empty,
         CovePublicUrl: string.Empty,
-        UsernameClaim: "preferred_username",
-        Scopes: ["openid", "profile", "email"],
         AllowInsecureDevelopmentIssuer: false,
+        OidcProviders: [],
         TrustedHeaderEnabled: false,
-        TrustedHeaderName: "X-Authentik-Username",
+        TrustedHeaderProviderId: string.Empty,
+        TrustedHeaderLabel: "Trusted reverse proxy",
+        TrustedHeaderSubjectName: "X-Authentik-Uid",
+        TrustedHeaderDisplayName: "X-Authentik-Username",
         TrustedProxyCidrs: []);
 
-    public bool OidcReady => OidcEnabled
-        && OidcIssuer.Length > 0
-        && OidcClientId.Length > 0
-        && OidcClientSecret.Length > 0
-        && CovePublicUrl.Length > 0
-        && Scopes.Contains("openid", StringComparer.Ordinal);
+    public bool TrustedHeaderReady => TrustedHeaderEnabled
+        && TrustedHeaderProviderId.Length > 0
+        && TrustedHeaderSubjectName.Length > 0
+        && TrustedProxyCidrs.Length > 0;
+
+    public OidcProviderSettings? FindOidcProvider(string? id) =>
+        string.IsNullOrWhiteSpace(id)
+            ? null
+            : OidcProviders.FirstOrDefault(provider =>
+                string.Equals(provider.Id, id, StringComparison.Ordinal));
+}
+
+public sealed record OidcProviderSettingsUpdate
+{
+    public string? Id { get; init; }
+    public bool Enabled { get; init; }
+    public string? ButtonLabel { get; init; }
+    public string? Issuer { get; init; }
+    public string? ClientId { get; init; }
+    public string? ClientSecret { get; init; }
+    public bool ClearClientSecret { get; init; }
+    public string? DisplayClaim { get; init; }
+    public string[]? Scopes { get; init; }
 }
 
 public sealed record AuthMiddlewareSettingsUpdate
 {
-    public bool OidcEnabled { get; init; }
-    public string? OidcButtonLabel { get; init; }
-    public string? OidcIssuer { get; init; }
-    public string? OidcClientId { get; init; }
-    public string? OidcClientSecret { get; init; }
-    public bool ClearOidcClientSecret { get; init; }
     public string? CovePublicUrl { get; init; }
-    public string? UsernameClaim { get; init; }
-    public string[]? Scopes { get; init; }
     public bool AllowInsecureDevelopmentIssuer { get; init; }
+    public OidcProviderSettingsUpdate[]? OidcProviders { get; init; }
     public bool TrustedHeaderEnabled { get; init; }
-    public string? TrustedHeaderName { get; init; }
+    public string? TrustedHeaderProviderId { get; init; }
+    public string? TrustedHeaderLabel { get; init; }
+    public string? TrustedHeaderSubjectName { get; init; }
+    public string? TrustedHeaderDisplayName { get; init; }
     public string[]? TrustedProxyCidrs { get; init; }
 }
 
+public sealed record OidcProviderSettingsResponse(
+    string Id,
+    bool Enabled,
+    string ButtonLabel,
+    string Issuer,
+    string ClientId,
+    bool ClientSecretConfigured,
+    string DisplayClaim,
+    string[] Scopes)
+{
+    public static OidcProviderSettingsResponse From(OidcProviderSettings settings) => new(
+        settings.Id,
+        settings.Enabled,
+        settings.ButtonLabel,
+        settings.Issuer,
+        settings.ClientId,
+        settings.ClientSecret.Length > 0,
+        settings.DisplayClaim,
+        [.. settings.Scopes]);
+}
+
 public sealed record AuthMiddlewareSettingsResponse(
-    bool OidcEnabled,
-    string OidcButtonLabel,
-    string OidcIssuer,
-    string OidcClientId,
-    bool OidcClientSecretConfigured,
     string CovePublicUrl,
-    string UsernameClaim,
-    string[] Scopes,
     bool AllowInsecureDevelopmentIssuer,
+    OidcProviderSettingsResponse[] OidcProviders,
     bool TrustedHeaderEnabled,
-    string TrustedHeaderName,
+    string TrustedHeaderProviderId,
+    string TrustedHeaderLabel,
+    string TrustedHeaderSubjectName,
+    string TrustedHeaderDisplayName,
     string[] TrustedProxyCidrs)
 {
     public static AuthMiddlewareSettingsResponse From(AuthMiddlewareSettings settings) => new(
-        settings.OidcEnabled,
-        settings.OidcButtonLabel,
-        settings.OidcIssuer,
-        settings.OidcClientId,
-        settings.OidcClientSecret.Length > 0,
         settings.CovePublicUrl,
-        settings.UsernameClaim,
-        [.. settings.Scopes],
         settings.AllowInsecureDevelopmentIssuer,
+        [.. settings.OidcProviders.Select(OidcProviderSettingsResponse.From)],
         settings.TrustedHeaderEnabled,
-        settings.TrustedHeaderName,
+        settings.TrustedHeaderProviderId,
+        settings.TrustedHeaderLabel,
+        settings.TrustedHeaderSubjectName,
+        settings.TrustedHeaderDisplayName,
         [.. settings.TrustedProxyCidrs]);
 }
 
@@ -93,6 +133,7 @@ public sealed record AuthMiddlewareSettingsValidation(
 
 public static class AuthMiddlewareSettingsValidator
 {
+    private const int MaximumOidcProviders = 16;
     private const int MaximumProxyNetworks = 64;
 
     public static AuthMiddlewareSettingsValidation ValidateUpdate(
@@ -103,70 +144,149 @@ public static class AuthMiddlewareSettingsValidator
         ArgumentNullException.ThrowIfNull(current);
 
         var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-        var buttonLabel = NormalizeText(request.OidcButtonLabel ?? current.OidcButtonLabel, 80);
-        if (buttonLabel is null)
-            errors["oidcButtonLabel"] = ["Enter a label of at most 80 characters."];
-
-        var issuer = NormalizeIssuer(
-            request.OidcIssuer ?? current.OidcIssuer,
-            request.AllowInsecureDevelopmentIssuer,
-            out var issuerError);
-        if (issuerError is not null)
-            errors["oidcIssuer"] = [issuerError];
-
-        var clientId = NormalizeText(request.OidcClientId ?? current.OidcClientId, 512, allowEmpty: true);
-        if (clientId is null)
-            errors["oidcClientId"] = ["The client ID is too long or contains control characters."];
-
-        var clientSecret = request.ClearOidcClientSecret
-            ? string.Empty
-            : string.IsNullOrEmpty(request.OidcClientSecret)
-                ? current.OidcClientSecret
-                : request.OidcClientSecret;
-        if (clientSecret.Length > 4096 || clientSecret.Any(char.IsControl))
-            errors["oidcClientSecret"] = ["The client secret is too long or contains control characters."];
-
+        var allowInsecure = request.AllowInsecureDevelopmentIssuer;
         var covePublicUrl = NormalizePublicOrigin(
             request.CovePublicUrl ?? current.CovePublicUrl,
-            request.AllowInsecureDevelopmentIssuer,
+            allowInsecure,
             out var publicUrlError);
         if (publicUrlError is not null)
             errors["covePublicUrl"] = [publicUrlError];
 
-        var usernameClaim = NormalizeText(request.UsernameClaim ?? current.UsernameClaim, 128);
-        if (usernameClaim is null || usernameClaim.Any(char.IsWhiteSpace))
-            errors["usernameClaim"] = ["Enter a claim name without whitespace or control characters."];
+        var providerRequests = request.OidcProviders
+            ?? [.. current.OidcProviders.Select(ToUpdate)];
+        if (providerRequests.Length > MaximumOidcProviders)
+            errors["oidcProviders"] = [$"At most {MaximumOidcProviders} OIDC providers may be configured."];
 
-        var scopes = NormalizeScopes(request.Scopes ?? current.Scopes, out var scopesError);
-        if (scopesError is not null)
-            errors["scopes"] = [scopesError];
+        var providers = new List<OidcProviderSettings>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var issuers = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < providerRequests.Length && index < MaximumOidcProviders; index++)
+        {
+            var candidate = providerRequests[index] ?? new OidcProviderSettingsUpdate();
+            var prefix = $"oidcProviders[{index}]";
+            var id = string.IsNullOrWhiteSpace(candidate.Id)
+                ? Guid.NewGuid().ToString("N")
+                : NormalizeRouteId(candidate.Id);
+            if (id is null)
+            {
+                errors[$"{prefix}.id"] = ["The provider ID is invalid."];
+                continue;
+            }
+            if (!ids.Add(id))
+            {
+                errors[$"{prefix}.id"] = ["Provider IDs must be unique."];
+                continue;
+            }
 
-        var trustedHeaderName = NormalizeHeaderName(request.TrustedHeaderName ?? current.TrustedHeaderName);
-        if (trustedHeaderName is null)
-            errors["trustedHeaderName"] = ["Enter a valid HTTP header name."];
+            var existing = current.FindOidcProvider(id);
+            var buttonLabel = NormalizeText(candidate.ButtonLabel ?? existing?.ButtonLabel, 80);
+            if (buttonLabel is null)
+                errors[$"{prefix}.buttonLabel"] = ["Enter a label of at most 80 characters."];
 
-        var trustedProxyCidrs = NormalizeProxyNetworks(request.TrustedProxyCidrs ?? current.TrustedProxyCidrs, out var proxyError);
+            var issuer = NormalizeIssuer(
+                candidate.Issuer ?? existing?.Issuer,
+                allowInsecure,
+                out var issuerError);
+            if (issuerError is not null)
+                errors[$"{prefix}.issuer"] = [issuerError];
+            if (existing is not null
+                && existing.Issuer.Length > 0
+                && issuer is not null
+                && !string.Equals(existing.Issuer, issuer, StringComparison.Ordinal))
+            {
+                errors[$"{prefix}.issuer"] = ["The issuer is immutable; add a new provider instead."];
+            }
+            if (!string.IsNullOrEmpty(issuer) && !issuers.Add(issuer))
+                errors[$"{prefix}.issuer"] = ["Each OIDC issuer may be configured only once."];
+
+            var clientId = NormalizeText(candidate.ClientId ?? existing?.ClientId, 512, allowEmpty: true);
+            if (clientId is null)
+                errors[$"{prefix}.clientId"] = ["The client ID is too long or contains control characters."];
+
+            var clientSecret = candidate.ClearClientSecret
+                ? string.Empty
+                : string.IsNullOrEmpty(candidate.ClientSecret)
+                    ? existing?.ClientSecret ?? string.Empty
+                    : candidate.ClientSecret;
+            if (clientSecret.Length > 4096 || clientSecret.Any(char.IsControl))
+                errors[$"{prefix}.clientSecret"] = ["The client secret is too long or contains control characters."];
+
+            var displayClaim = NormalizeClaimName(candidate.DisplayClaim ?? existing?.DisplayClaim ?? "preferred_username");
+            if (displayClaim is null)
+                errors[$"{prefix}.displayClaim"] = ["Enter a claim name without whitespace or control characters."];
+
+            var scopes = NormalizeScopes(candidate.Scopes ?? existing?.Scopes, out var scopesError);
+            if (scopesError is not null)
+                errors[$"{prefix}.scopes"] = [scopesError];
+
+            if (candidate.Enabled)
+            {
+                if (string.IsNullOrEmpty(issuer))
+                    errors.TryAdd($"{prefix}.issuer", ["The issuer is required when this provider is enabled."]);
+                if (string.IsNullOrEmpty(clientId))
+                    errors[$"{prefix}.clientId"] = ["The client ID is required when this provider is enabled."];
+                if (string.IsNullOrEmpty(clientSecret))
+                    errors[$"{prefix}.clientSecret"] = ["The client secret is required when this provider is enabled."];
+                if (string.IsNullOrEmpty(covePublicUrl))
+                    errors.TryAdd("covePublicUrl", ["The Cove public URL is required when OIDC is enabled."]);
+                if (scopes is not null && !scopes.Contains("openid", StringComparer.Ordinal))
+                    errors[$"{prefix}.scopes"] = ["OIDC scopes must include openid."];
+            }
+
+            if (buttonLabel is not null
+                && issuer is not null
+                && clientId is not null
+                && displayClaim is not null
+                && scopes is not null)
+            {
+                providers.Add(new OidcProviderSettings(
+                    id,
+                    candidate.Enabled,
+                    buttonLabel,
+                    issuer,
+                    clientId,
+                    clientSecret,
+                    displayClaim,
+                    scopes));
+            }
+        }
+
+        var trustedHeaderProviderId = request.TrustedHeaderProviderId ?? current.TrustedHeaderProviderId;
+        if (string.IsNullOrWhiteSpace(trustedHeaderProviderId) && request.TrustedHeaderEnabled)
+            trustedHeaderProviderId = $"trusted-header-{Guid.NewGuid():N}";
+        trustedHeaderProviderId = NormalizeText(trustedHeaderProviderId, 256, allowEmpty: true);
+        if (trustedHeaderProviderId is null)
+            errors["trustedHeaderProviderId"] = ["The trusted-header authority ID is invalid."];
+        var trustedHeaderLabel = NormalizeText(
+            request.TrustedHeaderLabel ?? current.TrustedHeaderLabel,
+            80);
+        if (trustedHeaderLabel is null)
+            errors["trustedHeaderLabel"] = ["Enter a provider label of at most 80 characters."];
+
+        var trustedHeaderSubjectName = NormalizeHeaderName(
+            request.TrustedHeaderSubjectName ?? current.TrustedHeaderSubjectName,
+            allowEmpty: !request.TrustedHeaderEnabled);
+        if (trustedHeaderSubjectName is null)
+            errors["trustedHeaderSubjectName"] = ["Enter a valid stable-subject HTTP header name."];
+
+        var trustedHeaderDisplayName = NormalizeHeaderName(
+            request.TrustedHeaderDisplayName ?? current.TrustedHeaderDisplayName,
+            allowEmpty: true);
+        if (trustedHeaderDisplayName is null)
+            errors["trustedHeaderDisplayName"] = ["Enter a valid display-name HTTP header name or leave it blank."];
+
+        var trustedProxyCidrs = NormalizeProxyNetworks(
+            request.TrustedProxyCidrs ?? current.TrustedProxyCidrs,
+            out var proxyError);
         if (proxyError is not null)
             errors["trustedProxyCidrs"] = [proxyError];
 
-        if (request.OidcEnabled)
-        {
-            if (string.IsNullOrEmpty(issuer))
-                errors.TryAdd("oidcIssuer", ["The issuer is required when OIDC is enabled."]);
-            if (string.IsNullOrEmpty(clientId))
-                errors["oidcClientId"] = ["The client ID is required when OIDC is enabled."];
-            if (string.IsNullOrEmpty(clientSecret))
-                errors["oidcClientSecret"] = ["The client secret is required when OIDC is enabled."];
-            if (string.IsNullOrEmpty(covePublicUrl))
-                errors.TryAdd("covePublicUrl", ["The Cove public URL is required when OIDC is enabled."]);
-            if (scopes is not null && !scopes.Contains("openid", StringComparer.Ordinal))
-                errors["scopes"] = ["OIDC scopes must include openid."];
-        }
-
         if (request.TrustedHeaderEnabled)
         {
-            if (trustedHeaderName is null)
-                errors["trustedHeaderName"] = ["A valid username header is required when trusted-header authentication is enabled."];
+            if (string.IsNullOrEmpty(trustedHeaderProviderId))
+                errors["trustedHeaderProviderId"] = ["A stable authority ID is required."];
+            if (string.IsNullOrEmpty(trustedHeaderSubjectName))
+                errors["trustedHeaderSubjectName"] = ["A stable-subject header is required."];
             if (trustedProxyCidrs is null || trustedProxyCidrs.Length == 0)
                 errors["trustedProxyCidrs"] = ["At least one trusted direct-proxy IP or CIDR is required."];
         }
@@ -176,36 +296,51 @@ public static class AuthMiddlewareSettingsValidator
 
         return new(
             new AuthMiddlewareSettings(
-                request.OidcEnabled,
-                buttonLabel!,
-                issuer!,
-                clientId!,
-                clientSecret,
                 covePublicUrl!,
-                usernameClaim!,
-                scopes!,
-                request.AllowInsecureDevelopmentIssuer,
+                allowInsecure,
+                [.. providers],
                 request.TrustedHeaderEnabled,
-                trustedHeaderName!,
+                trustedHeaderProviderId!,
+                trustedHeaderLabel!,
+                trustedHeaderSubjectName!,
+                trustedHeaderDisplayName!,
                 trustedProxyCidrs!),
             new ReadOnlyDictionary<string, string[]>(errors));
     }
 
     public static AuthMiddlewareSettingsUpdate ToUpdate(AuthMiddlewareSettings settings) => new()
     {
-        OidcEnabled = settings.OidcEnabled,
-        OidcButtonLabel = settings.OidcButtonLabel,
-        OidcIssuer = settings.OidcIssuer,
-        OidcClientId = settings.OidcClientId,
-        OidcClientSecret = settings.OidcClientSecret,
         CovePublicUrl = settings.CovePublicUrl,
-        UsernameClaim = settings.UsernameClaim,
-        Scopes = [.. settings.Scopes],
         AllowInsecureDevelopmentIssuer = settings.AllowInsecureDevelopmentIssuer,
+        OidcProviders = [.. settings.OidcProviders.Select(ToUpdate)],
         TrustedHeaderEnabled = settings.TrustedHeaderEnabled,
-        TrustedHeaderName = settings.TrustedHeaderName,
+        TrustedHeaderProviderId = settings.TrustedHeaderProviderId,
+        TrustedHeaderLabel = settings.TrustedHeaderLabel,
+        TrustedHeaderSubjectName = settings.TrustedHeaderSubjectName,
+        TrustedHeaderDisplayName = settings.TrustedHeaderDisplayName,
         TrustedProxyCidrs = [.. settings.TrustedProxyCidrs],
     };
+
+    private static OidcProviderSettingsUpdate ToUpdate(OidcProviderSettings provider) => new()
+    {
+        Id = provider.Id,
+        Enabled = provider.Enabled,
+        ButtonLabel = provider.ButtonLabel,
+        Issuer = provider.Issuer,
+        ClientId = provider.ClientId,
+        ClientSecret = provider.ClientSecret,
+        DisplayClaim = provider.DisplayClaim,
+        Scopes = [.. provider.Scopes],
+    };
+
+    private static string? NormalizeRouteId(string? value)
+    {
+        var normalized = value?.Trim();
+        return normalized is { Length: > 0 and <= 64 }
+               && normalized.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_')
+            ? normalized
+            : null;
+    }
 
     private static string? NormalizeText(string? value, int maximumLength, bool allowEmpty = false)
     {
@@ -216,8 +351,15 @@ public static class AuthMiddlewareSettingsValidator
         {
             return null;
         }
-
         return normalized;
+    }
+
+    private static string? NormalizeClaimName(string? value)
+    {
+        var normalized = NormalizeText(value, 128);
+        return normalized is not null && !normalized.Any(char.IsWhiteSpace)
+            ? normalized
+            : null;
     }
 
     private static string? NormalizeIssuer(string? value, bool allowHttp, out string? error)
@@ -237,24 +379,16 @@ public static class AuthMiddlewareSettingsValidator
             error = "Enter an absolute issuer URL without credentials, query, or fragment.";
             return null;
         }
-
         if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
             && !(allowHttp && string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
         {
             error = "The issuer must use HTTPS unless the insecure development override is enabled.";
             return null;
         }
-
-        // The OIDC issuer is an exact identifier, not merely a network location. In particular,
-        // providers may distinguish an issuer with a trailing slash from one without it, so retain
-        // the administrator-supplied form after validation and compare discovery metadata to it.
         return text;
     }
 
-    private static string? NormalizePublicOrigin(
-        string? value,
-        bool allowHttp,
-        out string? error)
+    private static string? NormalizePublicOrigin(string? value, bool allowHttp, out string? error)
     {
         error = null;
         var text = value?.Trim() ?? string.Empty;
@@ -272,23 +406,20 @@ public static class AuthMiddlewareSettingsValidator
             error = "Enter the Cove public origin only, including scheme and optional port.";
             return null;
         }
-
         if (uri.Scheme != Uri.UriSchemeHttps
             && !(allowHttp && uri.Scheme == Uri.UriSchemeHttp))
         {
             error = "The Cove public URL must use HTTPS unless the insecure development override is enabled.";
             return null;
         }
-
         return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     }
 
     private static string[]? NormalizeScopes(string[]? values, out string? error)
     {
         error = null;
-        var source = values ?? [];
         var scopes = new List<string>();
-        foreach (var raw in source)
+        foreach (var raw in values ?? ["openid", "profile", "email"])
         {
             var scope = raw?.Trim() ?? string.Empty;
             if (scope.Length == 0)
@@ -301,15 +432,16 @@ public static class AuthMiddlewareSettingsValidator
             if (!scopes.Contains(scope, StringComparer.Ordinal))
                 scopes.Add(scope);
         }
-
         if (scopes.Remove("openid"))
             scopes.Insert(0, "openid");
         return [.. scopes];
     }
 
-    private static string? NormalizeHeaderName(string? value)
+    private static string? NormalizeHeaderName(string? value, bool allowEmpty)
     {
         var header = value?.Trim() ?? string.Empty;
+        if (allowEmpty && header.Length == 0)
+            return string.Empty;
         return header.Length is > 0 and <= 128 && header.All(IsHeaderTokenCharacter)
             ? header
             : null;
@@ -342,7 +474,6 @@ public static class AuthMiddlewareSettingsValidator
             if (!networks.Contains(network, StringComparer.Ordinal))
                 networks.Add(network);
         }
-
         return [.. networks];
     }
 }

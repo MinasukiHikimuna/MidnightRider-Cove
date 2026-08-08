@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <CoveMinVersion Condition="'$(CoveMinVersion)' == ''">1.1.1-dev.134</CoveMinVersion>
+    <CoveMinVersion Condition="'$(CoveMinVersion)' == ''">1.1.1-dev.139</CoveMinVersion>
     <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
     <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>

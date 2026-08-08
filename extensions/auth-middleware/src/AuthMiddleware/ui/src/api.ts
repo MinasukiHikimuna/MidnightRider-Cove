@@ -1,37 +1,47 @@
 const BASE = "/api/plugins/com.midnightrider.auth-middleware";
 
-export interface AuthMiddlewareSettings {
-  oidcEnabled: boolean;
-  oidcButtonLabel: string;
-  oidcIssuer: string;
-  oidcClientId: string;
-  oidcClientSecretConfigured: boolean;
-  covePublicUrl: string;
-  usernameClaim: string;
+export interface OidcProviderSettings {
+  id: string;
+  enabled: boolean;
+  buttonLabel: string;
+  issuer: string;
+  clientId: string;
+  clientSecretConfigured: boolean;
+  displayClaim: string;
   scopes: string[];
+}
+
+export interface AuthMiddlewareSettings {
+  covePublicUrl: string;
   allowInsecureDevelopmentIssuer: boolean;
+  oidcProviders: OidcProviderSettings[];
   trustedHeaderEnabled: boolean;
-  trustedHeaderName: string;
+  trustedHeaderProviderId: string;
+  trustedHeaderLabel: string;
+  trustedHeaderSubjectName: string;
+  trustedHeaderDisplayName: string;
   trustedProxyCidrs: string[];
 }
 
-export interface AuthMiddlewareSettingsUpdate extends Omit<AuthMiddlewareSettings, "oidcClientSecretConfigured"> {
-  oidcClientSecret?: string;
-  clearOidcClientSecret: boolean;
+export interface OidcProviderSettingsUpdate extends Omit<OidcProviderSettings, "clientSecretConfigured" | "id"> {
+  id?: string;
+  clientSecret?: string;
+  clearClientSecret: boolean;
+}
+
+export interface AuthMiddlewareSettingsUpdate extends Omit<AuthMiddlewareSettings, "oidcProviders"> {
+  oidcProviders: OidcProviderSettingsUpdate[];
 }
 
 export const DEFAULT_SETTINGS: AuthMiddlewareSettings = {
-  oidcEnabled: false,
-  oidcButtonLabel: "Sign in with OpenID Connect",
-  oidcIssuer: "",
-  oidcClientId: "",
-  oidcClientSecretConfigured: false,
   covePublicUrl: "",
-  usernameClaim: "preferred_username",
-  scopes: ["openid", "profile", "email"],
   allowInsecureDevelopmentIssuer: false,
+  oidcProviders: [],
   trustedHeaderEnabled: false,
-  trustedHeaderName: "X-Authentik-Username",
+  trustedHeaderProviderId: "",
+  trustedHeaderLabel: "Trusted reverse proxy",
+  trustedHeaderSubjectName: "X-Authentik-Uid",
+  trustedHeaderDisplayName: "X-Authentik-Username",
   trustedProxyCidrs: [],
 };
 
@@ -60,7 +70,7 @@ export const authMiddlewareApi = {
     method: "PUT",
     body: JSON.stringify(settings),
   }) as Promise<AuthMiddlewareSettings>,
-  testOidc: () => transport("/oidc/test", { method: "POST" }) as Promise<{ ready: boolean }>,
+  testOidc: (providerId: string) => transport(`/oidc/${encodeURIComponent(providerId)}/test`, { method: "POST" }) as Promise<{ ready: boolean }>,
 };
 
 export function setApiTransportForTests(next: Transport) { transport = next; }

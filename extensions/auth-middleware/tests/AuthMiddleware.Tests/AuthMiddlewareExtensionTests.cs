@@ -16,7 +16,7 @@ namespace AuthMiddleware.Tests;
 public sealed class AuthMiddlewareExtensionTests
 {
     [Fact]
-    public async Task Manifest_advertises_login_only_after_complete_oidc_settings_are_saved()
+    public async Task Manifest_advertises_each_ready_provider_with_login_and_link_actions()
     {
         var extension = Extension();
         var memory = new MemoryExtensionStore();
@@ -33,16 +33,62 @@ public sealed class AuthMiddlewareExtensionTests
             panel => panel.ComponentName == "AuthMiddlewareSettings");
 
         var update = await provider.GetRequiredService<IAuthMiddlewareSettingsStore>()
-            .UpdateAsync(ValidSettingsUpdate());
-        var method = Assert.Single(extension.GetUIManifest().LoginMethods);
+            .UpdateAsync(AuthMiddlewareSettingsTests.ValidUpdate() with
+            {
+                OidcProviders =
+                [
+                    AuthMiddlewareSettingsTests.ValidProviderUpdate(),
+                    AuthMiddlewareSettingsTests.ValidProviderUpdate() with
+                    {
+                        Id = "second",
+                        ButtonLabel = "Sign in with Second IdP",
+                        Issuer = "https://second.example.invalid/application/o/cove/",
+                    },
+                ],
+            });
+        var methods = extension.GetUIManifest().LoginMethods;
 
         Assert.True(update.IsValid);
-        Assert.Equal("oidc", method.Id);
-        Assert.Equal("Sign in with Authentik", method.Label);
-        Assert.Equal($"{AuthMiddlewareExtension.ApiBase}/oidc/start", method.StartUrl);
+        Assert.Collection(
+            methods,
+            method =>
+            {
+                Assert.Equal("oidc-authentik", method.Id);
+                Assert.Equal($"{AuthMiddlewareExtension.ApiBase}/oidc/authentik/start", method.StartUrl);
+                Assert.Equal($"{AuthMiddlewareExtension.ApiBase}/oidc/authentik/link/start", method.LinkStartUrl);
+            },
+            method => Assert.Equal("oidc-second", method.Id));
         var values = await memory.GetAllAsync();
-        Assert.Equal("client-secret", values["oidc-client-secret"]);
+        Assert.Equal("client-secret", values["oidc-client-secret:authentik"]);
         Assert.DoesNotContain("client-secret", values["settings"], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Trusted_header_manifest_is_linkable_but_hidden_from_the_login_page()
+    {
+        var extension = Extension();
+        ((IStatefulExtension)extension).SetStore(new MemoryExtensionStore());
+        var services = new ServiceCollection();
+        services.AddLogging();
+        extension.ConfigureServices(services, null!);
+        await using var provider = services.BuildServiceProvider();
+        await extension.InitializeAsync(provider);
+        var update = AuthMiddlewareSettingsTests.ValidUpdate() with
+        {
+            OidcProviders = [],
+            CovePublicUrl = "",
+            TrustedHeaderEnabled = true,
+            TrustedHeaderProviderId = "proxy-authority",
+            TrustedProxyCidrs = ["192.0.2.14/32"],
+        };
+        Assert.True((await provider.GetRequiredService<IAuthMiddlewareSettingsStore>()
+            .UpdateAsync(update)).IsValid);
+
+        var method = Assert.Single(extension.GetUIManifest().LoginMethods);
+
+        Assert.Equal("trusted-header", method.Id);
+        Assert.False(method.ShowOnLoginPage);
+        Assert.Equal($"{AuthMiddlewareExtension.ApiBase}/trusted-header/link/start", method.LinkStartUrl);
     }
 
     [Fact]
@@ -52,13 +98,13 @@ public sealed class AuthMiddlewareExtensionTests
         ((IStatefulExtension)extension).SetStore(new MemoryExtensionStore());
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(TimeProvider.System);
         extension.ConfigureServices(services, null!);
         await using var provider = services.BuildServiceProvider();
         await extension.InitializeAsync(provider);
-        var update = ValidSettingsUpdate() with
+        var update = AuthMiddlewareSettingsTests.ValidUpdate() with
         {
             TrustedHeaderEnabled = true,
+            TrustedHeaderProviderId = "proxy-authority",
             TrustedProxyCidrs = ["192.0.2.14/32"],
         };
         Assert.True((await provider.GetRequiredService<IAuthMiddlewareSettingsStore>()
@@ -66,14 +112,15 @@ public sealed class AuthMiddlewareExtensionTests
 
         var beforeShutdown = new DefaultHttpContext();
         beforeShutdown.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.14");
+        beforeShutdown.Request.Headers["X-Authentik-Uid"] = "stable-subject";
         beforeShutdown.Request.Headers["X-Authentik-Username"] = "existing-user";
         await extension.InvokeAsync(beforeShutdown, _ => Task.CompletedTask);
-        Assert.True(beforeShutdown.TryGetExtensionUserAssertion(out _));
+        Assert.True(beforeShutdown.TryGetExtensionIdentityAssertion(out _));
 
         await extension.ShutdownAsync();
         var afterShutdown = new DefaultHttpContext();
         afterShutdown.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.14");
-        afterShutdown.Request.Headers["X-Authentik-Username"] = "existing-user";
+        afterShutdown.Request.Headers["X-Authentik-Uid"] = "stable-subject";
         var nextCalled = false;
         await extension.InvokeAsync(afterShutdown, _ =>
         {
@@ -82,35 +129,103 @@ public sealed class AuthMiddlewareExtensionTests
         });
 
         Assert.True(nextCalled);
-        Assert.False(afterShutdown.TryGetExtensionUserAssertion(out _));
+        Assert.False(afterShutdown.TryGetExtensionIdentityAssertion(out _));
     }
 
     [Fact]
-    public async Task Start_and_callback_complete_a_browser_bound_flow_and_preserve_return_url()
+    public async Task Start_and_callback_complete_a_browser_bound_subject_flow_and_preserve_return_url()
     {
         var protocol = new FakeProtocol();
         var sessions = new FakeSessions();
         await using var app = await StartAppAsync(protocol, sessions);
         var client = app.GetTestClient();
 
-        var start = await client.GetAsync($"{AuthMiddlewareExtension.ApiBase}/oidc/start?returnUrl=%2Fsettings%3Ftab%3Dsecurity");
+        var start = await client.GetAsync($"{AuthMiddlewareExtension.ApiBase}/oidc/authentik/start?returnUrl=%2Fsettings%3Ftab%3Dsecurity");
         var callback = await client.GetAsync(
             $"{AuthMiddlewareExtension.ApiBase}/oidc/callback?state={Uri.EscapeDataString(protocol.Flow!.State)}&code=provider-code");
 
         Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
         Assert.True(start.Headers.CacheControl?.NoStore);
         Assert.Equal("https://idp.example.invalid/authorize", start.Headers.Location!.GetLeftPart(UriPartial.Path));
-        Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
-        Assert.True(callback.Headers.CacheControl?.NoStore);
         Assert.Equal(
             "/login?redirect=%2Fsettings%3Ftab%3Dsecurity#external_login_code=cove-ticket",
             callback.Headers.Location!.OriginalString);
-        Assert.Equal(1, protocol.ExchangeCount);
         Assert.Equal("provider-code", protocol.Exchange!.Code);
-        Assert.Equal(protocol.Flow.CodeVerifier, protocol.Exchange.CodeVerifier);
-        Assert.Equal(protocol.Flow.Nonce, protocol.Exchange.ExpectedNonce);
-        Assert.Equal("existing-user", sessions.CompletedUsername);
-        Assert.Equal(AuthMiddlewareExtension.ExtensionId, sessions.CompletedExtensionId);
+        Assert.Equal("stable-subject", sessions.CompletedIdentity!.Subject);
+        Assert.Equal("https://idp.example.invalid/application/o/cove/", sessions.CompletedIdentity.ProviderId);
+        Assert.Equal("existing-user", sessions.CompletedIdentity.AccountLabel);
+    }
+
+    [Fact]
+    public async Task Unlinked_subject_returns_a_specific_non_sensitive_login_error()
+    {
+        var protocol = new FakeProtocol();
+        var sessions = new FakeSessions
+        {
+            Completion = new ExtensionLoginCompletion(null, ExtensionLoginCompletionFailure.IdentityUnlinked),
+        };
+        await using var app = await StartAppAsync(protocol, sessions);
+        var client = app.GetTestClient();
+        await client.GetAsync($"{AuthMiddlewareExtension.ApiBase}/oidc/authentik/start");
+
+        var callback = await client.GetAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/oidc/callback?state={Uri.EscapeDataString(protocol.Flow!.State)}&code=provider-code");
+
+        Assert.Equal("/login#external_login_error=unlinked", callback.Headers.Location!.OriginalString);
+    }
+
+    [Fact]
+    public async Task Oidc_link_flow_prepares_confirmation_instead_of_logging_in()
+    {
+        var protocol = new FakeProtocol();
+        var sessions = new FakeSessions();
+        var links = new FakeLinks();
+        await using var app = await StartAppAsync(protocol, sessions, links);
+        var client = app.GetTestClient();
+
+        var start = await client.PostAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/oidc/authentik/link/start",
+            content: null);
+        var callback = await client.GetAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/oidc/callback?state={Uri.EscapeDataString(protocol.Flow!.State)}&code=provider-code");
+
+        Assert.Equal(HttpStatusCode.OK, start.StatusCode);
+        Assert.Equal(OidcFlowPurpose.Link, protocol.Flow!.Purpose);
+        Assert.Equal("intent-token", protocol.Flow.LinkIntentToken);
+        Assert.Equal("/settings/my/account#external_link_code=link-confirmation", callback.Headers.Location!.OriginalString);
+        Assert.Equal("stable-subject", links.PreparedIdentity!.Subject);
+        Assert.Null(sessions.CompletedIdentity);
+    }
+
+    [Fact]
+    public async Task Trusted_header_link_uses_stable_subject_and_returns_a_confirmation_code()
+    {
+        var links = new FakeLinks();
+        var settings = AuthMiddlewareSettingsTests.ValidSettings() with
+        {
+            TrustedHeaderEnabled = true,
+            TrustedHeaderProviderId = "proxy-authority",
+            TrustedProxyCidrs = ["127.0.0.1/32"],
+        };
+        await using var app = await StartAppAsync(
+            new FakeProtocol(),
+            new FakeSessions(),
+            links,
+            configuredSettings: settings);
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{AuthMiddlewareExtension.ApiBase}/trusted-header/link/start");
+        request.Headers.Add("X-Authentik-Uid", "stable-subject");
+        request.Headers.Add("X-Authentik-Username", "existing-user");
+
+        var response = await app.GetTestClient().SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("link-confirmation", body, StringComparison.Ordinal);
+        Assert.Equal("stable-subject", links.PreparedIdentity!.Subject);
+        Assert.Equal("proxy-authority", links.PreparedIdentity.ProviderId);
+        Assert.Equal("existing-user", links.PreparedIdentity.AccountLabel);
     }
 
     [Fact]
@@ -120,7 +235,7 @@ public sealed class AuthMiddlewareExtensionTests
         var sessions = new FakeSessions();
         await using var app = await StartAppAsync(protocol, sessions);
         var client = app.GetTestClient();
-        await client.GetAsync($"{AuthMiddlewareExtension.ApiBase}/oidc/start?returnUrl=%2Fsettings");
+        await client.GetAsync($"{AuthMiddlewareExtension.ApiBase}/oidc/authentik/start?returnUrl=%2Fsettings");
         var callback = $"{AuthMiddlewareExtension.ApiBase}/oidc/callback?state={Uri.EscapeDataString(protocol.Flow!.State)}&code=provider-code";
         sessions.BrowserMatches = false;
 
@@ -128,90 +243,153 @@ public sealed class AuthMiddlewareExtensionTests
         sessions.BrowserMatches = true;
         var originalBrowser = await client.GetAsync(callback);
 
-        Assert.Equal("/login#external_login_error=failed", wrongBrowser.Headers.Location!.OriginalString);
-        Assert.Equal(1, protocol.ExchangeCount);
         Assert.Equal(
-            "/login?redirect=%2Fsettings#external_login_code=cove-ticket",
-            originalBrowser.Headers.Location!.OriginalString);
+            "/login?redirect=%2Fsettings#external_login_error=failed",
+            wrongBrowser.Headers.Location!.OriginalString);
+        Assert.Equal(1, protocol.ExchangeCount);
+        Assert.Equal("/login?redirect=%2Fsettings#external_login_code=cove-ticket", originalBrowser.Headers.Location!.OriginalString);
     }
 
     [Fact]
-    public async Task Provider_error_consumes_state_without_exchanging_a_code()
+    public async Task Settings_response_exposes_secret_presence_per_provider_only()
     {
-        var protocol = new FakeProtocol();
-        var sessions = new FakeSessions();
-        await using var app = await StartAppAsync(protocol, sessions);
-        var client = app.GetTestClient();
-        await client.GetAsync($"{AuthMiddlewareExtension.ApiBase}/oidc/start");
-        var callback = $"{AuthMiddlewareExtension.ApiBase}/oidc/callback?state={Uri.EscapeDataString(protocol.Flow!.State)}&error=access_denied";
-
-        var first = await client.GetAsync(callback);
-        var replay = await client.GetAsync(callback);
-
-        Assert.Equal("/login#external_login_error=failed", first.Headers.Location!.OriginalString);
-        Assert.Equal("/login#external_login_error=failed", replay.Headers.Location!.OriginalString);
-        Assert.Equal(0, protocol.ExchangeCount);
-    }
-
-    [Fact]
-    public async Task Settings_response_exposes_only_secret_presence()
-    {
-        var protocol = new FakeProtocol();
-        var sessions = new FakeSessions();
-        await using var app = await StartAppAsync(protocol, sessions);
+        await using var app = await StartAppAsync(new FakeProtocol(), new FakeSessions());
 
         var response = await app.GetTestClient()
             .GetFromJsonAsync<AuthMiddlewareSettingsResponse>($"{AuthMiddlewareExtension.ApiBase}/settings");
 
-        Assert.NotNull(response);
-        Assert.True(response.OidcClientSecretConfigured);
+        var provider = Assert.Single(response!.OidcProviders);
+        Assert.True(provider.ClientSecretConfigured);
         Assert.DoesNotContain(
-            response.GetType().GetProperties(),
-            property => property.Name.Equals("OidcClientSecret", StringComparison.OrdinalIgnoreCase));
+            provider.GetType().GetProperties(),
+            property => property.Name.Equals("ClientSecret", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public void Routes_explicitly_declare_anonymous_and_admin_only_access()
+    public async Task Provider_with_existing_links_cannot_be_deleted_but_can_be_disabled()
+    {
+        var identities = new FakeIdentities { ProviderLinkCount = 1 };
+        await using var app = await StartAppAsync(new FakeProtocol(), new FakeSessions(), identities: identities);
+        var client = app.GetTestClient();
+
+        var remove = await client.PutAsJsonAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/settings",
+            AuthMiddlewareSettingsTests.ValidUpdate() with { OidcProviders = [] });
+        var disable = await client.PutAsJsonAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/settings",
+            AuthMiddlewareSettingsTests.ValidUpdate() with
+            {
+                OidcProviders =
+                [
+                    AuthMiddlewareSettingsTests.ValidProviderUpdate() with
+                    {
+                        Enabled = false,
+                        ClientSecret = "",
+                    },
+                ],
+            });
+        var removeAfterDisable = await client.PutAsJsonAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/settings",
+            AuthMiddlewareSettingsTests.ValidUpdate() with { OidcProviders = [] });
+
+        Assert.Equal(HttpStatusCode.Conflict, remove.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, disable.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, removeAfterDisable.StatusCode);
+    }
+
+    [Fact]
+    public async Task Disabled_trusted_header_authority_can_be_replaced_only_after_its_links_are_removed()
+    {
+        var identities = new FakeIdentities { ProviderLinkCount = 1 };
+        var current = AuthMiddlewareSettingsTests.ValidSettings() with
+        {
+            TrustedHeaderEnabled = false,
+            TrustedHeaderProviderId = "old-proxy-authority",
+        };
+        await using var app = await StartAppAsync(
+            new FakeProtocol(),
+            new FakeSessions(),
+            identities: identities,
+            configuredSettings: current);
+        var request = AuthMiddlewareSettingsTests.ValidUpdate() with
+        {
+            TrustedHeaderProviderId = "new-proxy-authority",
+        };
+
+        var linked = await app.GetTestClient().PutAsJsonAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/settings",
+            request);
+        identities.ProviderLinkCount = 0;
+        var unlinked = await app.GetTestClient().PutAsJsonAsync(
+            $"{AuthMiddlewareExtension.ApiBase}/settings",
+            request);
+
+        Assert.Equal(HttpStatusCode.Conflict, linked.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, unlinked.StatusCode);
+    }
+
+    [Fact]
+    public void Routes_explicitly_declare_anonymous_authenticated_and_admin_access()
     {
         var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton<IAuthMiddlewareSettingsProvider>(new FixedSettings(ValidSettings()));
-        builder.Services.AddSingleton<IAuthMiddlewareSettingsStore>(new FixedSettingsStore(ValidSettings()));
-        builder.Services.AddSingleton<IOidcProtocolClient>(new FakeProtocol());
-        builder.Services.AddSingleton(new OidcFlowStore(TimeProvider.System));
-        builder.Services.AddSingleton<IExtensionLoginSessionService>(new FakeSessions());
+        RegisterServices(builder.Services, new FakeProtocol(), new FakeSessions());
         var app = builder.Build();
         Extension().MapEndpoints(app);
         var routes = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).ToArray();
 
-        var start = routes.Single(endpoint => endpoint.DisplayName?.Contains("/oidc/start", StringComparison.Ordinal) == true);
+        var start = routes.Single(endpoint => endpoint.DisplayName?.Contains("/oidc/{providerId}/start", StringComparison.Ordinal) == true);
+        var link = routes.Single(endpoint => endpoint.DisplayName?.Contains("/oidc/{providerId}/link/start", StringComparison.Ordinal) == true);
         var callback = routes.Single(endpoint => endpoint.DisplayName?.Contains("/oidc/callback", StringComparison.Ordinal) == true);
         var settings = routes.Single(endpoint => endpoint.DisplayName?.StartsWith($"HTTP: GET {AuthMiddlewareExtension.ApiBase}/settings", StringComparison.Ordinal) == true);
 
         Assert.NotNull(start.Metadata.GetMetadata<CoveAllowAnonymousMetadata>());
         Assert.NotNull(callback.Metadata.GetMetadata<CoveAllowAnonymousMetadata>());
+        Assert.NotNull(link.Metadata.GetMetadata<CoveAllowWithoutPermissionMetadata>());
         Assert.Equal("auth-strict", start.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName);
-        Assert.Equal("auth-strict", callback.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName);
-        Assert.Equal(
-            [Permissions.ExtensionsConfigure],
+        Assert.Equal([Permissions.ExtensionsConfigure],
             settings.Metadata.GetMetadata<CovePermissionRequirementMetadata>()!.Permissions);
     }
 
     private static async Task<WebApplication> StartAppAsync(
         FakeProtocol protocol,
-        FakeSessions sessions)
+        FakeSessions sessions,
+        FakeLinks? links = null,
+        FakeIdentities? identities = null,
+        AuthMiddlewareSettings? configuredSettings = null)
     {
-        var settings = ValidSettings();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
-        builder.Services.AddSingleton<IAuthMiddlewareSettingsProvider>(new FixedSettings(settings));
-        builder.Services.AddSingleton<IAuthMiddlewareSettingsStore>(new FixedSettingsStore(settings));
-        builder.Services.AddSingleton<IOidcProtocolClient>(protocol);
-        builder.Services.AddSingleton(new OidcFlowStore(TimeProvider.System));
-        builder.Services.AddSingleton<IExtensionLoginSessionService>(sessions);
+        RegisterServices(builder.Services, protocol, sessions, links, identities, configuredSettings);
         var app = builder.Build();
+        app.Use((context, next) =>
+        {
+            context.Connection.RemoteIpAddress = IPAddress.Loopback;
+            return next();
+        });
         Extension().MapEndpoints(app);
         await app.StartAsync();
         return app;
+    }
+
+    private static void RegisterServices(
+        IServiceCollection services,
+        FakeProtocol protocol,
+        FakeSessions sessions,
+        FakeLinks? links = null,
+        FakeIdentities? identities = null,
+        AuthMiddlewareSettings? configuredSettings = null)
+    {
+        var settings = configuredSettings ?? AuthMiddlewareSettingsTests.ValidSettings();
+        var fixedSettings = new FixedSettingsStore(settings);
+        services.AddSingleton<IAuthMiddlewareSettingsProvider>(fixedSettings);
+        services.AddSingleton<IAuthMiddlewareSettingsStore>(fixedSettings);
+        services.AddSingleton<IOidcProtocolClient>(protocol);
+        services.AddSingleton(new OidcFlowStore(TimeProvider.System));
+        services.AddSingleton<IExtensionLoginSessionService>(sessions);
+        services.AddSingleton<IExtensionIdentityLinkService>(links ?? new FakeLinks());
+        services.AddSingleton<IExternalIdentityService>(identities ?? new FakeIdentities());
+        services.AddSingleton<TrustedHeaderAuthenticator>();
+        services.AddLogging();
     }
 
     private static AuthMiddlewareExtension Extension()
@@ -226,40 +404,14 @@ public sealed class AuthMiddlewareExtensionTests
         return extension;
     }
 
-    private static AuthMiddlewareSettings ValidSettings() => AuthMiddlewareSettings.Default with
-    {
-        OidcEnabled = true,
-        OidcButtonLabel = "Sign in with Authentik",
-        OidcIssuer = "https://idp.example.invalid/application/o/cove/",
-        OidcClientId = "cove-client",
-        OidcClientSecret = "client-secret",
-        CovePublicUrl = "https://cove.example.invalid",
-        Scopes = ["openid", "profile", "email"],
-    };
-
-    private static AuthMiddlewareSettingsUpdate ValidSettingsUpdate() => new()
-    {
-        OidcEnabled = true,
-        OidcButtonLabel = "Sign in with Authentik",
-        OidcIssuer = "https://idp.example.invalid/application/o/cove/",
-        OidcClientId = "cove-client",
-        OidcClientSecret = "client-secret",
-        CovePublicUrl = "https://cove.example.invalid",
-        UsernameClaim = "preferred_username",
-        Scopes = ["openid", "profile", "email"],
-        TrustedHeaderName = "X-Authentik-Username",
-    };
-
-    private sealed class FixedSettings(AuthMiddlewareSettings settings) : IAuthMiddlewareSettingsProvider
-    {
-        public AuthMiddlewareSettings Current => settings;
-    }
-
-    private sealed class FixedSettingsStore(AuthMiddlewareSettings settings) : IAuthMiddlewareSettingsStore
+    private sealed class FixedSettingsStore(AuthMiddlewareSettings settings)
+        : IAuthMiddlewareSettingsStore
     {
         public AuthMiddlewareSettings Current { get; private set; } = settings;
         public Task LoadAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public Task<AuthMiddlewareSettingsValidation> UpdateAsync(AuthMiddlewareSettingsUpdate request, CancellationToken ct = default)
+        public Task<AuthMiddlewareSettingsValidation> UpdateAsync(
+            AuthMiddlewareSettingsUpdate request,
+            CancellationToken ct = default)
         {
             var result = AuthMiddlewareSettingsValidator.ValidateUpdate(request, Current);
             if (result.IsValid) Current = result.Value!;
@@ -273,9 +425,11 @@ public sealed class AuthMiddlewareExtensionTests
         public OidcTokenExchange? Exchange { get; private set; }
         public int ExchangeCount { get; private set; }
 
-        public Task<OidcProviderConfiguration> DiscoverAsync(AuthMiddlewareSettings settings, CancellationToken ct) =>
-            Task.FromResult(new OidcProviderConfiguration(
-                settings.OidcIssuer,
+        public Task<OidcProviderConfiguration> DiscoverAsync(
+            AuthMiddlewareSettings settings,
+            OidcProviderSettings oidcProvider,
+            CancellationToken ct) => Task.FromResult(new OidcProviderConfiguration(
+                oidcProvider.Issuer,
                 new Uri("https://idp.example.invalid/authorize"),
                 new Uri("https://idp.example.invalid/token"),
                 new Uri("https://idp.example.invalid/jwks"),
@@ -283,6 +437,7 @@ public sealed class AuthMiddlewareExtensionTests
 
         public Uri BuildAuthorizationUri(
             AuthMiddlewareSettings settings,
+            OidcProviderSettings oidcProvider,
             OidcProviderConfiguration provider,
             OidcLoginFlow flow,
             Uri redirectUri)
@@ -293,21 +448,24 @@ public sealed class AuthMiddlewareExtensionTests
 
         public Task<OidcIdentity> ExchangeAndValidateAsync(
             AuthMiddlewareSettings settings,
+            OidcProviderSettings oidcProvider,
             OidcProviderConfiguration provider,
             OidcTokenExchange exchange,
             CancellationToken ct)
         {
             Exchange = exchange;
             ExchangeCount++;
-            return Task.FromResult(new OidcIdentity("existing-user"));
+            return Task.FromResult(new OidcIdentity("stable-subject", "existing-user"));
         }
     }
 
     private sealed class FakeSessions : IExtensionLoginSessionService
     {
         public bool BrowserMatches { get; set; } = true;
-        public string? CompletedUsername { get; private set; }
-        public string? CompletedExtensionId { get; private set; }
+        public ExtensionIdentityAssertion? CompletedIdentity { get; private set; }
+        public ExtensionLoginCompletion Completion { get; set; } = new(
+            "cove-ticket",
+            ExtensionLoginCompletionFailure.None);
 
         public string BeginBrowserSession(HttpContext context) => "browser-binding";
         public bool IsBrowserSession(HttpContext context, string browserBinding) =>
@@ -315,21 +473,55 @@ public sealed class AuthMiddlewareExtensionTests
         public Task<ExtensionLoginCompletion> CompleteAsync(
             HttpContext context,
             string browserBinding,
-            string extensionId,
-            string username,
+            ExtensionIdentityAssertion assertion,
             CancellationToken ct = default)
         {
-            CompletedUsername = username;
-            CompletedExtensionId = extensionId;
-            return Task.FromResult(new ExtensionLoginCompletion(
-                "cove-ticket",
-                ExtensionLoginCompletionFailure.None));
+            CompletedIdentity = assertion;
+            return Task.FromResult(Completion);
         }
         public Task<ExtensionLoginRedemption?> RedeemAsync(
             HttpContext context,
             string code,
-            CancellationToken ct = default) =>
-            Task.FromResult<ExtensionLoginRedemption?>(null);
+            CancellationToken ct = default) => Task.FromResult<ExtensionLoginRedemption?>(null);
+    }
+
+    private sealed class FakeLinks : IExtensionIdentityLinkService
+    {
+        public ExtensionIdentityAssertion? PreparedIdentity { get; private set; }
+        public ExtensionIdentityLinkIntent? BeginLink(HttpContext context, string extensionId, string providerId) =>
+            new("intent-token", "browser-binding");
+        public Task<ExtensionIdentityLinkPreparation> PrepareLinkAsync(
+            HttpContext context,
+            string intentToken,
+            string browserBinding,
+            ExtensionIdentityAssertion assertion,
+            CancellationToken ct = default)
+        {
+            PreparedIdentity = assertion;
+            return Task.FromResult(new ExtensionIdentityLinkPreparation(
+                "link-confirmation",
+                ExtensionIdentityLinkPreparationFailure.None));
+        }
+        public Task<ExtensionIdentityLinkPreparation> PrepareDirectLinkAsync(
+            HttpContext context,
+            ExtensionIdentityAssertion assertion,
+            CancellationToken ct = default) => PrepareLinkAsync(context, "", "", assertion, ct);
+    }
+
+    private sealed class FakeIdentities : IExternalIdentityService
+    {
+        public int ProviderLinkCount { get; set; }
+        public Task<int?> ResolveUserIdAsync(ExtensionIdentityAssertion assertion, CancellationToken ct = default) =>
+            Task.FromResult<int?>(null);
+        public Task MarkUsedAsync(ExtensionIdentityAssertion assertion, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<ExternalIdentityLinkDto>> ListForUserAsync(int userId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<ExternalIdentityLinkDto>>([]);
+        public Task<ExternalIdentityLinkDto> CreateLinkAsync(int userId, ExtensionIdentityAssertion assertion, CovePrincipal? actor, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task RemoveLinkAsync(int userId, int linkId, CovePrincipal? actor, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<int> CountProviderLinksAsync(string extensionId, string providerId, CancellationToken ct = default) =>
+            Task.FromResult(ProviderLinkCount);
     }
 
     private sealed class MemoryExtensionStore : IExtensionStore

@@ -82,13 +82,29 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
                 100);
 
         var settings = _settings?.Current;
-        if (settings?.OidcReady == true)
+        if (settings is null)
+            return builder.Build();
+
+        var order = 10;
+        foreach (var provider in settings.OidcProviders.Where(provider => provider.IsReady(settings)))
         {
             builder.AddLoginMethod(
-                "oidc",
-                settings.OidcButtonLabel,
-                $"{ApiBase}/oidc/start",
-                order: 10);
+                $"oidc-{provider.Id}",
+                provider.ButtonLabel,
+                $"{ApiBase}/oidc/{provider.Id}/start",
+                order: order++,
+                linkStartUrl: $"{ApiBase}/oidc/{provider.Id}/link/start");
+        }
+
+        if (settings.TrustedHeaderReady)
+        {
+            builder.AddLoginMethod(
+                "trusted-header",
+                settings.TrustedHeaderLabel,
+                $"{ApiBase}/trusted-header/start",
+                order: order,
+                linkStartUrl: $"{ApiBase}/trusted-header/link/start",
+                showOnLoginPage: false);
         }
 
         return builder.Build();
@@ -96,9 +112,6 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
 
     public Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
-        // Capture once so a concurrent runtime unload cannot null the field between the check and
-        // invocation. An in-flight request may finish with the already-created singleton; new
-        // requests fail closed through the host chain after shutdown removes the extension.
         var trustedHeader = _trustedHeader;
         return trustedHeader is null
             ? next(context)
@@ -107,22 +120,32 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet($"{ApiBase}/oidc/start", StartOidcAsync)
+        endpoints.MapGet($"{ApiBase}/oidc/{{providerId}}/start", StartOidcAsync)
             .RequireRateLimiting("auth-strict")
             .AllowCoveAnonymous();
+        endpoints.MapPost($"{ApiBase}/oidc/{{providerId}}/link/start", StartOidcLinkAsync)
+            .RequireRateLimiting("auth-strict")
+            .AllowWithoutCovePermission();
         endpoints.MapGet($"{ApiBase}/oidc/callback", CompleteOidcAsync)
             .RequireRateLimiting("auth-strict")
             .AllowCoveAnonymous();
+        endpoints.MapGet($"{ApiBase}/trusted-header/start", StartTrustedHeaderAsync)
+            .RequireRateLimiting("auth-strict")
+            .AllowCoveAnonymous();
+        endpoints.MapPost($"{ApiBase}/trusted-header/link/start", StartTrustedHeaderLinkAsync)
+            .RequireRateLimiting("auth-strict")
+            .AllowWithoutCovePermission();
         endpoints.MapGet($"{ApiBase}/settings", GetSettings)
             .RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapPut($"{ApiBase}/settings", PutSettingsAsync)
             .RequireCovePermission(Permissions.ExtensionsConfigure);
-        endpoints.MapPost($"{ApiBase}/oidc/test", TestOidcAsync)
+        endpoints.MapPost($"{ApiBase}/oidc/{{providerId}}/test", TestOidcAsync)
             .RequireCovePermission(Permissions.ExtensionsConfigure);
     }
 
     private static async Task<IResult> StartOidcAsync(
         HttpContext context,
+        string providerId,
         string? returnUrl,
         IAuthMiddlewareSettingsProvider settingsProvider,
         IOidcProtocolClient protocol,
@@ -133,17 +156,19 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
     {
         SetNoStore(context);
         var settings = settingsProvider.Current;
+        var providerSettings = settings.FindOidcProvider(providerId);
         var safeReturnUrl = NormalizeReturnUrl(returnUrl);
-        if (!settings.OidcReady)
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: safeReturnUrl));
+        if (providerSettings?.IsReady(settings) != true)
+            return Results.Redirect(LoginRedirect("failed", returnUrl: safeReturnUrl));
 
         try
         {
-            var provider = await protocol.DiscoverAsync(settings, ct);
+            var provider = await protocol.DiscoverAsync(settings, providerSettings, ct);
             var browserBinding = sessions.BeginBrowserSession(context);
-            var flow = flows.Create(settings, provider, browserBinding, safeReturnUrl);
+            var flow = flows.Create(settings, providerSettings, provider, browserBinding, safeReturnUrl);
             var authorizationUri = protocol.BuildAuthorizationUri(
                 settings,
+                providerSettings,
                 provider,
                 flow,
                 CallbackUri(settings));
@@ -151,8 +176,53 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
         }
         catch (OidcProtocolException)
         {
-            logger.LogWarning("The authentication extension could not start the configured OIDC flow");
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: safeReturnUrl));
+            logger.LogWarning("The authentication extension could not start OIDC provider {ProviderId}", providerId);
+            return Results.Redirect(LoginRedirect("failed", returnUrl: safeReturnUrl));
+        }
+    }
+
+    private static async Task<IResult> StartOidcLinkAsync(
+        HttpContext context,
+        string providerId,
+        IAuthMiddlewareSettingsProvider settingsProvider,
+        IOidcProtocolClient protocol,
+        OidcFlowStore flows,
+        IExtensionIdentityLinkService links,
+        ILogger<AuthMiddlewareExtension> logger,
+        CancellationToken ct)
+    {
+        SetNoStore(context);
+        var settings = settingsProvider.Current;
+        var providerSettings = settings.FindOidcProvider(providerId);
+        if (providerSettings?.IsReady(settings) != true)
+            return Results.NotFound(new { message = "The OIDC provider is unavailable." });
+
+        try
+        {
+            var provider = await protocol.DiscoverAsync(settings, providerSettings, ct);
+            var intent = links.BeginLink(context, ExtensionId, providerSettings.Issuer);
+            if (intent is null)
+                return Results.Unauthorized();
+            var flow = flows.Create(
+                settings,
+                providerSettings,
+                provider,
+                intent.BrowserBinding,
+                returnUrl: null,
+                purpose: OidcFlowPurpose.Link,
+                linkIntentToken: intent.Token);
+            var authorizationUri = protocol.BuildAuthorizationUri(
+                settings,
+                providerSettings,
+                provider,
+                flow,
+                CallbackUri(settings));
+            return Results.Ok(new { redirectUrl = authorizationUri.AbsoluteUri });
+        }
+        catch (OidcProtocolException)
+        {
+            logger.LogWarning("The authentication extension could not start an OIDC link for provider {ProviderId}", providerId);
+            return Results.BadRequest(new { message = "The OIDC provider could not be reached." });
         }
     }
 
@@ -160,7 +230,9 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
         HttpContext context,
         OidcFlowStore flows,
         IOidcProtocolClient protocol,
+        IAuthMiddlewareSettingsProvider settingsProvider,
         IExtensionLoginSessionService sessions,
+        IExtensionIdentityLinkService links,
         ILogger<AuthMiddlewareExtension> logger,
         CancellationToken ct)
     {
@@ -168,27 +240,32 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
         var state = SingleQueryValue(context, "state", 256);
         var flow = flows.TryGet(state);
         if (flow is null)
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: null));
+            return Results.Redirect(LoginRedirect("failed"));
 
-        // Browser binding is checked before the authorization code is exchanged or the flow is
-        // consumed. A callback copied to another browser cannot create or burn the original login.
+        var currentSettings = settingsProvider.Current;
+        var currentProvider = currentSettings.FindOidcProvider(flow.OidcProvider.Id);
+        if (currentProvider?.IsReady(currentSettings) != true
+            || !string.Equals(currentProvider.Issuer, flow.OidcProvider.Issuer, StringComparison.Ordinal))
+        {
+            return Results.Redirect(FlowFailureRedirect(flow));
+        }
+
         if (!sessions.IsBrowserSession(context, flow.BrowserBinding))
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: null));
-
+            return Results.Redirect(FlowFailureRedirect(flow));
         if (flows.TryTake(state, flow) is null)
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: flow.ReturnUrl));
-
+            return Results.Redirect(FlowFailureRedirect(flow));
         if (context.Request.Query.ContainsKey("error"))
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: flow.ReturnUrl));
+            return Results.Redirect(FlowFailureRedirect(flow));
 
         var code = SingleQueryValue(context, "code", 4096);
         if (code is null)
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: flow.ReturnUrl));
+            return Results.Redirect(FlowFailureRedirect(flow));
 
         try
         {
             var identity = await protocol.ExchangeAndValidateAsync(
                 flow.Settings,
+                flow.OidcProvider,
                 flow.Provider,
                 new OidcTokenExchange(
                     code,
@@ -196,22 +273,78 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
                     flow.Nonce,
                     CallbackUri(flow.Settings)),
                 ct);
+            var assertion = new ExtensionIdentityAssertion(
+                ExtensionId,
+                flow.OidcProvider.Issuer,
+                identity.Subject,
+                "oidc",
+                flow.OidcProvider.ButtonLabel,
+                identity.AccountLabel);
+
+            if (flow.Purpose == OidcFlowPurpose.Link)
+            {
+                var preparation = await links.PrepareLinkAsync(
+                    context,
+                    flow.LinkIntentToken ?? string.Empty,
+                    flow.BrowserBinding,
+                    assertion,
+                    ct);
+                return preparation.Failure == ExtensionIdentityLinkPreparationFailure.None
+                       && !string.IsNullOrWhiteSpace(preparation.Code)
+                    ? Results.Redirect(ExternalLinkRedirect(preparation.Code))
+                    : Results.Redirect(ExternalLinkRedirect(error: "failed"));
+            }
+
             var completion = await sessions.CompleteAsync(
                 context,
                 flow.BrowserBinding,
-                ExtensionId,
-                identity.Username,
+                assertion,
                 ct);
-            return completion.Failure == ExtensionLoginCompletionFailure.None
-                   && !string.IsNullOrWhiteSpace(completion.Code)
-                ? Results.Redirect(LoginRedirect(code: completion.Code, returnUrl: flow.ReturnUrl))
-                : Results.Redirect(LoginRedirect(error: true, returnUrl: flow.ReturnUrl));
+            if (completion.Failure == ExtensionLoginCompletionFailure.None
+                && !string.IsNullOrWhiteSpace(completion.Code))
+            {
+                return Results.Redirect(LoginRedirect(code: completion.Code, returnUrl: flow.ReturnUrl));
+            }
+            return Results.Redirect(LoginRedirect(
+                completion.Failure == ExtensionLoginCompletionFailure.IdentityUnlinked ? "unlinked" : "failed",
+                returnUrl: flow.ReturnUrl));
         }
         catch (OidcProtocolException)
         {
             logger.LogWarning("The authentication extension rejected an OIDC callback");
-            return Results.Redirect(LoginRedirect(error: true, returnUrl: flow.ReturnUrl));
+            return Results.Redirect(FlowFailureRedirect(flow));
         }
+    }
+
+    private static IResult StartTrustedHeaderAsync(
+        HttpContext context,
+        TrustedHeaderAuthenticator trustedHeader)
+    {
+        SetNoStore(context);
+        return trustedHeader.TryGetIdentity(context, out _)
+            ? Results.Redirect("/")
+            : Results.Redirect(LoginRedirect("failed"));
+    }
+
+    private static async Task<IResult> StartTrustedHeaderLinkAsync(
+        HttpContext context,
+        TrustedHeaderAuthenticator trustedHeader,
+        IExtensionIdentityLinkService links,
+        CancellationToken ct)
+    {
+        SetNoStore(context);
+        if (!trustedHeader.TryGetIdentity(context, out var assertion))
+            return Results.BadRequest(new { message = "The trusted proxy did not provide a valid stable identity." });
+
+        var preparation = await links.PrepareDirectLinkAsync(context, assertion, ct);
+        return preparation.Failure switch
+        {
+            ExtensionIdentityLinkPreparationFailure.None when !string.IsNullOrWhiteSpace(preparation.Code) =>
+                Results.Ok(new { confirmationCode = preparation.Code }),
+            ExtensionIdentityLinkPreparationFailure.IdentityConflict =>
+                Results.Conflict(new { message = "This external identity is already linked to another Cove user." }),
+            _ => Results.BadRequest(new { message = "The trusted identity could not be prepared for linking." }),
+        };
     }
 
     private static IResult GetSettings(IAuthMiddlewareSettingsProvider settings) =>
@@ -220,8 +353,62 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
     private static async Task<IResult> PutSettingsAsync(
         AuthMiddlewareSettingsUpdate request,
         IAuthMiddlewareSettingsStore settings,
+        IExternalIdentityService identities,
         CancellationToken ct)
     {
+        var preview = AuthMiddlewareSettingsValidator.ValidateUpdate(request, settings.Current);
+        if (!preview.IsValid)
+            return Results.ValidationProblem(preview.Errors);
+
+        var currentTrustedProviderId = settings.Current.TrustedHeaderProviderId;
+        if (currentTrustedProviderId.Length > 0
+            && !string.Equals(
+                currentTrustedProviderId,
+                preview.Value!.TrustedHeaderProviderId,
+                StringComparison.Ordinal))
+        {
+            if (settings.Current.TrustedHeaderEnabled)
+            {
+                return Results.Conflict(new
+                {
+                    code = "PROVIDER_MUST_BE_DISABLED",
+                    message = "Disable trusted-header authentication and save before replacing its authority ID.",
+                });
+            }
+            if (await identities.CountProviderLinksAsync(ExtensionId, currentTrustedProviderId, ct) > 0)
+            {
+                return Results.Conflict(new
+                {
+                    code = "PROVIDER_HAS_LINKS",
+                    message = "Unlink every Cove account from the trusted-header authority before replacing it.",
+                });
+            }
+        }
+
+        var retainedIds = preview.Value!.OidcProviders
+            .Select(provider => provider.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in settings.Current.OidcProviders.Where(provider => !retainedIds.Contains(provider.Id)))
+        {
+            if (removed.Enabled)
+            {
+                return Results.Conflict(new
+                {
+                    code = "PROVIDER_MUST_BE_DISABLED",
+                    message = $"Disable {removed.ButtonLabel} and save before deleting it.",
+                });
+            }
+            if (removed.Issuer.Length > 0
+                && await identities.CountProviderLinksAsync(ExtensionId, removed.Issuer, ct) > 0)
+            {
+                return Results.Conflict(new
+                {
+                    code = "PROVIDER_HAS_LINKS",
+                    message = $"Unlink every Cove account from {removed.ButtonLabel} before deleting the provider. You can disable it instead.",
+                });
+            }
+        }
+
         var result = await settings.UpdateAsync(request, ct);
         return result.IsValid
             ? Results.Ok(AuthMiddlewareSettingsResponse.From(result.Value!))
@@ -229,23 +416,25 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
     }
 
     private static async Task<IResult> TestOidcAsync(
+        string providerId,
         IAuthMiddlewareSettingsProvider settingsProvider,
         IOidcProtocolClient protocol,
         ILogger<AuthMiddlewareExtension> logger,
         CancellationToken ct)
     {
         var settings = settingsProvider.Current;
-        if (!settings.OidcReady)
-            return Results.BadRequest(new { message = "Save a complete OIDC configuration first." });
+        var provider = settings.FindOidcProvider(providerId);
+        if (provider?.IsReady(settings) != true)
+            return Results.BadRequest(new { message = "Save a complete, enabled OIDC provider first." });
 
         try
         {
-            await protocol.DiscoverAsync(settings, ct);
+            await protocol.DiscoverAsync(settings, provider, ct);
             return Results.Ok(new { ready = true });
         }
         catch (OidcProtocolException)
         {
-            logger.LogWarning("The authentication extension OIDC discovery test failed");
+            logger.LogWarning("The authentication extension OIDC discovery test failed for provider {ProviderId}", providerId);
             return Results.BadRequest(new { message = "OIDC discovery or signing-key validation failed." });
         }
     }
@@ -265,7 +454,6 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
         {
             return null;
         }
-
         var resolved = new Uri(new Uri("https://cove.invalid"), value);
         return resolved.AbsolutePath == "/login" ? null : value;
     }
@@ -288,9 +476,14 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
         context.Response.Headers.Pragma = "no-cache";
     }
 
+    private static string FlowFailureRedirect(OidcLoginFlow flow) =>
+        flow.Purpose == OidcFlowPurpose.Link
+            ? ExternalLinkRedirect(error: "failed")
+            : LoginRedirect("failed", returnUrl: flow.ReturnUrl);
+
     private static string LoginRedirect(
+        string? error = null,
         string? code = null,
-        bool error = false,
         string? returnUrl = null)
     {
         var query = new QueryBuilder();
@@ -298,9 +491,19 @@ public sealed class AuthMiddlewareExtension : FullExtensionBase, IMiddlewareExte
             query.Add("redirect", returnUrl);
         var fragment = !string.IsNullOrWhiteSpace(code)
             ? $"#external_login_code={Uri.EscapeDataString(code)}"
-            : error
-                ? "#external_login_error=failed"
+            : !string.IsNullOrWhiteSpace(error)
+                ? $"#external_login_error={Uri.EscapeDataString(error)}"
                 : string.Empty;
         return "/login" + query.ToQueryString() + fragment;
+    }
+
+    private static string ExternalLinkRedirect(string? code = null, string? error = null)
+    {
+        var fragment = !string.IsNullOrWhiteSpace(code)
+            ? $"#external_link_code={Uri.EscapeDataString(code)}"
+            : !string.IsNullOrWhiteSpace(error)
+                ? $"#external_link_error={Uri.EscapeDataString(error)}"
+                : string.Empty;
+        return "/settings/my/account" + fragment;
     }
 }

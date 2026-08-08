@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 const [packageRootArg, expectedVersion, expectedExtensionId] = process.argv.slice(2);
-const minimumCoveVersion = "1.1.1-dev.134";
+const minimumCoveVersion = "1.1.1-dev.139";
 if (!packageRootArg || !expectedVersion || expectedExtensionId !== "com.midnightrider.auth-middleware") {
   console.error("Usage: node scripts/validate-extension-package.mjs <package-root> <expected-version> com.midnightrider.auth-middleware");
   process.exit(2);

@@ -25,16 +25,19 @@ public sealed class TrustedHeaderAuthenticatorTests
     }
 
     [Fact]
-    public async Task Trusted_direct_peer_can_assert_exactly_one_username_header()
+    public async Task Trusted_direct_peer_can_assert_an_exact_stable_subject_and_display_label()
     {
         var settings = AuthMiddlewareSettings.Default with
         {
             TrustedHeaderEnabled = true,
-            TrustedHeaderName = "X-Authentik-Username",
+            TrustedHeaderProviderId = "proxy-authority",
+            TrustedHeaderSubjectName = "X-Authentik-Uid",
+            TrustedHeaderDisplayName = "X-Authentik-Username",
             TrustedProxyCidrs = ["192.0.2.0/24"],
         };
         var authenticator = new TrustedHeaderAuthenticator(new FixedSettings(settings));
         var context = Context("192.0.2.14");
+        context.Request.Headers["X-Authentik-Uid"] = " authority-subject ";
         context.Request.Headers["X-Authentik-Username"] = " existing-user ";
         var nextCalled = false;
 
@@ -45,9 +48,11 @@ public sealed class TrustedHeaderAuthenticatorTests
         });
 
         Assert.True(nextCalled);
-        Assert.True(context.TryGetExtensionUserAssertion(out var assertion));
+        Assert.True(context.TryGetExtensionIdentityAssertion(out var assertion));
         Assert.Equal(AuthMiddlewareExtension.ExtensionId, assertion.ExtensionId);
-        Assert.Equal("existing-user", assertion.Username);
+        Assert.Equal("proxy-authority", assertion.ProviderId);
+        Assert.Equal(" authority-subject ", assertion.Subject);
+        Assert.Equal("existing-user", assertion.AccountLabel);
         Assert.Equal("trusted-header", assertion.Method);
     }
 
@@ -57,20 +62,20 @@ public sealed class TrustedHeaderAuthenticatorTests
         var settings = AuthMiddlewareSettings.Default with
         {
             TrustedHeaderEnabled = true,
-            TrustedHeaderName = "X-Authentik-Username",
+            TrustedHeaderProviderId = "proxy-authority",
             TrustedProxyCidrs = ["192.0.2.0/24"],
         };
         var authenticator = new TrustedHeaderAuthenticator(new FixedSettings(settings));
         var untrusted = Context("198.51.100.9");
-        untrusted.Request.Headers["X-Authentik-Username"] = "existing-user";
+        untrusted.Request.Headers[settings.TrustedHeaderSubjectName] = "subject-1";
         var ambiguous = Context("192.0.2.14");
-        ambiguous.Request.Headers["X-Authentik-Username"] = new StringValues(["existing-user", "other-user"]);
+        ambiguous.Request.Headers[settings.TrustedHeaderSubjectName] = new StringValues(["subject-1", "subject-2"]);
 
         await authenticator.InvokeAsync(untrusted, _ => Task.CompletedTask);
         await authenticator.InvokeAsync(ambiguous, _ => Task.CompletedTask);
 
-        Assert.False(untrusted.TryGetExtensionUserAssertion(out _));
-        Assert.False(ambiguous.TryGetExtensionUserAssertion(out _));
+        Assert.False(untrusted.TryGetExtensionIdentityAssertion(out _));
+        Assert.False(ambiguous.TryGetExtensionIdentityAssertion(out _));
     }
 
     [Fact]
@@ -79,36 +84,38 @@ public sealed class TrustedHeaderAuthenticatorTests
         var settings = AuthMiddlewareSettings.Default with
         {
             TrustedHeaderEnabled = true,
+            TrustedHeaderProviderId = "proxy-authority",
             TrustedProxyCidrs = ["192.0.2.14/32"],
         };
         var context = Context("198.51.100.9");
         context.Request.Headers["X-Forwarded-For"] = "192.0.2.14";
-        context.Request.Headers[settings.TrustedHeaderName] = "existing-user";
+        context.Request.Headers[settings.TrustedHeaderSubjectName] = "subject-1";
 
         await new TrustedHeaderAuthenticator(new FixedSettings(settings))
             .InvokeAsync(context, _ => Task.CompletedTask);
 
-        Assert.False(context.TryGetExtensionUserAssertion(out _));
+        Assert.False(context.TryGetExtensionIdentityAssertion(out _));
     }
 
     [Theory]
     [InlineData("existing-user,other-user")]
     [InlineData(" ")]
     [InlineData("existing\ruser")]
-    public async Task Malformed_username_header_fails_closed(string value)
+    public async Task Malformed_subject_header_fails_closed(string value)
     {
         var settings = AuthMiddlewareSettings.Default with
         {
             TrustedHeaderEnabled = true,
+            TrustedHeaderProviderId = "proxy-authority",
             TrustedProxyCidrs = ["192.0.2.14/32"],
         };
         var context = Context("192.0.2.14");
-        context.Request.Headers[settings.TrustedHeaderName] = value;
+        context.Request.Headers[settings.TrustedHeaderSubjectName] = value;
 
         await new TrustedHeaderAuthenticator(new FixedSettings(settings))
             .InvokeAsync(context, _ => Task.CompletedTask);
 
-        Assert.False(context.TryGetExtensionUserAssertion(out _));
+        Assert.False(context.TryGetExtensionIdentityAssertion(out _));
     }
 
     private static DefaultHttpContext Context(string remoteAddress)

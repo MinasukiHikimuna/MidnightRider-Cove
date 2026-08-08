@@ -18,10 +18,11 @@ public sealed class OidcProtocolClientTests
         using var fixture = new OidcFixture(nonce: "expected-nonce");
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
         var settings = fixture.Settings;
-        var provider = await client.DiscoverAsync(settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(settings, fixture.Provider, CancellationToken.None);
 
         var identity = await client.ExchangeAndValidateAsync(
             settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "authorization-code",
@@ -30,11 +31,12 @@ public sealed class OidcProtocolClientTests
                 new Uri("https://cove.example.invalid/api/plugins/com.midnightrider.auth-middleware/oidc/callback")),
             CancellationToken.None);
 
-        Assert.Equal("existing-user", identity.Username);
+        Assert.Equal("subject-1", identity.Subject);
+        Assert.Equal("existing-user", identity.AccountLabel);
         Assert.Equal("authorization-code", fixture.Handler.TokenForm["code"]);
         Assert.Equal(ValidCodeVerifier, fixture.Handler.TokenForm["code_verifier"]);
         Assert.Equal("authorization_code", fixture.Handler.TokenForm["grant_type"]);
-        Assert.Equal(settings.OidcClientSecret, fixture.Handler.TokenForm["client_secret"]);
+        Assert.Equal(fixture.Provider.ClientSecret, fixture.Handler.TokenForm["client_secret"]);
     }
 
     [Theory]
@@ -44,10 +46,11 @@ public sealed class OidcProtocolClientTests
     {
         using var fixture = new OidcFixture(nonce);
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         await Assert.ThrowsAsync<OidcProtocolException>(() => client.ExchangeAndValidateAsync(
             fixture.Settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "code",
@@ -67,7 +70,7 @@ public sealed class OidcProtocolClientTests
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
 
         await Assert.ThrowsAsync<OidcProtocolException>(() =>
-            client.DiscoverAsync(fixture.Settings, CancellationToken.None));
+            client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None));
     }
 
     [Fact]
@@ -80,7 +83,7 @@ public sealed class OidcProtocolClientTests
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
 
         await Assert.ThrowsAsync<OidcProtocolException>(() =>
-            client.DiscoverAsync(fixture.Settings, CancellationToken.None));
+            client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None));
     }
 
     [Fact]
@@ -91,10 +94,11 @@ public sealed class OidcProtocolClientTests
             TokenAudience = "another-client",
         };
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         await Assert.ThrowsAsync<OidcProtocolException>(() => client.ExchangeAndValidateAsync(
             fixture.Settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "code",
@@ -112,10 +116,11 @@ public sealed class OidcProtocolClientTests
             SignWithUnpublishedKey = true,
         };
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         await Assert.ThrowsAsync<OidcProtocolException>(() => client.ExchangeAndValidateAsync(
             fixture.Settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "code",
@@ -133,10 +138,11 @@ public sealed class OidcProtocolClientTests
             AuthorizedParty = "another-client",
         };
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         await Assert.ThrowsAsync<OidcProtocolException>(() => client.ExchangeAndValidateAsync(
             fixture.Settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "code",
@@ -147,17 +153,18 @@ public sealed class OidcProtocolClientTests
     }
 
     [Fact]
-    public async Task Rejects_duplicate_username_claims()
+    public async Task Rejects_duplicate_display_claims()
     {
         using var fixture = new OidcFixture("expected-nonce")
         {
             DuplicateUsernameClaim = true,
         };
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         await Assert.ThrowsAsync<OidcProtocolException>(() => client.ExchangeAndValidateAsync(
             fixture.Settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "code",
@@ -175,10 +182,11 @@ public sealed class OidcProtocolClientTests
             ExpiresUtc = DateTime.UtcNow.AddMinutes(-2),
         };
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         await Assert.ThrowsAsync<OidcProtocolException>(() => client.ExchangeAndValidateAsync(
             fixture.Settings,
+            fixture.Provider,
             provider,
             new OidcTokenExchange(
                 "code",
@@ -196,7 +204,7 @@ public sealed class OidcProtocolClientTests
             "https://idp.example.invalid");
         using var client = new OidcProtocolClient(new HttpClient(fixture.Handler));
 
-        var provider = await client.DiscoverAsync(fixture.Settings, CancellationToken.None);
+        var provider = await client.DiscoverAsync(fixture.Settings, fixture.Provider, CancellationToken.None);
 
         Assert.Equal("https://idp.example.invalid", provider.Issuer);
         Assert.Equal(
@@ -210,6 +218,7 @@ public sealed class OidcProtocolClientTests
         private readonly RSA _unpublishedRsa = RSA.Create(2048);
         private readonly string? _nonce;
         public AuthMiddlewareSettings Settings { get; }
+        public OidcProviderSettings Provider => Assert.Single(Settings.OidcProviders);
         public FakeOidcHandler Handler { get; }
         public string DiscoveryIssuer { get; set; }
         public string TokenAudience { get; set; }
@@ -226,16 +235,22 @@ public sealed class OidcProtocolClientTests
             _nonce = nonce;
             Settings = AuthMiddlewareSettings.Default with
             {
-                OidcEnabled = true,
-                OidcIssuer = issuer,
-                OidcClientId = "cove-client",
-                OidcClientSecret = "client-secret",
                 CovePublicUrl = "https://cove.example.invalid",
-                UsernameClaim = "preferred_username",
-                Scopes = ["openid", "profile"],
+                OidcProviders =
+                [
+                    new OidcProviderSettings(
+                        "test-provider",
+                        true,
+                        "Sign in with test provider",
+                        issuer,
+                        "cove-client",
+                        "client-secret",
+                        "preferred_username",
+                        ["openid", "profile"]),
+                ],
             };
-            DiscoveryIssuer = Settings.OidcIssuer;
-            TokenAudience = Settings.OidcClientId;
+            DiscoveryIssuer = Provider.Issuer;
+            TokenAudience = Provider.ClientId;
             Handler = new FakeOidcHandler(this);
         }
 
@@ -254,7 +269,7 @@ public sealed class OidcProtocolClientTests
             if (AuthorizedParty is not null) claims.Add(new Claim("azp", AuthorizedParty));
             if (DuplicateUsernameClaim) claims.Add(new Claim("preferred_username", "other-user"));
             var token = new JwtSecurityToken(
-                issuer: Settings.OidcIssuer,
+                issuer: Provider.Issuer,
                 audience: TokenAudience,
                 claims: claims,
                 notBefore: DateTime.UtcNow.AddMinutes(-10),

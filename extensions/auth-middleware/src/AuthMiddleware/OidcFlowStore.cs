@@ -4,6 +4,12 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace AuthMiddleware;
 
+public enum OidcFlowPurpose
+{
+    Login,
+    Link,
+}
+
 public sealed record OidcLoginFlow(
     string State,
     string Nonce,
@@ -12,7 +18,10 @@ public sealed record OidcLoginFlow(
     string BrowserBinding,
     string? ReturnUrl,
     AuthMiddlewareSettings Settings,
+    OidcProviderSettings OidcProvider,
     OidcProviderConfiguration Provider,
+    OidcFlowPurpose Purpose,
+    string? LinkIntentToken,
     DateTimeOffset CreatedAt);
 
 public sealed class OidcFlowStore(TimeProvider timeProvider)
@@ -24,18 +33,23 @@ public sealed class OidcFlowStore(TimeProvider timeProvider)
 
     public OidcLoginFlow Create(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         OidcProviderConfiguration provider,
         string browserBinding,
-        string? returnUrl)
+        string? returnUrl,
+        OidcFlowPurpose purpose = OidcFlowPurpose.Login,
+        string? linkIntentToken = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(oidcProvider);
         ArgumentNullException.ThrowIfNull(provider);
         if (string.IsNullOrWhiteSpace(browserBinding))
             throw new ArgumentException("A browser binding is required.", nameof(browserBinding));
+        if (purpose == OidcFlowPurpose.Link && string.IsNullOrWhiteSpace(linkIntentToken))
+            throw new ArgumentException("A link intent is required for a link flow.", nameof(linkIntentToken));
 
         var verifier = RandomToken(64);
-        var challenge = Base64UrlEncoder.Encode(
-            SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+        var challenge = Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
         var flow = new OidcLoginFlow(
             RandomToken(32),
             RandomToken(32),
@@ -44,7 +58,10 @@ public sealed class OidcFlowStore(TimeProvider timeProvider)
             browserBinding,
             returnUrl,
             settings,
+            oidcProvider,
             provider,
+            purpose,
+            linkIntentToken,
             timeProvider.GetUtcNow());
 
         lock (_gate)
@@ -57,7 +74,6 @@ public sealed class OidcFlowStore(TimeProvider timeProvider)
             }
             _flows[flow.State] = flow;
         }
-
         return flow;
     }
 
@@ -65,7 +81,6 @@ public sealed class OidcFlowStore(TimeProvider timeProvider)
     {
         if (!IsValidState(state))
             return null;
-
         lock (_gate)
         {
             SweepExpired(timeProvider.GetUtcNow());
@@ -78,16 +93,11 @@ public sealed class OidcFlowStore(TimeProvider timeProvider)
         ArgumentNullException.ThrowIfNull(expected);
         if (!IsValidState(state))
             return null;
-
         lock (_gate)
         {
             SweepExpired(timeProvider.GetUtcNow());
-            if (!_flows.TryGetValue(state!, out var current)
-                || !ReferenceEquals(current, expected))
-            {
+            if (!_flows.TryGetValue(state!, out var current) || !ReferenceEquals(current, expected))
                 return null;
-            }
-
             _flows.Remove(state!);
             return current;
         }

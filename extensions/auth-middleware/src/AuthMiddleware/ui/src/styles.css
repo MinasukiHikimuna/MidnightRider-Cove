@@ -68,6 +68,27 @@
   color: var(--color-warning, #f59e0b);
 }
 
+.authmw-provider-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.authmw-provider-heading h4 {
+  margin: 0;
+}
+
+.authmw-provider-heading button,
+.authmw-actions button {
+  cursor: pointer;
+}
+
+.authmw-muted {
+  color: var(--color-muted-foreground, #9ca3af);
+  font-weight: 400;
+}
+
 .authmw-actions {
   display: flex;
   flex-wrap: wrap;
@@ -81,6 +102,11 @@
   background: var(--color-accent, #2563eb);
   color: var(--color-accent-foreground, white);
   font-weight: 600;
+}
+
+.authmw-actions .authmw-danger {
+  background: transparent;
+  color: var(--color-danger, #f87171);
 }
 
 .authmw-actions button:disabled,

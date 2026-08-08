@@ -21,7 +21,7 @@ public sealed record OidcTokenExchange(
     string ExpectedNonce,
     Uri RedirectUri);
 
-public sealed record OidcIdentity(string Username);
+public sealed record OidcIdentity(string Subject, string? AccountLabel);
 
 public sealed class OidcProtocolException(string message) : Exception(message);
 
@@ -29,16 +29,19 @@ public interface IOidcProtocolClient
 {
     Task<OidcProviderConfiguration> DiscoverAsync(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         CancellationToken ct);
 
     Uri BuildAuthorizationUri(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         OidcProviderConfiguration provider,
         OidcLoginFlow flow,
         Uri redirectUri);
 
     Task<OidcIdentity> ExchangeAndValidateAsync(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         OidcProviderConfiguration provider,
         OidcTokenExchange exchange,
         CancellationToken ct);
@@ -58,25 +61,26 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
 
     public async Task<OidcProviderConfiguration> DiscoverAsync(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         CancellationToken ct)
     {
-        if (!settings.OidcReady)
+        if (!oidcProvider.IsReady(settings))
             throw new OidcProtocolException("OIDC is not fully configured.");
 
         try
         {
             var discoveryUri = new Uri(
-                settings.OidcIssuer
-                + (settings.OidcIssuer.EndsWith("/", StringComparison.Ordinal) ? string.Empty : "/")
+                oidcProvider.Issuer
+                + (oidcProvider.Issuer.EndsWith("/", StringComparison.Ordinal) ? string.Empty : "/")
                 + ".well-known/openid-configuration");
             using var discovery = await GetJsonAsync(discoveryUri, ct);
             var root = discovery.RootElement;
             var issuer = RequiredString(root, "issuer");
-            if (!FixedTimeEquals(issuer, settings.OidcIssuer))
+            if (!FixedTimeEquals(issuer, oidcProvider.Issuer))
                 throw new OidcProtocolException("The discovery issuer does not match the configured issuer.");
 
             var allowHttpEndpoints = settings.AllowInsecureDevelopmentIssuer
-                && Uri.TryCreate(settings.OidcIssuer, UriKind.Absolute, out var configuredIssuer)
+                && Uri.TryCreate(oidcProvider.Issuer, UriKind.Absolute, out var configuredIssuer)
                 && configuredIssuer.Scheme == Uri.UriSchemeHttp;
             var authorizationEndpoint = RequiredEndpoint(root, "authorization_endpoint", allowHttpEndpoints);
             var tokenEndpoint = RequiredEndpoint(root, "token_endpoint", allowHttpEndpoints);
@@ -111,26 +115,30 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
 
     public Uri BuildAuthorizationUri(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         OidcProviderConfiguration provider,
         OidcLoginFlow flow,
         Uri redirectUri)
     {
         var query = new Dictionary<string, string?>
         {
-            ["client_id"] = settings.OidcClientId,
+            ["client_id"] = oidcProvider.ClientId,
             ["redirect_uri"] = redirectUri.AbsoluteUri,
             ["response_type"] = "code",
-            ["scope"] = string.Join(' ', settings.Scopes),
+            ["scope"] = string.Join(' ', oidcProvider.Scopes),
             ["state"] = flow.State,
             ["nonce"] = flow.Nonce,
             ["code_challenge"] = flow.CodeChallenge,
             ["code_challenge_method"] = "S256",
         };
+        if (flow.Purpose == OidcFlowPurpose.Link)
+            query["prompt"] = "select_account";
         return new Uri(QueryHelpers.AddQueryString(provider.AuthorizationEndpoint.AbsoluteUri, query));
     }
 
     public async Task<OidcIdentity> ExchangeAndValidateAsync(
         AuthMiddlewareSettings settings,
+        OidcProviderSettings oidcProvider,
         OidcProviderConfiguration provider,
         OidcTokenExchange exchange,
         CancellationToken ct)
@@ -151,8 +159,8 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
                 ["grant_type"] = "authorization_code",
                 ["code"] = exchange.Code,
                 ["redirect_uri"] = exchange.RedirectUri.AbsoluteUri,
-                ["client_id"] = settings.OidcClientId,
-                ["client_secret"] = settings.OidcClientSecret,
+                ["client_id"] = oidcProvider.ClientId,
+                ["client_secret"] = oidcProvider.ClientSecret,
                 ["code_verifier"] = exchange.CodeVerifier,
             });
             using var request = new HttpRequestMessage(HttpMethod.Post, provider.TokenEndpoint)
@@ -167,7 +175,7 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
             if (idToken.Length > 64 * 1024)
                 throw new OidcProtocolException("The identity token is too large.");
 
-            return ValidateIdentityToken(settings, provider, exchange.ExpectedNonce, idToken);
+            return ValidateIdentityToken(oidcProvider, provider, exchange.ExpectedNonce, idToken);
         }
         catch (OidcProtocolException)
         {
@@ -184,7 +192,7 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
     }
 
     private static OidcIdentity ValidateIdentityToken(
-        AuthMiddlewareSettings settings,
+        OidcProviderSettings settings,
         OidcProviderConfiguration provider,
         string expectedNonce,
         string idToken)
@@ -193,9 +201,9 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
         var parameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = settings.OidcIssuer,
+            ValidIssuer = settings.Issuer,
             ValidateAudience = true,
-            ValidAudience = settings.OidcClientId,
+            ValidAudience = settings.ClientId,
             ValidateIssuerSigningKey = true,
             IssuerSigningKeys = provider.SigningKeys,
             RequireSignedTokens = true,
@@ -228,7 +236,7 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
         if ((audiences.Length > 1 && authorizedParty.Length != 1)
             || (authorizedParty.Length > 0
                 && (authorizedParty.Length != 1
-                    || !FixedTimeEquals(authorizedParty[0], settings.OidcClientId))))
+                    || !FixedTimeEquals(authorizedParty[0], settings.ClientId))))
         {
             throw new OidcProtocolException("The identity token authorized party is invalid.");
         }
@@ -237,16 +245,22 @@ public sealed class OidcProtocolClient(HttpClient http) : IOidcProtocolClient, I
         if (nonces.Length != 1 || !FixedTimeEquals(nonces[0], expectedNonce))
             throw new OidcProtocolException("The identity token nonce is invalid.");
 
-        var usernames = principal.FindAll(settings.UsernameClaim).Select(claim => claim.Value.Trim()).ToArray();
-        if (usernames.Length != 1
-            || string.IsNullOrWhiteSpace(usernames[0])
-            || usernames[0].Length > 256
-            || usernames[0].Any(char.IsControl))
+        var accountLabels = principal.FindAll(settings.DisplayClaim).Select(claim => claim.Value.Trim()).ToArray();
+        if (accountLabels.Length > 1
+            || (accountLabels.Length == 1
+                && (string.IsNullOrWhiteSpace(accountLabels[0])
+                    || accountLabels[0].Length > 256
+                    || accountLabels[0].Any(char.IsControl))))
         {
-            throw new OidcProtocolException("The configured username claim is invalid.");
+            throw new OidcProtocolException("The configured display claim is invalid.");
         }
 
-        return new OidcIdentity(usernames[0]);
+        var subject = subjects[0];
+        if (subject.Length > 512 || subject.Any(char.IsControl))
+            throw new OidcProtocolException("The identity token subject is invalid.");
+
+        // `sub` is opaque and case-sensitive. Do not trim or normalize it.
+        return new OidcIdentity(subject, accountLabels.SingleOrDefault());
     }
 
     private async Task<JsonDocument> GetJsonAsync(Uri uri, CancellationToken ct)

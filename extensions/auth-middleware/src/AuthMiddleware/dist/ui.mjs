@@ -1,249 +1,307 @@
-import { jsxs as n, jsx as a } from "react/jsx-runtime";
-import { useState as d, useEffect as D } from "react";
-const O = "/api/plugins/com.midnightrider.auth-middleware", y = {
-  oidcEnabled: !1,
-  oidcButtonLabel: "Sign in with OpenID Connect",
-  oidcIssuer: "",
-  oidcClientId: "",
-  oidcClientSecretConfigured: !1,
+import { jsxs as n, jsx as t } from "react/jsx-runtime";
+import { useState as m, useEffect as j } from "react";
+const E = "/api/plugins/com.midnightrider.auth-middleware", O = {
   covePublicUrl: "",
-  usernameClaim: "preferred_username",
-  scopes: ["openid", "profile", "email"],
   allowInsecureDevelopmentIssuer: !1,
+  oidcProviders: [],
   trustedHeaderEnabled: !1,
-  trustedHeaderName: "X-Authentik-Username",
+  trustedHeaderProviderId: "",
+  trustedHeaderLabel: "Trusted reverse proxy",
+  trustedHeaderSubjectName: "X-Authentik-Uid",
+  trustedHeaderDisplayName: "X-Authentik-Username",
   trustedProxyCidrs: []
 };
-async function P(t, r = {}) {
-  const i = await fetch(`${O}${t}`, {
-    ...r,
-    headers: { "Content-Type": "application/json", ...r.headers }
+async function U(a, o = {}) {
+  const r = await fetch(`${E}${a}`, {
+    ...o,
+    headers: { "Content-Type": "application/json", ...o.headers }
   });
-  if (!i.ok) {
-    const s = await i.json().catch(() => null), u = (s != null && s.errors ? Object.values(s.errors).flat().filter((p) => typeof p == "string").join(" ") : "") || (typeof (s == null ? void 0 : s.message) == "string" ? s.message : `Request failed (${i.status}).`);
-    throw new Error(u);
+  if (!r.ok) {
+    const i = await r.json().catch(() => null), g = (i != null && i.errors ? Object.values(i.errors).flat().filter((w) => typeof w == "string").join(" ") : "") || (typeof (i == null ? void 0 : i.message) == "string" ? i.message : `Request failed (${r.status}).`);
+    throw new Error(g);
   }
-  return i.status === 204 ? void 0 : i.json();
+  return r.status === 204 ? void 0 : r.json();
 }
-let b = P;
-const f = {
-  getSettings: () => b("/settings"),
-  saveSettings: (t) => b("/settings", {
+let C = U;
+const S = {
+  getSettings: () => C("/settings"),
+  saveSettings: (a) => C("/settings", {
     method: "PUT",
-    body: JSON.stringify(t)
+    body: JSON.stringify(a)
   }),
-  testOidc: () => b("/oidc/test", { method: "POST" })
+  testOidc: (a) => C(`/oidc/${encodeURIComponent(a)}/test`, { method: "POST" })
 };
-function I(t) {
-  return t.split(/[\s,]+/).map((r) => r.trim()).filter(Boolean);
+function x(a) {
+  return a.split(/[\s,]+/).map((o) => o.trim()).filter(Boolean);
 }
-function T() {
-  const [t, r] = d(y), [i, s] = d(""), [m, u] = d(!1), [p, C] = d(y.scopes.join(" ")), [w, v] = d(""), [g, h] = d(!0), [k, c] = d("Loading authentication settings…");
-  D(() => {
+let A = 1;
+function P(a) {
+  return {
+    ...a,
+    draftKey: a.id || `new-${A++}`,
+    scopesText: a.scopes.join(" ")
+  };
+}
+function $() {
+  return P({
+    id: "",
+    enabled: !1,
+    buttonLabel: "Sign in with OpenID Connect",
+    issuer: "",
+    clientId: "",
+    clientSecretConfigured: !1,
+    displayClaim: "preferred_username",
+    scopes: ["openid", "profile", "email"]
+  });
+}
+function R() {
+  const [a, o] = m(O), [r, i] = m([]), [f, g] = m({}), [w, v] = m(/* @__PURE__ */ new Set()), [k, I] = m(""), [p, y] = m(!0), [H, c] = m("Loading authentication settings…"), N = (e) => {
+    o(e), i(e.oidcProviders.map(P)), I(e.trustedProxyCidrs.join(`
+`));
+  };
+  j(() => {
     let e = !0;
-    return f.getSettings().then((o) => {
-      e && (r(o), C(o.scopes.join(" ")), v(o.trustedProxyCidrs.join(`
-`)), c(""));
-    }).catch((o) => {
-      e && c(o instanceof Error ? o.message : "Could not load authentication settings.");
+    return S.getSettings().then((l) => {
+      e && (N(l), c(""));
+    }).catch((l) => {
+      e && c(l instanceof Error ? l.message : "Could not load authentication settings.");
     }).finally(() => {
-      e && h(!1);
+      e && y(!1);
     }), () => {
       e = !1;
     };
   }, []);
-  const l = (e, o) => r((N) => ({ ...N, [e]: o })), S = () => ({
-    oidcEnabled: t.oidcEnabled,
-    oidcButtonLabel: t.oidcButtonLabel,
-    oidcIssuer: t.oidcIssuer,
-    oidcClientId: t.oidcClientId,
-    ...i ? { oidcClientSecret: i } : {},
-    clearOidcClientSecret: m,
-    covePublicUrl: t.covePublicUrl,
-    usernameClaim: t.usernameClaim,
-    scopes: I(p),
-    allowInsecureDevelopmentIssuer: t.allowInsecureDevelopmentIssuer,
-    trustedHeaderEnabled: t.trustedHeaderEnabled,
-    trustedHeaderName: t.trustedHeaderName,
-    trustedProxyCidrs: I(w)
-  }), x = async () => {
-    h(!0), c("Saving authentication settings…");
+  const h = (e, l) => o((s) => ({ ...s, [e]: l })), b = (e, l, s) => i((u) => u.map((d) => d.draftKey === e ? { ...d, [l]: s } : d)), D = () => ({
+    covePublicUrl: a.covePublicUrl,
+    allowInsecureDevelopmentIssuer: a.allowInsecureDevelopmentIssuer,
+    oidcProviders: r.map((e) => ({
+      ...e.id ? { id: e.id } : {},
+      enabled: e.enabled,
+      buttonLabel: e.buttonLabel,
+      issuer: e.issuer,
+      clientId: e.clientId,
+      ...f[e.draftKey] ? { clientSecret: f[e.draftKey] } : {},
+      clearClientSecret: w.has(e.draftKey),
+      displayClaim: e.displayClaim,
+      scopes: x(e.scopesText)
+    })),
+    trustedHeaderEnabled: a.trustedHeaderEnabled,
+    trustedHeaderProviderId: a.trustedHeaderProviderId,
+    trustedHeaderLabel: a.trustedHeaderLabel,
+    trustedHeaderSubjectName: a.trustedHeaderSubjectName,
+    trustedHeaderDisplayName: a.trustedHeaderDisplayName,
+    trustedProxyCidrs: x(k)
+  }), K = async () => {
+    y(!0), c("Saving authentication settings…");
     try {
-      const e = await f.saveSettings(S());
-      r(e), C(e.scopes.join(" ")), v(e.trustedProxyCidrs.join(`
-`)), s(""), u(!1), c("Settings saved. Reload the sign-in page to verify the available login methods.");
+      const e = await S.saveSettings(D());
+      N(e), g({}), v(/* @__PURE__ */ new Set()), c("Settings saved. Existing identities remain linked by immutable provider authority and subject.");
     } catch (e) {
       c(e instanceof Error ? e.message : "Could not save authentication settings.");
     } finally {
-      h(!1);
+      y(!1);
     }
-  }, E = async () => {
-    h(!0), c("Checking OIDC discovery and signing keys…");
-    try {
-      await f.testOidc(), c("OIDC discovery and signing keys are reachable.");
-    } catch (e) {
-      c(e instanceof Error ? e.message : "OIDC discovery failed.");
-    } finally {
-      h(!1);
+  }, T = async (e) => {
+    if (e.id) {
+      y(!0), c(`Checking ${e.buttonLabel} discovery and signing keys…`);
+      try {
+        await S.testOidc(e.id), c(`${e.buttonLabel} discovery and signing keys are reachable.`);
+      } catch (l) {
+        c(l instanceof Error ? l.message : "OIDC discovery failed.");
+      } finally {
+        y(!1);
+      }
     }
+  }, L = (e) => {
+    i((l) => l.filter((s) => s.draftKey !== e.draftKey)), c(e.id ? "Save to delete this provider. Deletion is blocked while any Cove user remains linked; disable it first if needed." : "Unsaved provider removed.");
   };
   return /* @__PURE__ */ n("section", { className: "authmw-settings", "aria-labelledby": "authmw-title", children: [
     /* @__PURE__ */ n("header", { children: [
-      /* @__PURE__ */ a("h3", { id: "authmw-title", children: "Authentication middleware" }),
-      /* @__PURE__ */ a("p", { children: "External identities must match an existing active Cove username. Cove keeps ownership of account status, roles, permissions, sessions, and audit events." })
+      /* @__PURE__ */ t("h3", { id: "authmw-title", children: "Authentication middleware" }),
+      /* @__PURE__ */ t("p", { children: "Link each external identity explicitly to a Cove user. Provider names and email claims are display-only; authentication uses the provider authority and its exact stable subject." })
     ] }),
-    /* @__PURE__ */ n("fieldset", { disabled: g, children: [
-      /* @__PURE__ */ a("legend", { children: "OpenID Connect" }),
-      /* @__PURE__ */ n("label", { className: "authmw-check", children: [
-        /* @__PURE__ */ a(
+    /* @__PURE__ */ n("fieldset", { disabled: p, children: [
+      /* @__PURE__ */ t("legend", { children: "Shared OpenID Connect settings" }),
+      /* @__PURE__ */ t("div", { className: "authmw-grid", children: /* @__PURE__ */ n("label", { children: [
+        "Cove public URL",
+        /* @__PURE__ */ t(
+          "input",
+          {
+            type: "url",
+            placeholder: "https://cove.example",
+            value: a.covePublicUrl,
+            onChange: (e) => h("covePublicUrl", e.target.value)
+          }
+        )
+      ] }) }),
+      /* @__PURE__ */ n("label", { className: "authmw-check authmw-warning", children: [
+        /* @__PURE__ */ t(
           "input",
           {
             type: "checkbox",
-            checked: t.oidcEnabled,
-            onChange: (e) => l("oidcEnabled", e.target.checked)
+            checked: a.allowInsecureDevelopmentIssuer,
+            onChange: (e) => h("allowInsecureDevelopmentIssuer", e.target.checked)
           }
         ),
-        "Enable OpenID Connect login"
+        "Allow HTTP issuers and a Cove HTTP URL for isolated development only"
+      ] }),
+      /* @__PURE__ */ n("p", { className: "authmw-help", children: [
+        "Callback for every provider: ",
+        /* @__PURE__ */ t("code", { children: "/api/plugins/com.midnightrider.auth-middleware/oidc/callback" })
+      ] })
+    ] }),
+    /* @__PURE__ */ n("div", { className: "authmw-provider-heading", children: [
+      /* @__PURE__ */ t("h4", { children: "OpenID Connect providers" }),
+      /* @__PURE__ */ t("button", { type: "button", onClick: () => i((e) => [...e, $()]), disabled: p, children: "Add provider" })
+    ] }),
+    r.length === 0 ? /* @__PURE__ */ t("p", { className: "authmw-help", children: "No OIDC providers are configured." }) : null,
+    r.map((e, l) => /* @__PURE__ */ n("fieldset", { disabled: p, children: [
+      /* @__PURE__ */ t("legend", { children: e.buttonLabel || `OIDC provider ${l + 1}` }),
+      /* @__PURE__ */ n("label", { className: "authmw-check", children: [
+        /* @__PURE__ */ t(
+          "input",
+          {
+            type: "checkbox",
+            checked: e.enabled,
+            onChange: (s) => b(e.draftKey, "enabled", s.target.checked)
+          }
+        ),
+        "Enable this provider for login and account linking"
       ] }),
       /* @__PURE__ */ n("div", { className: "authmw-grid", children: [
         /* @__PURE__ */ n("label", { children: [
           "Login button label",
-          /* @__PURE__ */ a("input", { value: t.oidcButtonLabel, onChange: (e) => l("oidcButtonLabel", e.target.value) })
+          /* @__PURE__ */ t("input", { value: e.buttonLabel, onChange: (s) => b(e.draftKey, "buttonLabel", s.target.value) })
         ] }),
         /* @__PURE__ */ n("label", { children: [
-          "Issuer",
-          /* @__PURE__ */ a(
+          "Issuer ",
+          e.id ? /* @__PURE__ */ t("span", { className: "authmw-muted", children: "(immutable)" }) : null,
+          /* @__PURE__ */ t(
             "input",
             {
               type: "url",
               placeholder: "https://identity.example/application/o/cove/",
-              value: t.oidcIssuer,
-              onChange: (e) => l("oidcIssuer", e.target.value)
+              value: e.issuer,
+              readOnly: !!e.id,
+              onChange: (s) => b(e.draftKey, "issuer", s.target.value)
             }
           )
         ] }),
         /* @__PURE__ */ n("label", { children: [
           "Client ID",
-          /* @__PURE__ */ a("input", { value: t.oidcClientId, onChange: (e) => l("oidcClientId", e.target.value) })
+          /* @__PURE__ */ t("input", { value: e.clientId, onChange: (s) => b(e.draftKey, "clientId", s.target.value) })
         ] }),
         /* @__PURE__ */ n("label", { children: [
           "Client secret",
-          /* @__PURE__ */ a(
+          /* @__PURE__ */ t(
             "input",
             {
               type: "password",
               autoComplete: "new-password",
-              value: i,
-              placeholder: t.oidcClientSecretConfigured ? "Configured; leave blank to keep" : "Required when OIDC is enabled",
-              onChange: (e) => {
-                s(e.target.value), e.target.value && u(!1);
+              value: f[e.draftKey] ?? "",
+              placeholder: e.clientSecretConfigured ? "Configured; leave blank to keep" : "Required when enabled",
+              onChange: (s) => {
+                g((u) => ({ ...u, [e.draftKey]: s.target.value })), s.target.value && v((u) => {
+                  const d = new Set(u);
+                  return d.delete(e.draftKey), d;
+                });
               }
             }
           )
         ] }),
         /* @__PURE__ */ n("label", { children: [
-          "Cove public URL",
-          /* @__PURE__ */ a(
+          "Display claim",
+          /* @__PURE__ */ t("input", { value: e.displayClaim, onChange: (s) => b(e.draftKey, "displayClaim", s.target.value) })
+        ] }),
+        /* @__PURE__ */ n("label", { className: "authmw-wide", children: [
+          "Scopes",
+          /* @__PURE__ */ t("input", { value: e.scopesText, onChange: (s) => b(e.draftKey, "scopesText", s.target.value) })
+        ] })
+      ] }),
+      e.clientSecretConfigured ? /* @__PURE__ */ n("label", { className: "authmw-check", children: [
+        /* @__PURE__ */ t(
+          "input",
+          {
+            type: "checkbox",
+            checked: w.has(e.draftKey),
+            onChange: (s) => {
+              v((u) => {
+                const d = new Set(u);
+                return s.target.checked ? d.add(e.draftKey) : d.delete(e.draftKey), d;
+              }), s.target.checked && g((u) => ({ ...u, [e.draftKey]: "" }));
+            }
+          }
+        ),
+        "Clear this provider's stored client secret when saving"
+      ] }) : null,
+      /* @__PURE__ */ n("div", { className: "authmw-actions", children: [
+        /* @__PURE__ */ t("button", { type: "button", onClick: () => void T(e), disabled: !e.id || !e.clientSecretConfigured, children: "Test saved provider" }),
+        /* @__PURE__ */ t("button", { type: "button", className: "authmw-danger", onClick: () => L(e), children: "Delete provider" })
+      ] })
+    ] }, e.draftKey)),
+    /* @__PURE__ */ n("fieldset", { disabled: p, children: [
+      /* @__PURE__ */ t("legend", { children: "Trusted reverse-proxy identity" }),
+      /* @__PURE__ */ n("label", { className: "authmw-check", children: [
+        /* @__PURE__ */ t(
+          "input",
+          {
+            type: "checkbox",
+            checked: a.trustedHeaderEnabled,
+            onChange: (e) => h("trustedHeaderEnabled", e.target.checked)
+          }
+        ),
+        "Enable trusted-header authentication and account linking"
+      ] }),
+      /* @__PURE__ */ n("div", { className: "authmw-grid", children: [
+        /* @__PURE__ */ n("label", { children: [
+          "Provider label",
+          /* @__PURE__ */ t("input", { value: a.trustedHeaderLabel, onChange: (e) => h("trustedHeaderLabel", e.target.value) })
+        ] }),
+        /* @__PURE__ */ n("label", { children: [
+          "Authority ID ",
+          a.trustedHeaderProviderId ? /* @__PURE__ */ t("span", { className: "authmw-muted", children: "(disable and unlink to replace)" }) : null,
+          /* @__PURE__ */ t(
             "input",
             {
-              type: "url",
-              placeholder: "https://cove.example",
-              value: t.covePublicUrl,
-              onChange: (e) => l("covePublicUrl", e.target.value)
+              value: a.trustedHeaderProviderId,
+              readOnly: a.trustedHeaderEnabled,
+              placeholder: "Generated when first enabled",
+              onChange: (e) => h("trustedHeaderProviderId", e.target.value)
             }
           )
         ] }),
         /* @__PURE__ */ n("label", { children: [
-          "Username claim",
-          /* @__PURE__ */ a("input", { value: t.usernameClaim, onChange: (e) => l("usernameClaim", e.target.value) })
+          "Stable subject header",
+          /* @__PURE__ */ t("input", { value: a.trustedHeaderSubjectName, onChange: (e) => h("trustedHeaderSubjectName", e.target.value) })
         ] }),
-        /* @__PURE__ */ n("label", { className: "authmw-wide", children: [
-          "Scopes",
-          /* @__PURE__ */ a("input", { value: p, onChange: (e) => C(e.target.value) })
-        ] })
-      ] }),
-      t.oidcClientSecretConfigured ? /* @__PURE__ */ n("label", { className: "authmw-check", children: [
-        /* @__PURE__ */ a(
-          "input",
-          {
-            type: "checkbox",
-            checked: m,
-            onChange: (e) => {
-              u(e.target.checked), e.target.checked && s("");
-            }
-          }
-        ),
-        "Clear the stored client secret when saving"
-      ] }) : null,
-      /* @__PURE__ */ n("label", { className: "authmw-check authmw-warning", children: [
-        /* @__PURE__ */ a(
-          "input",
-          {
-            type: "checkbox",
-            checked: t.allowInsecureDevelopmentIssuer,
-            onChange: (e) => l("allowInsecureDevelopmentIssuer", e.target.checked)
-          }
-        ),
-        "Allow an HTTP issuer and Cove URL for isolated development only"
-      ] }),
-      /* @__PURE__ */ n("p", { className: "authmw-help", children: [
-        "Callback: ",
-        /* @__PURE__ */ a("code", { children: "/api/plugins/com.midnightrider.auth-middleware/oidc/callback" })
-      ] })
-    ] }),
-    /* @__PURE__ */ n("fieldset", { disabled: g, children: [
-      /* @__PURE__ */ a("legend", { children: "Trusted reverse-proxy header" }),
-      /* @__PURE__ */ n("label", { className: "authmw-check", children: [
-        /* @__PURE__ */ a(
-          "input",
-          {
-            type: "checkbox",
-            checked: t.trustedHeaderEnabled,
-            onChange: (e) => l("trustedHeaderEnabled", e.target.checked)
-          }
-        ),
-        "Enable trusted-header authentication"
-      ] }),
-      /* @__PURE__ */ n("div", { className: "authmw-grid", children: [
         /* @__PURE__ */ n("label", { children: [
-          "Username header",
-          /* @__PURE__ */ a("input", { value: t.trustedHeaderName, onChange: (e) => l("trustedHeaderName", e.target.value) })
+          "Optional display-name header",
+          /* @__PURE__ */ t("input", { value: a.trustedHeaderDisplayName, onChange: (e) => h("trustedHeaderDisplayName", e.target.value) })
         ] }),
         /* @__PURE__ */ n("label", { className: "authmw-wide", children: [
           "Trusted direct-proxy IPs or CIDRs",
-          /* @__PURE__ */ a(
+          /* @__PURE__ */ t(
             "textarea",
             {
               rows: 4,
               placeholder: `192.0.2.10/32
 2001:db8::10/128`,
-              value: w,
-              onChange: (e) => v(e.target.value)
+              value: k,
+              onChange: (e) => I(e.target.value)
             }
           )
         ] })
       ] }),
-      /* @__PURE__ */ a("p", { className: "authmw-help authmw-warning", children: "Trust the narrowest direct peer range. The extension deliberately ignores forwarded-address headers when deciding whether the identity header is trusted." })
+      /* @__PURE__ */ t("p", { className: "authmw-help authmw-warning", children: "The subject header must be stable and unique within this authority. The proxy must remove client-supplied identity headers, and only its direct peer address may be trusted." })
     ] }),
-    /* @__PURE__ */ n("div", { className: "authmw-actions", children: [
-      /* @__PURE__ */ a("button", { type: "button", onClick: () => void x(), disabled: g, children: "Save settings" }),
-      /* @__PURE__ */ a(
-        "button",
-        {
-          type: "button",
-          onClick: () => void E(),
-          disabled: g || !t.oidcClientSecretConfigured,
-          children: "Test saved OIDC configuration"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ a("p", { className: "authmw-status", role: "status", "aria-live": "polite", children: k })
+    /* @__PURE__ */ t("div", { className: "authmw-actions", children: /* @__PURE__ */ t("button", { type: "button", onClick: () => void K(), disabled: p, children: "Save settings" }) }),
+    /* @__PURE__ */ t("p", { className: "authmw-status", role: "status", "aria-live": "polite", children: H })
   ] });
 }
-const H = {
-  components: { AuthMiddlewareSettings: T }
+const M = {
+  components: { AuthMiddlewareSettings: R }
 };
 export {
-  T as AuthMiddlewareSettings,
-  H as default
+  R as AuthMiddlewareSettings,
+  M as default
 };
