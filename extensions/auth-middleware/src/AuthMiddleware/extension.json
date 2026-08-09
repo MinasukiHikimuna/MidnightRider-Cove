@@ -5,7 +5,7 @@
   "description": "Adds multiple OpenID Connect and trusted reverse-proxy identities with explicit Cove account linking and local permission control.",
   "author": "MidnightRider",
   "kind": "extension",
-  "minCoveVersion": "1.1.1-dev.139",
+  "minCoveVersion": "1.1.1-dev.141",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
   "dependencies": {},
   "externalDependencies": [
