@@ -32,12 +32,10 @@ function createShortcutHandler(context) {
         requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
       };
       if (shortcut.id === "video.playPreviousSegment" || shortcut.id === "video.playNextSegment") action = () => {
-        const direction = shortcut.id === "video.playPreviousSegment" ? -1 : 1;
-        const target = findSegmentFromPlayhead(
-          visibleSegments,
-          selectedSegment?.startSec ?? currentTime,
-          direction,
+        const target = findSwimlaneSelection(
+          swimlanes,
           selectedSegment?.id,
+          shortcut.id === "video.playPreviousSegment" ? "left" : "right",
         );
         if (!target) return;
         selectSegment(target, { focusEditor: true, seekToSegment: false });

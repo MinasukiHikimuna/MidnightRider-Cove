@@ -9,8 +9,8 @@ export const SEGMENT_STUDIO_SHORTCUTS = [
   { id: "video.seekLongBackward", category: "Playback", bindings: [{ key: "j", ctrl: true, shift: true }], description: "Seek backward by the long interval" },
   { id: "video.seekLongForward", category: "Playback", bindings: [{ key: "l", ctrl: true, shift: true }], description: "Seek forward by the long interval" },
   { id: "video.playSelected", category: "Playback", bindings: [{ key: "Enter" }], description: "Play from the selected segment" },
-  { id: "video.playPreviousSegment", category: "Playback", bindings: [{ key: "j", shift: true }], description: "Select and play the previous segment" },
-  { id: "video.playNextSegment", category: "Playback", bindings: [{ key: "k", shift: true }], description: "Select and play the next segment" },
+  { id: "video.playPreviousSegment", category: "Playback", bindings: [{ key: "j", shift: true }], description: "Select and play the previous segment in this swimlane" },
+  { id: "video.playNextSegment", category: "Playback", bindings: [{ key: "k", shift: true }], description: "Select and play the next segment in this swimlane" },
   ...Array.from({ length: 9 }, (_, index) => {
     const digit = index + 1;
     return {
