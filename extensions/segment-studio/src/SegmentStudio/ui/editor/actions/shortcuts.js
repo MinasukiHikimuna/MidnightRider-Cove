@@ -31,6 +31,18 @@ function createShortcutHandler(context) {
         seekRef.current?.(selectedSegment.startSec, true);
         requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
       };
+      if (shortcut.id === "video.playPreviousSegment" || shortcut.id === "video.playNextSegment") action = () => {
+        const direction = shortcut.id === "video.playPreviousSegment" ? -1 : 1;
+        const target = findSegmentFromPlayhead(
+          visibleSegments,
+          selectedSegment?.startSec ?? currentTime,
+          direction,
+          selectedSegment?.id,
+        );
+        if (!target) return;
+        selectSegment(target, { focusEditor: true, seekToSegment: false });
+        seekRef.current?.(target.startSec, true);
+      };
       if (shortcut.id.startsWith("video.seekPercent")) action = () => {
         const digit = Number(shortcut.id.slice("video.seekPercent".length)) / 10;
         seekRef.current?.(percentageSeekTime(mediaDuration ?? timelineDuration, digit), false);

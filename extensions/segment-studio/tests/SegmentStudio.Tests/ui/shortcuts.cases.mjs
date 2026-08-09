@@ -64,7 +64,7 @@ test("editor shortcuts ignore editable controls, overlays, and modified keys", (
   assert.equal(ui.shouldHandleEditorShortcut(base, { querySelector: () => null }), true);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, target: new TestElement("input") }, { querySelector: () => null }), false);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, ctrlKey: true }, { querySelector: () => null }), false);
-  assert.equal(ui.shouldHandleEditorShortcut({ ...base, shiftKey: true }, { querySelector: () => null }), false);
+  assert.equal(ui.shouldHandleEditorShortcut({ ...base, shiftKey: true }, { querySelector: () => null }), true);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "Tab" }, { querySelector: () => null }), true);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "Tab", shiftKey: true }, { querySelector: () => null }), true);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "+", shiftKey: true }, { querySelector: () => null }), true);
@@ -322,7 +322,7 @@ test("segment selection does not move or autoplay the playhead", () => {
   assert.match(source, /function selectSegment\(segment, \{[\s\S]*focusEditor = false,[\s\S]*seekToSegment = false,[\s\S]*additive = false,[\s\S]*rangeSegmentIds = null,[\s\S]*\} = \{\}\)/);
   assert.match(source, /if \(seekToSegment\) seekRef\.current\?\.\(segment\.startSec, false\)/);
   const keyboardSelections = source.match(/selectSegment\(target, \{ focusEditor: true, seekToSegment: false \}\)/g) || [];
-  assert.equal(keyboardSelections.length, 5);
+  assert.equal(keyboardSelections.length, 6);
   assert.match(source, /onClick: \(event\) => selectSegment\(segment, \{ additive: event\.metaKey \|\| event\.ctrlKey \}\)/);
   assert.match(source, /onSelect: \(segment, options\) => selectSegment\(segment, options\)/);
   assert.match(source, /seekRef\.current\?\.\(selectedSegment\.startSec, true\)/);
