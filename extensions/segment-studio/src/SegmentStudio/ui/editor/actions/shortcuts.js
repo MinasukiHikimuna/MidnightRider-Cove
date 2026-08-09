@@ -37,7 +37,7 @@ function createShortcutHandler(context) {
           selectedSegment?.id,
           shortcut.id === "video.playPreviousSegment" ? "left" : "right",
         );
-        if (!target) return;
+        if (!target || target.id === selectedSegment?.id) return;
         selectSegment(target, { focusEditor: true, seekToSegment: false });
         seekRef.current?.(target.startSec, true);
       };

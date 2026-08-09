@@ -10,6 +10,7 @@ test("Shift+J and Shift+L select adjacent timestamps in one swimlane and start p
 
   const actions = sourceByModule["editor/actions/shortcuts.js"];
   assert.match(actions, /findSwimlaneSelection\([\s\S]{0,120}video\.playPreviousSegment[\s\S]{0,40}"left" : "right"/);
+  assert.match(actions, /if \(!target \|\| target\.id === selectedSegment\?\.id\) return/);
   assert.match(actions, /selectSegment\(target, \{ focusEditor: true, seekToSegment: false \}\)/);
   assert.match(actions, /seekRef\.current\?\.\(target\.startSec, true\)/);
 });
