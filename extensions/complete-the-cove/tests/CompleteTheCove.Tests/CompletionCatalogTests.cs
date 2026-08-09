@@ -730,7 +730,40 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
-    public async Task Video_filters_support_null_modes_and_sub_studios()
+    public async Task Video_filters_accept_native_cove_entity_ids_while_retaining_remote_bookmarks()
+    {
+        await using var db = CreateDb();
+        var linked = FilterVideo("linked", ["remote-performer"], ["remote-tag"]);
+        linked.Performers.Single().CovePerformerId = 41;
+        linked.Tags.Single().CoveTagId = 73;
+        linked.StudioRemoteId = "remote-studio";
+        linked.CoveStudioId = 51;
+        var childTag = FilterVideo("linked-child", [], ["remote-child-tag"]);
+        childTag.Tags.Single().CoveTagId = 74;
+        childTag.StudioRemoteId = "remote-child-studio";
+        childTag.CoveStudioId = 52;
+        db.AddRange(linked, childTag, FilterVideo("unlinked", ["other-performer"], ["other-tag"]));
+        await db.SaveChangesAsync();
+
+        Assert.Equal(["linked"], await ApplyVideoFilters(db, ("performer", "41")));
+        Assert.Equal(["linked"], await ApplyVideoFilters(db, ("tag", "73")));
+        Assert.Equal(["linked"], await ApplyVideoFilters(db, ("studio", "51")));
+        Assert.Equal(["linked"], await ApplyVideoFilters(db,
+            ("performer", Facet("remote-performer")),
+            ("tag", Facet("remote-tag")),
+            ("studio", Facet("remote-studio"))));
+        Assert.Equal(["linked", "linked-child"], await ApplyVideoFiltersWithTagDescendants(
+            db,
+            new Dictionary<int, IReadOnlyCollection<int>> { [73] = [73, 74] },
+            ("tag", "73")));
+        Assert.Equal(["linked", "linked-child"], await ApplyVideoFiltersWithStudioDescendants(
+            db,
+            new Dictionary<int, IReadOnlyCollection<int>> { [51] = [51, 52] },
+            ("studio", "51")));
+    }
+
+    [Fact]
+    public async Task Legacy_remote_studio_filters_support_sub_studios()
     {
         await using var db = CreateDb();
         db.AddRange(
@@ -745,13 +778,36 @@ public sealed class CompletionCatalogTests
             ("includeSubstudios", "true"));
         var withoutParent = await ApplyVideoFilters(db,
             ("studio", Facet("parent")));
-        var noStudio = await ApplyVideoFilters(db, ("studioMode", "null"));
-        var hasStudio = await ApplyVideoFilters(db, ("studioMode", "not-null"));
-
+        var noRemoteStudio = await ApplyVideoFilters(db, ("studio", Facet("parent")), ("studioMode", "null"));
+        var hasRemoteStudio = await ApplyVideoFilters(db, ("studio", Facet("parent")), ("studioMode", "not-null"));
         Assert.Equal(["direct-match", "parent-match"], withParent);
         Assert.Equal(["direct-match"], withoutParent);
-        Assert.Equal(["no-studio"], noStudio);
-        Assert.Equal(["direct-match", "other", "parent-match"], hasStudio);
+        Assert.Equal(["no-studio"], noRemoteStudio);
+        Assert.Equal(["direct-match", "other", "parent-match"], hasRemoteStudio);
+    }
+
+    [Fact]
+    public async Task Native_null_modes_treat_unlinked_remote_performers_and_tags_as_null()
+    {
+        await using var db = CreateDb();
+        var linked = FilterVideo("linked", ["linked-performer"], ["linked-tag"]);
+        linked.Performers.Single().CovePerformerId = 11;
+        linked.Tags.Single().CoveTagId = 12;
+        linked.StudioRemoteId = "linked-studio";
+        linked.CoveStudioId = 13;
+        db.AddRange(linked, FilterVideo("remote-only", ["remote-performer"], ["remote-tag"]));
+        await db.SaveChangesAsync();
+
+        Assert.Equal(["remote-only"], await ApplyVideoFilters(db, ("performerMode", "null")));
+        Assert.Equal(["linked"], await ApplyVideoFilters(db, ("performerMode", "not-null")));
+        Assert.Equal(["remote-only"], await ApplyVideoFilters(db, ("tagMode", "null")));
+        Assert.Equal(["linked"], await ApplyVideoFilters(db, ("tagMode", "not-null")));
+        Assert.Equal(["remote-only"], await ApplyVideoFilters(db, ("studioMode", "null")));
+        Assert.Equal(["linked"], await ApplyVideoFilters(db, ("studioMode", "not-null")));
+        Assert.Equal(["remote-only"], await ApplyVideoFilters(db,
+            ("studio", "13"),
+            ("studio", Facet("linked-studio")),
+            ("studioMode", "null")));
     }
 
     [Fact]
@@ -946,6 +1002,34 @@ public sealed class CompletionCatalogTests
         context.Request.QueryString = QueryString.Create(
             values.Select(value => new KeyValuePair<string, string?>(value.Key, value.Value)));
         return await VideoCatalogFilter.Apply(context.Request, db.Set<CompletionVideo>())
+            .OrderBy(video => video.RemoteId)
+            .Select(video => video.RemoteId)
+            .ToArrayAsync();
+    }
+
+    private static async Task<string[]> ApplyVideoFiltersWithTagDescendants(
+        TestDb db,
+        IReadOnlyDictionary<int, IReadOnlyCollection<int>> tagDescendants,
+        params (string Key, string Value)[] values)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = QueryString.Create(
+            values.Select(value => new KeyValuePair<string, string?>(value.Key, value.Value)));
+        return await VideoCatalogFilter.Apply(context.Request, db.Set<CompletionVideo>(), tagDescendants)
+            .OrderBy(video => video.RemoteId)
+            .Select(video => video.RemoteId)
+            .ToArrayAsync();
+    }
+
+    private static async Task<string[]> ApplyVideoFiltersWithStudioDescendants(
+        TestDb db,
+        IReadOnlyDictionary<int, IReadOnlyCollection<int>> studioDescendants,
+        params (string Key, string Value)[] values)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = QueryString.Create(
+            values.Select(value => new KeyValuePair<string, string?>(value.Key, value.Value)));
+        return await VideoCatalogFilter.Apply(context.Request, db.Set<CompletionVideo>(), null, studioDescendants)
             .OrderBy(video => video.RemoteId)
             .Select(video => video.RemoteId)
             .ToArrayAsync();

@@ -1,12 +1,13 @@
 import React from "@cove/runtime/react";
 import { createPortal } from "@cove/runtime/react-dom";
-import { ConfirmDialog, DetailListPagination, MediaDetailLayout, PerformerTile, TagBadge } from "@cove/runtime/components";
+import { ConfirmDialog, ListPage, MediaDetailLayout, PerformerTile, TagBadge, getDefaultFilter } from "@cove/runtime/components";
 import { extensionFetch } from "@cove/runtime/api";
-import { RefreshCw, ChevronDown, Search, Puzzle, ExternalLink, Check, X, AlertTriangle, ArrowDown, ArrowUp, Users, Building2, Tags, Eye, EyeOff, MoreHorizontal } from "@cove/runtime/lucide-react";
+import { RefreshCw, ChevronDown, Search, Puzzle, ExternalLink, Check, X, AlertTriangle, Users, Building2, Tags, Eye, EyeOff } from "@cove/runtime/lucide-react";
 
 const h = React.createElement;
 const { useEffect, useId, useMemo, useRef, useState } = React;
 const API = "/api/plugins/com.midnightrider.complete-the-cove";
+const SAVED_FILTER_SCOPE = "ext:com.midnightrider.complete-the-cove:missing-videos";
 
 function formatDateTime(value) {
   const date = new Date(value);
@@ -48,22 +49,22 @@ const DEFAULT_CATALOG_FILTERS = Object.freeze({
   q: "", provider: "",
   performer: [], excludePerformer: [], performerMode: "any",
   studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
-  tag: [], excludeTag: [], tagMode: "any",
-  ignored: "not-ignored", sort: "release", direction: "desc", page: 1,
+  tag: [], excludeTag: [], tagMode: "any", includeSubtags: false,
+  ignored: "not-ignored", sort: "release", direction: "desc", page: 1, perPage: 40,
 });
 const CATALOG_FILTER_KEYS = [
   "q", "provider",
   "performer", "excludePerformer", "performerMode",
   "studio", "excludeStudio", "studioMode", "includeSubstudios",
-  "tag", "excludeTag", "tagMode",
-  "ignored", "showIgnored", "sort", "direction", "page",
+  "tag", "excludeTag", "tagMode", "includeSubtags",
+  "ignored", "showIgnored", "sort", "direction", "page", "perPage",
 ];
 const SCOPED_CATALOG_FILTER_KEYS = Object.freeze({
   q: "ctcQ", provider: "ctcProvider",
   performer: "ctcPerformer", excludePerformer: "ctcExcludePerformer", performerMode: "ctcPerformerMode",
   studio: "ctcStudio", excludeStudio: "ctcExcludeStudio", studioMode: "ctcStudioMode", includeSubstudios: "ctcIncludeSubstudios",
-  tag: "ctcTag", excludeTag: "ctcExcludeTag", tagMode: "ctcTagMode",
-  ignored: "ctcIgnored", showIgnored: "ctcShowIgnored", sort: "ctcSort", direction: "ctcDirection", page: "ctcPage",
+  tag: "ctcTag", excludeTag: "ctcExcludeTag", tagMode: "ctcTagMode", includeSubtags: "ctcIncludeSubtags",
+  ignored: "ctcIgnored", showIgnored: "ctcShowIgnored", sort: "ctcSort", direction: "ctcDirection", page: "ctcPage", perPage: "ctcPerPage",
 });
 
 function catalogFilterKey(key, pathname = window.location.pathname) {
@@ -76,6 +77,7 @@ function readCatalogFilters() {
   const values = (key) => params.getAll(catalogFilterKey(key)).filter(Boolean);
   const mode = (key) => ["all", "null", "not-null"].includes(value(key)) ? value(key) : "any";
   const parsedPage = Number(value("page"));
+  const parsedPerPage = Number(value("perPage"));
   return {
     q: value("q") || "",
     provider: value("provider") || "",
@@ -89,12 +91,14 @@ function readCatalogFilters() {
     tag: values("tag"),
     excludeTag: values("excludeTag"),
     tagMode: mode("tagMode"),
+    includeSubtags: value("includeSubtags") === "true",
     ignored: ["all", "ignored", "not-ignored"].includes(value("ignored"))
       ? value("ignored")
       : value("showIgnored") === "true" ? "all" : "not-ignored",
     sort: value("sort") === "title" ? "title" : "release",
     direction: value("direction") === "asc" ? "asc" : "desc",
     page: Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+    perPage: Number.isInteger(parsedPerPage) && parsedPerPage > 0 ? Math.min(parsedPerPage, 1000) : DEFAULT_CATALOG_FILTERS.perPage,
   };
 }
 
@@ -109,10 +113,12 @@ function appendCatalogFilterParams(params, filters, key = (name) => name) {
     if (filters[modeKey] && filters[modeKey] !== "any") params.set(key(modeKey), filters[modeKey]);
   }
   if (filters.includeSubstudios) params.set(key("includeSubstudios"), "true");
+  if (filters.includeSubtags) params.set(key("includeSubtags"), "true");
   if (filters.ignored !== DEFAULT_CATALOG_FILTERS.ignored) params.set(key("ignored"), filters.ignored);
   if (filters.sort !== DEFAULT_CATALOG_FILTERS.sort) params.set(key("sort"), filters.sort);
   if (filters.direction !== DEFAULT_CATALOG_FILTERS.direction) params.set(key("direction"), filters.direction);
   if (filters.page > 1) params.set(key("page"), String(filters.page));
+  if (filters.perPage !== DEFAULT_CATALOG_FILTERS.perPage) params.set(key("perPage"), String(filters.perPage));
   return params;
 }
 
@@ -128,7 +134,7 @@ function writeCatalogFilters(filters) {
 
 function catalogApiQuery(filters, scope) {
   const params = appendCatalogFilterParams(new URLSearchParams(), filters);
-  params.set("perPage", "24");
+  params.set("perPage", String(filters.perPage));
   if (scope) {
     params.set("targetType", scope.type);
     params.set("targetId", String(scope.entityId));
@@ -206,17 +212,6 @@ function normalizeLegacyTabLocation() {
 }
 
 normalizeLegacyTabLocation();
-
-function readVideoCardMinWidth() {
-  try {
-    const storedValue = window.localStorage.getItem("cove.cardSize.video");
-    const storedLevel = storedValue == null ? Number.NaN : Number(storedValue);
-    const level = Number.isFinite(storedLevel) ? Math.min(8, Math.max(0, storedLevel)) : 1;
-    return Math.round(225 + level * 50);
-  } catch {
-    return 275;
-  }
-}
 
 async function request(url, options) {
   const response = await extensionFetch(url, { headers: { "Content-Type": "application/json", ...(options?.headers || {}) }, ...options });
@@ -375,51 +370,150 @@ function RefreshSplitButton({ providers = [], refresh, refreshing, disabled = re
   ]);
 }
 
-function cloneCatalogFilters(filters) {
-  return {
+function catalogObjectFilter(filters) {
+  const result = {};
+  if (filters.provider) result.providerCriterion = { modifier: "EQUALS", value: filters.provider };
+  if (filters.ignored !== "all") result.ignoredCriterion = { modifier: "EQUALS", value: filters.ignored === "ignored" };
+  for (const [facet, filterKey, childKey] of [["performer", "performersCriterion", null], ["studio", "studiosCriterion", "includeSubstudios"], ["tag", "tagsCriterion", "includeSubtags"]]) {
+    const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
+    const include = (filters[facet] || []).filter((value) => /^\d+$/.test(value)).map(Number);
+    const exclude = (filters[excludeKey] || []).filter((value) => /^\d+$/.test(value)).map(Number);
+    const legacyInclude = (filters[facet] || []).filter((value) => typeof value === "string" && !/^\d+$/.test(value));
+    const legacyExclude = (filters[excludeKey] || []).filter((value) => typeof value === "string" && !/^\d+$/.test(value));
+    const mode = filters[`${facet}Mode`] || "any";
+    const modifier = { any: "INCLUDES", all: "INCLUDES_ALL", null: "IS_NULL", "not-null": "NOT_NULL" }[mode] || "INCLUDES";
+    if (include.length || exclude.length || (["null", "not-null"].includes(mode) && !legacyInclude.length && !legacyExclude.length) || (childKey && filters[childKey] && (include.length || exclude.length))) {
+      result[filterKey] = { value: include, excludes: exclude.length ? exclude : undefined, modifier, ...(childKey && filters[childKey] ? { depth: -1 } : {}) };
+    }
+    if (legacyInclude.length || legacyExclude.length) {
+      const nativeOwnsOptions = include.length || exclude.length;
+      result[`${facet}Criterion`] = {
+        include: legacyInclude,
+        exclude: legacyExclude,
+        mode: nativeOwnsOptions ? "any" : mode,
+        ...(childKey ? { [childKey]: !nativeOwnsOptions && filters[childKey] } : {}),
+      };
+    }
+  }
+  return result;
+}
+
+function applyCatalogObjectFilter(filters, objectFilter) {
+  const provider = objectFilter?.providerCriterion?.value;
+  const ignored = objectFilter?.ignoredCriterion?.value;
+  const next = {
     ...filters,
-    performer: [...(filters.performer || [])],
-    excludePerformer: [...(filters.excludePerformer || [])],
-    studio: [...(filters.studio || [])],
-    excludeStudio: [...(filters.excludeStudio || [])],
-    tag: [...(filters.tag || [])],
-    excludeTag: [...(filters.excludeTag || [])],
+    provider: typeof provider === "string" ? provider : "",
+    ignored: ignored === true || ignored === "ignored"
+      ? "ignored"
+      : ignored === false || ignored === "not-ignored" ? "not-ignored" : "all",
+  };
+  for (const [facet, filterKey, childKey] of [["performer", "performersCriterion", null], ["studio", "studiosCriterion", "includeSubstudios"], ["tag", "tagsCriterion", "includeSubtags"]]) {
+    const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
+    const criterion = objectFilter?.[filterKey];
+    const legacy = objectFilter?.[`${facet}Criterion`];
+    const legacyInclude = Array.isArray(legacy?.include) ? legacy.include.filter((value) => typeof value === "string") : [];
+    const legacyExclude = Array.isArray(legacy?.exclude) ? legacy.exclude.filter((value) => typeof value === "string") : [];
+    if (criterion) {
+      const nativeInclude = Array.isArray(criterion.value) ? criterion.value.filter((value) => Number.isInteger(value) && value > 0).map(String) : [];
+      const nativeExclude = Array.isArray(criterion.excludes) ? criterion.excludes.filter((value) => Number.isInteger(value) && value > 0).map(String) : [];
+      next[facet] = [...legacyInclude, ...nativeInclude];
+      next[excludeKey] = [...legacyExclude, ...nativeExclude];
+      next[`${facet}Mode`] = { INCLUDES_ALL: "all", IS_NULL: "null", NOT_NULL: "not-null" }[criterion.modifier] || "any";
+      if (childKey) next[childKey] = criterion.depth === -1;
+    } else {
+      next[facet] = legacyInclude;
+      next[excludeKey] = legacyExclude;
+      next[`${facet}Mode`] = ["all", "null", "not-null"].includes(legacy?.mode)
+        ? legacy.mode
+        : "any";
+      if (childKey) next[childKey] = legacy?.[childKey] === true;
+    }
+  }
+  return next;
+}
+
+function readInitialCatalogFilters() {
+  const filters = readCatalogFilters();
+  const params = new URLSearchParams(window.location.search);
+  const hasExplicitState = CATALOG_FILTER_KEYS.some((name) => params.has(catalogFilterKey(name)));
+  if (hasExplicitState) return filters;
+
+  const saved = getDefaultFilter(SAVED_FILTER_SCOPE);
+  const find = saved?.findFilter || {};
+  const base = {
+    ...filters,
+    q: typeof find.q === "string" ? find.q : filters.q,
+    page: Number.isInteger(find.page) && find.page > 0 ? find.page : filters.page,
+    perPage: Number.isInteger(find.perPage) && find.perPage > 0 ? Math.min(find.perPage, 1000) : filters.perPage,
+    sort: ["release", "title"].includes(find.sort) ? find.sort : filters.sort,
+    direction: find.direction === "asc" ? "asc" : filters.direction,
+  };
+  return saved?.objectFilter ? applyCatalogObjectFilter(base, saved.objectFilter) : base;
+}
+
+function facetSectionValue(value, allowSubstudios) {
+  return {
+    include: Array.isArray(value?.include) ? value.include : [],
+    exclude: Array.isArray(value?.exclude) ? value.exclude : [],
+    mode: ["all", "null", "not-null"].includes(value?.mode) ? value.mode : "any",
+    ...(allowSubstudios ? { includeSubstudios: value?.includeSubstudios === true } : {}),
   };
 }
 
-function activeCatalogFilterCount(filters) {
-  let count = 0;
-  for (const facet of ["performer", "studio", "tag"]) {
-    const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
-    count += (filters[facet] || []).length + (filters[excludeKey] || []).length;
-    if (filters[`${facet}Mode`] !== "any") count += 1;
-  }
-  if (filters.includeSubstudios) count += 1;
-  if (filters.ignored !== DEFAULT_CATALOG_FILTERS.ignored) count += 1;
-  return count;
+function facetSectionIsActive(value, allowSubstudios) {
+  const normalized = facetSectionValue(value, allowSubstudios);
+  return normalized.include.length > 0 || normalized.exclude.length > 0 || normalized.mode !== "any" || normalized.includeSubstudios === true;
 }
 
-function IgnoredStatusCriterion({ draft, setDraft }) {
-  const options = [
-    ["all", "All videos"],
-    ["ignored", "Ignored"],
-    ["not-ignored", "Not ignored"],
-  ];
-  return h("section", { className: "complete-the-cove-filter-criterion" }, [
-    h("div", { key: "heading", className: "complete-the-cove-filter-criterion-heading" },
-      h("h3", null, "Ignored status")),
-    h("div", { key: "modes", className: "complete-the-cove-filter-modes", role: "group", "aria-label": "Ignored status" },
-      options.map(([value, label]) => h("button", {
-        key: value,
-        type: "button",
-        onClick: () => setDraft((current) => ({ ...current, ignored: value })),
-        className: `complete-the-cove-filter-mode ${draft.ignored === value ? "complete-the-cove-filter-choice-active" : ""}`,
-        "aria-pressed": draft.ignored === value,
-      }, label))),
-  ]);
+function RemoteFacetEditor({ value, onChange, label, values, allowSubstudios = false, allowModes = true }) {
+  const normalized = facetSectionValue(value, allowSubstudios);
+  const draft = {
+    item: normalized.include,
+    excludeItem: normalized.exclude,
+    itemMode: normalized.mode,
+    includeSubstudios: normalized.includeSubstudios === true,
+  };
+  const setDraft = (update) => {
+    const next = typeof update === "function" ? update(draft) : update;
+    onChange({
+      include: next.item || [],
+      exclude: next.excludeItem || [],
+      mode: next.itemMode || "any",
+      ...(allowSubstudios ? { includeSubstudios: next.includeSubstudios === true } : {}),
+    });
+  };
+  return h(FacetCriterion, { facet: "item", label, values, draft, setDraft, allowSubstudios, allowModes });
 }
 
-function FacetCriterion({ facet, label, values, draft, setDraft, allowSubstudios = false }) {
+function createFacetSection(id, label, values, allowSubstudios = false, allowModes = true) {
+  return {
+    id,
+    label,
+    filterKey: `${id}Criterion`,
+    defaultValue: facetSectionValue(null, allowSubstudios),
+    isActive: (value) => facetSectionIsActive(value, allowSubstudios),
+    sanitize: (value) => facetSectionValue(value, allowSubstudios),
+    summarize: (value) => {
+      const normalized = facetSectionValue(value, allowSubstudios);
+      const parts = [];
+      if (normalized.mode !== "any") parts.push({ all: "Includes All", null: "Is Null", "not-null": "Not Null" }[normalized.mode]);
+      if (normalized.include.length) parts.push(`${normalized.include.length} included`);
+      if (normalized.exclude.length) parts.push(`${normalized.exclude.length} excluded`);
+      if (normalized.includeSubstudios) parts.push("with sub-studios");
+      return parts.join(" · ");
+    },
+    renderEditor: (value, onChange) => h(RemoteFacetEditor, { value, onChange, label, values, allowSubstudios, allowModes }),
+  };
+}
+
+function legacyFacetValues(includes, excludes) {
+  return [...new Set([...(includes || []), ...(excludes || [])])]
+    .filter((value) => typeof value === "string" && !/^\d+$/.test(value))
+    .map((value) => ({ value, name: value.split("|").at(-1) || value, count: 0 }));
+}
+
+function FacetCriterion({ facet, label, values, draft, setDraft, allowSubstudios = false, allowModes = true }) {
   const [search, setSearch] = useState("");
   const excludeKey = `exclude${facet[0].toLocaleUpperCase()}${facet.slice(1)}`;
   const modeKey = `${facet}Mode`;
@@ -451,13 +545,13 @@ function FacetCriterion({ facet, label, values, draft, setDraft, allowSubstudios
       h("h3", { key: "title" }, label),
       h("span", { key: "count", className: "text-xs text-muted" }, `${included.length} included · ${excluded.length} excluded`),
     ]),
-    h("div", { key: "modes", className: "complete-the-cove-filter-modes", role: "group", "aria-label": `${label} matching mode` }, modeOptions.map(([value, text]) => h("button", {
+    allowModes ? h("div", { key: "modes", className: "complete-the-cove-filter-modes", role: "group", "aria-label": `${label} matching mode` }, modeOptions.map(([value, text]) => h("button", {
       key: value,
       type: "button",
       onClick: () => setDraft((current) => ({ ...current, [modeKey]: value })),
       className: `complete-the-cove-filter-mode ${draft[modeKey] === value ? "complete-the-cove-filter-choice-active" : ""}`,
       "aria-pressed": draft[modeKey] === value,
-    }, text))),
+    }, text))) : null,
     allowSubstudios ? h("label", { key: "substudios", className: "complete-the-cove-filter-checkbox" }, [
       h("input", { key: "input", type: "checkbox", checked: draft.includeSubstudios, onChange: (event) => setDraft((current) => ({ ...current, includeSubstudios: event.target.checked })) }),
       h("span", { key: "label" }, "Include sub-studios"),
@@ -480,76 +574,6 @@ function FacetCriterion({ facet, label, values, draft, setDraft, allowSubstudios
   ]);
 }
 
-function CatalogFilterPanel({ open, filters, facets, onApply, onClose }) {
-  const [draft, setDraft] = useState(() => cloneCatalogFilters(filters));
-  useEffect(() => { if (open) setDraft(cloneCatalogFilters(filters)); }, [open, filters]);
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
-  if (!open) return null;
-  const clearAll = () => setDraft((current) => ({
-    ...current,
-    performer: [], excludePerformer: [], performerMode: "any",
-    studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
-    tag: [], excludeTag: [], tagMode: "any",
-    ignored: DEFAULT_CATALOG_FILTERS.ignored,
-  }));
-  return createPortal(h("div", { className: "complete-the-cove-filter-backdrop", onMouseDown: (event) => { if (event.target === event.currentTarget) onClose(); } }, h("div", { className: "complete-the-cove-filter-panel", role: "dialog", "aria-modal": true, "aria-labelledby": "complete-the-cove-filter-title" }, [
-    h("header", { key: "header", className: "complete-the-cove-filter-header" }, [
-      h("div", { key: "copy" }, [h("h2", { key: "title", id: "complete-the-cove-filter-title", className: "text-lg font-semibold" }, "Filter Missing Videos"), h("p", { key: "help", className: "text-xs text-muted" }, "Criteria are combined together. Included values follow each criterion's matching mode; excluded values never match.")]),
-      h("button", { key: "close", type: "button", onClick: onClose, className: "complete-the-cove-icon-button text-secondary", title: "Close filters", "aria-label": "Close filters" }, h(X, { className: "h-4 w-4" })),
-    ]),
-    h("div", { key: "body", className: "complete-the-cove-filter-body" }, [
-      h(IgnoredStatusCriterion, { key: "ignored", draft, setDraft }),
-      h(FacetCriterion, { key: "performers", facet: "performer", label: "Performers", values: facets.performers || [], draft, setDraft }),
-      h(FacetCriterion, { key: "studios", facet: "studio", label: "Studios", values: facets.studios || [], draft, setDraft, allowSubstudios: true }),
-      h(FacetCriterion, { key: "tags", facet: "tag", label: "Tags", values: facets.tags || [], draft, setDraft }),
-    ]),
-    h("footer", { key: "footer", className: "complete-the-cove-filter-footer" }, [
-      h("button", { key: "clear", type: "button", onClick: clearAll, className: "rounded-md border border-border px-3 py-2 text-sm text-secondary hover:text-foreground" }, "Clear All"),
-      h("div", { key: "actions", className: "flex gap-2" }, [
-        h("button", { key: "cancel", type: "button", onClick: onClose, className: "rounded-md border border-border px-3 py-2 text-sm text-secondary hover:text-foreground" }, "Cancel"),
-        h("button", { key: "apply", type: "button", onClick: () => onApply({ ...draft, page: 1 }), className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white" }, "Apply"),
-      ]),
-    ]),
-  ])), document.body);
-}
-
-function CatalogControls({ filters, setFilters, facets, refresh, refreshing, providers, total, perPage }) {
-  const [searchText, setSearchText] = useState(filters.q || "");
-  const [filterOpen, setFilterOpen] = useState(false);
-  useEffect(() => { setSearchText(filters.q || ""); }, [filters.q]);
-  useEffect(() => {
-    if (searchText.trim() === (filters.q || "").trim()) return;
-    const timeout = window.setTimeout(() => setFilters((current) => ({ ...current, q: searchText.trim(), page: 1 })), 350);
-    return () => window.clearTimeout(timeout);
-  }, [searchText, filters.q, setFilters]);
-
-  const start = total > 0 ? (filters.page - 1) * perPage + 1 : 0;
-  const end = Math.min(filters.page * perPage, total);
-  const activeFilterCount = activeCatalogFilterCount(filters);
-  const clearSearch = () => { setSearchText(""); setFilters((current) => ({ ...current, q: "", page: 1 })); };
-  return h("div", { className: "complete-the-cove-toolbar" }, [
-    h("span", { key: "count", className: "complete-the-cove-count text-muted" }, total > 0 ? `${start}–${end} of ${total.toLocaleString()}` : "0 items"),
-    h("form", { key: "search", className: "complete-the-cove-search", onSubmit: (event) => { event.preventDefault(); setFilters((current) => ({ ...current, q: searchText.trim(), page: 1 })); } }, [
-      h(Search, { key: "icon", className: "complete-the-cove-search-icon text-muted" }),
-      h("input", { key: "input", type: "text", value: searchText, onChange: (event) => setSearchText(event.target.value), onKeyDown: (event) => { if (event.key === "Escape" && searchText) clearSearch(); }, placeholder: "Search missing videos...", "aria-label": "Search missing videos", className: "complete-the-cove-search-input border border-border bg-card/70 text-foreground placeholder:text-muted" }),
-      searchText ? h("button", { key: "clear", type: "button", onClick: clearSearch, className: "complete-the-cove-search-clear text-muted", title: "Clear search", "aria-label": "Clear search" }, h(X, { className: "h-3.5 w-3.5" })) : null,
-    ]),
-    h("select", { key: "provider", "aria-label": "All providers", value: filters.provider, onChange: (event) => setFilters((current) => ({ ...current, provider: event.target.value, page: 1 })), className: "complete-the-cove-select complete-the-cove-provider-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "", value: "" }, "All providers"), ...(facets.providers || []).map((item) => h("option", { key: item.value, value: item.value }, `${providerLabel(item.value)} (${item.count})`))]),
-    h("button", { key: "filter", type: "button", onClick: () => setFilterOpen(true), className: `complete-the-cove-filter-trigger ${activeFilterCount ? "complete-the-cove-filter-trigger-active" : ""}`, "aria-haspopup": "dialog" }, [h(MoreHorizontal, { key: "icon", className: "h-4 w-4" }), h("span", { key: "label" }, "Filter"), activeFilterCount ? h("span", { key: "count", className: "complete-the-cove-filter-trigger-count" }, String(activeFilterCount)) : null]),
-    h("div", { key: "sort", className: "complete-the-cove-sort" }, [
-      h("select", { key: "field", "aria-label": "Sort missing videos", value: filters.sort, onChange: (event) => setFilters((current) => ({ ...current, sort: event.target.value, page: 1 })), className: "complete-the-cove-select rounded-md border border-border bg-input text-foreground" }, [h("option", { key: "release", value: "release" }, "Release date"), h("option", { key: "title", value: "title" }, "Title")]),
-      h("button", { key: "direction", type: "button", onClick: () => setFilters((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc", page: 1 })), className: "complete-the-cove-icon-button text-secondary", title: filters.direction === "asc" ? "Ascending" : "Descending", "aria-label": filters.direction === "asc" ? "Ascending" : "Descending" }, filters.direction === "desc" ? h(ArrowDown, { className: "h-3.5 w-3.5" }) : h(ArrowUp, { className: "h-3.5 w-3.5" })),
-    ]),
-    refresh ? h(RefreshSplitButton, { key: "refresh", providers, refresh, refreshing }) : null,
-    h(CatalogFilterPanel, { key: "filter-panel", open: filterOpen, filters, facets, onApply: (next) => { setFilters(next); setFilterOpen(false); }, onClose: () => setFilterOpen(false) }),
-  ]);
-}
-
 function clampCatalogPage(page, totalCount, perPage) {
   return Math.min(Math.max(1, page), Math.max(1, Math.ceil(totalCount / Math.max(1, perPage))));
 }
@@ -561,9 +585,8 @@ function clampCatalogFilters(filters, data, currentQuery) {
 }
 
 function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
-  const [cardMinWidth] = useState(readVideoCardMinWidth);
-  const [filters, setFilters] = useState(readCatalogFilters);
-  const [data, setData] = useState({ items: [], total: null, page: 1, perPage: 24 });
+  const [filters, setFilters] = useState(readInitialCatalogFilters);
+  const [data, setData] = useState({ items: [], total: null, page: 1, perPage: DEFAULT_CATALOG_FILTERS.perPage });
   const [facets, setFacets] = useState({ providers: [], performers: [], studios: [], tags: [] });
   const [providers, setProviders] = useState([]);
   const [error, setError] = useState("");
@@ -582,6 +605,26 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
   useEffect(() => {
     setFilters((current) => clampCatalogFilters(current, data, query));
   }, [data.total, data.perPage, data.query, query]);
+  const findFilter = useMemo(() => ({ q: filters.q || undefined, page: filters.page, perPage: filters.perPage, sort: filters.sort, direction: filters.direction }), [filters.q, filters.page, filters.perPage, filters.sort, filters.direction]);
+  const objectFilter = useMemo(() => catalogObjectFilter(filters), [filters]);
+  const criteriaDefinitions = useMemo(() => [
+    { id: "provider", label: "Provider", type: "enum", filterKey: "providerCriterion", modifiers: ["EQUALS"], options: (facets.providers || []).map((item) => ({ value: item.value, label: `${providerLabel(item.value)} (${item.count})` })) },
+    { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion" },
+    { id: "studios", label: "Studios", type: "multiId", entityType: "studios", filterKey: "studiosCriterion", hierarchyToggleLabel: "Include sub-studios" },
+    { id: "tags", label: "Tags", type: "multiId", entityType: "tags", filterKey: "tagsCriterion" },
+    { id: "ignored", label: "Ignored", type: "bool", filterKey: "ignoredCriterion" },
+  ], [facets.providers]);
+  const customFilterSections = useMemo(() => [
+    ...(legacyFacetValues(filters.studio, filters.excludeStudio).length
+      ? [createFacetSection("studio", "Legacy studio links", legacyFacetValues(filters.studio, filters.excludeStudio), ![...(filters.studio || []), ...(filters.excludeStudio || [])].some((value) => /^\d+$/.test(value)), ![...(filters.studio || []), ...(filters.excludeStudio || [])].some((value) => /^\d+$/.test(value)))]
+      : []),
+    ...(legacyFacetValues(filters.performer, filters.excludePerformer).length
+      ? [createFacetSection("performer", "Legacy performer links", legacyFacetValues(filters.performer, filters.excludePerformer), false, ![...(filters.performer || []), ...(filters.excludePerformer || [])].some((value) => /^\d+$/.test(value)))]
+      : []),
+    ...(legacyFacetValues(filters.tag, filters.excludeTag).length
+      ? [createFacetSection("tag", "Legacy tag links", legacyFacetValues(filters.tag, filters.excludeTag), false, ![...(filters.tag || []), ...(filters.excludeTag || [])].some((value) => /^\d+$/.test(value)))]
+      : []),
+  ], [filters.performer, filters.excludePerformer, filters.studio, filters.excludeStudio, filters.tag, filters.excludeTag]);
   async function refresh(provider) {
     setRefreshing(true); setError("");
     try {
@@ -591,14 +634,38 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
       onRefreshed?.();
     } catch (err) { setError(err.message); } finally { setRefreshing(false); }
   }
-  return h("div", null, [
-    h(CatalogControls, { key: "controls", filters, setFilters, facets, providers, refresh: allowRefresh ? refresh : null, refreshing, total: data.total || 0, perPage: data.perPage }),
-    data.total == null ? null : h(DetailListPagination, { key: "pagination-top", filter: { ...filters, perPage: data.perPage }, onFilterChange: setFilters, totalCount: data.total }),
-    error ? h("div", { key: "error", className: "complete-the-cove-content mb-4 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200" }, error) : null,
-    data.items.length ? h("div", { key: "grid", className: "complete-the-cove-content complete-the-cove-grid", style: { "--card-min-width": `${cardMinWidth}px` } }, data.items.map((video) => h(MissingVideoCard, { key: video.id, video, onNavigate })))
-      : h("div", { key: "empty", className: "complete-the-cove-content rounded-lg border border-dashed border-border p-12 text-center text-secondary" }, "No missing videos match this view."),
-    data.total == null ? null : h(DetailListPagination, { key: "pagination-bottom", filter: { ...filters, perPage: data.perPage }, onFilterChange: setFilters, totalCount: data.total }),
-  ]);
+  return h(ListPage, {
+    title: "Missing Videos",
+    pageKey: "complete-the-cove-missing-videos",
+    savedFilterScope: SAVED_FILTER_SCOPE,
+    cardSizeEntityType: "video",
+    manageDocumentTitle: !scope,
+    maxPageSize: 1000,
+    perPageQueryKey: /^\/(performer|studio|tag)\/\d+$/.test(window.location.pathname) ? "ctcPerPage" : "perPage",
+    filter: findFilter,
+    onFilterChange: (next) => setFilters((current) => ({
+      ...current,
+      q: next.q || "",
+      page: next.page || 1,
+      perPage: Math.min(next.perPage || DEFAULT_CATALOG_FILTERS.perPage, 1000),
+      sort: ["release", "title"].includes(next.sort) ? next.sort : DEFAULT_CATALOG_FILTERS.sort,
+      direction: next.direction === "asc" ? "asc" : "desc",
+    })),
+    totalCount: data.total || 0,
+    isLoading: data.total == null && !error,
+    error: error ? new Error(error) : null,
+    onRetry: () => setReloadVersion((current) => current + 1),
+    sortOptions: [{ value: "release", label: "Release date" }, { value: "title", label: "Title" }],
+    displayMode: "grid",
+    searchPlaceholder: "Search missing videos...",
+    criteriaDefinitions,
+    customFilterSections,
+    objectFilter,
+    onObjectFilterChange: (next) => setFilters((current) => ({ ...applyCatalogObjectFilter(current, next), page: 1 })),
+    renderOperations: allowRefresh ? () => h(RefreshSplitButton, { providers, refresh, refreshing }) : undefined,
+  }, data.items.length
+    ? h("div", { className: "complete-the-cove-content complete-the-cove-grid" }, data.items.map((video) => h(MissingVideoCard, { key: video.id, video, onNavigate })))
+    : h("div", { className: "complete-the-cove-content rounded-lg border border-dashed border-border p-12 text-center text-secondary" }, "No missing videos match this view."));
 }
 
 function ProviderProgress({ providers = [] }) {
@@ -720,7 +787,7 @@ function MissingVideosPage({ onNavigate }) {
     window.requestAnimationFrame(() => document.getElementById(`complete-the-cove-tab-${nextView}`)?.focus());
   };
   return h("div", { className: "mx-auto max-w-[1800px]" }, [
-    h("div", { key: "header", className: "mb-3" }, [h("h1", { key: "title", className: "text-2xl font-semibold" }, "Missing Videos"), h("p", { key: "description", className: "mt-1 text-sm text-secondary" }, "Remote videos missing from this Cove for your tracked performers, studios, and tags.")]),
+    h("div", { key: "header", className: "mb-3" }, [h("h1", { key: "title", className: "text-2xl font-semibold" }, "Complete the Cove"), h("p", { key: "description", className: "mt-1 text-sm text-secondary" }, "Remote videos missing from this Cove for your tracked performers, studios, and tags.")]),
     h("div", { key: "tabs", className: "complete-the-cove-tabs border-border", role: "tablist", "aria-label": "Missing Videos views" }, [
       h("button", { key: "videos", id: "complete-the-cove-tab-videos", type: "button", role: "tab", "aria-selected": location.view === "videos", "aria-controls": "complete-the-cove-panel", tabIndex: location.view === "videos" ? 0 : -1, onKeyDown: handleTabKey, onClick: () => navigateCatalog({ view: "videos", targetType: null, targetId: null }), className: `complete-the-cove-tab ${location.view === "videos" ? "complete-the-cove-tab-active" : ""}` }, "Missing Videos"),
       h("button", { key: "tracked", id: "complete-the-cove-tab-tracked", type: "button", role: "tab", "aria-selected": location.view === "tracked", "aria-controls": "complete-the-cove-panel", tabIndex: location.view === "tracked" ? 0 : -1, onKeyDown: handleTabKey, onClick: () => navigateCatalog({ view: "tracked", targetType: null, targetId: null }), className: `complete-the-cove-tab ${location.view === "tracked" ? "complete-the-cove-tab-active" : ""}` }, ["Tracked", !overviewLoading ? h("span", { key: "count", className: "complete-the-cove-tab-count" }, overview.totals.all.toLocaleString()) : null]),

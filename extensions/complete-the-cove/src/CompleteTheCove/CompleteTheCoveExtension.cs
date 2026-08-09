@@ -454,14 +454,20 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     private static async Task<IResult> ListVideos(HttpRequest request, DbContext db, CancellationToken ct)
     {
         var page = Math.Max(1, ParseInt(request.Query["page"], 1));
-        var perPage = Math.Clamp(ParseInt(request.Query["perPage"], 24), 1, 96);
+        var perPage = Math.Clamp(ParseInt(request.Query["perPage"], 40), 1, 1000);
         var query = ApplyIgnoredStatus(request, db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Targets.Any()));
         var q = request.Query["q"].ToString().Trim().ToLowerInvariant();
         if (q.Length > 0) query = query.Where(x => (x.Title ?? "").ToLower().Contains(q) || (x.Code ?? "").ToLower().Contains(q)
             || (x.StudioName ?? "").ToLower().Contains(q) || x.Performers.Any(p => p.Name.ToLower().Contains(q)) || x.Tags.Any(t => t.Name.ToLower().Contains(q)));
         var provider = request.Query["provider"].ToString();
         if (provider.Length > 0) query = query.Where(x => x.RemoteEndpoint == provider);
-        query = VideoCatalogFilter.Apply(request, query);
+        var tagDescendants = request.Query["includeSubtags"] == "true"
+            ? await ExpandSelectedTagIdsAsync(request, db, ct)
+            : null;
+        var studioDescendants = request.Query["includeSubstudios"] == "true"
+            ? await ExpandSelectedStudioIdsAsync(request, db, ct)
+            : null;
+        query = VideoCatalogFilter.Apply(request, query, tagDescendants, studioDescendants);
         if (Enum.TryParse<CompletionTargetType>(request.Query["targetType"], true, out var targetType) && int.TryParse(request.Query["targetId"], out var targetId))
             query = query.Where(x => x.Targets.Any(t => t.Target!.EntityType == targetType && t.Target.EntityId == targetId));
         var total = await query.CountAsync(ct);
@@ -482,6 +488,67 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             tags = x.Tags.OrderBy(t => t.Name).Select(t => new { t.RemoteId, t.CoveTagId, t.Name }),
         }).ToListAsync(ct);
         return Results.Ok(new { items, total, page, perPage });
+    }
+
+    private static async Task<IReadOnlyDictionary<int, IReadOnlyCollection<int>>> ExpandSelectedTagIdsAsync(
+        HttpRequest request,
+        DbContext db,
+        CancellationToken ct)
+    {
+        var selectedIds = request.Query["tag"].Concat(request.Query["excludeTag"])
+            .Select(value => int.TryParse(value, out var id) && id > 0 ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        if (selectedIds.Length == 0) return new Dictionary<int, IReadOnlyCollection<int>>();
+
+        var relations = await db.Set<TagParent>().AsNoTracking()
+            .Select(relation => new { relation.ParentId, relation.ChildId })
+            .ToListAsync(ct);
+        var childrenByParent = relations
+            .GroupBy(relation => relation.ParentId)
+            .ToDictionary(group => group.Key, group => group.Select(relation => relation.ChildId).ToArray());
+        return selectedIds.ToDictionary(
+            id => id,
+            id => (IReadOnlyCollection<int>)ExpandTagId(id, childrenByParent));
+    }
+
+    private static int[] ExpandTagId(int rootId, IReadOnlyDictionary<int, int[]> childrenByParent)
+    {
+        var result = new HashSet<int> { rootId };
+        var pending = new Queue<int>();
+        pending.Enqueue(rootId);
+        while (pending.TryDequeue(out var parentId))
+        {
+            if (!childrenByParent.TryGetValue(parentId, out var childIds)) continue;
+            foreach (var childId in childIds)
+                if (result.Add(childId)) pending.Enqueue(childId);
+        }
+        return result.ToArray();
+    }
+
+    private static async Task<IReadOnlyDictionary<int, IReadOnlyCollection<int>>> ExpandSelectedStudioIdsAsync(
+        HttpRequest request,
+        DbContext db,
+        CancellationToken ct)
+    {
+        var selectedIds = request.Query["studio"].Concat(request.Query["excludeStudio"])
+            .Select(value => int.TryParse(value, out var id) && id > 0 ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        if (selectedIds.Length == 0) return new Dictionary<int, IReadOnlyCollection<int>>();
+
+        var relations = await db.Set<Studio>().AsNoTracking()
+            .Where(studio => studio.ParentId != null)
+            .Select(studio => new { ParentId = studio.ParentId!.Value, ChildId = studio.Id })
+            .ToListAsync(ct);
+        var childrenByParent = relations
+            .GroupBy(relation => relation.ParentId)
+            .ToDictionary(group => group.Key, group => group.Select(relation => relation.ChildId).ToArray());
+        return selectedIds.ToDictionary(
+            id => id,
+            id => (IReadOnlyCollection<int>)ExpandTagId(id, childrenByParent));
     }
 
     private static async Task<IResult> GetVideo(int id, DbContext db, CancellationToken ct)
@@ -519,9 +586,6 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         return Results.Ok(new
         {
             providers = await videos.GroupBy(x => x.RemoteEndpoint).Select(x => new { value = x.Key, name = x.Key, count = x.Count() }).OrderBy(x => x.name).ToListAsync(ct),
-            performers = await db.Set<CompletionVideoPerformer>().AsNoTracking().Where(x => videos.Any(video => video.Id == x.VideoId)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
-            studios = await BuildStudioFacetsAsync(videos, ct),
-            tags = await db.Set<CompletionVideoTag>().AsNoTracking().Where(x => videos.Any(video => video.Id == x.VideoId)).GroupBy(x => new { x.Video!.RemoteEndpoint, x.RemoteId, x.Name }).Select(x => new { value = x.Key.RemoteEndpoint + "|" + x.Key.RemoteId, x.Key.Name, count = x.Count() }).OrderBy(x => x.Name).ToListAsync(ct),
         });
     }
 

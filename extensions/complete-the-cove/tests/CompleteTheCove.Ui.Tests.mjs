@@ -9,7 +9,7 @@ test("uses Cove's authenticated extension API runtime", async () => {
   assert.match(source, /import \{ extensionFetch \} from "@cove\/runtime\/api"/);
   assert.match(source, /const response = await extensionFetch\(url,/);
   assert.doesNotMatch(source, /const response = await fetch\(url,/);
-  assert.equal(manifest.minCoveVersion, "1.1.0");
+  assert.equal(manifest.minCoveVersion, "1.1.1-dev.153");
 });
 
 test("accepts successful extension API responses with empty bodies", async () => {
@@ -26,12 +26,13 @@ test("accepts successful extension API responses with empty bodies", async () =>
   assert.deepEqual(await request("/api/plugins/com.midnightrider.complete-the-cove/providers"), { available: true });
 });
 
-test("uses Cove's canonical detail-list pagination", async () => {
+test("uses Cove's shared list shell and canonical pagination", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/function clampCatalogPage\(page, totalCount, perPage\) \{[\s\S]*?(?=\n\nfunction VideoGrid)/)?.[0];
 
-  assert.match(source, /import \{[^}]*DetailListPagination[^}]*\} from "@cove\/runtime\/components"/);
-  assert.match(source, /h\(DetailListPagination,/);
+  assert.match(source, /import \{[^}]*ListPage[^}]*\} from "@cove\/runtime\/components"/);
+  assert.match(source, /h\(ListPage,/);
+  assert.doesNotMatch(source, /DetailListPagination/);
   assert.doesNotMatch(source, /\bPager\b/);
   assert.ok(declarations, "catalog page-clamping helpers should be present");
   const { clampCatalogPage, clampCatalogFilters } = Function(`"use strict"; ${declarations}; return { clampCatalogPage, clampCatalogFilters };`)();
@@ -44,23 +45,26 @@ test("uses Cove's canonical detail-list pagination", async () => {
   assert.match(source, /setData\(\{ \.\.\.value, query: requestQuery \}\)/);
 });
 
-test("renders matching pagination above and below the video list", async () => {
+test("delegates toolbar, filtering, saved views, and pagination to the shared shell", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  const paginationCalls = source.match(/h\(DetailListPagination,/g) || [];
-
-  assert.equal(paginationCalls.length, 2);
-  assert.match(source, /key: "pagination-top"/);
-  assert.match(source, /key: "pagination-bottom"/);
+  assert.match(source, /savedFilterScope: SAVED_FILTER_SCOPE/);
+  assert.match(source, /cardSizeEntityType: "video"/);
+  assert.match(source, /manageDocumentTitle: !scope/);
+  assert.match(source, /maxPageSize: 1000/);
+  assert.match(source, /\? "ctcPerPage" : "perPage"/);
+  assert.match(source, /pageKey: "complete-the-cove-missing-videos"/);
+  assert.match(source, /customFilterSections/);
+  assert.doesNotMatch(source, /function CatalogControls/);
 });
 
-test("spaces catalog content from the controls when top pagination is hidden", async () => {
+test("renders extension cards as the shared shell content", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
-  assert.match(source, /key: "error", className: "complete-the-cove-content /);
-  assert.match(source, /key: "grid", className: "complete-the-cove-content complete-the-cove-grid"/);
-  assert.match(source, /key: "empty", className: "complete-the-cove-content /);
-  assert.match(stylesheet, /\.complete-the-cove-toolbar \+ \.complete-the-cove-content\s*\{[\s\S]*?margin-top: 0\.75rem/);
+  assert.match(source, /className: "complete-the-cove-content complete-the-cove-grid"/);
+  assert.match(source, /className: "complete-the-cove-content rounded-lg/);
+  assert.match(source, /\}, data\.items\.length/);
+  assert.match(stylesheet, /\.complete-the-cove-grid/);
 });
 
 test("formats last-refreshed timestamps with Cove's UTC ISO style", async () => {
@@ -125,11 +129,10 @@ test("mirrors Cove's native video-card layout with missing-video data", async ()
   assert.match(stylesheet, /\.complete-the-cove-card-popover-tag[\s\S]*color: var\(--color-accent\)/);
 });
 
-test("uses Cove's persisted video-card sizing profile", async () => {
+test("uses Cove's persisted video-card sizing profile through the shared shell", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  assert.match(source, /localStorage\.getItem\("cove\.cardSize\.video"\)/);
-  assert.match(source, /Math\.round\(225 \+ level \* 50\)/);
-  assert.match(source, /"--card-min-width": `\$\{cardMinWidth\}px`/);
+  assert.match(source, /cardSizeEntityType: "video"/);
+  assert.doesNotMatch(source, /localStorage\.getItem\("cove\.cardSize\.video"\)/);
 });
 
 test("provides a URL-backed tracked-records overview with grouped target sections", async () => {
@@ -150,24 +153,80 @@ test("provides a URL-backed tracked-records overview with grouped target section
   assert.match(source, /onKeyDown: handleTabKey/);
 });
 
-test("provides a staged native-like filter panel for related entities", async () => {
+test("provides native filter-dialog criteria with removable legacy entity sections", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const stylesheet = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.css", import.meta.url), "utf8");
 
-  assert.match(source, /function CatalogFilterPanel/);
-  assert.match(source, /role: "dialog"/);
+  assert.match(source, /const criteriaDefinitions/);
+  assert.match(source, /type: "multiId", entityType: "performers", filterKey: "performersCriterion"/);
+  assert.match(source, /type: "multiId", entityType: "tags", filterKey: "tagsCriterion"/);
+  assert.match(source, /type: "multiId", entityType: "studios", filterKey: "studiosCriterion"/);
+  assert.match(source, /hierarchyToggleLabel: "Include sub-studios"/);
+  assert.match(source, /id: "ignored", label: "Ignored", type: "bool", filterKey: "ignoredCriterion"/);
+  assert.match(source, /const customFilterSections/);
+  assert.match(source, /function createFacetSection/);
   assert.match(source, /Includes All/);
   assert.match(source, /Is Null/);
   assert.match(source, /Not Null/);
-  assert.match(source, /excludePerformer/);
+  assert.match(source, /createFacetSection\("performer", "Legacy performer links"/);
   assert.match(source, /excludeStudio/);
-  assert.match(source, /excludeTag/);
-  assert.match(source, /Include sub-studios/);
-  assert.match(source, /Clear All/);
-  assert.match(source, /onApply/);
-  assert.match(source, /onClose/);
-  assert.match(stylesheet, /\.complete-the-cove-filter-panel/);
+  assert.match(source, /createFacetSection\("tag", "Legacy tag links"/);
+  assert.match(source, /createFacetSection\("studio", "Legacy studio links"/);
+  assert.doesNotMatch(source, /facets\.performers/);
+  assert.doesNotMatch(source, /facets\.tags/);
+  assert.doesNotMatch(source, /Ignored Status/);
+  assert.match(source, /savedFilterScope: SAVED_FILTER_SCOPE/);
+  assert.doesNotMatch(source, /function CatalogFilterPanel/);
   assert.match(stylesheet, /\.complete-the-cove-filter-choice-active/);
+});
+
+test("maps native Cove entity and ignored criteria to catalog query values", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const defaults = source.match(/const DEFAULT_CATALOG_FILTERS = Object\.freeze\([\s\S]*?\n\}\);/)?.[0];
+  const declarations = source.match(/function catalogObjectFilter\(filters\) \{[\s\S]*?(?=\n\nfunction readInitialCatalogFilters)/)?.[0];
+  assert.ok(defaults && declarations, "catalog object-filter adapters should be present");
+  const { catalogObjectFilter, applyCatalogObjectFilter } = Function(`"use strict"; ${defaults}; ${declarations}; return { catalogObjectFilter, applyCatalogObjectFilter };`)();
+  const filters = {
+    ...structuredClone({
+      q: "", provider: "", performer: ["41"], excludePerformer: ["42"], performerMode: "all",
+      studio: ["51"], excludeStudio: ["52"], studioMode: "any", includeSubstudios: true,
+      tag: ["73"], excludeTag: [], tagMode: "any", includeSubtags: true, ignored: "ignored", sort: "release", direction: "desc", page: 1, perPage: 40,
+    }),
+  };
+
+  const objectFilter = catalogObjectFilter(filters);
+  assert.deepEqual(objectFilter.performersCriterion, { value: [41], excludes: [42], modifier: "INCLUDES_ALL" });
+  assert.deepEqual(objectFilter.tagsCriterion, { value: [73], excludes: undefined, modifier: "INCLUDES", depth: -1 });
+  assert.deepEqual(objectFilter.studiosCriterion, { value: [51], excludes: [52], modifier: "INCLUDES", depth: -1 });
+  assert.deepEqual(objectFilter.ignoredCriterion, { modifier: "EQUALS", value: true });
+  const roundTrip = applyCatalogObjectFilter(filters, objectFilter);
+  assert.deepEqual(roundTrip.performer, ["41"]);
+  assert.deepEqual(roundTrip.excludePerformer, ["42"]);
+  assert.deepEqual(roundTrip.tag, ["73"]);
+  assert.deepEqual(roundTrip.studio, ["51"]);
+  assert.equal(roundTrip.ignored, "ignored");
+
+  const legacy = { ...filters, performer: ["https://example.test/graphql|remote-performer"], excludePerformer: [], performerMode: "all" };
+  const legacyRoundTrip = applyCatalogObjectFilter(legacy, catalogObjectFilter(legacy));
+  assert.deepEqual(legacyRoundTrip.performer, legacy.performer, "applying an unrelated native dialog change must preserve legacy remote bookmarks");
+  assert.equal(legacyRoundTrip.performerMode, "all");
+  assert.deepEqual(applyCatalogObjectFilter(legacy, {}).performer, [], "clearing the dialog must remove legacy remote bookmarks");
+  assert.equal(applyCatalogObjectFilter(filters, { ignoredCriterion: { modifier: "EQUALS", value: false } }).ignored, "not-ignored");
+  assert.equal(applyCatalogObjectFilter(filters, {}).ignored, "all", "clearing the dialog must include both ignored states");
+  assert.equal(applyCatalogObjectFilter(filters, { ignoredCriterion: { modifier: "EQUALS", value: "ignored" } }).ignored, "ignored", "old saved filters must retain ignored=true");
+
+  const legacyStudio = { ...filters, studio: ["https://example.test/graphql|remote-studio"], excludeStudio: [], studioMode: "all", includeSubstudios: true };
+  const legacyStudioObject = catalogObjectFilter(legacyStudio);
+  assert.equal(legacyStudioObject.studiosCriterion, undefined, "remote-only modes must not use an empty native criterion");
+  assert.deepEqual(legacyStudioObject.studioCriterion, { include: legacyStudio.studio, exclude: [], mode: "all", includeSubstudios: true });
+  const oldSavedStudio = applyCatalogObjectFilter(filters, { studioCriterion: legacyStudioObject.studioCriterion });
+  assert.deepEqual(oldSavedStudio.studio, legacyStudio.studio);
+  assert.equal(oldSavedStudio.studioMode, "all");
+  assert.equal(oldSavedStudio.includeSubstudios, true);
+  const legacyNullStudioObject = catalogObjectFilter({ ...legacyStudio, studioMode: "null" });
+  assert.equal(legacyNullStudioObject.studiosCriterion, undefined);
+  assert.equal(legacyNullStudioObject.studioCriterion.mode, "null");
+  assert.match(source, /return saved\?\.objectFilter \? applyCatalogObjectFilter\(base, saved\.objectFilter\) : base;/, "a fresh visit without a saved object filter must retain the not-ignored default");
 });
 
 test("renders provider-specific completion only for successfully measured providers", async () => {
@@ -200,8 +259,8 @@ test("uses Cove video terminology and reserves the missing-cover ribbon for deta
 
   assert.match(source, /"Missing Videos"/);
   assert.match(source, /"Remote videos missing from this Cove/);
-  assert.match(source, /"Search missing videos"/);
-  assert.match(source, /"Not ignored"/);
+  assert.match(source, /"Search missing videos\.\.\."/);
+  assert.match(source, /label: "Ignored", type: "bool"/);
   assert.match(source, /"No missing videos match this view."/);
   assert.match(source, /\/missing-videos/);
   assert.match(source, /\/missing-video\//);
@@ -272,10 +331,12 @@ test("persists missing-video catalog filters in the URL", async () => {
     tag: [],
     excludeTag: ["remote|9"],
     tagMode: "not-null",
+    includeSubtags: false,
     ignored: "all",
     sort: "title",
     direction: "asc",
     page: 3,
+    perPage: 40,
   });
   assert.match(helpers.catalogQueryString(), /performer=remote%7C7&performer=remote%7C17/);
   assert.match(helpers.missingVideoDetailUrl(17), /^\/missing-video\/17\?keep=yes&/);
@@ -285,8 +346,8 @@ test("persists missing-video catalog filters in the URL", async () => {
     q: "", provider: "",
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
-    tag: [], excludeTag: [], tagMode: "any",
-    ignored: "not-ignored", sort: "release", direction: "desc", page: 1,
+    tag: [], excludeTag: [], tagMode: "any", includeSubtags: false,
+    ignored: "not-ignored", sort: "release", direction: "desc", page: 1, perPage: 40,
   });
   assert.equal(replacedUrl, "/missing-videos?keep=yes", "default values should be omitted without losing unrelated parameters");
 
@@ -298,8 +359,8 @@ test("persists missing-video catalog filters in the URL", async () => {
     q: "changed", provider: "",
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
-    tag: [], excludeTag: [], tagMode: "any",
-    ignored: "not-ignored", sort: "title", direction: "desc", page: 1,
+    tag: [], excludeTag: [], tagMode: "any", includeSubtags: false,
+    ignored: "not-ignored", sort: "title", direction: "desc", page: 1, perPage: 40,
   });
   assert.equal(replacedUrl, "/performer/42?tab=ext%3Amissing-videos&q=host-search&view=host-view&returnTo=host-return&ctcQ=changed&ctcSort=title");
   const scopedDetailUrl = helpers.missingVideoDetailUrl(17);
@@ -317,8 +378,8 @@ test("persists missing-video catalog filters in the URL", async () => {
     q: "test", provider: "",
     performer: [], excludePerformer: [], performerMode: "any",
     studio: [], excludeStudio: [], studioMode: "any", includeSubstudios: false,
-    tag: [], excludeTag: [], tagMode: "any",
-    ignored: "not-ignored", sort: "release", direction: "desc", page: 1,
+    tag: [], excludeTag: [], tagMode: "any", includeSubtags: false,
+    ignored: "not-ignored", sort: "release", direction: "desc", page: 1, perPage: 40,
   });
 });
 
@@ -350,7 +411,7 @@ test("normalizes legacy entity-tab bookmarks to the video tab key", async () => 
 
 test("filters videos by provider and renders linked native-like detail entities", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
-  assert.match(source, /"aria-label": "All providers"/);
+  assert.match(source, /id: "provider", label: "Provider", type: "enum"/);
   assert.match(source, /Open \$\{providerLabel\(video\.remoteEndpoint\)\} metadata page/);
   assert.match(source, /rounded-full border border-border bg-card px-3 py-1 text-xs text-accent/);
   assert.match(source, /video\.coveStudioId/);
@@ -362,14 +423,13 @@ test("filters videos by provider and renders linked native-like detail entities"
   assert.match(source, /\/api\/studios\/\$\{video\.coveStudioId\}\/image/);
 });
 
-test("filters ignored status inside the filter panel with legacy URL compatibility", async () => {
+test("filters ignored videos with Cove's native boolean criterion", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 
   assert.match(source, /ignored: "not-ignored"/);
-  assert.match(source, /\["all", "All videos"\]/);
-  assert.match(source, /\["ignored", "Ignored"\]/);
-  assert.match(source, /\["not-ignored", "Not ignored"\]/);
-  assert.match(source, /"aria-label": "Ignored status"/);
+  assert.match(source, /result\.ignoredCriterion = \{ modifier: "EQUALS", value: filters\.ignored === "ignored" \}/);
+  assert.match(source, /ignored === true \|\| ignored === "ignored"/);
+  assert.match(source, /filterKey: "ignoredCriterion"/);
   assert.match(source, /value\("showIgnored"\) === "true" \? "all"/);
   assert.doesNotMatch(source, /Show ignored videos/);
   assert.doesNotMatch(source, /More catalog options/);
