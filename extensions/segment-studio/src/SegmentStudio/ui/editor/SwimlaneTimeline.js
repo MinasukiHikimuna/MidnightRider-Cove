@@ -4,7 +4,7 @@ import { DEFAULT_EDITOR_LAYOUT, TIMELINE_END_MARGIN_PX } from "../shared/constan
 
 import { formatTime } from "../shared/api.js";
 
-import { SLOT_STATUS_PRESENTATION, basicSegmentTimelineStyle, segmentGroupHeaderBackground, segmentTimelineStyle, swimlaneMarkerTop, swimlaneStripeBackground, timelineSegmentWidth } from "../shared/presentation.js";
+import { SLOT_STATUS_PRESENTATION, activeSwimlaneLabelStyle, basicSegmentTimelineStyle, segmentGroupHeaderBackground, segmentTimelineStyle, swimlaneMarkerTop, swimlaneStripeBackground, timelineSegmentWidth } from "../shared/presentation.js";
 
 import { PerformerSublaneAvatars, buildTimelineRows, groupSegmentsIntoSwimlanes, groupSwimlanesBySegmentGroup, swimlaneDisplayLabel, visibleVirtualRows } from "./model/swimlanes.js";
 
@@ -365,6 +365,7 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
             ]);
             const lane = row.lane;
             const stripeBackground = swimlaneStripeBackground(row.laneIndex);
+            const activeLane = lane.markers.some(({ segment }) => segment.id === selectedSegmentId);
             return h("div", {
               key: row.key,
               "data-grouped-swimlane": group.key,
@@ -379,8 +380,9 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
               h("div", {
                 key: "label",
                 "data-timeline-label-gutter": "true",
+                "data-active-swimlane": activeLane ? "true" : undefined,
                 className: "sticky left-0 z-40 flex min-w-0 items-center gap-2 border-r border-border px-3 pl-5",
-                style: { backgroundColor: stripeBackground },
+                style: activeSwimlaneLabelStyle(activeLane, stripeBackground),
                 title: `${swimlaneDisplayLabel(lane)} · Cmd/Ctrl+click to toggle all segments`,
                 "aria-label": swimlaneDisplayLabel(lane),
                 onClick: (event) => {

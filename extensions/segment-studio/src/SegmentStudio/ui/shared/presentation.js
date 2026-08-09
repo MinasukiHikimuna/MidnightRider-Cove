@@ -112,6 +112,15 @@ export function swimlaneStripeBackground(laneIndex) {
     : "color-mix(in srgb, var(--color-muted) 14%, var(--color-surface))";
 }
 
+export function activeSwimlaneLabelStyle(active, backgroundColor) {
+  return {
+    backgroundColor,
+    ...(active ? {
+      boxShadow: "inset 3px 0 0 var(--color-accent), inset 0 0 16px color-mix(in srgb, var(--color-accent) 22%, transparent)",
+    } : {}),
+  };
+}
+
 export function segmentGroupHeaderBackground(selected = false) {
   return `color-mix(in srgb, var(--color-accent) ${selected ? 14 : 8}%, var(--color-surface))`;
 }
