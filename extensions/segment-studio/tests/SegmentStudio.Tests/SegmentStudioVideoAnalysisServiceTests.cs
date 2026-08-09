@@ -7,6 +7,7 @@ using Cove.Core.Interfaces;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 
 public sealed class SegmentStudioVideoAnalysisServiceTests
 {
@@ -207,20 +208,41 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
             VideoId = 7,
             Path = "/mnt/media/source.mp4",
         });
+        var originalBoundaryCreatedAt = DateTime.UtcNow;
+        db.Add(new SegmentStudioShotBoundary
+        {
+            VideoId = 7,
+            StartSec = 0,
+            EndSec = 10,
+            Source = "pyscenedetect",
+            Revision = 1,
+            CreatedAt = originalBoundaryCreatedAt,
+            UpdatedAt = originalBoundaryCreatedAt,
+        });
         await db.SaveChangesAsync();
+        var originalBoundaryId = await db.Set<SegmentStudioShotBoundary>()
+            .Select(boundary => boundary.Id)
+            .SingleAsync();
         var service = CreateService(
             new FakeClient(Response()),
             db,
             new ThrowingProvenanceService());
-        var run = await service.CreateRunAsync(db, 7, new(), default);
+        var request = new StartSegmentStudioAnalysisRequest(
+            ReplaceShotBoundaries: true,
+            ExpectedShotBoundaryFingerprint: $"{originalBoundaryId}:1");
+        var run = await service.CreateRunAsync(db, 7, request, default);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.ExecuteRunAsync(db, run.Id, new(), default));
+            () => service.ExecuteRunAsync(db, run.Id, request, default));
 
         db.ChangeTracker.Clear();
         Assert.Empty(await db.Set<Tag>().ToListAsync());
         Assert.Empty(await db.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
         Assert.Empty(await db.Set<SegmentStudioItem>().ToListAsync());
+        var originalBoundary = Assert.Single(
+            await db.Set<SegmentStudioShotBoundary>().ToListAsync());
+        Assert.Equal("pyscenedetect", originalBoundary.Source);
+        Assert.Equal(originalBoundaryCreatedAt, originalBoundary.CreatedAt);
         Assert.Equal("failed", (await db.Set<SegmentStudioAnalysisRun>()
             .SingleAsync()).Status);
     }
@@ -321,6 +343,239 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
             .OrderBy(boundary => boundary.Id)
             .Select(boundary => boundary.Id)
             .ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmedRunReplacesExistingShotBoundaries()
+    {
+        await using var db = CreateContext();
+        var now = DateTime.UtcNow;
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        db.Add(new SegmentStudioShotBoundary
+        {
+            VideoId = 7, StartSec = 0, EndSec = 10, Source = "pyscenedetect",
+            Revision = 1, CreatedAt = now, UpdatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        var originalId = await db.Set<SegmentStudioShotBoundary>()
+            .Select(boundary => boundary.Id)
+            .SingleAsync();
+        var service = CreateService(new FakeClient(Response()), db);
+        var request = new StartSegmentStudioAnalysisRequest(
+            [SegmentStudioAnalysisKind.OmniShotCut],
+            ReplaceShotBoundaries: true,
+            ExpectedShotBoundaryFingerprint: $"{originalId}:1");
+
+        var run = await service.CreateRunAsync(db, 7, request, default);
+        await service.ExecuteRunAsync(db, run.Id, request, default);
+
+        var boundaries = await db.Set<SegmentStudioShotBoundary>()
+            .OrderBy(boundary => boundary.StartSec)
+            .ToListAsync();
+        Assert.Equal(2, boundaries.Count);
+        Assert.DoesNotContain(boundaries, boundary => boundary.Id == originalId);
+        Assert.All(boundaries, boundary => Assert.Equal("omnishotcut", boundary.Source));
+        Assert.Equal([0d, 5d], boundaries.Select(boundary => boundary.StartSec));
+        Assert.Equal([5d, 10d], boundaries.Select(boundary => boundary.EndSec));
+    }
+
+    [Fact]
+    public async Task ConfirmedRunPreservesBoundariesChangedWhileAnalysisWasRunning()
+    {
+        await using var db = CreateContext();
+        var now = DateTime.UtcNow;
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        db.Add(new SegmentStudioShotBoundary
+        {
+            VideoId = 7, StartSec = 0, EndSec = 10, Source = "pyscenedetect",
+            Revision = 1, CreatedAt = now, UpdatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        var boundary = await db.Set<SegmentStudioShotBoundary>().SingleAsync();
+        var request = new StartSegmentStudioAnalysisRequest(
+            [SegmentStudioAnalysisKind.OmniShotCut],
+            ReplaceShotBoundaries: true,
+            ExpectedShotBoundaryFingerprint: $"{boundary.Id}:1");
+        var service = CreateService(new FakeClient(Response()), db);
+        var run = await service.CreateRunAsync(db, 7, request, default);
+        boundary.Revision = 2;
+        boundary.UpdatedAt = now.AddSeconds(1);
+        await db.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<SegmentStudioAnalysisPersistenceException>(
+            () => service.ExecuteRunAsync(db, run.Id, request, default));
+
+        Assert.Equal("shot_boundaries_changed", exception.Code);
+        db.ChangeTracker.Clear();
+        var preserved = Assert.Single(
+            await db.Set<SegmentStudioShotBoundary>().ToListAsync());
+        Assert.Equal(2, preserved.Revision);
+        var savedRun = await db.Set<SegmentStudioAnalysisRun>().SingleAsync();
+        Assert.Equal("failed", savedRun.Status);
+        Assert.Equal("shot_boundaries_changed", savedRun.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PostgreSqlReplacementRejectsEditCommittedAfterConfirmation()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+                "COVE__Postgres__ConnectionString")
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var schema = $"segment_studio_analysis_replace_test_{Guid.NewGuid():N}";
+        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            SearchPath = schema,
+        };
+        await using var admin = new NpgsqlConnection(connectionString);
+        await admin.OpenAsync();
+        await using (var createSchema = new NpgsqlCommand(
+                         $"CREATE SCHEMA \"{schema}\"", admin))
+            await createSchema.ExecuteNonQueryAsync();
+
+        try
+        {
+            var options = new DbContextOptionsBuilder<AnalysisDbContext>()
+                .UseNpgsql(builder.ConnectionString)
+                .Options;
+            long boundaryId;
+            await using (var setup = new AnalysisDbContext(options))
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    setup.Database.GenerateCreateScript());
+                var now = DateTime.UtcNow;
+                setup.Add(new Video { Id = 7 });
+                setup.Add(new VideoFile
+                {
+                    Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4",
+                });
+                var boundary = new SegmentStudioShotBoundary
+                {
+                    VideoId = 7,
+                    StartSec = 0,
+                    EndSec = 10,
+                    Source = "pyscenedetect",
+                    Revision = 1,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                setup.Add(boundary);
+                await setup.SaveChangesAsync();
+                boundaryId = boundary.Id;
+            }
+
+            var request = new StartSegmentStudioAnalysisRequest(
+                [SegmentStudioAnalysisKind.OmniShotCut],
+                ReplaceShotBoundaries: true,
+                ExpectedShotBoundaryFingerprint: $"{boundaryId}:1");
+            Guid runId;
+            await using (var analysisContext = new AnalysisDbContext(options))
+            {
+                var service = CreateService(
+                    new FakeClient(Response()), analysisContext);
+                var run = await service.CreateRunAsync(
+                    analysisContext, 7, request, default);
+                runId = run.Id;
+            }
+            await using (var writer = new AnalysisDbContext(options))
+            {
+                var boundary = await writer.Set<SegmentStudioShotBoundary>()
+                    .SingleAsync();
+                boundary.Revision = 2;
+                boundary.UpdatedAt = DateTime.UtcNow.AddSeconds(1);
+                await writer.SaveChangesAsync();
+            }
+            await using (var analysisContext = new AnalysisDbContext(options))
+            {
+                var service = CreateService(
+                    new FakeClient(Response()), analysisContext);
+                var exception = await Assert.ThrowsAsync<SegmentStudioAnalysisPersistenceException>(
+                    () => service.ExecuteRunAsync(
+                        analysisContext, runId, request, default));
+                Assert.Equal("shot_boundaries_changed", exception.Code);
+            }
+            await using (var verify = new AnalysisDbContext(options))
+            {
+                var preserved = Assert.Single(
+                    await verify.Set<SegmentStudioShotBoundary>().ToListAsync());
+                Assert.Equal(2, preserved.Revision);
+                var savedRun = await verify.Set<SegmentStudioAnalysisRun>()
+                    .SingleAsync();
+                Assert.Equal("failed", savedRun.Status);
+                Assert.Equal("shot_boundaries_changed", savedRun.ErrorCode);
+            }
+        }
+        finally
+        {
+            await using var dropSchema = new NpgsqlCommand(
+                $"DROP SCHEMA \"{schema}\" CASCADE", admin);
+            await dropSchema.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ConfirmedRunPreservesExistingBoundariesWhenResultCoverageIsInvalid()
+    {
+        await using var db = CreateContext();
+        var now = DateTime.UtcNow;
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        db.Add(new SegmentStudioShotBoundary
+        {
+            VideoId = 7, StartSec = 0, EndSec = 10, Source = "pyscenedetect",
+            Revision = 1, CreatedAt = now, UpdatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        var boundaryId = await db.Set<SegmentStudioShotBoundary>()
+            .Select(boundary => boundary.Id)
+            .SingleAsync();
+        var invalid = Response() with
+        {
+            OmniShotCut = Response().OmniShotCut! with
+            {
+                Boundaries = [new(0, 9, null)],
+            },
+        };
+        var request = new StartSegmentStudioAnalysisRequest(
+            [SegmentStudioAnalysisKind.OmniShotCut],
+            ReplaceShotBoundaries: true,
+            ExpectedShotBoundaryFingerprint: $"{boundaryId}:1");
+        var service = CreateService(new FakeClient(invalid), db);
+        var run = await service.CreateRunAsync(db, 7, request, default);
+
+        var exception = await Assert.ThrowsAsync<SegmentStudioAnalysisPersistenceException>(
+            () => service.ExecuteRunAsync(db, run.Id, request, default));
+
+        Assert.Equal("invalid_shot_boundaries", exception.Code);
+        db.ChangeTracker.Clear();
+        Assert.Equal(
+            "pyscenedetect",
+            Assert.Single(await db.Set<SegmentStudioShotBoundary>().ToListAsync()).Source);
+        var savedRun = await db.Set<SegmentStudioAnalysisRun>().SingleAsync();
+        Assert.Equal("failed", savedRun.Status);
+        Assert.Equal("invalid_shot_boundaries", savedRun.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ReplacementWithoutShotBoundaryAnalysisIsRejected()
+    {
+        await using var db = CreateContext();
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        await db.SaveChangesAsync();
+        var service = CreateService(new FakeClient(Response()), db);
+        var request = new StartSegmentStudioAnalysisRequest(
+            [SegmentStudioAnalysisKind.AiTagging],
+            ReplaceShotBoundaries: true);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateRunAsync(db, 7, request, default));
+
+        Assert.Contains("requires shot-boundary analysis", exception.Message);
     }
 
     [Fact]

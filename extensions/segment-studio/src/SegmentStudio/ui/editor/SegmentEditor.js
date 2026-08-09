@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES } from "../shared/constants.js";
 
 import { activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileFilteredSelectedSegmentId, reconcileSelectedSegmentIds, resolveSelectedSegments, resolveVisibleSelectedSegment, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { readPlaybackShortcutConfig } from "./model/shortcuts.js";
+import { readPlaybackShortcutConfig, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -94,7 +94,13 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     importNativeSegments,
     nativeImportState,
     startFullAnalysis,
-  } = useSegmentAnalysis(detail.video.id, onReload, compatibilityMode);
+  } = useSegmentAnalysis(
+    detail.video.id,
+    onReload,
+    compatibilityMode,
+    detail.shotBoundaries?.length || 0,
+    shotBoundaryFingerprint(detail.shotBoundaries || []),
+  );
   const [materializeOpen, setMaterializeOpen] = useState(false);
   const [materializePreview, setMaterializePreview] = useState(null);
   const [materializeLoading, setMaterializeLoading] = useState(compatibilityMode);

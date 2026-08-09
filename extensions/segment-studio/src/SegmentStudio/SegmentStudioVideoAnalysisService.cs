@@ -11,7 +11,15 @@ namespace SegmentStudio;
 public sealed record StartSegmentStudioAnalysisRequest(
     IReadOnlyList<SegmentStudioAnalysisKind>? Analyses = null,
     SegmentStudioAnalysisAiOptions? Ai = null,
-    SegmentStudioAnalysisOmniShotCutOptions? OmniShotCut = null);
+    SegmentStudioAnalysisOmniShotCutOptions? OmniShotCut = null,
+    bool ReplaceShotBoundaries = false,
+    string? ExpectedShotBoundaryFingerprint = null);
+
+public sealed class SegmentStudioAnalysisPersistenceException(
+    string code, string message) : InvalidOperationException(message)
+{
+    public string Code { get; } = code;
+}
 
 public sealed record SegmentStudioAnalysisRunResponse(
     Guid Id,
@@ -94,6 +102,27 @@ public sealed class SegmentStudioVideoAnalysisService(
         CancellationToken ct)
     {
         var analyses = NormalizeAnalyses(request.Analyses, mode);
+        if (request.ReplaceShotBoundaries
+            && !analyses.Contains(SegmentStudioAnalysisKind.OmniShotCut))
+        {
+            throw new ArgumentException(
+                "Replacing shot boundaries requires shot-boundary analysis.",
+                nameof(request));
+        }
+        if (request.ReplaceShotBoundaries
+            && request.ExpectedShotBoundaryFingerprint is null)
+        {
+            throw new ArgumentException(
+                "Replacing shot boundaries requires their expected fingerprint.",
+                nameof(request));
+        }
+        if (!request.ReplaceShotBoundaries
+            && request.ExpectedShotBoundaryFingerprint is not null)
+        {
+            throw new ArgumentException(
+                "A shot-boundary fingerprint is only valid when replacing boundaries.",
+                nameof(request));
+        }
         var sourceVideoId = await db.Set<Video>().AsNoTracking()
             .Where(video => video.Id == videoId)
             .Select(video => (int?)(video.ParentVideoId ?? video.Id))
@@ -278,9 +307,34 @@ public sealed class SegmentStudioVideoAnalysisService(
                 {
                     await ShotBoundaryService.AcquireMutationLocksAsync(
                         db, runId, persistedRun.VideoId, ct);
-                    var hasExisting = await db.Set<SegmentStudioShotBoundary>()
-                        .AnyAsync(boundary => boundary.VideoId == persistedRun.VideoId, ct);
-                    if (!hasExisting)
+                    var existing = await db.Set<SegmentStudioShotBoundary>()
+                        .Where(boundary => boundary.VideoId == persistedRun.VideoId)
+                        .ToListAsync(ct);
+                    var shouldPersist = existing.Count == 0 || request.ReplaceShotBoundaries;
+                    if (shouldPersist
+                        && !IsValidShotBoundaryResult(
+                            response.OmniShotCut.Boundaries,
+                            response.Source.DurationSeconds))
+                    {
+                        throw new SegmentStudioAnalysisPersistenceException(
+                            "invalid_shot_boundaries",
+                            "Shot-boundary analysis returned invalid video coverage; existing boundaries were preserved.");
+                    }
+                    if (request.ReplaceShotBoundaries)
+                    {
+                        var actualFingerprint = ShotBoundaryService.Fingerprint(existing);
+                        if (!string.Equals(
+                                actualFingerprint,
+                                request.ExpectedShotBoundaryFingerprint,
+                                StringComparison.Ordinal))
+                        {
+                            throw new SegmentStudioAnalysisPersistenceException(
+                                "shot_boundaries_changed",
+                                "Shot boundaries changed while analysis was running; the newer boundaries were preserved.");
+                        }
+                        db.RemoveRange(existing);
+                    }
+                    if (shouldPersist)
                     {
                         var now = DateTime.UtcNow;
                         db.AddRange(response.OmniShotCut.Boundaries.Select(boundary => new SegmentStudioShotBoundary
@@ -375,6 +429,17 @@ public sealed class SegmentStudioVideoAnalysisService(
                 Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             throw new InvalidOperationException(message);
         }
+        catch (SegmentStudioAnalysisPersistenceException exception)
+        {
+            await MarkFailedAsync(db, runId, exception.Code, exception.Message);
+            logger.LogWarning(
+                exception,
+                "Segment Studio analysis run {RunId} could not persist its result after {ElapsedMs} ms: code={ErrorCode}",
+                runId,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                exception.Code);
+            throw;
+        }
         catch (Exception exception)
         {
             await MarkFailedAsync(
@@ -443,6 +508,33 @@ public sealed class SegmentStudioVideoAnalysisService(
                 resolved[name] = tag.Id;
         }
         return resolved;
+    }
+
+    private static bool IsValidShotBoundaryResult(
+        IReadOnlyList<SegmentStudioAnalysisBoundary> boundaries,
+        double durationSeconds)
+    {
+        const double tolerance = 0.001;
+        if (!double.IsFinite(durationSeconds)
+            || durationSeconds <= tolerance
+            || boundaries.Count == 0)
+            return false;
+        for (var index = 0; index < boundaries.Count; index++)
+        {
+            var boundary = boundaries[index];
+            if (!double.IsFinite(boundary.StartSeconds)
+                || !double.IsFinite(boundary.EndSeconds)
+                || boundary.StartSeconds < 0
+                || boundary.EndSeconds <= boundary.StartSeconds
+                || boundary.EndSeconds > durationSeconds + tolerance)
+                return false;
+            var expectedStart = index == 0
+                ? 0
+                : boundaries[index - 1].EndSeconds;
+            if (Math.Abs(boundary.StartSeconds - expectedStart) > tolerance)
+                return false;
+        }
+        return Math.Abs(boundaries[^1].EndSeconds - durationSeconds) <= tolerance;
     }
 
     private static async Task ProjectBasicNativeSegmentsAsync(

@@ -154,6 +154,7 @@ test("bulk workflow actions share counts, disabled states, dialogs, and toolbar 
 test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   const view = sourceByModule["editor/SegmentEditorView.js"];
   const analysis = sourceByModule["editor/hooks/useSegmentAnalysis.js"];
+  const controller = sourceByModule["editor/SegmentEditor.js"];
 
   assert.match(view, /import \{ ChevronDown \} from "@cove\/runtime\/lucide-react"/);
   assert.match(view, /aria-label": "Choose Full Scan analyses"/);
@@ -163,7 +164,12 @@ test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   assert.match(view, /\["AI analysis only", \["aiTagging"\]\]/);
   assert.match(view, /\["Shot boundaries only", \["omnishotcut"\]\]/);
   assert.match(analysis, /async function startFullAnalysis\(analyses = null\)/);
-  assert.match(analysis, /analyses: analyses \|\| \(fullMode/);
+  assert.match(analysis, /const replaceShotBoundaries = requestedAnalyses\.includes\("omnishotcut"\)/);
+  assert.match(analysis, /replaceShotBoundaries && !window\.confirm\(/);
+  assert.match(analysis, /analyses: requestedAnalyses/);
+  assert.match(analysis, /replaceShotBoundaries,/);
+  assert.match(analysis, /expectedShotBoundaryFingerprint: replaceShotBoundaries/);
+  assert.match(controller, /shotBoundaryFingerprint\(detail\.shotBoundaries \|\| \[\]\)/);
   assert.doesNotMatch(view, /Repair provenance|repair-analysis-provenance|backfillAnalysisProvenance/);
   assert.doesNotMatch(analysis, /analysisProvenanceRepair|backfillAnalysisProvenance|analysis-runs\/\$\{analysisRun\.id\}\/provenance/);
 });

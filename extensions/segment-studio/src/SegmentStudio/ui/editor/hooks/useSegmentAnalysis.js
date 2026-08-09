@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "../../shared/runtime.js";
 import { createOperationId, requestJson } from "../../shared/api.js";
 
-function useSegmentAnalysis(videoId, onReload, fullMode = false) {
+function useSegmentAnalysis(
+  videoId,
+  onReload,
+  fullMode = false,
+  shotBoundaryCount = 0,
+  shotBoundaryRevision = "",
+) {
   const [analysisRun, setAnalysisRun] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState(null);
   const [analysisError, setAnalysisError] = useState("");
@@ -51,14 +57,24 @@ function useSegmentAnalysis(videoId, onReload, fullMode = false) {
 
   async function startFullAnalysis(analyses = null) {
     setAnalysisError("");
+    const requestedAnalyses = analyses || (fullMode
+      ? ["aiTagging", "omnishotcut"]
+      : ["aiTagging"]);
+    const replaceShotBoundaries = requestedAnalyses.includes("omnishotcut")
+      && shotBoundaryCount > 0;
+    if (replaceShotBoundaries && !window.confirm(
+      `Replace ${shotBoundaryCount} existing shot ${shotBoundaryCount === 1 ? "boundary" : "boundaries"} when this analysis succeeds? Existing automatic and manual shot edits will be replaced. This cannot be undone. If analysis fails, the current boundaries will remain unchanged.`,
+    )) return;
     try {
       const run = await requestJson(`/videos/${videoId}/analysis-runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          analyses: analyses || (fullMode
-            ? ["aiTagging", "omnishotcut"]
-            : ["aiTagging"]),
+          analyses: requestedAnalyses,
+          replaceShotBoundaries,
+          expectedShotBoundaryFingerprint: replaceShotBoundaries
+            ? shotBoundaryRevision
+            : null,
         }),
       });
       setAnalysisRun(run);
