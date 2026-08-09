@@ -330,7 +330,9 @@ test("Full editor opens owned and native items in the unified editor", () => {
   assert.doesNotMatch(source, /key: "create-segment"/);
   assert.doesNotMatch(source, /requestedNativeEditor|editor=native/);
   assert.match(source, /compatibilityMode: mode === "review", profile/);
-  assert.match(source, /"Complete review"/);
+  assert.match(source, /const approvedDraftCount = useMemo\(\s*\(\) => segments\.filter\(\(segment\) => !segment\.published && segment\.reviewState === "approved"\)\.length,\s*\[segments\],\s*\)/);
+  assert.match(source, /`Publish approved \(\$\{approvedDraftCount\}\)`/);
+  assert.doesNotMatch(source, /"Complete review"/);
   assert.match(source, /\/complete-review/);
   assert.doesNotMatch(source, /\?workflow=full/);
   assert.match(source, /const editorPath = \(requestedVideoId\)/);

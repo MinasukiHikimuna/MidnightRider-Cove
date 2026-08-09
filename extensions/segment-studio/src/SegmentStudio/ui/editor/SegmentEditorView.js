@@ -1,6 +1,6 @@
 import { formatTime } from "../shared/api.js";
 import { DerivedSegmentIcon, EditorToolbarIcon, provenanceSourceLabel } from "./SegmentDetails.js";
-import { h, VideoPlayer } from "../shared/runtime.js";
+import { h, useMemo, VideoPlayer } from "../shared/runtime.js";
 import { segmentRailItemStyle, SegmentStateBadge } from "../shared/presentation.js";
 import { setBackLinkNavigation } from "../discovery/components.js";
 import { PerformerAvatar, PerformerSublaneAvatars, swimlaneDisplayLabel } from "./model/swimlanes.js";
@@ -19,6 +19,10 @@ import { ChevronDown } from "@cove/runtime/lucide-react";
 
 function SegmentEditorView(props) {
   const { activeFilterCount, allSwimlanes, analysisError, analysisProvenanceRepair, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, backfillAnalysisProvenance, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closeTagEditing, collapsedSegmentGroups, compatibilityMode, completeReview, configuringTag, createSegment, currentTime, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onNavigate, onReload, onSlotsChanged, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
+  const approvedDraftCount = useMemo(
+    () => segments.filter((segment) => !segment.published && segment.reviewState === "approved").length,
+    [segments],
+  );
 
   function renderSegmentRailItem(segment) {
       const selected = selectedSegmentIds.includes(segment.id);
@@ -257,10 +261,10 @@ function SegmentEditorView(props) {
             compatibilityMode ? h("button", {
               key: "complete-review",
               type: "button",
-              disabled: savingSegmentId != null || !segments.some((segment) => !segment.published && segment.reviewState === "approved"),
+              disabled: savingSegmentId != null || approvedDraftCount === 0,
               onClick: completeReview,
               className: "rounded-md border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-emerald-500/25 disabled:opacity-50",
-            }, "Complete review") : null,
+            }, `Publish approved (${approvedDraftCount})`) : null,
           ]),
           h("div", { key: "utilities", className: "ml-auto flex flex-wrap items-center justify-end gap-1.5" }, [
             h("button", {

@@ -44,11 +44,15 @@ test("Basic omitted collections use stable fallbacks across renders", () => {
   assert.match(controller, /shotBoundaries = detail\.shotBoundaries \|\| EMPTY_EDITOR_COLLECTION/);
 });
 
-test("Basic mode hides the Full Scan action", () => {
+test("Basic mode hides Full Scan and approved publishing actions", () => {
   const view = sourceByModule["editor/SegmentEditorView.js"];
   assert.match(
     view,
     /compatibilityMode \? h\("div", \{[\s\S]{0,120}key: "full-analysis"/,
+  );
+  assert.match(
+    view,
+    /compatibilityMode \? h\("button", \{\s*key: "complete-review",[\s\S]{0,500}`Publish approved \(\$\{approvedDraftCount\}\)`\) : null/,
   );
 });
 
