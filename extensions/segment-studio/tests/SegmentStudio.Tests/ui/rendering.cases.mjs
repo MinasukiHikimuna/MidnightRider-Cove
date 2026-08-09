@@ -55,7 +55,7 @@ test("segment results use compact video-like cards", () => {
   assert.match(browsePage, /dependencyDeletionAllowed\(preview, setMessage\)/);
   assert.match(browsePage, /confirmDependencyDeletion\(preview\)/);
   assert.match(browsePage, /className: "w-full space-y-5"/);
-  assert.match(browsePage, /gridTemplateColumns: "repeat\(auto-fill, minmax\(275px, 1fr\)\)"/);
+  assert.match(browsePage, /gridTemplateColumns: "repeat\(auto-fill, minmax\(var\(--card-min-width, 275px\), 1fr\)\)"/);
   assert.doesNotMatch(browsePage, /max-w-7xl|p-4 sm:p-6/);
 });
 
@@ -64,7 +64,7 @@ test("list views omit redundant page headings and descriptions", () => {
   const discoveryPage = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
   assert.doesNotMatch(browsePage, /Find and play the segments you already have|text-2xl font-semibold/);
   assert.doesNotMatch(discoveryPage, /Compatibility mode preserves existing approval decisions|Find accessible Cove videos|text-2xl font-semibold text-foreground/);
-  assert.match(browsePage, /h\("h1", \{ key: "title", className: "sr-only" \}, "Segments"\)/);
+  assert.match(browsePage, /h\(ListPage,[\s\S]*title: "Segments"/);
   assert.match(discoveryPage, /h\(ListPage,[\s\S]*title: "Videos"/);
   assert.doesNotMatch(discoveryPage, /h\(SegmentStudioModeSelector/);
 });

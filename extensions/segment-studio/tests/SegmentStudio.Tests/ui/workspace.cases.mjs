@@ -79,12 +79,15 @@ test("Browse defaults to every review state and drops slots without an activity"
   ), {
     query: "example",
     activityTagId: null,
+    activityTagIds: [],
+    includeActivitySubtags: false,
     reviewStates: ["rejected"],
     slotAssignments: [],
     page: 2,
     perPage: 12,
     sort: "default",
     direction: "desc",
+    performerIds: [],
   });
 });
 
@@ -93,7 +96,8 @@ test("Browse sends activity-scoped slot filters and restores editor deep links",
     { page: 1, perPage: 24, sort: "default", direction: "desc" },
     { activityId: 7, performerId: 33, slots: '{"slot-b":22,"slot-a":11}' },
   );
-  assert.equal(request.performerId, 33);
+  assert.deepEqual(request.activityTagIds, [7]);
+  assert.deepEqual(request.performerIds, [33]);
   assert.deepEqual(request.slotAssignments, [
     { slotDefinitionId: "slot-b", performerId: 22 },
     { slotDefinitionId: "slot-a", performerId: 11 },
@@ -117,16 +121,41 @@ test("Browse sends activity-scoped slot filters and restores editor deep links",
   assert.match(source, /active: "segments"/);
 });
 
-test("Browse selects tags and any-slot performers with Cove autocompletes", () => {
+test("Browse serializes native multi-value filter criteria", () => {
+  const request = ui.buildBrowseRequest(
+    { page: 1, perPage: 24, sort: "default", direction: "desc" },
+    {
+      activitiesCriterion: { modifier: "INCLUDES", value: [7, 8], depth: -1 },
+      performersCriterion: { modifier: "INCLUDES", value: [33, 34] },
+      reviewStateCriterion: { modifier: "EQUALS", value: "rejected" },
+      slots: '{"slot-a":11}',
+    },
+  );
+  assert.deepEqual(request.activityTagIds, [7, 8]);
+  assert.equal(request.includeActivitySubtags, true);
+  assert.deepEqual(request.performerIds, [33, 34]);
+  assert.deepEqual(request.reviewStates, ["rejected"]);
+  assert.equal(request.activityTagId, null);
+  assert.deepEqual(request.slotAssignments, []);
+});
+
+test("Browse uses Cove-native filters and saved-filter defaults", () => {
   const browsePage = sourceByModule["browse/SegmentStudioBrowsePage.js"];
-  assert.match(browsePage, /h\(EntityReferenceSelector, \{[\s\S]*entityType: "tag"/);
-  assert.match(browsePage, /"Tag"/);
-  assert.match(browsePage, /entityType: "performer"/);
-  assert.match(browsePage, /"Performer \(any slot\)"/);
+  const model = sourceByModule["discovery/model.js"];
+  assert.match(browsePage, /h\(ListPage/);
+  assert.match(browsePage, /getDefaultFilter\("ext:com\.midnightrider\.segment-studio:segments"\)/);
+  assert.match(browsePage, /criteriaDefinitions: result\.performerSlotsAvailable === false \? BROWSE_FILTER_CRITERIA\.filter/);
+  assert.match(model, /id: "activities"[\s\S]*type: "multiId"[\s\S]*entityType: "tags"/);
+  assert.match(model, /id: "performers"[\s\S]*entityType: "performers"/);
+  assert.match(model, /id: "reviewState"[\s\S]*modifiers: \["EQUALS"\]/);
+  assert.doesNotMatch(model, /multiSelectOptions: true/);
   assert.match(browsePage, /requestError\.message\.includes\("unrestricted performer read access"\)/);
   assert.match(browsePage, /performerSlotsAvailable: false/);
-  assert.match(browsePage, /setObjectFilter\(\{ \.\.\.objectFilter, performerId: undefined, slots: undefined \}\)/);
-  assert.doesNotMatch(browsePage, /Find activity|"Activity"/);
+  assert.match(browsePage, /performersCriterion: undefined/);
+  assert.match(browsePage, /customFilterSections: slotFilterSections/);
+  assert.match(browsePage, /filterKey: "slots"/);
+  assert.match(browsePage, /serializeBrowseSlotFilters\(activityId/);
+  assert.doesNotMatch(browsePage, /h\(EntityReferenceSelector/);
 });
 
 test("workspace tabs and routes are derived from the server feature profile", () => {
@@ -259,11 +288,11 @@ test("recycling bin routes survive in-app navigation and hard reloads", () => {
 test("list views use Cove native numbered pagination", () => {
   assert.match(source, /DetailListPagination,/);
   assert.doesNotMatch(source, /\bPager,/);
-  assert.equal((source.match(/h\(DetailListPagination/g) || []).length, 3);
+  assert.equal((source.match(/h\(DetailListPagination/g) || []).length, 1);
   assert.match(source, /h\(ListPage/);
-  assert.match(source, /ariaLabel: "Segments pagination above results"/);
-  assert.match(source, /ariaLabel: "Segments pagination below results"/);
+  assert.doesNotMatch(source, /Segments pagination (?:above|below) results/);
   assert.match(source, /pageKey: "segment-studio-videos"/);
+  assert.match(source, /pageKey: "segment-studio-segments"/);
   assert.doesNotMatch(source, /`Page \$\{filter\.page\}`/);
 });
 

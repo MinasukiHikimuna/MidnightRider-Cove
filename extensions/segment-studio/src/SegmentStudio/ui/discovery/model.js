@@ -8,41 +8,72 @@ const BROWSE_URL_OPTIONS = {
   allowedDisplayModes: ["grid"],
 };
 
+const BROWSE_FILTER_CRITERIA = [
+  { id: "activities", label: "Tags", type: "multiId", entityType: "tags", filterKey: "activitiesCriterion", modifiers: ["INCLUDES"] },
+  { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion", modifiers: ["INCLUDES"] },
+  { id: "reviewState", label: "Review State", type: "enum", filterKey: "reviewStateCriterion", modifiers: ["EQUALS"], options: REVIEW_STATES.map((state) => ({ value: state, label: state[0].toUpperCase() + state.slice(1) })) },
+];
+
 export function selectedBrowseStates(value) {
   const selected = String(value || "").split(",").filter((state) => REVIEW_STATES.includes(state));
   return selected.length === 0 ? [...REVIEW_STATES] : [...new Set(selected)];
 }
 
 export function parseBrowseSlotFilters(value) {
-  if (!value) return {};
+  return parseBrowseSlotState(value).values;
+}
+
+function parseBrowseSlotState(value) {
+  if (!value) return { activityTagId: null, values: {} };
   try {
     const parsed = JSON.parse(String(value));
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([slotId, performerId]) =>
-      slotId && Number.isInteger(Number(performerId)) && Number(performerId) > 0));
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return { activityTagId: null, values: {} };
+    const rawValues = parsed.values && typeof parsed.values === "object" && !Array.isArray(parsed.values) ? parsed.values : parsed;
+    return {
+      activityTagId: Number.isInteger(Number(parsed.activityTagId)) && Number(parsed.activityTagId) > 0 ? Number(parsed.activityTagId) : null,
+      values: Object.fromEntries(Object.entries(rawValues).filter(([slotId, performerId]) =>
+        slotId && Number.isInteger(Number(performerId)) && Number(performerId) > 0)),
+    };
   } catch {
-    return {};
+    return { activityTagId: null, values: {} };
   }
 }
 
+export function serializeBrowseSlotFilters(activityTagId, values) {
+  return Object.keys(values || {}).length ? JSON.stringify({ activityTagId, values }) : undefined;
+}
+
 export function buildBrowseRequest(filter, objectFilter) {
-  const activityId = Number(objectFilter.activityId) || null;
-  const performerId = Number(objectFilter.performerId) || null;
-  const slotAssignments = activityId ? Object.entries(parseBrowseSlotFilters(objectFilter.slots)).map(([slotDefinitionId, performerId]) => ({
+  const activityTagIds = criterionIds(objectFilter.activitiesCriterion, objectFilter.activityId);
+  const performerIds = criterionIds(objectFilter.performersCriterion, objectFilter.performerId);
+  const activityId = activityTagIds.length === 1 ? activityTagIds[0] : null;
+  const slotState = parseBrowseSlotState(objectFilter.slots);
+  const slotAssignments = activityId && (slotState.activityTagId == null || slotState.activityTagId === activityId) ? Object.entries(slotState.values).map(([slotDefinitionId, performerId]) => ({
     slotDefinitionId,
     performerId: Number(performerId),
   })) : [];
   return {
     query: String(filter.q || "").trim() || null,
     activityTagId: activityId,
-    reviewStates: selectedBrowseStates(objectFilter.states),
+    activityTagIds,
+    includeActivitySubtags: objectFilter.activitiesCriterion?.depth === -1,
+    reviewStates: selectedCriterionStates(objectFilter.reviewStateCriterion, objectFilter.states),
     slotAssignments,
     page: Math.max(1, Number(filter.page) || 1),
     perPage: Math.max(1, Number(filter.perPage) || 24),
     sort: filter.sort || "default",
     direction: filter.direction || "desc",
-    ...(performerId ? { performerId } : {}),
+    performerIds,
   };
+}
+
+function criterionIds(criterion, legacyValue) {
+  const values = Array.isArray(criterion?.value) ? criterion.value : [legacyValue];
+  return [...new Set(values.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+function selectedCriterionStates(criterion, legacyValue) {
+  return REVIEW_STATES.includes(criterion?.value) ? [criterion.value] : selectedBrowseStates(legacyValue);
 }
 
 export function browseEditorHref(item) {
@@ -321,4 +352,4 @@ export function rankPerformerOptions(performers, videoPerformers, genderHints) {
   });
 }
 
-export { BROWSE_URL_OPTIONS, interchangeableSlotKey };
+export { BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, interchangeableSlotKey };

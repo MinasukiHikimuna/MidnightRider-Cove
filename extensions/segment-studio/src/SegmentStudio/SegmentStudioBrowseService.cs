@@ -10,7 +10,8 @@ public sealed record BrowseFacets(BrowseActivity Activity, string Revision, IRea
 public sealed record BrowseSlotFilter(Guid SlotDefinitionId, int PerformerId);
 public sealed record BrowseRequest(string? Query, int? ActivityTagId, IReadOnlyList<string>? ReviewStates,
     IReadOnlyList<BrowseSlotFilter>? SlotAssignments, int Page = 1, int PerPage = 24, string? Sort = null,
-    int? PerformerId = null);
+    int? PerformerId = null, IReadOnlyList<int>? ActivityTagIds = null, IReadOnlyList<int>? PerformerIds = null,
+    bool IncludeActivitySubtags = false, string? Direction = null);
 public sealed record BrowseActivityRef(int TagId, string Name);
 public sealed record BrowseSlotValue(Guid SlotDefinitionId, string? Label, int SortOrder, int PerformerId, string PerformerName);
 public sealed record BrowseVideoFile(int Id, string Format, double Duration, string AudioCodec);
@@ -99,8 +100,11 @@ public static class SegmentStudioBrowseService
         var filters = request.SlotAssignments ?? [];
         if (filters.Count != 0 && request.ActivityTagId is null) return (null, "Slot filters require an activity.");
         if (filters.Count != 0 && !includePerformers) return (null, "Slot filters require unrestricted performer read access.");
-        if (request.PerformerId is <= 0) return (null, "Performer filter is invalid.");
-        if (request.PerformerId is not null && !includePerformers) return (null, "Performer filter requires unrestricted performer read access.");
+        var activityTagIds = (request.ActivityTagIds ?? []).Concat(request.ActivityTagId is int activityTagId ? [activityTagId] : []).Where(id => id > 0).Distinct().ToArray();
+        if (request.IncludeActivitySubtags) activityTagIds = await ExpandTagIdsAsync(db, activityTagIds, ct);
+        var performerIds = (request.PerformerIds ?? []).Concat(request.PerformerId is int performerIdValue ? [performerIdValue] : []).Where(id => id > 0).Distinct().ToArray();
+        if (request.PerformerId is <= 0 || (request.PerformerIds?.Any(id => id <= 0) ?? false)) return (null, "Performer filter is invalid.");
+        if (performerIds.Length != 0 && !includePerformers) return (null, "Performer filter requires unrestricted performer read access.");
         if (request.ActivityTagId is int tagId)
         {
             var valid = await db.Set<SegmentStudioSlotDefinition>().AsNoTracking()
@@ -161,11 +165,11 @@ public static class SegmentStudioBrowseService
                 FileSearchText = video.FileSearchText,
             };
         IQueryable<BrowseRow> query = native.Concat(owned);
-        if (request.ActivityTagId is int activityId) query = query.Where(row => row.TagId == activityId);
+        if (activityTagIds.Length != 0) query = query.Where(row => activityTagIds.Contains(row.TagId));
         if (states.Length != 0) query = query.Where(row => states.Contains(row.ReviewState));
-        if (request.PerformerId is int performerId) query = query.Where(row =>
+        if (performerIds.Length != 0) query = query.Where(row =>
             db.Set<SegmentStudioSegmentSlot>().Any(slot =>
-                row.ItemId != null && slot.ItemId == row.ItemId && slot.PerformerId == performerId));
+                row.ItemId != null && slot.ItemId == row.ItemId && performerIds.Contains(slot.PerformerId)));
         foreach (var filter in filters) query = query.Where(row => db.Set<SegmentStudioSegmentSlot>().Any(slot => row.ItemId != null
             && slot.ItemId == row.ItemId
             && slot.SlotDefinitionId == filter.SlotDefinitionId && slot.PerformerId == filter.PerformerId));
@@ -180,8 +184,11 @@ public static class SegmentStudioBrowseService
                     && db.Set<Performer>().Any(performer => performer.Id == slot.PerformerId && performer.Name.ToLower().Contains(term)))));
         }
         var total = await query.CountAsync(ct);
-        var rows = await query.OrderByDescending(row => row.VideoUpdatedAt).ThenByDescending(row => row.VideoId)
-            .ThenBy(row => row.StartSec).ThenByDescending(row => row.Published)
+        var ascending = request.Direction?.Equals("asc", StringComparison.OrdinalIgnoreCase) == true;
+        var ordered = ascending
+            ? query.OrderBy(row => row.VideoUpdatedAt).ThenBy(row => row.VideoId)
+            : query.OrderByDescending(row => row.VideoUpdatedAt).ThenByDescending(row => row.VideoId);
+        var rows = await ordered.ThenBy(row => row.StartSec).ThenByDescending(row => row.Published)
             .ThenBy(row => row.SegmentId).ThenBy(row => row.ItemId)
             .Skip((page - 1) * perPage).Take(perPage)
             .ToListAsync(ct);
@@ -210,6 +217,20 @@ public static class SegmentStudioBrowseService
                 .OrderBy(slot => slot.SortOrder).ThenBy(slot => slot.SlotDefinitionId).ToArray(),
             row.VideoUpdatedAt, row.SegmentUpdatedAt, videoFiles.GetValueOrDefault(row.VideoId))).ToArray();
         return (new(materialized, total, page, perPage, includePerformers), null);
+    }
+
+    private static async Task<int[]> ExpandTagIdsAsync(DbContext db, IReadOnlyList<int> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+        var relations = await db.Set<TagParent>().AsNoTracking().Select(link => new { link.ParentId, link.ChildId }).ToListAsync(ct);
+        var children = relations.GroupBy(link => link.ParentId).ToDictionary(group => group.Key, group => group.Select(link => link.ChildId).ToArray());
+        var expanded = new HashSet<int>(ids);
+        var pending = new Queue<int>(ids);
+        while (pending.TryDequeue(out var parentId))
+            if (children.TryGetValue(parentId, out var childIds))
+                foreach (var childId in childIds)
+                    if (expanded.Add(childId)) pending.Enqueue(childId);
+        return expanded.ToArray();
     }
 
     private sealed class BrowseRow

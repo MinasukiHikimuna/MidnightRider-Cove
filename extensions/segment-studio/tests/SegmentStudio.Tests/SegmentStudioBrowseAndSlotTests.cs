@@ -114,6 +114,32 @@ public sealed class SegmentStudioBrowseAndSlotTests
     }
 
     [Fact]
+    public async Task BrowseMatchesAnyNativeSelectedActivity()
+    {
+        await using var db = CreateContext();
+        SeedBrowse(db);
+        await db.SaveChangesAsync();
+
+        var (result, error) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, null, [], [], 1, 20, ActivityTagIds: [10, 20]), true, CancellationToken.None);
+
+        Assert.Null(error);
+        Assert.Equal(3, result!.Total);
+
+        db.Add(new TagParent { ParentId = 10, ChildId = 20 });
+        await db.SaveChangesAsync();
+        var (hierarchy, hierarchyError) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, null, [], [], 1, 20, ActivityTagIds: [10], IncludeActivitySubtags: true), true, CancellationToken.None);
+        Assert.Null(hierarchyError);
+        Assert.Equal(3, hierarchy!.Total);
+
+        var (ascending, ascendingError) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, null, [], [], 1, 20, Direction: "asc"), true, CancellationToken.None);
+        Assert.Null(ascendingError);
+        Assert.Equal(103, ascending!.Items[0].SegmentId);
+    }
+
+    [Fact]
     public async Task BrowseRequiresAllSlotFiltersAndRejectsCrossActivitySlots()
     {
         await using var db = CreateContext();
@@ -161,6 +187,11 @@ public sealed class SegmentStudioBrowseAndSlotTests
 
         Assert.Null(error);
         Assert.Equal([101, 102], result!.Items.Select(item => item.SegmentId).Order());
+
+        var (multiResult, multiError) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, 10, [], [], 1, 20, PerformerIds: [2, 3]), includePerformers: true, CancellationToken.None);
+        Assert.Null(multiError);
+        Assert.Equal(102, Assert.Single(multiResult!.Items).SegmentId);
 
         var (restricted, restrictedError) = await SegmentStudioBrowseService.SearchAsync(db,
             new(null, 10, [], [], 1, 20, PerformerId: 1), includePerformers: false, CancellationToken.None);
@@ -492,6 +523,8 @@ public sealed class SegmentStudioBrowseAndSlotTests
             builder.Entity<Tag>().Ignore(item => item.ParentRelations).Ignore(item => item.ChildRelations).Ignore(item => item.RemoteIds)
                 .Ignore(item => item.VideoTags).Ignore(item => item.PerformerTags).Ignore(item => item.ImageTags).Ignore(item => item.GalleryTags)
                 .Ignore(item => item.StudioTags).Ignore(item => item.GroupTags).Ignore(item => item.Aliases).Ignore(item => item.TagGroup);
+            builder.Entity<TagParent>().HasKey(item => new { item.ParentId, item.ChildId });
+            builder.Entity<TagParent>().Ignore(item => item.Parent).Ignore(item => item.Child);
             builder.Entity<Video>().HasKey(item => item.Id);
             builder.Entity<Video>().HasQueryFilter(item => allowedVideoId == null || item.Id == allowedVideoId);
             builder.Entity<Video>().Ignore(item => item.Urls).Ignore(item => item.VideoTags).Ignore(item => item.VideoPerformers)
