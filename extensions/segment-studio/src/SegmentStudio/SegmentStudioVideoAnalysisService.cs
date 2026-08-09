@@ -67,7 +67,6 @@ public interface ISegmentStudioVideoAnalysisService
         IProgress<SegmentStudioAnalysisProgress> progress,
         CancellationToken ct)
         => ExecuteRunAsync(db, runId, request, mode, ct);
-    Task<int> BackfillProvenanceAsync(DbContext db, Guid runId, CancellationToken ct);
 }
 
 public sealed class SegmentStudioVideoAnalysisService(
@@ -212,11 +211,6 @@ public sealed class SegmentStudioVideoAnalysisService(
                     var existing = await db.Set<SegmentStudioAnalysisCandidate>()
                         .Where(candidate => candidate.RunId == runId).ToListAsync(ct);
                     db.RemoveRange(existing);
-                    var existingDrafts = await db.Set<SegmentStudioItem>()
-                        .Where(item => item.SourceKey == "ext:segment-studio.analysis"
-                            && item.SourceRunId == runId.ToString())
-                        .ToListAsync(ct);
-                    db.RemoveRange(existingDrafts);
                     candidates = response.Ai.Segments.Select(candidate => new SegmentStudioAnalysisCandidate
                     {
                         RunId = runId,
@@ -449,23 +443,6 @@ public sealed class SegmentStudioVideoAnalysisService(
                 resolved[name] = tag.Id;
         }
         return resolved;
-    }
-
-    public async Task<int> BackfillProvenanceAsync(
-        DbContext db, Guid runId, CancellationToken ct)
-    {
-        var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(async () =>
-        {
-            db.ChangeTracker.Clear();
-            await using var transaction = db.Database.IsRelational()
-                ? await db.Database.BeginTransactionAsync(ct)
-                : null;
-            var count = await provenance.BackfillAsync(db, runId, ct);
-            if (transaction is not null)
-                await transaction.CommitAsync(ct);
-            return count;
-        });
     }
 
     private static async Task ProjectBasicNativeSegmentsAsync(

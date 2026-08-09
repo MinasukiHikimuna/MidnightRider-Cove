@@ -1,7 +1,7 @@
 import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 test("UI imports only components available in the declared Cove runtime", () => {
-  assert.equal(manifest.version, "0.71.1");
+  assert.equal(manifest.version, "0.71.2");
   assert.equal(manifest.minCoveVersion, "1.1.0");
   assert.match(source, /from "@cove\/runtime\/api"/);
   assert.doesNotMatch(source, /EntityTileFrame/);
@@ -270,16 +270,16 @@ test("C and Shift+C use durable incorrect-example feedback", () => {
   assert.match(source, /selectedSegments\.length === 0/);
   assert.match(source, /Partially collected \$\{completed\.length\} of \$\{candidates\.length\} selected segments/);
   assert.match(source, /training-exports/);
-  assert.match(source, /Download AI Feedback ZIP/);
+  assert.match(source, /Download \$\{examples\.length\} Example/);
   assert.doesNotMatch(source, /Download Marker Studio ZIP/);
   assert.doesNotMatch(source, /Marker Studio-compatible ZIP/);
   assert.match(source, /FormData/);
   assert.match(source, /extractFeedbackFrames/);
   assert.match(source, /autoFocus: true/);
-  assert.match(source, /incorrectExamples\.length > 0 \? h\("button"/);
+  assert.match(source, /key: "feedback"[\s\S]{0,180}incorrectExamples\.length === 0/);
   assert.match(source, /Open AI feedback collection, \$\{incorrectExamples\.length\} example/);
   assert.match(source, /onClick: \(\) => setIncorrectExamplesOpen\(true\)/);
-  assert.match(source, /AI feedback \(\$\{incorrectExamples\.length\}\)/);
+  assert.match(source, /AI Feedback\$\{incorrectExamples\.length \? ` \(\$\{incorrectExamples\.length\}\)` : ""\}/);
 });
 
 test("feedback frame sampling matches Marker Studio thresholds and clamps inside segments", () => {

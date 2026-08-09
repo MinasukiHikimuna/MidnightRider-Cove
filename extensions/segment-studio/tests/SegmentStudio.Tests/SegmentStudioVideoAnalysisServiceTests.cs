@@ -27,6 +27,22 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
     }
 
     [Fact]
+    public void FullAnalysisDoesNotIncludeLegacyProvenanceRepair()
+    {
+        var sourceRoot = Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+            "src", "SegmentStudio");
+        var analysis = File.ReadAllText(Path.Combine(
+            sourceRoot, "SegmentStudioVideoAnalysisService.cs"));
+        var provenance = File.ReadAllText(Path.Combine(
+            sourceRoot, "SegmentStudioAnalysisProvenanceService.cs"));
+
+        Assert.DoesNotContain("ext:segment-studio.analysis", analysis);
+        Assert.DoesNotContain("ext:segment-studio.analysis", provenance);
+        Assert.DoesNotContain("SupersedeLegacySourceAsync", provenance);
+    }
+
+    [Fact]
     public async Task ChildVideoUsesItsParentVideoFile()
     {
         await using var db = CreateContext();
@@ -357,35 +373,6 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         Assert.Equal("Analysis service is busy.", savedRun.ErrorMessage);
     }
 
-    [Fact]
-    public async Task BackfillLinksExistingDraftAndRestoresDetailedProvenance()
-    {
-        await using var db = CreateContext();
-        db.Add(new Video { Id = 7 });
-        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
-        db.Add(new Tag { Id = 20, Name = "Example tag" });
-        await db.SaveChangesAsync();
-        var service = CreateService(new FakeClient(Response()), db);
-        var run = await service.CreateRunAsync(db, 7, new(), default);
-        await service.ExecuteRunAsync(db, run.Id, new(), default);
-
-        db.RemoveRange(await db.Set<SegmentStudioSegmentProvenance>().ToListAsync());
-        db.RemoveRange(await db.Set<SegmentStudioLineageNode>().ToListAsync());
-        db.RemoveRange(await db.Set<SegmentStudioProvenanceActivity>().ToListAsync());
-        var candidate = await db.Set<SegmentStudioAnalysisCandidate>().SingleAsync();
-        candidate.ItemId = null;
-        candidate.Item = null;
-        await db.SaveChangesAsync();
-
-        var count = await service.BackfillProvenanceAsync(db, run.Id, default);
-
-        Assert.Equal(1, count);
-        Assert.NotNull((await db.Set<SegmentStudioAnalysisCandidate>().SingleAsync()).ItemId);
-        Assert.Single(await db.Set<SegmentStudioLineageNode>().ToListAsync());
-        Assert.Single(await db.Set<SegmentStudioProvenanceActivity>().ToListAsync());
-        Assert.Single(await db.Set<SegmentStudioSegmentProvenance>().ToListAsync());
-    }
-
     private static AnalysisDbContext CreateContext() => new(
         new DbContextOptionsBuilder<AnalysisDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -414,11 +401,6 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
             IReadOnlyList<SegmentStudioAnalysisCandidate> candidates,
             CancellationToken ct) => throw new InvalidOperationException(
                 "Synthetic provenance failure after tag creation.");
-
-        public Task<int> BackfillAsync(
-            DbContext db,
-            Guid runId,
-            CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class TestTagRepository(AnalysisDbContext db) : ITagRepository

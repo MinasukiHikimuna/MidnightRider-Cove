@@ -9,8 +9,10 @@ export { validateSegmentTiming, findUnreviewedSelection, findSegmentNearPlayhead
 export { historyActionsForTarget, segmentHistoryIdentity, segmentHistoryState, segmentsHistoryState, performerSlotHistoryState, performerSlotsForSegment, indexPerformerSlotsBySegment, performerSlotStatusFromSegmentSlots, nextUnapprovedAfterRejectedDeletion, sharedPerformerSlotShape, sharedTagPerformerSlotShape, multiSelectionActionHint, performerSlotStatus, performerSlotLabel, suggestDerivationRuleSlotMappings, applyDerivationRuleSlotSuggestions, performerSlotPresentation, formatGenderHint } from "./editor/model/history.js";
 export { feedbackFrameTimestamps, feedbackResultMatchesAction, feedbackSelectionPlan, groupIncorrectExamplesByTag, hideCollectedFeedbackSegments } from "./editor/model/feedback.js";
 export { shouldReloadAfterSegmentMutation } from "./editor/actions/primary.js";
+export { restorePublishApprovedFocus } from "./editor/SegmentEditor.js";
 export { provenanceSourceLabel, compactProvenanceSummary } from "./editor/SegmentDetails.js";
 export { groupMaterializationOutputs } from "./editor/dialogs/MaterializationDialog.js";
+export { groupApprovedDraftsForPublishing } from "./editor/dialogs/EditorDialogs.js";
 export { DISCOVERY_SORT_OPTIONS, buildDiscoverySearchParams, normalizeDiscoveryIds, setBackLinkNavigation } from "./discovery/components.js";
 export { reorderSegmentGroups, moveSegmentGroupTag, buildPerformerSlotOverview, filterPerformerSlotOverview } from "./settings/organization.js";
 export { buildDerivationRuleGraph, layoutDerivationRuleComponent, layoutDerivationRuleComponents, validateDerivationRuleDraft, resolveSelectedDerivationRule } from "./settings/derivation/model.js";

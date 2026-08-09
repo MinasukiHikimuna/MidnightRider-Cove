@@ -5,7 +5,6 @@ function useSegmentAnalysis(videoId, onReload, fullMode = false) {
   const [analysisRun, setAnalysisRun] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState(null);
   const [analysisError, setAnalysisError] = useState("");
-  const [analysisProvenanceRepair, setAnalysisProvenanceRepair] = useState("");
   const [nativeImportState, setNativeImportState] = useState({
     busy: false,
     reviewState: null,
@@ -68,22 +67,6 @@ function useSegmentAnalysis(videoId, onReload, fullMode = false) {
     }
   }
 
-  async function backfillAnalysisProvenance() {
-    if (!analysisRun?.id) return;
-    setAnalysisError("");
-    setAnalysisProvenanceRepair("queueing");
-    try {
-      await requestJson(
-        `/videos/${videoId}/analysis-runs/${analysisRun.id}/provenance`,
-        { method: "POST" },
-      );
-      setAnalysisProvenanceRepair("queued");
-    } catch (error) {
-      setAnalysisProvenanceRepair("");
-      setAnalysisError(error.message || "Unable to repair analysis provenance.");
-    }
-  }
-
   useEffect(() => {
     refreshAnalysisRun();
     requestJson("/analysis/status")
@@ -102,10 +85,8 @@ function useSegmentAnalysis(videoId, onReload, fullMode = false) {
 
   return {
     analysisError,
-    analysisProvenanceRepair,
     analysisRun,
     analysisStatus,
-    backfillAnalysisProvenance,
     importNativeSegments,
     nativeImportState,
     startFullAnalysis,

@@ -67,20 +67,28 @@ function IncorrectExamplesDialog({
       current.filter((tagName) => available.has(tagName)));
   }, [tagNamesFingerprint]);
   return h("div", {
+    className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
+    onMouseDown: (event) => {
+      if (event.target === event.currentTarget && !exporting && removingExampleId == null) onClose();
+    },
+    onKeyDownCapture: (event) => handleModalKey(event, {
+      onCancel: exporting || removingExampleId != null ? undefined : onClose,
+    }),
+  }, h("section", {
     role: "dialog",
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-examples-title",
-    onKeyDownCapture: (event) => handleModalKey(event, { onCancel: onClose }),
-    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4",
-  }, h("section", { className: "max-h-[85vh] w-full max-w-2xl overflow-auto rounded-lg border border-border bg-surface p-5 shadow-xl" }, [
-    h("div", { key: "heading", className: "flex items-start justify-between gap-4" }, [
-      h("div", { key: "copy" }, [
-        h("h2", { id: "segment-studio-examples-title", className: "text-base font-semibold text-foreground" }, "Incorrect examples"),
-        h("p", { className: "mt-1 text-sm text-secondary" }, `${examples.length} registered-AI example${examples.length === 1 ? "" : "s"} in this video. Basic native examples stay protected in the recycling bin; Full examples stay rejected.`),
-      ]),
-      h("button", { key: "close", type: "button", autoFocus: true, onClick: onClose, className: "rounded border border-border px-2 py-1 text-sm" }, "Close"),
+    tabIndex: -1,
+    onKeyDownCapture: trapModalFocus,
+    className: "flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
+    style: { maxHeight: "calc(100dvh - 2rem)" },
+  }, [
+    h("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
+      h("h2", { key: "title", id: "segment-studio-examples-title", className: "text-lg font-semibold text-foreground" }, "AI Feedback"),
+      h("p", { key: "description", className: "mt-1 text-sm text-secondary" }, `${examples.length} registered-AI example${examples.length === 1 ? "" : "s"} in this video. Expand a tag to inspect or restore examples before export.`),
     ]),
-    h("div", { key: "items", className: "mt-4 space-y-3" }, examples.length
+    h("div", { key: "body", className: "min-h-0 flex-1 overflow-y-auto p-5" }, [
+    h("div", { key: "items", className: "space-y-3" }, examples.length
       ? exampleGroups.map((group, groupIndex) => {
         const expanded = expandedTagNames.includes(group.tagName);
         const detailsId = `incorrect-example-tag-${groupIndex}`;
@@ -135,14 +143,25 @@ function IncorrectExamplesDialog({
       : [h("p", { key: "empty", className: "text-sm text-secondary" }, "Select one or more segments and press C to collect incorrect examples.")]),
     h("p", { key: "artifact-help", className: "mt-4 text-xs text-secondary" },
       "The ZIP contains sampled JPEG frames, legacy metadata.json, and a provenance-rich manifest.json. Download it for manual submission; Segment Studio does not upload it automatically."),
-    h("div", { key: "actions", className: "mt-5 flex justify-end" },
+    ]),
+    h("footer", { key: "footer", className: "flex items-center justify-end gap-2 border-t border-border px-5 py-4" }, [
       h("button", {
+        key: "cancel",
+        type: "button",
+        autoFocus: true,
+        disabled: exporting || removingExampleId != null,
+        onClick: onClose,
+        className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50",
+      }, "Cancel"),
+      h("button", {
+        key: "confirm",
         type: "button",
         disabled: exporting || removingExampleId != null
           || examples.length === 0,
         onClick: onExport,
-        className: "rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50",
-      }, exporting ? "Capturing frames…" : "Download AI Feedback ZIP")),
+        className: "rounded-md border border-cyan-400/60 bg-cyan-500/20 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-cyan-500/30 disabled:opacity-50",
+      }, exporting ? "Capturing frames…" : `Download ${examples.length} Example${examples.length === 1 ? "" : "s"}`),
+    ]),
   ]));
 }
 
@@ -262,6 +281,138 @@ function SegmentQuickSearchDialog({ segments, onSelect, onClose }) {
           return groupHeader ? [groupHeader, option] : [option];
         })
       : h("p", { className: "p-6 text-center text-sm text-secondary" }, "No visible segments match that search.")),
+  ]));
+}
+
+function groupApprovedDraftsForPublishing(segments) {
+  const groups = new Map();
+  for (const draft of segments || []) {
+    if (draft.published || draft.reviewState !== "approved") continue;
+    const key = String(draft.tagId ?? `name:${draft.tagName || ""}`);
+    if (!groups.has(key)) groups.set(key, {
+      key,
+      tagName: draft.tagName || "Tag segment",
+      drafts: [],
+    });
+    groups.get(key).drafts.push(draft);
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      drafts: group.drafts.sort((left, right) =>
+        left.startSec - right.startSec
+          || String(left.id).localeCompare(String(right.id))),
+    }))
+    .sort((left, right) =>
+      left.tagName.localeCompare(right.tagName)
+        || left.key.localeCompare(right.key));
+}
+
+function ApprovedDraftPublishingDialog({
+  drafts, processing, error, cancelButtonRef, onConfirm, onClose,
+}) {
+  const groups = useMemo(() => groupApprovedDraftsForPublishing(drafts), [drafts]);
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState([]);
+  const draftCount = groups.reduce((total, group) => total + group.drafts.length, 0);
+  const toggleGroup = (key) => setExpandedGroupKeys((current) =>
+    current.includes(key)
+      ? current.filter((candidate) => candidate !== key)
+      : [...current, key]);
+  const groupPanelId = (group) =>
+    `segment-studio-publish-approved-${group.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  return h("div", {
+    className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
+    onMouseDown: (event) => { if (event.target === event.currentTarget && !processing) onClose(); },
+    onKeyDownCapture: (event) => handleModalKey(event, {
+      onCancel: processing ? undefined : onClose,
+      onConfirm: draftCount > 0 && !processing ? onConfirm : undefined,
+    }),
+  }, h("section", {
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-labelledby": "segment-studio-publish-approved-title",
+    tabIndex: -1,
+    onKeyDownCapture: trapModalFocus,
+    className: "flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
+    style: { maxHeight: "calc(100dvh - 2rem)" },
+  }, [
+    h("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
+      h("h2", { key: "title", id: "segment-studio-publish-approved-title", className: "text-lg font-semibold text-foreground" },
+        "Publish approved drafts?"),
+      h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
+        "These approved drafts will become native Cove segments. Expand a tag to inspect timing and provenance before publishing."),
+    ]),
+    h("div", { key: "body", className: "min-h-0 flex-1 overflow-y-auto p-5" }, [
+      h("dl", { key: "summary", className: "mb-4 grid grid-cols-2 gap-2 rounded-md border border-border bg-surface p-3 text-sm" }, [
+        ["Approved drafts", draftCount],
+        ["Tags", groups.length],
+      ].flatMap(([label, value]) => [
+        h("dt", { key: `${label}:label`, className: "text-secondary" }, label),
+        h("dd", { key: `${label}:value`, className: "font-semibold text-foreground" }, String(value)),
+      ])),
+      groups.length
+        ? h("div", { key: "groups", className: "space-y-2" }, groups.map((group) => {
+            const expanded = expandedGroupKeys.includes(group.key);
+            return h("section", { key: group.key, className: "overflow-hidden rounded-md border border-border bg-surface" }, [
+              h("button", {
+                key: "toggle",
+                type: "button",
+                disabled: processing,
+                "aria-expanded": expanded,
+                "aria-controls": groupPanelId(group),
+                onClick: () => toggleGroup(group.key),
+                className: "flex w-full items-center gap-2 px-3 py-2 text-left disabled:opacity-50",
+                style: { background: segmentGroupHeaderBackground(false) },
+              }, [
+                h("span", { key: "indicator", "aria-hidden": "true", className: "shrink-0 text-xs text-secondary" }, expanded ? "▾" : "▸"),
+                h("span", { key: "tag", className: "min-w-0 flex-1 truncate text-sm font-semibold text-foreground" }, group.tagName),
+                h("span", { key: "count", className: "shrink-0 text-xs text-secondary" },
+                  `${group.drafts.length} draft${group.drafts.length === 1 ? "" : "s"}`),
+              ]),
+              expanded ? h("div", {
+                key: "drafts",
+                id: groupPanelId(group),
+                className: "divide-y divide-border border-t border-border",
+              }, group.drafts.map((draft) => {
+                const timeLabel = draft.endSec == null
+                  ? formatTime(draft.startSec)
+                  : `${formatTime(draft.startSec)} – ${formatTime(draft.endSec)}`;
+                const provenanceLabel = `${provenanceSourceLabel(draft.sourceKey)}${
+                  draft.confidence == null ? "" : ` · ${Math.round(draft.confidence * 100)}%`}`;
+                return h("div", { key: draft.id, className: "flex min-w-0 items-center gap-1.5 bg-card px-2 py-1.5" }, [
+                  h(SegmentStateBadge, { key: "review", state: draft.reviewState, includeLabel: false }),
+                  h("span", { key: "time", className: "min-w-0 flex-1 whitespace-nowrap font-mono text-xs text-foreground" }, timeLabel),
+                  h("span", {
+                    key: "provenance",
+                    className: "max-w-36 shrink truncate text-right text-[10px] text-secondary",
+                    title: provenanceLabel,
+                  }, provenanceLabel),
+                ]);
+              })) : null,
+            ]);
+          }))
+        : h("p", { key: "empty", className: "rounded-md border border-dashed border-border p-6 text-center text-sm text-secondary" },
+            "No unpublished approved drafts are available."),
+    ]),
+    error ? h("p", { key: "error", role: "alert", className: "mx-5 mb-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive" }, error) : null,
+    h("footer", { key: "footer", className: "flex items-center justify-end gap-2 border-t border-border px-5 py-4" }, [
+      h("button", {
+        key: "cancel",
+        ref: cancelButtonRef,
+        type: "button",
+        autoFocus: true,
+        disabled: processing,
+        onClick: onClose,
+        className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50",
+      }, "Cancel"),
+      h("button", {
+        key: "confirm",
+        type: "button",
+        disabled: processing || draftCount === 0,
+        onClick: onConfirm,
+        className: "rounded-md border border-emerald-500/60 bg-emerald-500/20 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-emerald-500/30 disabled:opacity-50",
+      }, processing ? "Publishing…" : `Publish ${draftCount} approved draft${draftCount === 1 ? "" : "s"}`),
+    ]),
   ]));
 }
 
@@ -483,4 +634,4 @@ function MergeSelectionDialog({
   ]));
 }
 
-export { KeyboardShortcutsDialog, IncorrectExamplesDialog, SegmentQuickSearchDialog, AutoAssignPerformersDialog, MergeSelectionDialog };
+export { KeyboardShortcutsDialog, IncorrectExamplesDialog, SegmentQuickSearchDialog, ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, MergeSelectionDialog, groupApprovedDraftsForPublishing };

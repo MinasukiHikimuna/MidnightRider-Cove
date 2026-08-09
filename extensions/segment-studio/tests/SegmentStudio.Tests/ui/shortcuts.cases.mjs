@@ -98,6 +98,7 @@ test("editor shortcuts ignore editable controls, overlays, and modified keys", (
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "ArrowDown", target: new TestElement("[role='separator']", { "aria-orientation": "horizontal" }) }, { querySelector: () => null }), false);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "ArrowLeft", target: new TestElement("[role='separator']", { "aria-orientation": "horizontal" }) }, { querySelector: () => null }), true);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "z", target: new TestElement("[role='separator']") }, { querySelector: () => null }, true), true);
+  assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "Z", shiftKey: true }, { querySelector: () => null }, true), true);
   assert.equal(ui.shouldHandleEditorShortcut(base, { querySelector: () => ({ role: "dialog" }) }), false);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "z" }, { querySelector: () => null }), false);
   assert.equal(ui.shouldHandleEditorShortcut({ ...base, key: "a" }, { querySelector: () => null }), true);
@@ -123,6 +124,8 @@ test("the editor shortcut registry drives both dispatch and visible help", () =>
   assert.equal(ui.findEditorShortcut({ key: "x", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, false)?.id, "marker.moveToBin");
   assert.equal(ui.findEditorShortcut({ key: "x", shiftKey: true, ctrlKey: false, altKey: false, metaKey: false }, false)?.id, "system.emptyBin");
   assert.equal(ui.findEditorShortcut({ key: "z", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "marker.confirm");
+  assert.equal(ui.findEditorShortcut({ key: "Z", shiftKey: true, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "system.publishApproved");
+  assert.equal(ui.findEditorShortcut({ key: "Z", shiftKey: true, ctrlKey: false, altKey: false, metaKey: false }, false), null);
   assert.equal(ui.findEditorShortcut({ key: "x", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "marker.reject");
   assert.equal(ui.findEditorShortcut({ key: "x", shiftKey: true, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "system.deleteRejected");
   assert.equal(ui.findEditorShortcut({ key: "u", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "navigation.nextShot");
@@ -132,6 +135,7 @@ test("the editor shortcut registry drives both dispatch and visible help", () =>
   assert.match(source, /findEditorShortcut\(event, compatibilityMode, shortcutOverrides\)/);
   assert.match(source, /saveSelectedReviewState\("approved"\)/);
   assert.match(source, /saveSelectedReviewState\("rejected"\)/);
+  assert.match(source, /shortcut\.id === "system\.publishApproved"[\s\S]{0,100}openPublishApprovedDialog\(event\.target\)/);
   assert.match(source.slice(0, source.indexOf("const DISCOVERY_URL_OPTIONS")), /system\.deleteRejected/);
 });
 

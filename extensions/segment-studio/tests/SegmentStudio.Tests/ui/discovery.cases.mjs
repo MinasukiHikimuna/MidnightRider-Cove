@@ -330,8 +330,8 @@ test("Full editor opens owned and native items in the unified editor", () => {
   assert.doesNotMatch(source, /key: "create-segment"/);
   assert.doesNotMatch(source, /requestedNativeEditor|editor=native/);
   assert.match(source, /compatibilityMode: mode === "review", profile/);
-  assert.match(source, /const approvedDraftCount = useMemo\(\s*\(\) => segments\.filter\(\(segment\) => !segment\.published && segment\.reviewState === "approved"\)\.length,\s*\[segments\],\s*\)/);
-  assert.match(source, /`Publish approved \(\$\{approvedDraftCount\}\)`/);
+  assert.match(source, /const approvedDrafts = useMemo\(\s*\(\) => segments\.filter\(\(segment\) => !segment\.published && segment\.reviewState === "approved"\),\s*\[segments\],\s*\);\s*const approvedDraftCount = approvedDrafts\.length/);
+  assert.match(source, /`Publish approved\$\{approvedDraftCount \? ` \(\$\{approvedDraftCount\}\)` : ""\}`/);
   assert.doesNotMatch(source, /"Complete review"/);
   assert.match(source, /\/complete-review/);
   assert.doesNotMatch(source, /\?workflow=full/);

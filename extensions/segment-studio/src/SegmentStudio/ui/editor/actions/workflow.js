@@ -8,7 +8,7 @@ import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -356,21 +356,10 @@ function createWorkflowActions(context) {
 
     async function previewDerivedSegments() {
       setMaterializeOpen(true);
-      setMaterializePreview(null);
       setMaterializeError("");
+      if (materializePreview) return;
       setMaterializeLoading(true);
-      try {
-        const preview = await requestJson(`/videos/${video.id}/derived-segments/preview`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ maxDepth: 3 }),
-        });
-        setMaterializePreview(preview);
-      } catch (error) {
-        setMaterializeError(error.message || "Unable to preview derived segments.");
-      } finally {
-        setMaterializeLoading(false);
-      }
+      refreshMaterializationPreview();
     }
 
     function closeMaterializeDialog() {
@@ -399,6 +388,7 @@ function createWorkflowActions(context) {
         });
         completeOperation(operationKey);
       } catch (error) {
+        if (error.status === 409) setMaterializePreview(null);
         setMaterializeError(error.message || "Unable to materialize derived segments.");
         setMaterializing(false);
         return;

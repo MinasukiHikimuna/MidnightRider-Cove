@@ -6,7 +6,7 @@ import { clampTimelineZoom, findNearestSegmentInCurrentSwimlane, findSegmentFrom
 import { readTimingClipboard, writeTimingClipboard } from "../model/layout.js";
 
 function createShortcutHandler(context) {
-  const { allSwimlanes, applyShortcutTiming, centerTimelineRef, compatibilityMode, createSegment, currentTime, deleteRejectedSegments, duplicateSegment, editorLayout, editorRef, emptyRecyclingBin, lineage, mediaDuration, mergeSelectedSwimlane, moveToBin, mutateShotBoundary, playbackControlsRef, playbackShortcutConfig, saveSelectedReviewState, seekRef, segmentGroupKeys, selectSegment, selectedSegment, selectedSegmentGroupForSegment, selectedSegmentGroupKey, selectedSegments, setCollapsedSegmentGroups, setIncorrectExamplesOpen, setQuickSearchOpen, setSaveMessage, setSelectedSegmentGroupKey, setTagEditing, setTimelineZoom, shotBoundaries, slotButtonRef, splitSegment, swimlanes, timelineDuration, toggleIncorrectExample, toggleSegmentGroup, updateTimelineRatio, videoFrameRate, visibleSegments } = context;
+  const { allSwimlanes, applyShortcutTiming, centerTimelineRef, compatibilityMode, createSegment, currentTime, deleteRejectedSegments, duplicateSegment, editorLayout, editorRef, emptyRecyclingBin, lineage, mediaDuration, mergeSelectedSwimlane, moveToBin, mutateShotBoundary, openPublishApprovedDialog, playbackControlsRef, playbackShortcutConfig, saveSelectedReviewState, seekRef, segmentGroupKeys, selectSegment, selectedSegment, selectedSegmentGroupForSegment, selectedSegmentGroupKey, selectedSegments, setCollapsedSegmentGroups, setIncorrectExamplesOpen, setQuickSearchOpen, setSaveMessage, setSelectedSegmentGroupKey, setTagEditing, setTimelineZoom, shotBoundaries, slotButtonRef, splitSegment, swimlanes, timelineDuration, toggleIncorrectExample, toggleSegmentGroup, updateTimelineRatio, videoFrameRate, visibleSegments } = context;
 
   function handleShortcut(event) {
       const shortcutOverrides = readShortcutBindingOverrides();
@@ -158,6 +158,7 @@ function createShortcutHandler(context) {
       if (shortcut.id === "layout.growSwimlanes") action = () => updateTimelineRatio(editorLayout.timelineRatio + 0.05);
       if (shortcut.id === "layout.shrinkSwimlanes") action = () => updateTimelineRatio(editorLayout.timelineRatio - 0.05);
       if (shortcut.id === "marker.confirm" && selectedSegment) action = () => saveSelectedReviewState("approved");
+      if (shortcut.id === "system.publishApproved") action = () => openPublishApprovedDialog(event.target);
       if (shortcut.id === "marker.reject" && selectedSegment) action = () => saveSelectedReviewState("rejected");
       if (shortcut.id === "system.emptyBin") action = () => emptyRecyclingBin();
       if (shortcut.id === "system.deleteRejected") action = () => deleteRejectedSegments();

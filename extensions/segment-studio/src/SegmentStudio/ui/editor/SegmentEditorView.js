@@ -8,7 +8,7 @@ import { buildSegmentQuickSearchEntries, performerOptionId, performInitialSegmen
 import { LaneReviewCounts } from "./PerformerSlotEditors.js";
 import { SegmentStudioBinAction, SegmentStudioSettingsAction } from "../shared/navigation.js";
 import { EditorFiltersDialog, FirstSegmentTagDialog } from "./dialogs/EditorFiltersDialog.js";
-import { AutoAssignPerformersDialog, IncorrectExamplesDialog, KeyboardShortcutsDialog, MergeSelectionDialog, SegmentQuickSearchDialog } from "./dialogs/EditorDialogs.js";
+import { ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, IncorrectExamplesDialog, KeyboardShortcutsDialog, MergeSelectionDialog, SegmentQuickSearchDialog } from "./dialogs/EditorDialogs.js";
 import { DerivedSegmentMaterializationDialog } from "./dialogs/MaterializationDialog.js";
 import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
 import { DEFAULT_EDITOR_LAYOUT } from "../shared/constants.js";
@@ -18,11 +18,15 @@ import { readShortcutBindingOverrides } from "./model/shortcuts.js";
 import { ChevronDown } from "@cove/runtime/lucide-react";
 
 function SegmentEditorView(props) {
-  const { activeFilterCount, allSwimlanes, analysisError, analysisProvenanceRepair, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, backfillAnalysisProvenance, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closeTagEditing, collapsedSegmentGroups, compatibilityMode, completeReview, configuringTag, createSegment, currentTime, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onNavigate, onReload, onSlotsChanged, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
-  const approvedDraftCount = useMemo(
-    () => segments.filter((segment) => !segment.published && segment.reviewState === "approved").length,
+  const { activeFilterCount, allSwimlanes, analysisError, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closePublishApprovedDialog, closeTagEditing, collapsedSegmentGroups, compatibilityMode, configuringTag, createSegment, currentTime, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onNavigate, onReload, onSlotsChanged, openPublishApprovedDialog, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, publishApprovedCancelButtonRef, publishApprovedDrafts, publishApprovedError, publishApprovedOpen, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
+  const approvedDrafts = useMemo(
+    () => segments.filter((segment) => !segment.published && segment.reviewState === "approved"),
     [segments],
   );
+  const approvedDraftCount = approvedDrafts.length;
+  const materializeChangeCount = materializePreview
+    ? materializePreview.createCount + materializePreview.linkCount
+    : null;
 
   function renderSegmentRailItem(segment) {
       const selected = selectedSegmentIds.includes(segment.id);
@@ -91,17 +95,6 @@ function SegmentEditorView(props) {
             compatibilityMode ? h(LaneReviewCounts, { key: "review-counts", counts: visibleCounts }) : null,
           ]),
           h("div", { key: "actions", className: "flex shrink-0 items-center gap-1.5" }, [
-            incorrectExamples.length > 0 ? h("button", {
-              key: "feedback",
-              type: "button",
-              onClick: () => setIncorrectExamplesOpen(true),
-              "aria-label": `Open AI feedback collection, ${incorrectExamples.length} example${incorrectExamples.length === 1 ? "" : "s"}`,
-              title: "Manage incorrect examples (Shift+C)",
-              className: "inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:border-accent/60 hover:bg-muted/40",
-            }, [
-              h("span", { key: "icon", "aria-hidden": "true" }, "♺"),
-              h("span", { key: "label" }, `AI feedback (${incorrectExamples.length})`),
-            ]) : null,
             !compatibilityMode ? h(SegmentStudioBinAction, { key: "bin", onNavigate, compact: true }) : null,
             h(SegmentStudioSettingsAction, { key: "settings", onNavigate, compact: true }),
           ]),
@@ -228,19 +221,6 @@ function SegmentEditorView(props) {
             }, compatibilityMode
               ? `${analysisRun.candidates?.length || 0} AI candidates`
               : "Native segments updated") : null,
-            compatibilityMode && analysisRun?.status === "completed" ? h("button", {
-              key: "repair-analysis-provenance",
-              type: "button",
-              disabled: analysisProvenanceRepair === "queueing"
-                || analysisProvenanceRepair === "queued",
-              onClick: backfillAnalysisProvenance,
-              title: "Create or repair detailed provenance for drafts generated by this analysis run",
-              className: "rounded-md border border-cyan-400/40 px-2 py-1.5 text-xs text-secondary hover:bg-cyan-500/10 hover:text-foreground disabled:opacity-50",
-            }, analysisProvenanceRepair === "queued"
-              ? "Provenance repair queued"
-              : analysisProvenanceRepair === "queueing"
-                ? "Queueing repair…"
-                : "Repair provenance") : null,
             compatibilityMode ? h("button", {
               key: "auto-assign-performers",
               type: "button",
@@ -253,18 +233,35 @@ function SegmentEditorView(props) {
               key: "materialize-derived",
               ref: materializeButtonRef,
               type: "button",
-              disabled: savingSegmentId != null || materializeLoading || materializing,
+              disabled: savingSegmentId != null || materializeLoading || materializing
+                || materializeChangeCount === 0,
               onClick: previewDerivedSegments,
               title: "Preview and materialize segments implied by derivation rules",
               className: "rounded-md border border-indigo-400/60 bg-indigo-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-indigo-500/25 disabled:opacity-50",
-            }, materializeLoading ? "Analyzing…" : "Auto-Materialize") : null,
+            }, materializeLoading
+              ? "Analyzing…"
+              : `Auto-Materialize${materializeChangeCount != null ? ` (${materializeChangeCount})` : ""}`) : null,
             compatibilityMode ? h("button", {
               key: "complete-review",
               type: "button",
               disabled: savingSegmentId != null || approvedDraftCount === 0,
-              onClick: completeReview,
+              onClick: (event) => openPublishApprovedDialog(event.currentTarget),
+              "aria-haspopup": "dialog",
+              "aria-expanded": publishApprovedOpen,
               className: "rounded-md border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-emerald-500/25 disabled:opacity-50",
-            }, `Publish approved (${approvedDraftCount})`) : null,
+            }, `Publish approved${approvedDraftCount ? ` (${approvedDraftCount})` : ""}`) : null,
+            h("button", {
+              key: "feedback",
+              type: "button",
+              disabled: exportingExamples || removingExampleId != null
+                || incorrectExamples.length === 0,
+              onClick: () => setIncorrectExamplesOpen(true),
+              "aria-haspopup": "dialog",
+              "aria-expanded": incorrectExamplesOpen,
+              "aria-label": `Open AI feedback collection, ${incorrectExamples.length} example${incorrectExamples.length === 1 ? "" : "s"}`,
+              title: "Manage incorrect examples (Shift+C)",
+              className: "rounded-md border border-cyan-400/60 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-cyan-500/25 disabled:opacity-50",
+            }, `AI Feedback${incorrectExamples.length ? ` (${incorrectExamples.length})` : ""}`),
           ]),
           h("div", { key: "utilities", className: "ml-auto flex flex-wrap items-center justify-end gap-1.5" }, [
             h("button", {
@@ -650,6 +647,15 @@ function SegmentEditorView(props) {
             else editorRef.current?.focus({ preventScroll: true });
           });
         },
+      }) : null,
+      publishApprovedOpen ? h(ApprovedDraftPublishingDialog, {
+        key: "publish-approved-dialog",
+        drafts: approvedDrafts,
+        processing: savingSegmentId === -1,
+        error: publishApprovedError,
+        cancelButtonRef: publishApprovedCancelButtonRef,
+        onConfirm: publishApprovedDrafts,
+        onClose: closePublishApprovedDialog,
       }) : null,
       shortcutsOpen ? h(KeyboardShortcutsDialog, {
         key: "shortcuts-dialog",

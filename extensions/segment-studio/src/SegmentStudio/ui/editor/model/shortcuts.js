@@ -76,6 +76,7 @@ export const SEGMENT_STUDIO_SHORTCUTS = [
   { id: "layout.growSwimlanes", category: "Timeline", bindings: [{ key: "ArrowUp", platform: true }], description: "Give swimlanes more height" },
   { id: "layout.shrinkSwimlanes", category: "Timeline", bindings: [{ key: "ArrowDown", platform: true }], description: "Give swimlanes less height" },
   { id: "marker.confirm", category: "Review", bindings: [{ key: "z" }], description: "Approve or unapprove segment", reviewOnly: true },
+  { id: "system.publishApproved", category: "Review", bindings: [{ key: "z", shift: true }], description: "Preview approved draft publishing", reviewOnly: true },
   { id: "marker.reject", category: "Review", bindings: [{ key: "x" }], description: "Reject or unreject segment", reviewOnly: true },
   { id: "system.deleteRejected", category: "Review", bindings: [{ key: "x", shift: true }], description: "Delete all rejected segments", reviewOnly: true },
 ];

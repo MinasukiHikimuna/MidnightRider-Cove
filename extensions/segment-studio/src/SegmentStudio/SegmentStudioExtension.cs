@@ -438,41 +438,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.AnalysisFullScan);
 
-        endpoints.MapPost(
-                "/api/plugins/segment-studio/videos/{videoId:int}/analysis-runs/{runId:guid}/provenance",
-                async Task<IResult> (int videoId, Guid runId, DbContext db,
-                    [FromServices] IJobService jobs, [FromServices] IServiceScopeFactory scopeFactory,
-                    CancellationToken ct) =>
-                {
-                    if (!await db.Set<SegmentStudioAnalysisRun>().AsNoTracking()
-                            .AnyAsync(run => run.Id == runId
-                                && run.VideoId == videoId
-                                && run.Status == "completed", ct))
-                    {
-                        return Results.NotFound(new { error = "Completed analysis run not found." });
-                    }
-                    var jobId = jobs.Enqueue(
-                        "segment-studio-analysis-provenance",
-                        "Backfill Segment Studio analysis provenance",
-                        async (progress, jobCt) =>
-                        {
-                            progress.Report(0.02, "Linking analysis candidates");
-                            await using var scope = scopeFactory.CreateAsyncScope();
-                            var scopedDb = scope.ServiceProvider.GetRequiredService<DbContext>();
-                            var analysis = scope.ServiceProvider
-                                .GetRequiredService<ISegmentStudioVideoAnalysisService>();
-                            var count = await analysis.BackfillProvenanceAsync(
-                                scopedDb, runId, jobCt);
-                            progress.Report(1, $"Recorded provenance for {count} segments");
-                        });
-                    return Results.Accepted(value: new { jobId, runId });
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.JobsRun)
-            .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosWrite)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.LineageManage);
-
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/history",
                 async Task<IResult> (int videoId, DbContext db,

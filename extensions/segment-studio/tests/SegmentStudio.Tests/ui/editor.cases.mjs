@@ -52,8 +52,103 @@ test("Basic mode hides Full Scan and approved publishing actions", () => {
   );
   assert.match(
     view,
-    /compatibilityMode \? h\("button", \{\s*key: "complete-review",[\s\S]{0,500}`Publish approved \(\$\{approvedDraftCount\}\)`\) : null/,
+    /compatibilityMode \? h\("button", \{\s*key: "complete-review",[\s\S]{0,600}`Publish approved\$\{approvedDraftCount \? ` \(\$\{approvedDraftCount\}\)` : ""\}`\) : null/,
   );
+});
+
+test("approved draft publishing is previewed by tag before conversion to native segments", () => {
+  assert.deepEqual(
+    ui.groupApprovedDraftsForPublishing([
+      { id: 3, tagId: 20, tagName: "Beta", startSec: 5, reviewState: "approved", published: false },
+      { id: 1, tagId: 10, tagName: "Alpha", startSec: 8, reviewState: "approved", published: false },
+      { id: 2, tagId: 10, tagName: "Alpha", startSec: 2, reviewState: "approved", published: false },
+      { id: 4, tagId: 30, tagName: "Excluded published", startSec: 1, reviewState: "approved", published: true },
+      { id: 5, tagId: 40, tagName: "Excluded pending", startSec: 1, reviewState: "unreviewed", published: false },
+    ]).map((group) => ({ tagName: group.tagName, ids: group.drafts.map((draft) => draft.id) })),
+    [
+      { tagName: "Alpha", ids: [2, 1] },
+      { tagName: "Beta", ids: [3] },
+    ],
+  );
+
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+  const dialogs = sourceByModule["editor/dialogs/EditorDialogs.js"];
+  const publishDialog = dialogs.slice(
+    dialogs.indexOf("function ApprovedDraftPublishingDialog"),
+    dialogs.indexOf("function AutoAssignPerformersDialog"),
+  );
+  assert.match(controller, /const \[publishApprovedOpen, setPublishApprovedOpen\] = useState\(false\)/);
+  assert.match(view, /onClick: \(event\) => openPublishApprovedDialog\(event\.currentTarget\)/);
+  assert.match(view, /publishApprovedOpen \? h\(ApprovedDraftPublishingDialog/);
+  assert.match(publishDialog, /These approved drafts will become native Cove segments/);
+  assert.match(publishDialog, /group\.drafts\.map/);
+  assert.match(publishDialog, /handleModalKey\(event,[\s\S]{0,180}onConfirm/);
+  assert.match(publishDialog, /trapModalFocus/);
+
+  let triggerFocuses = 0;
+  let fallbackFocuses = 0;
+  const trigger = { isConnected: true, disabled: false, focus: () => { triggerFocuses += 1; } };
+  const fallback = { focus: () => { fallbackFocuses += 1; } };
+  ui.restorePublishApprovedFocus(trigger, fallback);
+  assert.deepEqual({ triggerFocuses, fallbackFocuses }, { triggerFocuses: 1, fallbackFocuses: 0 });
+  trigger.disabled = true;
+  ui.restorePublishApprovedFocus(trigger, fallback);
+  assert.deepEqual({ triggerFocuses, fallbackFocuses }, { triggerFocuses: 1, fallbackFocuses: 1 });
+  trigger.disabled = false;
+  trigger.isConnected = false;
+  ui.restorePublishApprovedFocus(trigger, fallback);
+  assert.deepEqual({ triggerFocuses, fallbackFocuses }, { triggerFocuses: 1, fallbackFocuses: 2 });
+  ui.restorePublishApprovedFocus({ isConnected: true, tagName: "BODY", focus: () => { triggerFocuses += 1; } }, fallback);
+  assert.deepEqual({ triggerFocuses, fallbackFocuses }, { triggerFocuses: 1, fallbackFocuses: 3 });
+  assert.match(controller, /publishApprovedRestoreFocusRef\.current = trigger\?\.isConnected[\s\S]{0,80}trigger !== ownerDocument\.body[\s\S]{0,80}activeElement/);
+});
+
+test("bulk workflow actions share counts, disabled states, dialogs, and toolbar placement", () => {
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+  const dialogs = sourceByModule["editor/dialogs/EditorDialogs.js"];
+  const titleRow = view.slice(view.indexOf('key: "title-row"'), view.indexOf('key: "native-import"'));
+  const workflow = view.slice(view.indexOf('key: "workflow"'), view.indexOf('key: "utilities"'));
+  assert.doesNotMatch(titleRow, /key: "feedback"/);
+  assert.ok(workflow.indexOf('key: "feedback"') > workflow.indexOf('key: "complete-review"'));
+  assert.match(workflow, /Auto-Assign Performers\$\{autoAssignCandidates\.length \? ` \(\$\{autoAssignCandidates\.length\}\)` : ""\}/);
+  assert.match(workflow, /Auto-Materialize\$\{materializeChangeCount != null \? ` \(\$\{materializeChangeCount\}\)` : ""\}/);
+  assert.match(workflow, /Publish approved\$\{approvedDraftCount \? ` \(\$\{approvedDraftCount\}\)` : ""\}/);
+  assert.match(workflow, /AI Feedback\$\{incorrectExamples\.length \? ` \(\$\{incorrectExamples\.length\}\)` : ""\}/);
+  assert.match(workflow, /materializeChangeCount === 0/);
+  assert.match(workflow, /approvedDraftCount === 0/);
+  assert.match(workflow, /incorrectExamples\.length === 0/);
+  const feedbackDialog = dialogs.slice(
+    dialogs.indexOf("function IncorrectExamplesDialog"),
+    dialogs.indexOf("function SegmentQuickSearchDialog"),
+  );
+  assert.match(feedbackDialog, /flex max-h-\[82vh\] w-full max-w-3xl flex-col/);
+  assert.match(feedbackDialog, /key: "header"/);
+  assert.match(feedbackDialog, /key: "body"/);
+  assert.match(feedbackDialog, /key: "footer"/);
+  assert.match(feedbackDialog, /onKeyDownCapture: trapModalFocus/);
+  assert.match(feedbackDialog, /onCancel: exporting \|\| removingExampleId != null \? undefined : onClose/);
+  const shortcutsDialog = dialogs.slice(
+    dialogs.indexOf("function KeyboardShortcutsDialog"),
+    dialogs.indexOf("function IncorrectExamplesDialog"),
+  );
+  assert.match(shortcutsDialog, /handleModalKey\(event, \{ onCancel: onClose \}\)/);
+  assert.doesNotMatch(shortcutsDialog, /exporting|removingExampleId/);
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  assert.match(controller, /const materializeInventoryFingerprint = useMemo/);
+  assert.match(controller, /performerSlots: \(detail\.performerSlots/);
+  assert.match(controller, /itemMetadata: detail\.itemMetadata/);
+  assert.match(controller, /segment\.sourceKey/);
+  assert.match(controller, /segment\.sourceRunId/);
+  assert.match(controller, /segment\.confidence/);
+  assert.match(controller, /derived-segments\/preview/);
+  assert.match(controller, /setTimeout\(\(\) => \{/);
+  assert.match(controller, /materializeInventoryFingerprint, materializeRefreshToken/);
+  assert.match(controller, /const refreshMaterializationPreview/);
+  const workflowActions = sourceByModule["editor/actions/workflow.js"];
+  assert.match(workflowActions, /if \(materializePreview\) return/);
+  assert.match(workflowActions, /refreshMaterializationPreview\(\)/);
+  assert.match(workflowActions, /if \(error\.status === 409\) setMaterializePreview\(null\)/);
 });
 
 test("Full Scan offers AI-only and shot-boundary-only runs", () => {
@@ -69,6 +164,8 @@ test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   assert.match(view, /\["Shot boundaries only", \["omnishotcut"\]\]/);
   assert.match(analysis, /async function startFullAnalysis\(analyses = null\)/);
   assert.match(analysis, /analyses: analyses \|\| \(fullMode/);
+  assert.doesNotMatch(view, /Repair provenance|repair-analysis-provenance|backfillAnalysisProvenance/);
+  assert.doesNotMatch(analysis, /analysisProvenanceRepair|backfillAnalysisProvenance|analysis-runs\/\$\{analysisRun\.id\}\/provenance/);
 });
 
 test("Basic structural commands record native history and use native restoration", () => {

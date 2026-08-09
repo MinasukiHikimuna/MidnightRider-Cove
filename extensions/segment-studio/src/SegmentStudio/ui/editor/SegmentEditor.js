@@ -34,6 +34,16 @@ import { hideCollectedFeedbackSegments } from "./model/feedback.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
 
+function restorePublishApprovedFocus(target, fallback) {
+  const focusTarget = target?.isConnected
+      && target.disabled !== true
+      && target.tagName !== "BODY"
+      && typeof target.focus === "function"
+    ? target
+    : fallback;
+  focusTarget?.focus?.({ preventScroll: true });
+}
+
 function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsChanged, splitLayout, initialSegmentId, compatibilityMode = false, profile, onNavigate }) {
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
@@ -63,6 +73,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const mergeSavingRef = useRef(false);
   const [mergeConfirmation, setMergeConfirmation] = useState(null);
   const mergeCancelButtonRef = useRef(null);
+  const [publishApprovedOpen, setPublishApprovedOpen] = useState(false);
+  const [publishApprovedError, setPublishApprovedError] = useState("");
+  const publishApprovedCancelButtonRef = useRef(null);
+  const publishApprovedRestoreFocusRef = useRef(null);
   const reviewSavingRef = useRef(false);
   const binEmptyingRef = useRef(false);
   const [collapsedSegmentGroups, setCollapsedSegmentGroups] = useState(readCollapsedSegmentGroups);
@@ -75,17 +89,16 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [autoAssignError, setAutoAssignError] = useState("");
   const {
     analysisError,
-    analysisProvenanceRepair,
     analysisRun,
     analysisStatus,
-    backfillAnalysisProvenance,
     importNativeSegments,
     nativeImportState,
     startFullAnalysis,
   } = useSegmentAnalysis(detail.video.id, onReload, compatibilityMode);
   const [materializeOpen, setMaterializeOpen] = useState(false);
   const [materializePreview, setMaterializePreview] = useState(null);
-  const [materializeLoading, setMaterializeLoading] = useState(false);
+  const [materializeLoading, setMaterializeLoading] = useState(compatibilityMode);
+  const [materializeRefreshToken, setMaterializeRefreshToken] = useState(0);
   const [materializing, setMaterializing] = useState(false);
   const [materializeError, setMaterializeError] = useState("");
   const [configuringTag, setConfiguringTag] = useState(null);
@@ -130,6 +143,62 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   }, [materializeOpen, materializeLoading]);
   const video = detail.video;
   const segments = detail.segments || EMPTY_EDITOR_COLLECTION;
+  const materializeInventoryFingerprint = useMemo(() => JSON.stringify({
+    segments: segments.map((segment) => [
+        segment.id,
+        segment.itemId,
+        segment.nativeSegmentId,
+        segment.tagId,
+        segment.startSec,
+        segment.endSec,
+        segment.reviewState,
+        segment.published,
+        segment.sourceKey,
+        segment.sourceRunId,
+        segment.confidence,
+        segment.revision,
+        segment.updatedAt,
+      ]),
+    performerSlots: (detail.performerSlots || EMPTY_EDITOR_COLLECTION).map((slot) => [
+      slot.segmentId,
+      slot.slotDefinitionId,
+      slot.performerId,
+      slot.sortOrder,
+    ]),
+    itemMetadata: detail.itemMetadata || {},
+  }), [segments, detail.performerSlots, detail.itemMetadata]);
+  useEffect(() => {
+    if (!compatibilityMode) {
+      setMaterializePreview(null);
+      setMaterializeLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setMaterializeLoading(true);
+    const timer = setTimeout(() => {
+      requestJson(`/videos/${video.id}/derived-segments/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxDepth: 3 }),
+      }).then((preview) => {
+        if (!active) return;
+        setMaterializePreview(preview);
+        setMaterializeError("");
+      }).catch((error) => {
+        if (!active) return;
+        setMaterializePreview(null);
+        setMaterializeError(error.message || "Unable to preview derived segments.");
+      }).finally(() => {
+        if (active) setMaterializeLoading(false);
+      });
+    }, 150);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [compatibilityMode, video.id, materializeInventoryFingerprint, materializeRefreshToken]);
+  const refreshMaterializationPreview = () =>
+    setMaterializeRefreshToken((current) => current + 1);
   const segmentGroups = detail.segmentGroups || EMPTY_EDITOR_COLLECTION;
   const performerSlots = detail.performerSlots || EMPTY_EDITOR_COLLECTION;
   const performerSlotsAvailable = compatibilityMode
@@ -521,6 +590,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setHideDerivedSegments,
     setHistory,
     setHistoryOpen,
+    setPublishApprovedError,
     setSaveMessage,
     setSavingSegmentId,
     setSelectedSegmentGroupKey,
@@ -530,6 +600,36 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     timelineDuration,
     video,
   });
+  function openPublishApprovedDialog(trigger = null) {
+    if (!compatibilityMode
+        || savingSegmentId != null
+        || !segments.some((segment) => !segment.published && segment.reviewState === "approved")) return;
+    const ownerDocument = editorRef.current?.ownerDocument ?? document;
+    const activeElement = ownerDocument.activeElement === ownerDocument.body
+      ? null
+      : ownerDocument.activeElement;
+    publishApprovedRestoreFocusRef.current = trigger?.isConnected
+        && trigger !== ownerDocument.body
+      ? trigger
+      : activeElement;
+    setPublishApprovedError("");
+    setPublishApprovedOpen(true);
+  }
+  function closePublishApprovedDialog() {
+    if (savingSegmentId != null) return;
+    setPublishApprovedOpen(false);
+    setPublishApprovedError("");
+    requestAnimationFrame(() => {
+      restorePublishApprovedFocus(
+        publishApprovedRestoreFocusRef.current,
+        editorRef.current,
+      );
+      publishApprovedRestoreFocusRef.current = null;
+    });
+  }
+  async function publishApprovedDrafts() {
+    if (await completeReview()) closePublishApprovedDialog();
+  }
   const { closeMergeConfirmation, mergeSelectedSwimlane, saveSelectedReviewState } = createReviewActions({
     acceptHistory,
     compatibilityMode,
@@ -580,6 +680,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onDetailChange,
     onReload,
     recordHistoryAction,
+    refreshMaterializationPreview,
     removingExampleId,
     revealSegmentGroupForSelection,
     savingSegmentId,
@@ -655,6 +756,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     mergeSelectedSwimlane,
     moveToBin,
     mutateShotBoundary,
+    openPublishApprovedDialog,
     playbackControlsRef,
     playbackShortcutConfig,
     saveSelectedReviewState,
@@ -702,7 +804,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     activeFilterCount,
     allSwimlanes,
     analysisError,
-    analysisProvenanceRepair,
     analysisRun,
     analysisStatus,
     approvalFacetCounts,
@@ -711,7 +812,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     autoAssignOpen,
     autoAssignPerformers,
     autoAssigning,
-    backfillAnalysisProvenance,
     captureTrainingExport,
     removeIncorrectExample,
     centerTimelineRef,
@@ -719,10 +819,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     closeFirstSegmentTagDialog,
     closeMaterializeDialog,
     closeMergeConfirmation,
+    closePublishApprovedDialog,
     closeTagEditing,
     collapsedSegmentGroups,
     compatibilityMode,
-    completeReview,
     configuringTag,
     createSegment,
     currentTime,
@@ -767,6 +867,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     mergeSelectedSwimlane,
     nativeImportState,
     onNavigate,
+    openPublishApprovedDialog,
     onReload,
     onSlotsChanged,
     panelSeparatorProps,
@@ -777,6 +878,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     previewDerivedSegments,
     provenance,
     provenanceSources,
+    publishApprovedCancelButtonRef,
+    publishApprovedDrafts,
+    publishApprovedError,
+    publishApprovedOpen,
     quickSearchOpen,
     railScrollRef,
     railToggleRef,
@@ -840,4 +945,4 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   });
 }
 
-export { SegmentEditor };
+export { SegmentEditor, restorePublishApprovedFocus };

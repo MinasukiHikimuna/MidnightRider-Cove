@@ -12,7 +12,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, startInput, timelineDuration, video } = context;
+  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, startInput, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -149,10 +149,11 @@ function createPrimarySegmentActions(context) {
     }
 
     async function completeReview() {
-      if (!compatibilityMode) return;
+      if (!compatibilityMode) return false;
       const approvedDraftCount = segments.filter((segment) => !segment.published && segment.reviewState === "approved").length;
-      if (approvedDraftCount === 0 || savingSegmentId != null) return;
+      if (approvedDraftCount === 0 || savingSegmentId != null) return false;
       const operationKey = `complete-review:${video.id}:${detail.approvedSetVersion}`;
+      setPublishApprovedError("");
       setSavingSegmentId(-1);
       setSaveMessage(`Publishing ${approvedDraftCount} Approved draft${approvedDraftCount === 1 ? "" : "s"}…`);
       try {
@@ -178,9 +179,15 @@ function createPrimarySegmentActions(context) {
           : null;
         if (reloadedSelection) setSelectedSegmentId(reloadedSelection.id);
         setSaveMessage(`${result.published.length} Approved draft${result.published.length === 1 ? "" : "s"} published to Cove.`);
+        return true;
       } catch (error) {
+        const message = error.status === 409
+          ? "The approved drafts changed. Review the updated list and try again."
+          : error.message || "Unable to publish the approved drafts.";
         if (error.status === 409) await onConflict();
-        else setSaveMessage(error.message || "Unable to complete the review.");
+        setPublishApprovedError(message);
+        setSaveMessage(message);
+        return false;
       } finally {
         setSavingSegmentId(null);
       }
