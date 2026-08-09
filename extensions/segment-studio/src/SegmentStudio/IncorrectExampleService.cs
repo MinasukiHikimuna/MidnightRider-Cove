@@ -51,7 +51,8 @@ public sealed record IncorrectExampleToggleResult(
     long? Revision = null,
     string? Error = null,
     bool Replayed = false,
-    string? Code = null);
+    string? Code = null,
+    IncorrectExampleEditorDelta? EditorDelta = null);
 
 public sealed record TrainingExportCaptureFrame(string FieldName, double TimestampSec);
 public sealed record TrainingExportCaptureExample(
@@ -193,14 +194,8 @@ public static class IncorrectExampleService
             videoId, principal, authorization, requireDelete: true, ct);
         if (access is not null)
             return access;
-        var replay = await ReplayAsync(
-            db, request.OperationId, ToggleOperationKind, fingerprint,
-            principal?.UserId, ct);
-        if (replay is not null)
-            return replay;
-
         await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
-        replay = await ReplayAsync(
+        var replay = await ReplayAsync(
             db, request.OperationId, ToggleOperationKind, fingerprint,
             principal?.UserId, ct);
         if (replay is not null)
@@ -225,6 +220,35 @@ public static class IncorrectExampleService
         }
         if (result.Status != SegmentTransitionStatus.Updated)
             return result;
+
+        if (mode == SegmentStudioModes.Basic)
+        {
+            result = result with
+            {
+                EditorDelta = IncorrectExampleEditorDeltaService.RemovedNative(
+                    request.NativeSegmentId!.Value),
+            };
+        }
+        else if (result.ItemId is long itemId)
+        {
+            var removedIds = request.NativeSegmentId is int removedNativeSegmentId
+                ? new long[] { removedNativeSegmentId }
+                : [];
+            var identityChanges = request.NativeSegmentId is int previousId
+                ? new[]
+                {
+                    new IncorrectExampleSegmentIdentityChange(
+                        previousId, -itemId),
+                }
+                : [];
+            result = result with
+            {
+                EditorDelta = await IncorrectExampleEditorDeltaService
+                    .LoadItemClosureAsync(
+                        db, videoId, [itemId], removedIds,
+                        identityChanges, ct),
+            };
+        }
 
         AddReceipt(
             db,
@@ -268,14 +292,8 @@ public static class IncorrectExampleService
             videoId, principal, authorization, requireDelete: true, ct);
         if (access is not null)
             return access;
-        var replay = await ReplayAsync(
-            db, request.OperationId, CollectOperationKind, fingerprint,
-            principal?.UserId, ct);
-        if (replay is not null)
-            return replay;
-
         await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
-        replay = await ReplayAsync(
+        var replay = await ReplayAsync(
             db, request.OperationId, CollectOperationKind, fingerprint,
             principal?.UserId, ct);
         if (replay is not null)
@@ -322,6 +340,35 @@ public static class IncorrectExampleService
         if (result.Status != SegmentTransitionStatus.Updated)
             return result;
 
+        if (mode == SegmentStudioModes.Basic)
+        {
+            result = result with
+            {
+                EditorDelta = IncorrectExampleEditorDeltaService.RemovedNative(
+                    request.NativeSegmentId!.Value),
+            };
+        }
+        else if (result.ItemId is long itemId)
+        {
+            var removedIds = request.NativeSegmentId is int removedNativeSegmentId
+                ? new long[] { removedNativeSegmentId }
+                : [];
+            var identityChanges = request.NativeSegmentId is int previousId
+                ? new[]
+                {
+                    new IncorrectExampleSegmentIdentityChange(
+                        previousId, -itemId),
+                }
+                : [];
+            result = result with
+            {
+                EditorDelta = await IncorrectExampleEditorDeltaService
+                    .LoadItemClosureAsync(
+                        db, videoId, [itemId], removedIds,
+                        identityChanges, ct),
+            };
+        }
+
         AddReceipt(
             db,
             request.OperationId,
@@ -358,13 +405,12 @@ public static class IncorrectExampleService
             videoId, principal, authorization, requireDelete: true, ct);
         if (access is not null)
             return access;
+        await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
         var replay = await ReplayAsync(
             db, request.OperationId, RemoveOperationKind, fingerprint,
             principal?.UserId, ct);
         if (replay is not null)
             return replay;
-
-        await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
         var example = await db.Set<SegmentStudioIncorrectExample>()
             .SingleOrDefaultAsync(candidate =>
                 candidate.Id == exampleId && candidate.VideoId == videoId, ct);
@@ -433,6 +479,33 @@ public static class IncorrectExampleService
         else
         {
             return new(SegmentTransitionStatus.Conflict, Error: "The incorrect example representation is invalid.");
+        }
+
+        await db.SaveChangesAsync(ct);
+        if (result.Status == SegmentTransitionStatus.Updated)
+        {
+            if (result.Representation == "fullItem" && result.ItemId is long itemId)
+            {
+                result = result with
+                {
+                    EditorDelta = await IncorrectExampleEditorDeltaService
+                        .LoadItemClosureAsync(
+                            db, videoId, [itemId], [], [], ct),
+                };
+            }
+            else if (result.Representation == "native"
+                && result.NativeSegmentId is int nativeSegmentId)
+            {
+                result = result with
+                {
+                    EditorDelta = await IncorrectExampleEditorDeltaService
+                        .LoadBasicNativeAsync(
+                            db, videoId, nativeSegmentId,
+                            await CanReadProvenanceAsync(
+                                principal, authorization, ct),
+                            ct),
+                };
+            }
         }
 
         AddReceipt(
@@ -1522,12 +1595,29 @@ public static class IncorrectExampleService
                 Error: "This operation ID was already used for another request.");
         var result = JsonSerializer.Deserialize<IncorrectExampleToggleResult>(
             receipt.ResultPayloadJson!, JsonOptions);
-        return result is null
-            ? new(
+        if (result is null)
+            return new(
                 SegmentTransitionStatus.Conflict,
-                Error: "The stored operation result is invalid.")
-            : result with { Replayed = true };
+                Error: "The stored operation result is invalid.");
+        return result with
+        {
+            Status = SegmentTransitionStatus.Conflict,
+            Replayed = true,
+            EditorDelta = null,
+            Error = "This feedback response was already applied. Reload before retrying it.",
+            Code = "OPERATION_REPLAYED",
+        };
     }
+
+    private static async Task<bool> CanReadProvenanceAsync(
+        CovePrincipal? principal,
+        IAuthorizationService authorization,
+        CancellationToken ct) =>
+        (await authorization.AuthorizeAsync(
+            principal,
+            SegmentStudioExtension.ProvenanceReadPermission,
+            entity: null,
+            ct)).Allowed;
 
     private static Guid DeriveOperationId(Guid operationId, string purpose) =>
         new(SHA256.HashData(Encoding.UTF8.GetBytes(

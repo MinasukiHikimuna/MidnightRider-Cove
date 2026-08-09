@@ -5,7 +5,7 @@ import { segmentsHistoryState } from "../model/history.js";
 import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
-import { extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
+import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
 
 function createWorkflowActions(context) {
   const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -25,6 +25,7 @@ function createWorkflowActions(context) {
         || identities[0];
       const completed = [];
       const failures = [];
+      let workingDetail = detail;
       setSavingSegmentId(activeIdentity.id);
       setSaveMessage(plan.action === "remove"
         ? `Removing ${candidates.length} selected incorrect example${candidates.length === 1 ? "" : "s"}…`
@@ -37,8 +38,10 @@ function createWorkflowActions(context) {
             : `incorrect-example-collect:${video.id}:${usesNativeIdentity ? `native:${segment.nativeSegmentId}:${segment.updatedAt}` : `item:${segment.itemId}:${segment.revision}`}`;
           if (plan.action === "remove" && !example)
             throw new Error("The incorrect-example collection changed. Reload and try again.");
-          const result = plan.action === "remove"
-            ? await requestJson(
+          let result;
+          try {
+            result = plan.action === "remove"
+              ? await requestJson(
               `/videos/${video.id}/incorrect-examples/${example.id}/remove`,
               {
                 method: "POST",
@@ -51,7 +54,7 @@ function createWorkflowActions(context) {
                 }),
               },
             )
-            : await requestJson(`/videos/${video.id}/incorrect-examples/collect`, {
+              : await requestJson(`/videos/${video.id}/incorrect-examples/collect`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -67,7 +70,11 @@ function createWorkflowActions(context) {
                   ? null
                   : segment.revision,
               }),
-            });
+              });
+          } catch (error) {
+            error.operationKey = operationKey;
+            throw error;
+          }
           if (!feedbackResultMatchesAction(plan.action, result))
             throw new Error("The server returned an unexpected incorrect-example state. Reload and try again.");
           completeOperation(operationKey);
@@ -79,24 +86,35 @@ function createWorkflowActions(context) {
               candidate.itemId != null && candidate.itemId === segment.itemId)
             : null;
           try {
-            let submittedSegment = segment;
+            const identity = identities.find((candidate) =>
+              candidate.id === segment.id);
+            let submittedSegment = findSegmentByStableIdentity(
+              workingDetail?.segments, identity) || segment;
             let result;
             try {
               result = await submitAction(submittedSegment, example);
             } catch (error) {
-              if (plan.action !== "collect" || error.status !== 409) throw error;
-              const refreshed = await requestJson(
-                `/videos/${video.id}/editor`);
-              const identity = identities.find((candidate) =>
-                candidate.id === segment.id);
-              const current = findSegmentByStableIdentity(
-                refreshed?.segments, identity);
-              if (!current) throw error;
-              submittedSegment = current;
-              result = await submitAction(submittedSegment, null);
+              if (error.status === 409
+                && error.payload?.result?.code === "OPERATION_REPLAYED") {
+                workingDetail = await requestJson(
+                  `/videos/${video.id}/editor`);
+                completeOperation(error.operationKey);
+                result = error.payload.result;
+              } else {
+                if (plan.action !== "collect" || error.status !== 409) throw error;
+                const refreshed = await requestJson(
+                  `/videos/${video.id}/editor`);
+                workingDetail = refreshed;
+                const current = findSegmentByStableIdentity(
+                  refreshed?.segments, identity);
+                if (!current) throw error;
+                submittedSegment = current;
+                result = await submitAction(submittedSegment, null);
+              }
             }
-            const identity = identities.find((candidate) => candidate.id === segment.id);
             if (identity && result.itemId != null) identity.itemId = result.itemId;
+            workingDetail = applyFeedbackEditorDelta(
+              workingDetail, result.editorDelta);
             completed.push({ segment, result });
           } catch (error) {
             failures.push(error);
@@ -127,7 +145,8 @@ function createWorkflowActions(context) {
         }
         const examples = await requestJson(`/videos/${video.id}/incorrect-examples`);
         setIncorrectExamples(examples);
-        const loaded = await onReload();
+        const updatedDetail = workingDetail;
+        onDetailChange(updatedDetail, video.id);
         if (transitionSelectionOwned && shouldRestoreTransitionSelection(
           selectedSegmentIdRef.current, selectionGuardId,
         )) {
@@ -135,7 +154,7 @@ function createWorkflowActions(context) {
           let reloadedActive;
           if (activeCollected) {
             reloadedActive = nextCandidate
-              ? findSegmentByStableIdentity(loaded?.segments, {
+              ? findSegmentByStableIdentity(updatedDetail?.segments, {
                 id: nextCandidate.id,
                 itemId: nextCandidate.itemId,
                 nativeSegmentId: nextCandidate.nativeSegmentId,
@@ -144,10 +163,10 @@ function createWorkflowActions(context) {
             reloadedSelection = reloadedActive ? [reloadedActive] : [];
           } else {
             reloadedSelection = identities
-              .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
+              .map((identity) => findSegmentByStableIdentity(updatedDetail?.segments, identity))
               .filter(Boolean);
             reloadedActive =
-              findSegmentByStableIdentity(loaded?.segments, activeIdentity)
+              findSegmentByStableIdentity(updatedDetail?.segments, activeIdentity)
               || reloadedSelection[0]
               || null;
           }
@@ -198,7 +217,7 @@ function createWorkflowActions(context) {
       const operationKey =
         `incorrect-example-remove:${video.id}:${example.id}:${example.revision}:${example.representationRevision}`;
       try {
-        await requestJson(
+        const result = await requestJson(
           `/videos/${video.id}/incorrect-examples/${example.id}/remove`,
           {
             method: "POST",
@@ -215,13 +234,25 @@ function createWorkflowActions(context) {
         const refreshed = await requestJson(
           `/videos/${video.id}/incorrect-examples`);
         setIncorrectExamples(refreshed);
-        await onReload();
+        onDetailChange(
+          applyFeedbackEditorDelta(detail, result.editorDelta),
+          video.id,
+        );
         if (example.representation === "basicNativeBin")
           notifyRecyclingBinChanged();
         setSaveMessage(example.representation === "basicNativeBin"
           ? "Incorrect example removed and its native segment restored."
           : "Incorrect example removed and segment returned to unreviewed.");
       } catch (error) {
+        if (error.status === 409
+          && error.payload?.result?.code === "OPERATION_REPLAYED") {
+          completeOperation(operationKey);
+          setIncorrectExamples(await requestJson(
+            `/videos/${video.id}/incorrect-examples`));
+          await onReload();
+          setSaveMessage("Incorrect example removal was already applied.");
+          return;
+        }
         if (error.status === 409) await onConflict();
         setSaveMessage(error.message || "Unable to remove the incorrect example.");
       } finally {
@@ -265,7 +296,6 @@ function createWorkflowActions(context) {
         completeOperation(operationKey);
         setIncorrectExamples(await requestJson(
           `/videos/${video.id}/incorrect-examples`));
-        await onReload();
         setSaveMessage(
           `Downloaded ${result.exampleCount} incorrect example${result.exampleCount === 1 ? "" : "s"} in an AI Feedback ZIP and cleared ${completed.clearedExampleCount} from the working collection.`,
         );

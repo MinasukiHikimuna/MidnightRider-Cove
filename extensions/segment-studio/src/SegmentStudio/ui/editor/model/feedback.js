@@ -38,6 +38,52 @@ export function feedbackResultMatchesAction(action, result) {
   return result?.collected === (action === "collect");
 }
 
+export function applyFeedbackEditorDelta(detail, delta) {
+  if (!detail || !delta) return detail;
+  const removedIds = new Set(delta.removedSegmentIds || []);
+  const identityChanges = new Map(
+    (delta.identityChanges || []).map((change) => [change.previousId, change.currentId]),
+  );
+  const upserted = new Map(
+    [...(delta.upsertedSegments || []), ...(delta.upsertedBasicSegments || [])]
+      .map((segment) => [segment.id, segment]),
+  );
+  const nextSegments = (detail.segments || [])
+    .filter((segment) => !removedIds.has(segment.id))
+    .map((segment) => upserted.get(segment.id) || segment);
+  const retainedIds = new Set(nextSegments.map((segment) => segment.id));
+  for (const segment of upserted.values()) {
+    if (!retainedIds.has(segment.id)) nextSegments.push(segment);
+  }
+  nextSegments.sort((left, right) =>
+    Number(left.startSec) - Number(right.startSec)
+      || String(left.key || "").localeCompare(String(right.key || "")));
+
+  const nextSlots = (detail.performerSlots || [])
+    .filter((slot) => !removedIds.has(slot.segmentId)
+      || identityChanges.has(slot.segmentId))
+    .map((slot) => identityChanges.has(slot.segmentId)
+      ? { ...slot, segmentId: identityChanges.get(slot.segmentId) }
+      : slot);
+  const nextRevisions = {};
+  for (const [segmentId, revision] of Object.entries(
+    detail.performerSlotRevisions || {},
+  )) {
+    const numericId = Number(segmentId);
+    if (removedIds.has(numericId) && !identityChanges.has(numericId)) continue;
+    nextRevisions[identityChanges.get(numericId) ?? segmentId] = revision;
+  }
+
+  return {
+    ...detail,
+    approvedSetVersion:
+      delta.approvedSetVersion || detail.approvedSetVersion,
+    segments: nextSegments,
+    performerSlots: nextSlots,
+    performerSlotRevisions: nextRevisions,
+  };
+}
+
 export function hideCollectedFeedbackSegments(segments, incorrectExamples, hide) {
   const candidates = Array.isArray(segments) ? segments : [];
   if (!hide) return candidates;

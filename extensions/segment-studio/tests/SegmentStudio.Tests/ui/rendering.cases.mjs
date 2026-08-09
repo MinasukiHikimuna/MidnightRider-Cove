@@ -243,6 +243,31 @@ test("C and Shift+C use durable incorrect-example feedback", () => {
     },
   );
   assert.deepEqual(
+    ui.applyFeedbackEditorDelta(
+      { segments: [], performerSlots: [], performerSlotRevisions: {} },
+      {
+        upsertedBasicSegments: [{
+          id: 21,
+          nativeSegmentId: 21,
+          kind: "tag",
+          payloadJson: '{"producer":7}',
+          fieldProvenance: [{ fieldKey: "tag_id", value: 11 }],
+          startSec: 4,
+          key: "native:21",
+        }],
+      },
+    ).segments,
+    [{
+      id: 21,
+      nativeSegmentId: 21,
+      kind: "tag",
+      payloadJson: '{"producer":7}',
+      fieldProvenance: [{ fieldKey: "tag_id", value: 11 }],
+      startSec: 4,
+      key: "native:21",
+    }],
+  );
+  assert.deepEqual(
     ui.feedbackSelectionPlan(
       [
         { id: "first", itemId: 11, swimlaneKey: "lane-a" },
@@ -262,10 +287,50 @@ test("C and Shift+C use durable incorrect-example feedback", () => {
   assert.equal(ui.feedbackResultMatchesAction("collect", { collected: false }), false);
   assert.equal(ui.feedbackResultMatchesAction("remove", { collected: false }), true);
   assert.equal(ui.feedbackResultMatchesAction("remove", { collected: true }), false);
+  assert.deepEqual(
+    ui.applyFeedbackEditorDelta(
+      {
+        approvedSetVersion: "before",
+        segments: [
+          { id: 10, itemId: 1, reviewState: "unreviewed" },
+          { id: 20, nativeSegmentId: 20, reviewState: "unreviewed" },
+        ],
+        performerSlots: [{ segmentId: 20, slotDefinitionId: "slot" }],
+        performerSlotRevisions: { 20: "old" },
+        itemMetadata: { 1: { provenance: [] } },
+      },
+      {
+        removedSegmentIds: [20],
+        identityChanges: [{ previousId: 20, currentId: -2 }],
+        upsertedSegments: [
+          { id: -2, itemId: 2, nativeSegmentId: null, reviewState: "rejected", startSec: 2, key: "item:2" },
+        ],
+        approvedSetVersion: "after",
+      },
+    ),
+    {
+      approvedSetVersion: "after",
+      segments: [
+        { id: 10, itemId: 1, reviewState: "unreviewed" },
+        { id: -2, itemId: 2, nativeSegmentId: null, reviewState: "rejected", startSec: 2, key: "item:2" },
+      ],
+      performerSlots: [{ segmentId: -2, slotDefinitionId: "slot" }],
+      performerSlotRevisions: { "-2": "old" },
+      itemMetadata: { 1: { provenance: [] } },
+    },
+  );
   assert.match(source, /incorrect-examples\/collect/);
   assert.match(source, /incorrect-examples\/\$\{example\.id\}\/remove/);
   assert.match(source, /feedbackResultMatchesAction\(plan\.action, result\)/);
   assert.match(source, /error\.status !== 409[\s\S]*\/editor[\s\S]*submitAction\(submittedSegment, null\)/);
+  const collectHandler = source.slice(
+    source.indexOf("async function toggleIncorrectExample"),
+    source.indexOf("async function removeIncorrectExample"),
+  );
+  assert.match(collectHandler, /applyFeedbackEditorDelta/);
+  assert.match(collectHandler, /workingDetail[\s\S]*findSegmentByStableIdentity/);
+  assert.match(collectHandler, /workingDetail = applyFeedbackEditorDelta/);
+  assert.doesNotMatch(collectHandler, /const loaded = await onReload\(\)/);
   assert.match(source, /segment\.nativeSegmentId != null/);
   assert.match(source, /selectedSegments\.length === 0/);
   assert.match(source, /Partially collected \$\{completed\.length\} of \$\{candidates\.length\} selected segments/);

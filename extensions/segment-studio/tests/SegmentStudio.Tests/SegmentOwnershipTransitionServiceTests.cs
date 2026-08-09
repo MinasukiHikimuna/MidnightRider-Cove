@@ -196,6 +196,12 @@ public sealed class SegmentOwnershipTransitionServiceTests
             CovePrincipal.System(), fixture.Authorization, fixture.Blobs,
             CancellationToken.None);
 
+        Assert.NotNull(collected.EditorDelta);
+        var collectedDelta = collected.EditorDelta!;
+        Assert.Contains((long)fixture.SegmentId, collectedDelta.RemovedSegmentIds);
+        var collectedSegment = Assert.Single(collectedDelta.UpsertedSegments);
+        Assert.Equal(-collected.ItemId, collectedSegment.Id);
+        Assert.Equal("rejected", collectedSegment.ReviewState);
         Assert.Equal(SegmentTransitionStatus.Updated, repeatedCollect.Status);
         Assert.True(repeatedCollect.Collected);
         var example = Assert.Single(await fixture.Context
@@ -213,11 +219,76 @@ public sealed class SegmentOwnershipTransitionServiceTests
 
         Assert.Equal(SegmentTransitionStatus.Updated, removed.Status);
         Assert.False(removed.Collected);
+        Assert.NotNull(removed.EditorDelta);
+        var removedDelta = removed.EditorDelta!;
+        Assert.Empty(removedDelta.RemovedSegmentIds);
+        var restoredSegment = Assert.Single(removedDelta.UpsertedSegments);
+        Assert.Equal(-collected.ItemId, restoredSegment.Id);
+        Assert.Equal("unreviewed", restoredSegment.ReviewState);
         Assert.Equal(SegmentTransitionStatus.NotFound, repeatedRemove.Status);
         Assert.Empty(await fixture.Context.Set<SegmentStudioIncorrectExample>()
             .ToListAsync());
         Assert.Equal("unreviewed", (await fixture.Context
             .Set<SegmentStudioItem>().SingleAsync()).ReviewState);
+    }
+
+    [Fact]
+    public async Task IncorrectExampleReplayRequiresEditorReload()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var operationId = Guid.NewGuid();
+        var request = new ToggleIncorrectExampleRequest(
+            operationId, fixture.SegmentId, null, fixture.UpdatedAt, null);
+        var collected = await IncorrectExampleService.CollectAsync(
+            fixture.Context, fixture.VideoId, request,
+            CovePrincipal.System(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None);
+        var replay = await IncorrectExampleService.CollectAsync(
+            fixture.Context, fixture.VideoId, request,
+            CovePrincipal.System(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None);
+
+        Assert.Equal(SegmentTransitionStatus.Updated, collected.Status);
+        Assert.Equal(SegmentTransitionStatus.Conflict, replay.Status);
+        Assert.True(replay.Replayed);
+        Assert.Equal("OPERATION_REPLAYED", replay.Code);
+        Assert.Null(replay.EditorDelta);
+    }
+
+    [Fact]
+    public async Task BasicIncorrectExampleDeltaHonorsProvenancePermission()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.Add(new FieldProvenance
+        {
+            HostType = AffinityHostType.Segment,
+            HostId = fixture.SegmentId,
+            FieldKey = "tag_id",
+            ValueJson = "11",
+            SourceKey = "producer/example",
+            SourceRunId = "run-3",
+            ModelKey = "model-7",
+            CreatedAt = fixture.UpdatedAt,
+            UpdatedAt = fixture.UpdatedAt,
+        });
+        await fixture.Context.SaveChangesAsync();
+        var collected = await IncorrectExampleService.CollectAsync(
+            fixture.Context, fixture.VideoId,
+            new(Guid.NewGuid(), fixture.SegmentId, null, fixture.UpdatedAt, null),
+            CovePrincipal.System(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None, SegmentStudioModes.Basic);
+        var example = await fixture.Context.Set<SegmentStudioIncorrectExample>()
+            .SingleAsync();
+
+        var removed = await IncorrectExampleService.RemoveAsync(
+            fixture.Context, fixture.VideoId, example.Id,
+            new(Guid.NewGuid(), example.Revision, collected.Revision!.Value),
+            CovePrincipal.System(), new NoProvenanceAuthorization(), fixture.Blobs,
+            CancellationToken.None);
+
+        Assert.Equal(SegmentTransitionStatus.Updated, removed.Status);
+        Assert.Empty(Assert.Single(
+            removed.EditorDelta!.UpsertedBasicSegments!).FieldProvenance);
     }
 
     [Fact]
@@ -335,6 +406,15 @@ public sealed class SegmentOwnershipTransitionServiceTests
             CancellationToken.None);
 
         Assert.Equal(SegmentTransitionStatus.Updated, parentResult.Status);
+        Assert.NotNull(parentResult.EditorDelta);
+        Assert.Equal(
+            new[] { parent.Id, child.Id },
+            parentResult.EditorDelta!.UpsertedSegments
+                .Select(segment => segment.ItemId!.Value)
+                .OrderBy(id => id));
+        Assert.All(
+            parentResult.EditorDelta.UpsertedSegments,
+            segment => Assert.Equal("rejected", segment.ReviewState));
         Assert.Equal(SegmentTransitionStatus.Conflict, staleChildResult.Status);
         Assert.Equal(SegmentTransitionStatus.Updated, retryChildResult.Status);
         Assert.Equal(2, await fixture.Context
@@ -545,6 +625,22 @@ public sealed class SegmentOwnershipTransitionServiceTests
 
         Assert.Equal(SegmentTransitionStatus.Updated, removed.Status);
         Assert.Equal("native", removed.Representation);
+        Assert.NotNull(removed.EditorDelta);
+        var basicDelta = removed.EditorDelta;
+        Assert.Empty(basicDelta.UpsertedSegments);
+        Assert.NotNull(basicDelta.UpsertedBasicSegments);
+        var restoredEditorSegment = Assert.Single(
+            basicDelta.UpsertedBasicSegments);
+        Assert.Equal("tag", restoredEditorSegment.Kind);
+        Assert.Equal("42", restoredEditorSegment.RefId);
+        Assert.Equal("""{"producer":7}""", restoredEditorSegment.PayloadJson);
+        Assert.Equal("blob-1", restoredEditorSegment.ImageBlobId);
+        Assert.Equal(fixture.UpdatedAt.AddDays(-1), restoredEditorSegment.CreatedAt);
+        var editorProvenance = Assert.Single(
+            restoredEditorSegment.FieldProvenance);
+        Assert.Equal("tag_id", editorProvenance.FieldKey);
+        Assert.Equal("11", editorProvenance.ValueJson);
+        Assert.Equal("model-7", editorProvenance.ModelKey);
         Assert.Empty(await fixture.Context
             .Set<SegmentStudioIncorrectExample>().ToListAsync());
         Assert.Empty(await fixture.Context
@@ -3201,6 +3297,18 @@ public sealed class SegmentOwnershipTransitionServiceTests
             if (!Result(permission).Allowed)
                 throw new NotSupportedException();
         }
+        public bool Has(CovePrincipal? principal, string permission) => Result(permission).Allowed;
+    }
+
+    private sealed class NoProvenanceAuthorization : IAuthorizationService
+    {
+        private static AuthorizationResult Result(string permission) =>
+            permission == SegmentStudioExtension.ProvenanceReadPermission
+                ? AuthorizationResult.Deny("Denied", permission)
+                : AuthorizationResult.Allow();
+        public AuthorizationResult Authorize(CovePrincipal? principal, string permission, EntityRef? entity = null) => Result(permission);
+        public Task<AuthorizationResult> AuthorizeAsync(CovePrincipal? principal, string permission, EntityRef? entity, CancellationToken ct) => Task.FromResult(Result(permission));
+        public void Require(CovePrincipal? principal, string permission, EntityRef? entity = null) { }
         public bool Has(CovePrincipal? principal, string permission) => Result(permission).Allowed;
     }
 
