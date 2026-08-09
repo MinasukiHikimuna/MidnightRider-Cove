@@ -1,5 +1,4 @@
-import { findAdjacentShot, findEditorShortcut, frameStepSeconds, readShortcutBindingOverrides, shortcutRequiresSingleSegment } from "../model/shortcuts.js";
-import { shouldHandleEditorShortcut } from "../../shared/presentation.js";
+import { SEGMENT_STUDIO_SHORTCUTS, findAdjacentShot, frameStepSeconds, shortcutAvailableInMode, shortcutRequiresSingleSegment } from "../model/shortcuts.js";
 import { percentageSeekTime } from "../model/selection.js";
 import { findAdjacentSegmentGroupKey, findSwimlaneRangeSelection, findSwimlaneSelection, toggleAllCollapsedSegmentGroups } from "../model/swimlanes.js";
 import { clampTimelineZoom, findNearestSegmentInCurrentSwimlane, findSegmentFromPlayhead, findSegmentNearPlayhead, findUnreviewedSelection } from "../model/timeline.js";
@@ -8,12 +7,7 @@ import { readTimingClipboard, writeTimingClipboard } from "../model/layout.js";
 function createShortcutHandler(context) {
   const { allSwimlanes, applyShortcutTiming, centerTimelineRef, compatibilityMode, createSegment, currentTime, deleteRejectedSegments, duplicateSegment, editorLayout, editorRef, emptyRecyclingBin, lineage, mediaDuration, mergeSelectedSwimlane, moveToBin, mutateShotBoundary, openPublishApprovedDialog, playbackControlsRef, playbackShortcutConfig, saveSelectedReviewState, seekRef, segmentGroupKeys, selectSegment, selectedSegment, selectedSegmentGroupForSegment, selectedSegmentGroupKey, selectedSegments, setCollapsedSegmentGroups, setIncorrectExamplesOpen, setQuickSearchOpen, setSaveMessage, setSelectedSegmentGroupKey, setTagEditing, setTimelineZoom, shotBoundaries, slotButtonRef, splitSegment, swimlanes, timelineDuration, toggleIncorrectExample, toggleSegmentGroup, updateTimelineRatio, videoFrameRate, visibleSegments } = context;
 
-  function handleShortcut(event) {
-      const shortcutOverrides = readShortcutBindingOverrides();
-      const ownerDocument = event.target?.ownerDocument ?? editorRef.current?.ownerDocument ?? document;
-      if (!shouldHandleEditorShortcut(event, ownerDocument, compatibilityMode, shortcutOverrides)) return;
-      const shortcut = findEditorShortcut(event, compatibilityMode, shortcutOverrides);
-      if (!shortcut) return;
+  function executeShortcut(shortcut, event) {
       if (selectedSegments.length > 1 && shortcutRequiresSingleSegment(shortcut.id)) {
         event.preventDefault();
         event.stopPropagation();
@@ -168,7 +162,12 @@ function createShortcutHandler(context) {
       action();
     }
 
-  return { handleShortcut };
+  function executeShortcutById(shortcutId, event) {
+    const shortcut = SEGMENT_STUDIO_SHORTCUTS.find((candidate) => candidate.id === shortcutId);
+    if (shortcut && shortcutAvailableInMode(shortcut, compatibilityMode)) executeShortcut(shortcut, event);
+  }
+
+  return { executeShortcutById };
 }
 
 export { createShortcutHandler };

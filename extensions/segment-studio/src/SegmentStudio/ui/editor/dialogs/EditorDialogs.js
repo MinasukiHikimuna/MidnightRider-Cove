@@ -1,6 +1,6 @@
 import { h, useEffect, useMemo, useRef, useState } from "../../shared/runtime.js";
 
-import { resolveSegmentStudioShortcuts, shortcutAvailableInMode, shortcutBindingLabel, splitShortcutCategoriesIntoColumns } from "../model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, shortcutAvailableInMode, shortcutBindingLabel, splitShortcutCategoriesIntoColumns } from "../model/shortcuts.js";
 
 import { formatTime } from "../../shared/api.js";
 
@@ -16,16 +16,19 @@ import { provenanceSourceLabel } from "../SegmentDetails.js";
 
 import { groupIncorrectExamplesByTag } from "../model/feedback.js";
 
-function KeyboardShortcutsDialog({ reviewMode, overrides, onClose }) {
-  const visibleShortcuts = resolveSegmentStudioShortcuts(overrides)
+function KeyboardShortcutsDialog({ reviewMode, bindings, onClose }) {
+  const visibleShortcuts = SEGMENT_STUDIO_SHORTCUTS
     .filter((shortcut) => shortcutAvailableInMode(shortcut, reviewMode));
   const categoryGroups = splitShortcutCategoriesIntoColumns(visibleShortcuts, 1)[0];
   const categoryColumns = splitShortcutCategoriesIntoColumns(visibleShortcuts);
   const renderCategorySection = ({ category, shortcuts }) => {
     const rows = shortcuts.map((shortcut) => h("div", { key: shortcut.id, className: "flex items-center justify-between text-sm" }, [
         h("span", { key: "description", className: "min-w-0 flex-1 text-foreground" }, shortcut.description),
-        h("span", { key: "bindings", className: "ml-4 flex shrink-0 flex-wrap justify-end gap-2" }, shortcut.bindings.map((binding, index) =>
-          h("kbd", { key: `${shortcut.id}:${index}`, className: "rounded bg-surface px-2 py-0.5 font-mono text-xs text-foreground" }, shortcutBindingLabel(binding)))),
+        h("span", { key: "bindings", className: "ml-4 flex shrink-0 flex-wrap justify-end gap-2" },
+          (bindings[shortcut.id]
+            ? bindings[shortcut.id].length > 0 ? bindings[shortcut.id] : ["Unassigned"]
+            : shortcut.bindings.map(shortcutBindingLabel)).map((binding, index) =>
+            h("kbd", { key: `${shortcut.id}:${index}`, className: "rounded bg-surface px-2 py-0.5 font-mono text-xs text-foreground" }, binding))),
       ]));
     return h("section", { key: category, className: "space-y-2", "aria-label": `${category} shortcuts` }, [
       h("h3", { key: "heading", className: "mb-3 font-semibold text-primary" }, category),

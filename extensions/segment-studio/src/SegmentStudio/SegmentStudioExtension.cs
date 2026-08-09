@@ -150,8 +150,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
     }
 
-    public override UIManifest GetUIManifest() =>
-        ManifestBuilder()
+    public override UIManifest GetUIManifest()
+    {
+        var builder = ManifestBuilder()
             .AddPage(
                 "segment-studio",
                 "Segment Studio",
@@ -167,8 +168,10 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 icon: "scissors",
                 handlerName: "openSegmentStudio",
                 order: 45,
-                suppressSuccessAlert: true)
-            .Build();
+                suppressSuccessAlert: true);
+        SegmentStudioKeyboardActions.AddTo(builder);
+        return builder.Build();
+    }
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {

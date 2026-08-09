@@ -1,16 +1,16 @@
-import { h, useEffect, useMemo, useRef, useState } from "../shared/runtime.js";
+import { h, useEffect, useMemo, useRef, useRegisterExtensionKeyboardActions, useState } from "../shared/runtime.js";
 
 import { EMPTY_EDITOR_HISTORY, REVIEW_STATES } from "../shared/constants.js";
 
 import { activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileFilteredSelectedSegmentId, reconcileSelectedSegmentIds, resolveSelectedSegments, resolveVisibleSelectedSegment, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { readPlaybackShortcutConfig, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
 import { findUniquePerformerSlotAssignment } from "../discovery/model.js";
 
-import { isEditorShortcutOwner } from "../shared/presentation.js";
+import { canHandleEditorShortcutEvent, isEditorShortcutOwner } from "../shared/presentation.js";
 
 import { buildSegmentRailRows, expandedSwimlanes, groupSegmentsIntoSwimlanes, groupSelectedSwimlanes, groupSwimlanesBySegmentGroup, reconcileSegmentGroupKey, revealCollapsedSegmentGroup, segmentGroupKeyForSegment, visibleVirtualRows } from "./model/swimlanes.js";
 
@@ -745,7 +745,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     video,
     workspaceRef,
   });
-  const { handleShortcut } = createShortcutHandler({
+  const { executeShortcutById } = createShortcutHandler({
     allSwimlanes,
     applyShortcutTiming,
     centerTimelineRef,
@@ -792,16 +792,27 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     visibleSegments,
   });
 
-  shortcutHandlerRef.current = handleShortcut;
-  useEffect(() => {
-    const ownerDocument = editorRef.current?.ownerDocument ?? document;
-    const listener = (event) => {
-      if (!isEditorShortcutOwner(event, editorRef.current)) return;
-      shortcutHandlerRef.current?.(event);
+  shortcutHandlerRef.current = executeShortcutById;
+  const keyboardActions = useMemo(() => {
+    let previousEvent;
+    let previousResult = false;
+    const canHandle = ({ event }) => {
+      if (event === previousEvent) return previousResult;
+      previousEvent = event;
+      const ownerDocument = event.target?.ownerDocument ?? editorRef.current?.ownerDocument ?? document;
+      previousResult = isEditorShortcutOwner(event, editorRef.current)
+        && canHandleEditorShortcutEvent(event, ownerDocument);
+      return previousResult;
     };
-    ownerDocument.addEventListener("keydown", listener, true);
-    return () => ownerDocument.removeEventListener("keydown", listener, true);
-  }, []);
+    return SEGMENT_STUDIO_SHORTCUTS.map((shortcut) => ({
+      id: shortcut.id,
+      enabled: shortcutAvailableInMode(shortcut, compatibilityMode),
+      surface: "local",
+      canHandle,
+      action: ({ event }) => shortcutHandlerRef.current?.(shortcut.id, event),
+    }));
+  }, [compatibilityMode]);
+  useRegisterExtensionKeyboardActions("segment-studio", keyboardActions);
 
   const timelineRatioBounds = calculateTimelineRatioBounds(mediaStackHeight);
   const markerRailWidth = clampEditorPanelWidth(editorLayout.markerRailWidth, panelWidthMaximum("markerRailWidth"));

@@ -565,80 +565,17 @@ test("Settings action is shared by list views and the video editor", () => {
   assert.match(source, /h\(SegmentStudioSettingsAction, \{ key: "settings", onNavigate, compact: true \}\)/);
 });
 
-test("keyboard bindings can be customized without registry drift", () => {
-  const overrides = ui.parseShortcutBindingOverrides(JSON.stringify({
-    "marker.create": [{ key: "p", ctrl: true }],
-    unknown: [{ key: "x" }],
-    "marker.split": [{ key: "Shift" }, { key: "" }],
-  }));
-  assert.deepEqual(overrides, {
-    "marker.create": [{ key: "p", ctrl: true }],
-    "marker.split": [],
-  });
-  assert.equal(ui.findEditorShortcut({ key: "p", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false }, false, overrides)?.id, "marker.create");
-  assert.equal(ui.findEditorShortcut({ key: "a", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false }, false, overrides), null);
-  assert.deepEqual(ui.shortcutBindingFromEvent({ key: "k", code: "KeyK", ctrlKey: true, shiftKey: true }), { key: "k", ctrl: true, shift: true });
-  assert.deepEqual(ui.shortcutBindingFromEvent({ key: "<", code: "Comma", shiftKey: true }), { key: "<", code: "Comma", shift: true });
-  assert.deepEqual(ui.shortcutBindingFromEvent({ key: "p", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false }), { key: "p", ctrl: true });
-  assert.equal(ui.shortcutBindingFromEvent({ key: "Shift", shiftKey: true }), null);
-  assert.equal(ui.shortcutBindingsOverlap(
-    { key: "<", code: "Comma", shift: true },
-    { key: ",", code: "Comma", shift: true },
-  ), true);
-  assert.equal(ui.shortcutBindingsOverlap(
-    { key: "<", code: "Comma", shift: true },
-    { key: ",", shift: true },
-  ), true);
-  assert.equal(ui.shortcutBindingsOverlap(
-    { key: ">", code: "Period", shift: true },
-    { key: ".", shift: true },
-  ), true);
-  assert.equal(ui.shortcutBindingsOverlap(
-    { key: "<", code: "Comma", shift: true },
-    { key: ".", code: "Period", shift: true },
-  ), false);
-  assert.equal(ui.shortcutBindingsOverlap({ key: "+", shift: true }, { key: "+" }), true);
-  assert.equal(ui.shortcutBindingsOverlap({ key: "+", shift: true }, { key: "+", ctrl: true }), false);
-  assert.equal(ui.shortcutBindingsOverlap({ key: "ArrowUp", platform: true }, { key: "ArrowUp", ctrl: true }), true);
-  assert.equal(ui.shortcutBindingsOverlap({ key: "ArrowUp", platform: true }, { key: "ArrowUp", ctrl: true, meta: true }), false);
-  assert.equal(ui.shortcutBindingsOverlap({ key: "a" }, { key: "b" }), false);
-  assert.equal(ui.shouldExitShortcutCapture({ key: "Tab", shiftKey: false }), true);
-  assert.equal(ui.shouldExitShortcutCapture({ key: "Tab", shiftKey: true }), true);
-  assert.equal(ui.shouldExitShortcutCapture({ key: "Tab", ctrlKey: true }), false);
-  assert.match(source, /segment-studio\.shortcut-bindings\.v1/);
-  assert.match(source, /Backspace unassigns it; conflicts are rejected/);
-  assert.match(source, /Reset all defaults/);
-  assert.match(source, /overrides: readShortcutBindingOverrides\(\)/);
-  assert.match(source, /shouldExitShortcutCapture\(event\).*setCapturingId\(null\)/s);
-  assert.match(source, /shortcutBindingsOverlap\(binding, candidate\)/);
-});
+test("keyboard bindings are configured by Cove while playback quantities remain local", () => {
+  const settingsPage = sourceByModule["settings/SegmentStudioSettingsPage.js"];
+  const shortcutSettings = sourceByModule["settings/shortcuts.js"];
 
-test("keyboard binding settings group and search rows with compact inline reset icons", () => {
-  const settings = sourceByModule["settings/shortcuts.js"].slice(
-    sourceByModule["settings/shortcuts.js"].indexOf("function ShortcutBindingSettings()"),
-  );
-
-  assert.match(settings, /h\("h2", \{ key: "title"/);
-  assert.match(settings, /h\("p", \{ key: "description"/);
-  assert.match(settings, /Search bindings/);
-  assert.match(settings, /filterSegmentStudioShortcuts\(shortcuts, query\)/);
-  assert.match(settings, /splitShortcutCategoriesIntoColumns\(filteredShortcuts, 1\)/);
-  assert.match(settings, /splitShortcutCategoriesIntoColumns\(filteredShortcuts\)/);
-  assert.match(settings, /space-y-6 lg:hidden/);
-  assert.match(settings, /hidden items-start gap-6 lg:grid lg:grid-cols-2/);
-  assert.match(settings, /className: "divide-y divide-border rounded-md border border-border"/);
-  assert.doesNotMatch(settings, /max-h-\[32rem\]|overflow-y-auto/);
-  assert.match(settings, /gridTemplateColumns: "minmax\(0,1fr\) auto"/);
-  assert.match(settings, /key: "binding-controls", className: "flex items-center gap-1"/);
-  assert.match(settings, /document\.addEventListener\("keydown", handleCaptureKeyDown, true\)/);
-  assert.match(settings, /document\.removeEventListener\("keydown", handleCaptureKeyDown, true\)/);
-  assert.match(settings, /event\.stopImmediatePropagation\(\)/);
-  assert.doesNotMatch(settings, /onKeyDown: capturingId === shortcut\.id/);
-  assert.match(settings, /"aria-label": `\$\{bindingText\} — change binding for \$\{shortcut\.description\}`/);
-  assert.match(settings, /"aria-label": `Reset \$\{shortcut\.description\} to default`/);
-  assert.match(settings, /"aria-hidden": "true" \}, "↻"/);
-  assert.doesNotMatch(settings, /\}, "Reset"\)/);
-  assert.match(settings, /No keyboard bindings match your search/);
+  assert.match(source, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
+  assert.match(source, /useExtensionKeyboardBindings\("segment-studio"\)/);
+  assert.match(settingsPage, /href: "\/settings\/my\/keyboard-shortcuts"/);
+  assert.match(settingsPage, /Configure Segment Studio shortcuts in Cove settings/);
+  assert.doesNotMatch(shortcutSettings, /ShortcutBindingSettings|shortcut-bindings\.v1/);
+  assert.match(shortcutSettings, /Playback shortcuts/);
+  assert.match(shortcutSettings, /Small seek \(seconds\)/);
 });
 
 test("derived rule slot mappings remain compact and expose an accessible remove control", () => {

@@ -13,6 +13,8 @@ import {
   VideoPlayer,
   formatDuration,
   getDefaultFilter,
+  useRegisterExtensionKeyboardActions,
+  useExtensionKeyboardBindings,
   useListUrlState,
 } from "@cove/runtime/components";
 
@@ -20,4 +22,4 @@ const { useEffect, useId, useMemo, useRef, useState } = React;
 
 const h = React.createElement;
 
-export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ListPage, VideoPlayer, formatDuration, getDefaultFilter, useListUrlState, useEffect, useId, useMemo, useRef, useState, h };
+export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ListPage, VideoPlayer, formatDuration, getDefaultFilter, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useMemo, useRef, useState, h };

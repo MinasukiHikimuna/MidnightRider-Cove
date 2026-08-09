@@ -1,10 +1,8 @@
-import { h, useEffect, useRef, useState } from "../shared/runtime.js";
-
-import { findEditorShortcut, readShortcutBindingOverrides } from "../editor/model/shortcuts.js";
+import { h, useEffect, useRef, useRegisterExtensionKeyboardActions, useState } from "../shared/runtime.js";
 
 import { completeOperation, confirmEmptyRecyclingBin, formatTime, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestJson } from "../shared/api.js";
 
-import { shouldHandleEditorShortcut } from "../shared/presentation.js";
+import { canHandleEditorShortcutEvent } from "../shared/presentation.js";
 
 import { SegmentStudioTabs, notifyRecyclingBinChanged } from "../shared/navigation.js";
 
@@ -34,19 +32,15 @@ function SegmentStudioBinPage({ onNavigate, profile }) {
     return () => controller.abort();
   }, []);
 
-  useEffect(() => {
-    const listener = (event) => {
+  useRegisterExtensionKeyboardActions("segment-studio", [{
+    id: "system.emptyBin",
+    surface: "local",
+    canHandle: ({ event }) => {
       const ownerDocument = event.target?.ownerDocument ?? document;
-      const overrides = readShortcutBindingOverrides();
-      if (!shouldHandleEditorShortcut(event, ownerDocument, false, overrides)) return;
-      if (findEditorShortcut(event, false, overrides)?.id !== "system.emptyBin") return;
-      event.preventDefault();
-      event.stopPropagation();
-      emptyBinRef.current?.();
-    };
-    document.addEventListener("keydown", listener, true);
-    return () => document.removeEventListener("keydown", listener, true);
-  }, []);
+      return canHandleEditorShortcutEvent(event, ownerDocument);
+    },
+    action: () => emptyBinRef.current?.(),
+  }]);
 
   async function restore(item) {
     if (!window.confirm("Restore this segment to Cove? It will receive a new native ID. Relationships owned outside Segment Studio that referenced the old native ID will not be restored.")) return;

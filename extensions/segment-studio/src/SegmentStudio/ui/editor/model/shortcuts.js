@@ -1,4 +1,4 @@
-import { DEFAULT_PLAYBACK_SHORTCUT_CONFIG, PLAYBACK_SHORTCUTS_STORAGE_KEY, PLAYHEAD_ROUNDING_TOLERANCE_SECONDS, REVIEW_FILTER_STORAGE_KEY, REVIEW_STATES, SHORTCUT_BINDINGS_STORAGE_KEY } from "../../shared/constants.js";
+import { DEFAULT_PLAYBACK_SHORTCUT_CONFIG, PLAYBACK_SHORTCUTS_STORAGE_KEY, PLAYHEAD_ROUNDING_TOLERANCE_SECONDS, REVIEW_FILTER_STORAGE_KEY, REVIEW_STATES } from "../../shared/constants.js";
 
 export const SEGMENT_STUDIO_SHORTCUTS = [
   { id: "video.playPause", category: "Playback", bindings: [{ key: " " }, { key: "k" }], description: "Play or pause" },
@@ -126,18 +126,6 @@ export function parseShortcutBindingOverrides(raw) {
   } catch {
     return {};
   }
-}
-
-function readShortcutBindingOverrides() {
-  try { return parseShortcutBindingOverrides(window.localStorage.getItem(SHORTCUT_BINDINGS_STORAGE_KEY)); }
-  catch { return {}; }
-}
-
-function writeShortcutBindingOverrides(value) {
-  const normalized = parseShortcutBindingOverrides(value);
-  try { window.localStorage.setItem(SHORTCUT_BINDINGS_STORAGE_KEY, JSON.stringify(normalized)); }
-  catch { /* Shortcut bindings remain usable for this render without persistence. */ }
-  return normalized;
 }
 
 export function resolveSegmentStudioShortcuts(overrides = {}) {
@@ -408,4 +396,4 @@ function writePlaybackShortcutConfig(value) {
   return normalized;
 }
 
-export { SINGLE_SEGMENT_SHORTCUT_IDS, normalizeShortcutBinding, readShortcutBindingOverrides, writeShortcutBindingOverrides, shortcutBindingMatches, shortcutCodeMatchesKey, shortcutBindingLabel, readReviewFilter, writeReviewFilter, boundedNumber, readPlaybackShortcutConfig, writePlaybackShortcutConfig };
+export { SINGLE_SEGMENT_SHORTCUT_IDS, normalizeShortcutBinding, shortcutBindingMatches, shortcutCodeMatchesKey, shortcutBindingLabel, readReviewFilter, writeReviewFilter, boundedNumber, readPlaybackShortcutConfig, writePlaybackShortcutConfig };

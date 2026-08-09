@@ -1,6 +1,6 @@
 import { formatTime } from "../shared/api.js";
 import { DerivedSegmentIcon, EditorToolbarIcon, provenanceSourceLabel } from "./SegmentDetails.js";
-import { h, useMemo, VideoPlayer } from "../shared/runtime.js";
+import { h, useExtensionKeyboardBindings, useMemo, VideoPlayer } from "../shared/runtime.js";
 import { segmentRailItemStyle, SegmentStateBadge } from "../shared/presentation.js";
 import { setBackLinkNavigation } from "../discovery/components.js";
 import { PerformerAvatar, PerformerSublaneAvatars, swimlaneDisplayLabel } from "./model/swimlanes.js";
@@ -14,7 +14,6 @@ import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
 import { DEFAULT_EDITOR_LAYOUT } from "../shared/constants.js";
 import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
-import { readShortcutBindingOverrides } from "./model/shortcuts.js";
 import { ChevronDown } from "@cove/runtime/lucide-react";
 
 function SegmentEditorView(props) {
@@ -23,6 +22,7 @@ function SegmentEditorView(props) {
     () => segments.filter((segment) => !segment.published && segment.reviewState === "approved"),
     [segments],
   );
+  const shortcutBindings = useExtensionKeyboardBindings("segment-studio");
   const approvedDraftCount = approvedDrafts.length;
   const materializeChangeCount = materializePreview
     ? materializePreview.createCount + materializePreview.linkCount
@@ -660,7 +660,7 @@ function SegmentEditorView(props) {
       shortcutsOpen ? h(KeyboardShortcutsDialog, {
         key: "shortcuts-dialog",
         reviewMode: compatibilityMode,
-        overrides: readShortcutBindingOverrides(),
+        bindings: shortcutBindings,
         onClose: () => setShortcutsOpen(false),
       }) : null,
       incorrectExamplesOpen ? h(IncorrectExamplesDialog, {

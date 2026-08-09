@@ -1,6 +1,6 @@
 import { h } from "./runtime.js";
 
-import { findEditorShortcut, readShortcutBindingOverrides } from "../editor/model/shortcuts.js";
+import { findEditorShortcut } from "../editor/model/shortcuts.js";
 
 function StateBadge({ children }) {
   return h("span", {
@@ -186,9 +186,14 @@ export function isEditorShortcutOwner(event, editorElement) {
     || (target === ownerDocument?.body && activeElement === ownerDocument.body);
 }
 
-export function shouldHandleEditorShortcut(event, ownerDocument = document, reviewMode = false, overrides = readShortcutBindingOverrides()) {
+export function canHandleEditorShortcutEvent(event, ownerDocument = document) {
   if (event.defaultPrevented || isEditableTarget(event.target, event.key)) return false;
   if (ownerDocument.querySelector("[role='dialog'], [role='listbox'], [role='menu'], [aria-modal='true']")) return false;
+  return true;
+}
+
+export function shouldHandleEditorShortcut(event, ownerDocument = document, reviewMode = false, overrides = {}) {
+  if (!canHandleEditorShortcutEvent(event, ownerDocument)) return false;
   return findEditorShortcut(event, reviewMode, overrides) != null;
 }
 

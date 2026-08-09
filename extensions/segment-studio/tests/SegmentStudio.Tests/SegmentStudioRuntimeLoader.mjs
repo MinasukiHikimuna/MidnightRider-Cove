@@ -16,6 +16,8 @@ const runtimeModules = {
     "export const formatDuration = String;",
     "export const getDefaultFilter = () => null;",
     "export const useListUrlState = () => ({});",
+    "export const useRegisterExtensionKeyboardActions = () => {};",
+    "export const useExtensionKeyboardBindings = () => ({});",
   ].join("\n"),
 };
 

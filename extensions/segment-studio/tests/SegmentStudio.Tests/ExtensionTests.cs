@@ -29,6 +29,13 @@ public sealed class ExtensionTests
         Assert.Equal("toolbar", action.ActionType);
         Assert.Equal(["video"], action.EntityTypes);
         Assert.Equal("openSegmentStudio", action.HandlerName);
+        Assert.Equal(78, manifest.KeyboardActions.Count);
+        var createShortcut = Assert.Single(manifest.KeyboardActions, item => item.Id == "marker.create");
+        Assert.Equal(["a"], createShortcut.DefaultBindings);
+        Assert.Equal("Editing", createShortcut.Group);
+        Assert.Equal("segment-studio", Assert.Single(createShortcut.Scopes).Page);
+        var nextShortcut = Assert.Single(manifest.KeyboardActions, item => item.Id == "video.playNextSegment");
+        Assert.Equal(["Shift+l"], nextShortcut.DefaultBindings);
     }
 
     [Fact]

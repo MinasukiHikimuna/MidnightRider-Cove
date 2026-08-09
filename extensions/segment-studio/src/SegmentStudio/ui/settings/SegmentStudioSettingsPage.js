@@ -22,7 +22,7 @@ import { SegmentGroupCard, moveSegmentGroupTag, reorderSegmentGroups } from "./o
 
 import { DerivedSegmentRuleSettings } from "./derivation/DerivedSegmentRuleSettings.js";
 
-import { PlaybackShortcutSettings, ShortcutBindingSettings } from "./shortcuts.js";
+import { PlaybackShortcutSettings } from "./shortcuts.js";
 
 import { PerformerSlotOverviewSettings } from "./PerformerSlotOverviewSettings.js";
 
@@ -380,8 +380,13 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
       }, label))),
     h("div", { key: "playback-shortcuts-panel", hidden: activeSettingsTab !== "shortcuts" },
       h(PlaybackShortcutSettings)),
-    h("div", { key: "shortcut-bindings-panel", hidden: activeSettingsTab !== "shortcuts" },
-      h(ShortcutBindingSettings)),
+    h("section", { key: "shortcut-bindings-panel", hidden: activeSettingsTab !== "shortcuts", className: "space-y-2 rounded-lg border border-border bg-surface p-4" }, [
+      h("h2", { key: "title", className: "font-semibold text-foreground" }, "Keyboard bindings"),
+      h("p", { key: "description", className: "text-sm text-secondary" },
+        "Segment Studio bindings now use Cove's keyboard shortcut profiles and conflict handling."),
+      h("a", { key: "link", href: "/settings/my/keyboard-shortcuts", className: "inline-flex text-sm font-medium text-accent hover:underline" },
+        "Configure Segment Studio shortcuts in Cove settings →"),
+    ]),
     h("section", { key: "mode", hidden: activeSettingsTab !== "general", className: "space-y-3 rounded-lg border border-border bg-surface p-4" }, [
       h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "Workflow mode"),
       h(SegmentStudioModeSelector, {

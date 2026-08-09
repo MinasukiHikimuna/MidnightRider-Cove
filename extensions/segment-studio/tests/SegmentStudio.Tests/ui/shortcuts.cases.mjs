@@ -106,6 +106,7 @@ test("editor shortcuts ignore editable controls, overlays, and modified keys", (
 
 test("the editor shortcut registry drives both dispatch and visible help", () => {
   const ids = ui.SEGMENT_STUDIO_SHORTCUTS.map((shortcut) => shortcut.id);
+  assert.equal(ids.length, 78);
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(ids.includes("navigation.swimlaneRight"));
   assert.ok(ids.includes("navigation.extendSwimlaneLeft"));
@@ -131,8 +132,8 @@ test("the editor shortcut registry drives both dispatch and visible help", () =>
   assert.equal(ui.findEditorShortcut({ key: "u", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "navigation.nextShot");
   assert.match(source, /function KeyboardShortcutsDialog/);
   assert.match(source, /Keyboard shortcuts/);
-  assert.match(source, /resolveSegmentStudioShortcuts\(overrides\)/);
-  assert.match(source, /findEditorShortcut\(event, compatibilityMode, shortcutOverrides\)/);
+  assert.match(source, /useExtensionKeyboardBindings\("segment-studio"\)/);
+  assert.match(source, /executeShortcutById\(shortcutId, event\)/);
   assert.match(source, /saveSelectedReviewState\("approved"\)/);
   assert.match(source, /saveSelectedReviewState\("rejected"\)/);
   assert.match(source, /shortcut\.id === "system\.publishApproved"[\s\S]{0,100}openPublishApprovedDialog\(event\.target\)/);
@@ -293,7 +294,7 @@ test("frame stepping pauses playback and uses configured frame counts", () => {
   assert.match(source, /const videoFrameRate = Number\(video\.videoFile\?\.frameRate\) > 0/);
 });
 
-test("keyboard ownership stays with the mounted editor when player controls take focus", () => {
+test("native shortcut registrations keep keyboard ownership with the mounted editor", () => {
   const editor = new TestElement();
   const editorChild = new TestElement();
   const playerControl = new TestElement("[data-segment-player]");
@@ -313,11 +314,14 @@ test("keyboard ownership stays with the mounted editor when player controls take
     { key: "Enter", target: body, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false },
     { querySelector: () => ({ role: "dialog" }) },
   ), false);
-  assert.match(source, /ownerDocument\.addEventListener\("keydown", listener, true\)/);
-  assert.match(source, /ownerDocument\.removeEventListener\("keydown", listener, true\)/);
-  assert.match(source, /if \(!isEditorShortcutOwner\(event, editorRef\.current\)\) return/);
-  assert.match(source, /shortcutHandlerRef\.current = handleShortcut/);
-  assert.match(source, /\}, \[\]\);/);
+  assert.match(source, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
+  assert.match(source, /id: shortcut\.id/);
+  assert.match(source, /enabled: shortcutAvailableInMode\(shortcut, compatibilityMode\)/);
+  assert.match(source, /isEditorShortcutOwner\(event, editorRef\.current\)/);
+  assert.match(source, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
+  assert.match(source, /event === previousEvent/);
+  assert.match(source, /shortcutHandlerRef\.current = executeShortcutById/);
+  assert.doesNotMatch(source, /ownerDocument\.addEventListener\("keydown", listener, true\)/);
   assert.doesNotMatch(source, /onKeyDownCapture: handleShortcut/);
   assert.match(source, /shortcut\.id === "video\.playSelected"[\s\S]*requestAnimationFrame\(\(\) => editorRef\.current\?\.focus/);
 });
