@@ -1,4 +1,4 @@
-import { selectedSwimlaneMerge } from "../model/swimlanes.js";
+import { applySegmentMergeDelta, selectedSwimlaneMerge } from "../model/swimlanes.js";
 import { readMergeConfirmationPreference, writeMergeConfirmationPreference } from "../model/selection.js";
 import { completeOperation, formatTime, operationIdFor, requestJson } from "../../shared/api.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
@@ -52,9 +52,7 @@ function createReviewActions(context) {
             const key = `merge-native-selection:${video.id}:${survivor.id}:${consumed.id}:${survivor.updatedAt}:${consumed.updatedAt}`;
             return { key, operationId: operationIdFor(key), segmentId: consumed.id, expectedUpdatedAt: consumed.updatedAt };
           });
-          survivor = {
-            ...survivor,
-            ...await requestJson(`/videos/${video.id}/segments/merge-selection`, {
+          const delta = await requestJson(`/videos/${video.id}/segments/merge-selection`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -63,15 +61,16 @@ function createReviewActions(context) {
                 consumedSegments: operations.map(({ key: _key, ...operation }) => operation),
                 historyReceiptId,
               }),
-            }),
-          };
+            });
+          survivor = delta.survivor;
+          onDetailChange(applySegmentMergeDelta(detail, delta), video.id);
           operations.forEach(({ key }) => completeOperation(key));
         } else {
           const operations = consumedSegments.map((consumed) => {
             const key = `merge-draft-selection:${video.id}:${survivor.itemId}:${consumed.itemId}:${survivor.revision}:${consumed.revision}`;
             return { key, operationId: operationIdFor(key), itemId: consumed.itemId, expectedRevision: consumed.revision };
           });
-          const result = await requestJson(`/videos/${video.id}/drafts/merge-selection`, {
+          const delta = await requestJson(`/videos/${video.id}/drafts/merge-selection`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -80,17 +79,13 @@ function createReviewActions(context) {
               consumedDrafts: operations.map(({ key: _key, ...operation }) => operation),
             }),
           });
-          survivor = { ...survivor, ...result.draft };
+          survivor = delta.survivor;
+          onDetailChange(applySegmentMergeDelta(detail, delta), video.id);
           operations.forEach(({ key }) => completeOperation(key));
         }
-        const loaded = await onReload();
-        const reloadedSurvivor = findSegmentByStableIdentity(
-          loaded?.segments,
-          { nativeSegmentId: survivor.nativeSegmentId ?? survivor.id },
-        ) || survivor;
-        setSelectedSegmentIds([reloadedSurvivor.id]);
-        setSelectedSegmentId(reloadedSurvivor.id);
-        selectionAnchorIdRef.current = reloadedSurvivor.id;
+        setSelectedSegmentIds([survivor.id]);
+        setSelectedSegmentId(survivor.id);
+        selectionAnchorIdRef.current = survivor.id;
         selectionRangeBaseIdsRef.current = [];
         if (compatibilityMode) {
           acceptHistory(EMPTY_EDITOR_HISTORY);
@@ -99,11 +94,11 @@ function createReviewActions(context) {
             "segments.merge",
             `Merged ${merge.segments.length} segments`,
             basicBeforeState,
-            segmentsHistoryState([reloadedSurvivor], false),
+            segmentsHistoryState([survivor], false),
             historyReceiptId,
           );
         }
-        revealSegmentGroupForSelection(reloadedSurvivor.id);
+        revealSegmentGroupForSelection(survivor.id);
         setSaveMessage(`${merge.segments.length} segments merged into ${formatTime(merge.startSec)} – ${endLabel}.`);
       } catch (error) {
         if (error.status === 409) await onConflict();

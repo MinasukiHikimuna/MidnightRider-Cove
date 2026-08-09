@@ -327,6 +327,43 @@ export function selectedSwimlaneMerge(
   };
 }
 
+export function applySegmentMergeDelta(detail, delta) {
+  const removedSegmentIds = new Set(delta.removedSegmentIds || []);
+  const removedItemIds = new Set(delta.removedItemIds || []);
+  const survivor = delta.survivor;
+  const segments = (detail.segments || [])
+    .filter((segment) => !removedSegmentIds.has(segment.id))
+    .map((segment) => segment.id === survivor.id ? { ...segment, ...survivor } : segment);
+  if (!segments.some((segment) => segment.id === survivor.id)) segments.push(survivor);
+
+  const performerSlots = delta.performerSlots == null
+    ? detail.performerSlots
+    : (detail.performerSlots || [])
+      .filter((slot) => slot.segmentId !== survivor.id && !removedSegmentIds.has(slot.segmentId))
+      .concat(delta.performerSlots);
+  const performerSlotRevisions = { ...(detail.performerSlotRevisions || {}) };
+  if (delta.performerSlotRevisions != null) {
+    delete performerSlotRevisions[survivor.id];
+    removedSegmentIds.forEach((segmentId) => delete performerSlotRevisions[segmentId]);
+    Object.assign(performerSlotRevisions, delta.performerSlotRevisions);
+  }
+
+  const itemMetadata = { ...(detail.itemMetadata || {}) };
+  if (delta.itemMetadata != null) {
+    if (survivor.itemId != null) delete itemMetadata[survivor.itemId];
+    removedItemIds.forEach((itemId) => delete itemMetadata[itemId]);
+    Object.assign(itemMetadata, delta.itemMetadata);
+  }
+  return {
+    ...detail,
+    segments,
+    performerSlots,
+    performerSlotRevisions,
+    itemMetadata,
+    approvedSetVersion: delta.approvedSetVersion ?? detail.approvedSetVersion,
+  };
+}
+
 export function normalizeCollapsedSegmentGroups(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((key) => key === "ungrouped" || /^group:\d+$/.test(key)))];

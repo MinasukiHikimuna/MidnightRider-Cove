@@ -508,8 +508,36 @@ test("one selected swimlane can be merged into its full selected time span", () 
   assert.doesNotMatch(mergeHandler, /window\.confirm/);
   assert.match(mergeHandler, /confirmedMerge \|\| selectedSwimlaneMerge\([\s\S]*nativeOnly: !compatibilityMode/);
   assert.match(mergeHandler, /!compatibilityMode \|\| survivor\.nativeSegmentId != null/);
+  assert.match(mergeHandler, /applySegmentMergeDelta\(detail, delta\)/);
+  assert.doesNotMatch(mergeHandler, /await onReload\(\)/);
   assert.match(source, /mergeSelectedSwimlane\(true, skipFuture, mergeConfirmation\)/);
   assert.match(source, /requestAnimationFrame\(\(\) => detailPanelRef\.current\?\.focus/);
+});
+
+test("merge deltas replace the survivor and remove consumed projection state", () => {
+  const detail = {
+    segments: [{ id: -10, itemId: 10 }, { id: -11, itemId: 11 }, { id: -12, itemId: 12 }],
+    performerSlots: [{ segmentId: -10, performerId: 1 }, { segmentId: -11, performerId: 1 }, { segmentId: -12, performerId: 2 }],
+    performerSlotRevisions: { "-10": "a", "-11": "b", "-12": "c" },
+    itemMetadata: { 10: { provenance: ["old"] }, 11: { provenance: ["gone"] }, 12: { provenance: ["keep"] } },
+    approvedSetVersion: "old-version",
+  };
+  const survivor = { id: -10, itemId: 10, startSec: 1, endSec: 8, sourceKey: "user" };
+  const merged = ui.applySegmentMergeDelta(detail, {
+    survivor,
+    removedSegmentIds: [-11],
+    removedItemIds: [11],
+    performerSlots: [{ segmentId: -10, performerId: 1 }],
+    performerSlotRevisions: { "-10": "merged" },
+    itemMetadata: { 10: { provenance: [] } },
+    approvedSetVersion: "new-version",
+  });
+
+  assert.deepEqual(merged.segments, [{ ...detail.segments[0], ...survivor }, detail.segments[2]]);
+  assert.deepEqual(merged.performerSlots, [{ segmentId: -12, performerId: 2 }, { segmentId: -10, performerId: 1 }]);
+  assert.deepEqual(merged.performerSlotRevisions, { "-10": "merged", "-12": "c" });
+  assert.deepEqual(merged.itemMetadata, { 10: { provenance: [] }, 12: { provenance: ["keep"] } });
+  assert.equal(merged.approvedSetVersion, "new-version");
 });
 
 test("bulk performer assignment requires every selected segment to share one slot shape", () => {

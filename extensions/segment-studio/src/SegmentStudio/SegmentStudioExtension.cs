@@ -2917,8 +2917,12 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 {
                     if (request.ConsumedDrafts is null || request.ConsumedDrafts.Count == 0)
                         return Results.BadRequest(new { error = "Choose at least two drafts to merge." });
+                    var performerAccess = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(
+                        principalAccessor.Current, authorization, ct);
+                    var provenanceAccess = await authorization.AuthorizeAsync(
+                        principalAccessor.Current, ProvenanceReadPermission, entity: null, ct);
                     var strategy = db.Database.CreateExecutionStrategy();
-                    var result = await strategy.ExecuteAsync(async () =>
+                    var outcome = await strategy.ExecuteAsync(async () =>
                     {
                         await using var transaction = db.Database.IsRelational()
                             ? await db.Database.BeginTransactionAsync(ct) : null;
@@ -2936,18 +2940,32 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                     survivorRevision,
                                     consumed.ExpectedRevision),
                                 principalAccessor.Current, authorization, ct);
-                            if (mutation.Status != SegmentDraftMutationStatus.Updated)
-                                return mutation;
+                            if (mutation.Status != SegmentDraftMutationStatus.Updated || mutation.Replayed)
+                                return (Mutation: mutation, Delta: (SegmentEditorMergeDelta?)null);
                             survivorItemId = mutation.Draft!.ItemId;
                             survivorRevision = mutation.Draft.Revision;
                         }
                         await SegmentStudioHistoryService.ClearVideoAsync(db, videoId, ct);
+                        var removedItemIds = request.ConsumedDrafts.Select(item => item.ItemId)
+                            .Append(request.SurvivorItemId)
+                            .Where(itemId => itemId != mutation!.Draft!.ItemId)
+                            .Distinct()
+                            .ToArray();
+                        var delta = await SegmentEditorMergeProjectionService.LoadDraftAsync(
+                            db, mutation!.Draft!, removedItemIds, performerAccess.Allowed,
+                            provenanceAccess.Allowed, true, ct);
                         if (transaction is not null) await transaction.CommitAsync(ct);
-                        return mutation!;
+                        return (Mutation: mutation!, Delta: (SegmentEditorMergeDelta?)delta);
                     });
-                    if (result.Status == SegmentDraftMutationStatus.Updated)
+                    if (outcome.Mutation.Status == SegmentDraftMutationStatus.Updated
+                        && outcome.Delta is not null)
+                    {
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return ToDraftHttpResult(result);
+                        return Results.Ok(outcome.Delta);
+                    }
+                    if (outcome.Mutation.Replayed)
+                        return Results.Conflict(new { error = "This merge response was already applied. Reload before retrying it." });
+                    return ToDraftHttpResult(outcome.Mutation);
                 })
             .RequireAuthorization()
             .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.SegmentsDelete)
@@ -3432,12 +3450,27 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         return Results.BadRequest(new { error = "Choose at least two segments to merge." });
                     var preserveExtensionMetadata = await UsesFullWorkflowAsync(
                         db, principalAccessor, ct);
+                    var performerAccess = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(
+                        principalAccessor.Current, authorization, ct);
+                    var provenanceAccess = await authorization.AuthorizeAsync(
+                        principalAccessor.Current, ProvenanceReadPermission, entity: null, ct);
                     var strategy = db.Database.CreateExecutionStrategy();
-                    var result = await strategy.ExecuteAsync(async () =>
+                    var outcome = await strategy.ExecuteAsync(async () =>
                     {
                         await using var transaction = db.Database.IsRelational()
                             ? await db.Database.BeginTransactionAsync(ct) : null;
                         await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
+                        var requestedNativeIds = request.ConsumedSegments.Select(item => item.SegmentId)
+                            .Append(request.SurvivorSegmentId)
+                            .Distinct()
+                            .ToArray();
+                        var requestedItemIds = preserveExtensionMetadata
+                            ? await db.Set<SegmentStudioItem>().AsNoTracking()
+                                .Where(item => item.NativeSegmentId != null
+                                    && requestedNativeIds.Contains(item.NativeSegmentId.Value))
+                                .Select(item => item.Id)
+                                .ToArrayAsync(ct)
+                            : [];
                         var history = preserveExtensionMetadata
                             ? null
                             : await PrepareBasicHistoryAsync(
@@ -3450,7 +3483,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                         consumed => consumed.SegmentId)),
                                 ct);
                         if (history?.Exists == true)
-                            return BasicHistoryReceiptReplayDirectResult();
+                            return (
+                                Mutation: BasicHistoryReceiptReplayDirectResult(),
+                                Delta: (SegmentEditorMergeDelta?)null);
                         DirectSegmentMutationResult? mutation = null;
                         var survivorSegmentId = request.SurvivorSegmentId;
                         var survivorUpdatedAt = request.ExpectedSurvivorUpdatedAt;
@@ -3465,8 +3500,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                     consumed.ExpectedUpdatedAt),
                                 principalAccessor.Current, authorization, ct,
                                 preserveExtensionMetadata);
-                            if (mutation.Status != DirectSegmentMutationStatus.Updated)
-                                return mutation;
+                            if (mutation.Status != DirectSegmentMutationStatus.Updated || mutation.Replayed)
+                                return (Mutation: mutation, Delta: (SegmentEditorMergeDelta?)null);
                             survivorSegmentId = mutation.Segment!.Id;
                             survivorUpdatedAt = mutation.Segment.UpdatedAt;
                         }
@@ -3485,18 +3520,41 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 [survivorSegmentId],
                                 ct);
                         }
+                        var removedNativeIds = requestedNativeIds
+                            .Where(id => id != mutation!.Segment!.Id)
+                            .ToArray();
+                        var survivorItemId = preserveExtensionMetadata
+                            ? await db.Set<SegmentStudioItem>().AsNoTracking()
+                                .Where(item => item.NativeSegmentId == mutation!.Segment!.Id)
+                                .Select(item => (long?)item.Id)
+                                .SingleOrDefaultAsync(ct)
+                            : null;
+                        var removedItemIds = requestedItemIds
+                            .Where(itemId => itemId != survivorItemId)
+                            .ToArray();
+                        var delta = await SegmentEditorMergeProjectionService.LoadNativeAsync(
+                            db, mutation!.Segment!, removedNativeIds, removedItemIds,
+                            preserveExtensionMetadata,
+                            performerAccess.Allowed && preserveExtensionMetadata,
+                            provenanceAccess.Allowed && preserveExtensionMetadata,
+                            preserveExtensionMetadata, ct);
                         if (transaction is not null) await transaction.CommitAsync(ct);
-                        return mutation!;
+                        return (Mutation: mutation!, Delta: (SegmentEditorMergeDelta?)delta);
                     });
-                    if (result.Status == DirectSegmentMutationStatus.Updated)
-                        PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return result.Status switch
+                    if (outcome.Mutation.Status == DirectSegmentMutationStatus.Updated
+                        && outcome.Delta is not null)
                     {
-                        DirectSegmentMutationStatus.Updated => Results.Ok(result.Segment),
-                        DirectSegmentMutationStatus.Invalid => Results.BadRequest(new { error = result.Error }),
-                        DirectSegmentMutationStatus.Forbidden => Results.Json(new { error = result.Error }, statusCode: 403),
-                        DirectSegmentMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
-                        _ => Results.NotFound(new { error = result.Error }),
+                        PublishSegmentInvalidation(spanCacheInvalidator, videoId);
+                        return Results.Ok(outcome.Delta);
+                    }
+                    if (outcome.Mutation.Replayed)
+                        return Results.Conflict(new { error = "This merge response was already applied. Reload before retrying it." });
+                    return outcome.Mutation.Status switch
+                    {
+                        DirectSegmentMutationStatus.Invalid => Results.BadRequest(new { error = outcome.Mutation.Error }),
+                        DirectSegmentMutationStatus.Forbidden => Results.Json(new { error = outcome.Mutation.Error }, statusCode: 403),
+                        DirectSegmentMutationStatus.Conflict => Results.Conflict(new { error = outcome.Mutation.Error }),
+                        _ => Results.NotFound(new { error = outcome.Mutation.Error }),
                     };
                 })
             .RequireAuthorization()

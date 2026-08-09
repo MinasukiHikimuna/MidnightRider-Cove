@@ -71,7 +71,8 @@ public sealed record DirectSegmentMutationResult(
     DirectSegmentSnapshot? Segment = null,
     string? Error = null,
     IReadOnlyDictionary<string, object?>? ChangedFields = null,
-    string? Code = null);
+    string? Code = null,
+    bool Replayed = false);
 
 public static class DirectSegmentReviewService
 {
@@ -115,7 +116,7 @@ public static class DirectSegmentReviewService
                 || receipt.ActorUserId != principal?.UserId)
                 return new(DirectSegmentMutationStatus.Conflict, Error: "Operation ID was already used for another request.");
             var replayed = JsonSerializer.Deserialize<DirectSegmentSnapshot>(receipt.ResultPayloadJson!);
-            return new(DirectSegmentMutationStatus.Updated, replayed);
+            return new(DirectSegmentMutationStatus.Updated, replayed, Replayed: true);
         }
         var segments = db.Database.IsRelational()
             ? await db.Set<Segment>().FromSqlInterpolated(
