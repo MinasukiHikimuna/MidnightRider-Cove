@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.external-sign-in",
+  "name": "ExternalSignIn",
+  "tagPrefix": "com.midnightrider.external-sign-in/",
+  "solution": "ExternalSignIn.slnx",
+  "project": "src/ExternalSignIn/ExternalSignIn.csproj",
+  "manifest": "src/ExternalSignIn/extension.json",
+  "readme": "README.md",
+  "ui": "src/ExternalSignIn/dist",
+  "uiPackagePath": "dist",
+  "uiBuildDirectory": "src/ExternalSignIn/ui"
+}

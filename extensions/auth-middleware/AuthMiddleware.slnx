@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/AuthMiddleware/AuthMiddleware.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/AuthMiddleware.Tests/AuthMiddleware.Tests.csproj" />
-  </Folder>
-</Solution>

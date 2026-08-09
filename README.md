@@ -11,7 +11,7 @@ descriptor under `extensions/<extension-id>/`.
 | Animated Tag Previews | `extensions/animated-tag-previews` | `com.midnightrider.animated-tag-previews/v<version>` |
 | Stash Filter Importer | `extensions/stash-filter-importer` | `com.midnightrider.stash-filter-importer/v<version>` |
 | API Fault Simulator | `extensions/api-fault-simulator` | `com.midnightrider.api-fault-simulator/v<version>` |
-| Authentication Middleware | `extensions/auth-middleware` | `com.midnightrider.auth-middleware/v<version>` |
+| External Sign-In | `extensions/external-sign-in` | `com.midnightrider.external-sign-in/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing
@@ -20,4 +20,4 @@ and asset name rather than this source layout.
 
 Development setup:
 
-- [Host-side Authentik setup for the authentication extension](extensions/auth-middleware/docs/authentik-host-setup.md)
+- [Host-side Authentik setup for External Sign-In](extensions/external-sign-in/docs/authentik-host-setup.md)
