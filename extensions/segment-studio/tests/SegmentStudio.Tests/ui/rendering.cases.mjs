@@ -1,8 +1,8 @@
 import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 test("UI imports only components available in the declared Cove runtime", () => {
-  assert.equal(manifest.version, "0.71.2");
-  assert.equal(manifest.minCoveVersion, "1.1.0");
+  assert.equal(manifest.version, "0.72.0");
+  assert.equal(manifest.minCoveVersion, "1.1.1-dev.153");
   assert.match(source, /from "@cove\/runtime\/api"/);
   assert.doesNotMatch(source, /EntityTileFrame/);
   assert.match(source, /DetailListToolbar/);
@@ -12,14 +12,14 @@ test("UI imports only components available in the declared Cove runtime", () => 
 });
 
 test("video results use compact Cove-style cards", () => {
-  const cards = source.slice(source.indexOf("function SegmentSummary"), source.indexOf("function DiscoveryFilters"));
+  const cards = source.slice(source.indexOf("function SegmentSummary"), source.indexOf("export { DISCOVERY_URL_OPTIONS"));
   const discoveryPage = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));
   assert.match(cards, /absolute bottom-1 right-1/);
   assert.match(cards, /SEGMENT_STATE_PRESENTATION\[state\]/);
   assert.match(cards, /text-\[11px\]/);
   assert.doesNotMatch(cards, /Open editor/);
   assert.match(discoveryPage, /className: "w-full space-y-5"/);
-  assert.match(discoveryPage, /gridTemplateColumns: "repeat\(auto-fill, minmax\(275px, 1fr\)\)"/);
+  assert.match(discoveryPage, /gridTemplateColumns: "repeat\(auto-fill, minmax\(var\(--card-min-width, 275px\), 1fr\)\)"/);
   assert.doesNotMatch(discoveryPage, /max-w-7xl|p-4 sm:p-6/);
   assert.match(cards, /showReviewStates/);
   assert.match(source, /const showReviewStates = compatibilityMode \|\| mode === "review"/);
@@ -65,7 +65,7 @@ test("list views omit redundant page headings and descriptions", () => {
   assert.doesNotMatch(browsePage, /Find and play the segments you already have|text-2xl font-semibold/);
   assert.doesNotMatch(discoveryPage, /Compatibility mode preserves existing approval decisions|Find accessible Cove videos|text-2xl font-semibold text-foreground/);
   assert.match(browsePage, /h\("h1", \{ key: "title", className: "sr-only" \}, "Segments"\)/);
-  assert.match(discoveryPage, /h\("h1", \{ key: "title", className: "sr-only" \}, "Videos"\)/);
+  assert.match(discoveryPage, /h\(ListPage,[\s\S]*title: "Videos"/);
   assert.doesNotMatch(discoveryPage, /h\(SegmentStudioModeSelector/);
 });
 
@@ -91,14 +91,17 @@ test("database-backed history computes backward and forward restoration steps", 
   assert.doesNotMatch(source, /UNDO_STORAGE_KEY|Undo recent/);
 });
 
-test("selected discovery entities survive reload through URL-backed Cove selectors", () => {
-  const filters = source.slice(source.indexOf("function DiscoveryFilters"), source.indexOf("function SegmentGroupCard"));
+test("selected discovery entities survive reload through Cove object-filter URL state", () => {
+  const components = sourceByModule["discovery/components.js"];
+  const page = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
 
-  assert.match(filters, /value: segmentTagId/);
-  assert.match(filters, /values: normalizeDiscoveryIds\(objectFilter\.videoTagIds\)/);
-  assert.match(filters, /values: normalizeDiscoveryIds\(objectFilter\.performerIds\)/);
-  assert.match(filters, /value: Number\(objectFilter\.studioId\) \|\| undefined/);
-  assert.doesNotMatch(filters, /requestCoveJson/);
+  assert.match(components, /filterKey: "segmentTagsCriterion"/);
+  assert.match(components, /filterKey: "tagsCriterion"/);
+  assert.match(components, /filterKey: "performersCriterion"/);
+  assert.match(components, /filterKey: "studiosCriterion"/);
+  assert.match(page, /useListUrlState\(urlOptions\)/);
+  assert.match(page, /objectFilter,/);
+  assert.doesNotMatch(components, /requestCoveJson/);
 });
 
 test("shot navigation finds strict previous and next boundaries", () => {

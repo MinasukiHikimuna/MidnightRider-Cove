@@ -11,8 +11,10 @@ const runtimeModules = {
     "export const DetailListToolbar = () => null;",
     "export const EntityReferenceMultiSelector = () => null;",
     "export const EntityReferenceSelector = () => null;",
+    "export const ListPage = () => null;",
     "export const VideoPlayer = () => null;",
     "export const formatDuration = String;",
+    "export const getDefaultFilter = () => null;",
     "export const useListUrlState = () => ({});",
   ].join("\n"),
 };

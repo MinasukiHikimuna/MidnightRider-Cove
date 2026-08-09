@@ -259,11 +259,11 @@ test("recycling bin routes survive in-app navigation and hard reloads", () => {
 test("list views use Cove native numbered pagination", () => {
   assert.match(source, /DetailListPagination,/);
   assert.doesNotMatch(source, /\bPager,/);
-  assert.equal((source.match(/h\(DetailListPagination/g) || []).length, 5);
+  assert.equal((source.match(/h\(DetailListPagination/g) || []).length, 3);
+  assert.match(source, /h\(ListPage/);
   assert.match(source, /ariaLabel: "Segments pagination above results"/);
   assert.match(source, /ariaLabel: "Segments pagination below results"/);
-  assert.match(source, /ariaLabel: "Videos pagination above results"/);
-  assert.match(source, /ariaLabel: "Videos pagination below results"/);
+  assert.match(source, /pageKey: "segment-studio-videos"/);
   assert.doesNotMatch(source, /`Page \$\{filter\.page\}`/);
 });
 

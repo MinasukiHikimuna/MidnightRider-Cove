@@ -56,24 +56,61 @@ test("video discovery exposes Cove's seeded random sort", () => {
   );
 });
 
-test("video discovery uses URL-backed Cove entity selectors and focused clear behavior", () => {
-  const filters = source.slice(source.indexOf("function DiscoveryFilters"), source.indexOf("function SegmentGroupCard"));
+test("video discovery defines native Cove entity criteria and focused updates", () => {
   const discovery = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));
 
-  assert.match(filters, /"Segment data"/);
-  assert.match(filters, /"Video metadata"/);
-  assert.match(filters, /h\(EntityReferenceSelector/);
-  assert.match(filters, /h\(EntityReferenceMultiSelector/);
-  assert.equal((filters.match(/segment-studio-reference-filter/g) || []).length, 3);
-  assert.match(filters, /entityType: "performer"/);
-  assert.match(filters, /entityType: "studio"/);
-  assert.match(filters, /placeholder: "Search Segment tags…"/);
-  assert.match(filters, /placeholder: "Search Video tags…"/);
-  assert.match(filters, /"Clear filters"/);
-  assert.doesNotMatch(filters, /type: "search"[\s\S]*Find .*segment tag/);
-  assert.match(discovery, /function clearObjectFilters\(\) \{ setObjectFilter\(\{\}\); setFilter\(\{ \.\.\.filter, page: 1 \}\); \}/);
+  assert.match(sourceByModule["discovery/components.js"], /label: "Segment Tags"[\s\S]*entityType: "tags"/);
+  assert.match(sourceByModule["discovery/components.js"], /label: "Video Tags"[\s\S]*entityType: "tags"/);
+  assert.match(sourceByModule["discovery/components.js"], /label: "Performers"[\s\S]*entityType: "performers"/);
+  assert.match(sourceByModule["discovery/components.js"], /label: "Studios"[\s\S]*entityType: "studios"/);
   assert.match(discovery, /setObjectFilter\(next\); setFilter\(\{ \.\.\.filter, page: 1 \}\)/);
   assert.doesNotMatch(discovery, /setDisplayMode\("grid"\)|q: ""|sort: "title"/);
+});
+
+test("video discovery uses Cove's native list filtering contract", () => {
+  const params = ui.buildDiscoverySearchParams(
+    { q: "sample", page: 2, perPage: 40, sort: "updated_at", direction: "desc" },
+    {
+      hasSegmentsCriterion: { modifier: "EQUALS", value: true },
+      reviewStateCriterion: { modifier: "EQUALS", value: "approved" },
+      segmentTagsCriterion: { modifier: "INCLUDES_ALL", value: [17, 18], excludes: [19], depth: -1 },
+      shotBoundariesCriterion: { modifier: "EQUALS", value: false },
+      tagsCriterion: { modifier: "INCLUDES_ALL", value: [41, 42], excludes: [43], depth: -1 },
+      performersCriterion: { modifier: "INCLUDES", value: [21, 22], excludes: [23] },
+      studiosCriterion: { modifier: "INCLUDES", value: [31], excludes: [32], depth: -1 },
+    },
+    "full",
+  );
+
+  assert.deepEqual(params.getAll("segmentTag"), ["17", "18"]);
+  assert.deepEqual(params.getAll("excludeSegmentTag"), ["19"]);
+  assert.equal(params.get("segmentTagMode"), "all");
+  assert.equal(params.get("includeSegmentSubtags"), "true");
+  assert.deepEqual(params.getAll("videoTag"), ["41", "42"]);
+  assert.deepEqual(params.getAll("excludeVideoTag"), ["43"]);
+  assert.equal(params.get("videoTagMode"), "all");
+  assert.equal(params.get("includeVideoSubtags"), "true");
+  assert.deepEqual(params.getAll("performer"), ["21", "22"]);
+  assert.deepEqual(params.getAll("excludePerformer"), ["23"]);
+  assert.deepEqual(params.getAll("studio"), ["31"]);
+  assert.deepEqual(params.getAll("excludeStudio"), ["32"]);
+  assert.equal(params.get("includeSubstudios"), "true");
+  assert.equal(params.get("hasSegments"), "true");
+  assert.equal(params.get("reviewState"), "approved");
+  assert.equal(params.get("hasShotBoundaries"), "false");
+
+  const discovery = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
+  const runtime = sourceByModule["shared/runtime.js"];
+  assert.match(discovery, /h\(ListPage/);
+  assert.match(discovery, /savedFilterScope:\s*DISCOVERY_SAVED_FILTER_SCOPE/);
+  assert.match(discovery, /getDefaultFilter\(DISCOVERY_SAVED_FILTER_SCOPE\)/);
+  assert.match(discovery, /defaultFilter:\s*\{ \.\.\.DISCOVERY_URL_OPTIONS\.defaultFilter, \.\.\.\(saved\.findFilter \|\| \{\}\) \}/);
+  assert.match(discovery, /defaultObjectFilter:\s*saved\.objectFilter \|\| \{\}/);
+  assert.doesNotMatch(discovery, /initialState:/);
+  assert.doesNotMatch(discovery, /h\(DiscoveryFilters/);
+  assert.doesNotMatch(discovery, /h\(DetailListToolbar/);
+  assert.doesNotMatch(discovery, /h\(DetailListPagination/);
+  assert.match(runtime, /ListPage/);
 });
 
 test("video discovery ID filters normalize for URL reload persistence", () => {

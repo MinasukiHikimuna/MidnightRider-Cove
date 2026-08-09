@@ -13,9 +13,22 @@ public sealed record VideoDiscoveryQuery(
     bool? HasSegments = null,
     string? ReviewState = null,
     int? SegmentTagId = null,
+    IReadOnlyList<int>? SegmentTagIds = null,
+    IReadOnlyList<int>? ExcludedSegmentTagIds = null,
+    string? SegmentTagMode = null,
+    bool IncludeSegmentSubtags = false,
     IReadOnlyList<int>? VideoTagIds = null,
+    IReadOnlyList<int>? ExcludedVideoTagIds = null,
+    string? VideoTagMode = null,
+    bool IncludeVideoSubtags = false,
     IReadOnlyList<int>? PerformerIds = null,
+    IReadOnlyList<int>? ExcludedPerformerIds = null,
+    string? PerformerMode = null,
     int? StudioId = null,
+    IReadOnlyList<int>? StudioIds = null,
+    IReadOnlyList<int>? ExcludedStudioIds = null,
+    string? StudioMode = null,
+    bool IncludeSubstudios = false,
     bool? HasShotBoundaries = null,
     string? Workflow = null);
 
@@ -68,8 +81,23 @@ public static class VideoDiscoveryService
         else if (request.HasSegments is false)
             videos = videos.Where(video => !segments.Any(segment => segment.VideoId == video.Id));
 
-        if (request.SegmentTagId is not null)
-            videos = videos.Where(video => segments.Any(segment => segment.VideoId == video.Id && segment.TagId == request.SegmentTagId));
+        var segmentTagIds = NormalizeIds(request.SegmentTagIds)
+            .Concat(request.SegmentTagId is > 0 ? [request.SegmentTagId.Value] : [])
+            .Distinct().ToArray();
+        var excludedSegmentTagIds = NormalizeIds(request.ExcludedSegmentTagIds);
+        var segmentTagGroups = await ExpandTagGroupsAsync(db, segmentTagIds, request.IncludeSegmentSubtags, ct);
+        var excludedSegmentTags = await ExpandTagIdsAsync(db, excludedSegmentTagIds, request.IncludeSegmentSubtags, ct);
+        if (request.SegmentTagMode == "null") videos = videos.Where(video => !segments.Any(segment => segment.VideoId == video.Id));
+        else if (request.SegmentTagMode == "not-null") videos = videos.Where(video => segments.Any(segment => segment.VideoId == video.Id));
+        else if (request.SegmentTagMode == "all")
+            foreach (var group in segmentTagGroups) videos = videos.Where(video => segments.Any(segment => segment.VideoId == video.Id && group.Contains(segment.TagId)));
+        else if (segmentTagGroups.Length > 0)
+        {
+            var includedSegmentTags = segmentTagGroups.SelectMany(ids => ids).Distinct().ToArray();
+            videos = videos.Where(video => segments.Any(segment => segment.VideoId == video.Id && includedSegmentTags.Contains(segment.TagId)));
+        }
+        if (excludedSegmentTags.Length > 0)
+            videos = videos.Where(video => !segments.Any(segment => segment.VideoId == video.Id && excludedSegmentTags.Contains(segment.TagId)));
 
         if (request.ReviewState is "unreviewed" or "approved" or "rejected")
         {
@@ -78,30 +106,56 @@ public static class VideoDiscoveryService
                 segment.VideoId == video.Id && segment.ReviewState == reviewState));
         }
 
-        var videoTagIds = NormalizeIds(request.VideoTagIds);
-        if (videoTagIds.Length > 0)
+        var effectiveVideoTags = EffectiveVideoTags(db);
+        var videoTagGroups = await ExpandTagGroupsAsync(db, NormalizeIds(request.VideoTagIds), request.IncludeVideoSubtags, ct);
+        var excludedVideoTagIds = await ExpandTagIdsAsync(db, NormalizeIds(request.ExcludedVideoTagIds), request.IncludeVideoSubtags, ct);
+        if (request.VideoTagMode == "null") videos = videos.Where(video => !effectiveVideoTags.Any(tag => tag.VideoId == video.Id));
+        else if (request.VideoTagMode == "not-null") videos = videos.Where(video => effectiveVideoTags.Any(tag => tag.VideoId == video.Id));
+        else if (request.VideoTagMode == "all")
+            foreach (var group in videoTagGroups) videos = videos.Where(video => effectiveVideoTags.Any(tag => tag.VideoId == video.Id && group.Contains(tag.TagId)));
+        else if (videoTagGroups.Length > 0)
         {
-            var effectiveVideoTags = EffectiveVideoTags(db);
-            videos = videos.Where(video => effectiveVideoTags.Any(tag =>
-                tag.VideoId == video.Id && videoTagIds.Contains(tag.TagId)));
+            var includedVideoTagIds = videoTagGroups.SelectMany(ids => ids).Distinct().ToArray();
+            videos = videos.Where(video => effectiveVideoTags.Any(tag => tag.VideoId == video.Id && includedVideoTagIds.Contains(tag.TagId)));
         }
+        if (excludedVideoTagIds.Length > 0)
+            videos = videos.Where(video => !effectiveVideoTags.Any(tag => tag.VideoId == video.Id && excludedVideoTagIds.Contains(tag.TagId)));
 
+        var videoPerformers = db.Set<VideoPerformer>().AsNoTracking();
         var performerIds = NormalizeIds(request.PerformerIds);
-        if (performerIds.Length > 0)
-        {
-            var videoPerformers = db.Set<VideoPerformer>().AsNoTracking();
-            videos = videos.Where(video => videoPerformers.Any(link =>
-                link.VideoId == video.Id && performerIds.Contains(link.PerformerId)));
-        }
+        var excludedPerformerIds = NormalizeIds(request.ExcludedPerformerIds);
+        if (request.PerformerMode == "null") videos = videos.Where(video => !videoPerformers.Any(link => link.VideoId == video.Id));
+        else if (request.PerformerMode == "not-null") videos = videos.Where(video => videoPerformers.Any(link => link.VideoId == video.Id));
+        else if (request.PerformerMode == "all")
+            foreach (var performerId in performerIds) videos = videos.Where(video => videoPerformers.Any(link => link.VideoId == video.Id && link.PerformerId == performerId));
+        else if (performerIds.Length > 0)
+            videos = videos.Where(video => videoPerformers.Any(link => link.VideoId == video.Id && performerIds.Contains(link.PerformerId)));
+        if (excludedPerformerIds.Length > 0)
+            videos = videos.Where(video => !videoPerformers.Any(link => link.VideoId == video.Id && excludedPerformerIds.Contains(link.PerformerId)));
 
-        if (request.StudioId is not null)
+        var studioIds = NormalizeIds(request.StudioIds)
+            .Concat(request.StudioId is > 0 ? [request.StudioId.Value] : [])
+            .Distinct().ToArray();
+        var studioGroups = await ExpandStudioGroupsAsync(db, studioIds, request.IncludeSubstudios, ct);
+        var excludedStudioIds = (await ExpandStudioGroupsAsync(db, NormalizeIds(request.ExcludedStudioIds), request.IncludeSubstudios, ct))
+            .SelectMany(ids => ids).Distinct().ToArray();
+        var visibleStudios = db.Set<Studio>().AsNoTracking();
+        if (request.StudioMode == "null") videos = videos.Where(video => video.StudioId == null || !visibleStudios.Any(studio => studio.Id == video.StudioId));
+        else if (request.StudioMode == "not-null") videos = videos.Where(video => video.StudioId != null && visibleStudios.Any(studio => studio.Id == video.StudioId));
+        else if (request.StudioMode == "all")
         {
-            var studioId = request.StudioId.Value;
-            var studios = db.Set<Studio>().AsNoTracking();
-            videos = videos.Where(video =>
-                video.StudioId == studioId
-                && studios.Any(studio => studio.Id == video.StudioId));
+            foreach (var group in studioGroups)
+                videos = videos.Where(video => video.StudioId != null && group.Contains(video.StudioId.Value)
+                    && visibleStudios.Any(studio => studio.Id == video.StudioId));
         }
+        else if (studioGroups.Length > 0)
+        {
+            var includedStudioIds = studioGroups.SelectMany(ids => ids).Distinct().ToArray();
+            videos = videos.Where(video => video.StudioId != null && includedStudioIds.Contains(video.StudioId.Value)
+                && visibleStudios.Any(studio => studio.Id == video.StudioId));
+        }
+        if (excludedStudioIds.Length > 0)
+            videos = videos.Where(video => video.StudioId == null || !excludedStudioIds.Contains(video.StudioId.Value));
 
         if (request.HasShotBoundaries is not null)
         {
@@ -160,6 +214,38 @@ public static class VideoDiscoveryService
 
     private static int[] NormalizeIds(IReadOnlyList<int>? ids) =>
         ids?.Where(id => id > 0).Distinct().ToArray() ?? [];
+
+    private static async Task<int[][]> ExpandTagGroupsAsync(DbContext db, IReadOnlyList<int> ids, bool includeDescendants, CancellationToken ct)
+    {
+        if (!includeDescendants || ids.Count == 0) return ids.Select(id => new[] { id }).ToArray();
+        var relations = await db.Set<TagParent>().AsNoTracking().Select(link => new { link.ParentId, link.ChildId }).ToListAsync(ct);
+        var children = relations.GroupBy(link => link.ParentId).ToDictionary(group => group.Key, group => group.Select(link => link.ChildId).ToArray());
+        return ids.Select(id => ExpandHierarchy(id, children)).ToArray();
+    }
+
+    private static async Task<int[]> ExpandTagIdsAsync(DbContext db, IReadOnlyList<int> ids, bool includeDescendants, CancellationToken ct) =>
+        (await ExpandTagGroupsAsync(db, ids, includeDescendants, ct)).SelectMany(group => group).Distinct().ToArray();
+
+    private static async Task<int[][]> ExpandStudioGroupsAsync(DbContext db, IReadOnlyList<int> ids, bool includeDescendants, CancellationToken ct)
+    {
+        if (!includeDescendants || ids.Count == 0) return ids.Select(id => new[] { id }).ToArray();
+        var relations = await db.Set<Studio>().AsNoTracking().Where(studio => studio.ParentId != null)
+            .Select(studio => new { ParentId = studio.ParentId!.Value, ChildId = studio.Id }).ToListAsync(ct);
+        var children = relations.GroupBy(link => link.ParentId).ToDictionary(group => group.Key, group => group.Select(link => link.ChildId).ToArray());
+        return ids.Select(id => ExpandHierarchy(id, children)).ToArray();
+    }
+
+    private static int[] ExpandHierarchy(int rootId, IReadOnlyDictionary<int, int[]> children)
+    {
+        var expanded = new HashSet<int> { rootId };
+        var pending = new Queue<int>();
+        pending.Enqueue(rootId);
+        while (pending.TryDequeue(out var parentId))
+            if (children.TryGetValue(parentId, out var childIds))
+                foreach (var childId in childIds)
+                    if (expanded.Add(childId)) pending.Enqueue(childId);
+        return expanded.ToArray();
+    }
 
     private static IQueryable<DiscoveryVideoTagRow> EffectiveVideoTags(DbContext db)
     {

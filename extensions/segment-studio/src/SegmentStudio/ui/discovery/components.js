@@ -1,4 +1,4 @@
-import { EntityReferenceMultiSelector, EntityReferenceSelector, formatDuration, h } from "../shared/runtime.js";
+import { formatDuration, h } from "../shared/runtime.js";
 
 import { REVIEW_STATES } from "../shared/constants.js";
 
@@ -20,6 +20,20 @@ const DISCOVERY_SORT_OPTIONS = [
   { value: "random", label: "Random" },
 ];
 
+const DISCOVERY_FILTER_CRITERIA = [
+  { id: "hasSegments", label: "Has Segments", type: "bool", filterKey: "hasSegmentsCriterion" },
+  { id: "reviewState", label: "Review State", type: "enum", filterKey: "reviewStateCriterion", modifiers: ["EQUALS"], options: [
+    { value: "unreviewed", label: "Has unreviewed" },
+    { value: "approved", label: "Has approved" },
+    { value: "rejected", label: "Has rejected" },
+  ] },
+  { id: "segmentTags", label: "Segment Tags", type: "multiId", entityType: "tags", filterKey: "segmentTagsCriterion", hierarchyToggleLabel: "Include sub-tags" },
+  { id: "shotBoundaries", label: "Has Shot Boundaries", type: "bool", filterKey: "shotBoundariesCriterion" },
+  { id: "tags", label: "Video Tags", type: "multiId", entityType: "tags", filterKey: "tagsCriterion", hierarchyToggleLabel: "Include sub-tags" },
+  { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion" },
+  { id: "studios", label: "Studios", type: "multiId", entityType: "studios", filterKey: "studiosCriterion", hierarchyToggleLabel: "Include sub-studios" },
+];
+
 function setPlainLinkNavigation(event, onNavigate, route) {
   if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
   event.preventDefault();
@@ -33,6 +47,22 @@ function setBackLinkNavigation(event, onNavigate, fallbackRoute) {
   else onNavigate(fallbackRoute);
 }
 
+function criterionIds(criterion, key = "value") {
+  return Array.isArray(criterion?.[key])
+    ? [...new Set(criterion[key].map(Number).filter((value) => Number.isInteger(value) && value > 0))]
+    : [];
+}
+
+function appendCriterion(params, criterion, name, hierarchyKey = null) {
+  const includes = criterionIds(criterion);
+  const excludes = criterionIds(criterion, "excludes");
+  includes.forEach((value) => params.append(name, String(value)));
+  excludes.forEach((value) => params.append(`exclude${name[0].toUpperCase()}${name.slice(1)}`, String(value)));
+  const mode = { INCLUDES_ALL: "all", IS_NULL: "null", NOT_NULL: "not-null" }[criterion?.modifier];
+  if (mode) params.set(`${name}Mode`, mode);
+  if (hierarchyKey && criterion?.depth === -1 && (includes.length > 0 || excludes.length > 0)) params.set(hierarchyKey, "true");
+}
+
 export function buildDiscoverySearchParams(filter, objectFilter, workflow = null) {
   const params = new URLSearchParams();
   if (filter.q) params.set("q", filter.q);
@@ -41,20 +71,29 @@ export function buildDiscoverySearchParams(filter, objectFilter, workflow = null
   if (filter.sort) params.set("sort", filter.sort);
   if (filter.direction) params.set("direction", filter.direction);
   if (filter.sort === "random" && Number.isInteger(filter.seed) && filter.seed > 0) params.set("seed", String(filter.seed));
+  const hasSegments = objectFilter.hasSegmentsCriterion?.value;
+  if (typeof hasSegments === "boolean") params.set("hasSegments", String(hasSegments));
+  else if (objectFilter.segments === "has") params.set("hasSegments", "true");
+  else if (objectFilter.segments === "none") params.set("hasSegments", "false");
+  appendCriterion(params, objectFilter.segmentTagsCriterion, "segmentTag", "includeSegmentSubtags");
+  appendCriterion(params, objectFilter.tagsCriterion, "videoTag", "includeVideoSubtags");
+  appendCriterion(params, objectFilter.performersCriterion, "performer");
+  appendCriterion(params, objectFilter.studiosCriterion, "studio", "includeSubstudios");
   const segmentTagId = Number(objectFilter.segmentTagId ?? objectFilter.tagId) || null;
-  if (segmentTagId) params.set("segmentTagId", String(segmentTagId));
+  if (segmentTagId && !params.has("segmentTag")) params.set("segmentTagId", String(segmentTagId));
   const videoTagIds = normalizeDiscoveryIds(objectFilter.videoTagIds);
-  if (videoTagIds.length > 0) params.set("videoTagIds", videoTagIds.join(","));
+  if (videoTagIds.length > 0 && !params.has("videoTag")) params.set("videoTagIds", videoTagIds.join(","));
   const performerIds = normalizeDiscoveryIds(objectFilter.performerIds);
-  if (performerIds.length > 0) params.set("performerIds", performerIds.join(","));
+  if (performerIds.length > 0 && !params.has("performer")) params.set("performerIds", performerIds.join(","));
   const studioId = Number(objectFilter.studioId) || null;
-  if (studioId) params.set("studioId", String(studioId));
-  if (workflow && objectFilter.reviewState) params.set("reviewState", String(objectFilter.reviewState));
+  if (studioId && !params.has("studio")) params.set("studioId", String(studioId));
+  const reviewState = objectFilter.reviewStateCriterion?.value ?? objectFilter.reviewState;
+  if (workflow && ["unreviewed", "approved", "rejected"].includes(reviewState)) params.set("reviewState", reviewState);
   if (workflow) params.set("workflow", workflow);
-  if (objectFilter.segments === "has") params.set("hasSegments", "true");
-  if (objectFilter.segments === "none") params.set("hasSegments", "false");
-  if (workflow && objectFilter.shotBoundaries === "has") params.set("hasShotBoundaries", "true");
-  if (workflow && objectFilter.shotBoundaries === "none") params.set("hasShotBoundaries", "false");
+  const hasShotBoundaries = objectFilter.shotBoundariesCriterion?.value;
+  if (workflow && typeof hasShotBoundaries === "boolean") params.set("hasShotBoundaries", String(hasShotBoundaries));
+  else if (workflow && objectFilter.shotBoundaries === "has") params.set("hasShotBoundaries", "true");
+  else if (workflow && objectFilter.shotBoundaries === "none") params.set("hasShotBoundaries", "false");
   return params;
 }
 
@@ -123,112 +162,4 @@ function DiscoveryRow({ item, onNavigate, showReviewStates = false }) {
   ]));
 }
 
-function DiscoveryFilters({ objectFilter, setObjectFilter, onClear, compatibilityMode = false }) {
-  function update(key, value) {
-    const next = { ...objectFilter };
-    if (key === "segmentTagId") delete next.tagId;
-    if (value == null || value === "") delete next[key];
-    else next[key] = value;
-    setObjectFilter(next);
-  }
-  const selectClass = "rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground";
-  const selectorClass = `${selectClass} w-full`;
-  const segmentTagId = Number(objectFilter.segmentTagId ?? objectFilter.tagId) || undefined;
-  return h("section", { className: "space-y-4 rounded-lg border border-border bg-surface p-4" }, [
-    h("div", { key: "heading", className: "flex items-center justify-between gap-3" }, [
-      h("h2", { key: "title", className: "text-sm font-semibold text-foreground" }, "Filters"),
-      h("button", {
-        key: "clear",
-        type: "button",
-        onClick: onClear,
-        disabled: Object.keys(objectFilter).length === 0,
-        className: "rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-secondary hover:bg-muted/40 disabled:opacity-50",
-      }, "Clear filters"),
-    ]),
-    h("fieldset", { key: "segment-data", className: "grid gap-3 sm:grid-cols-2 lg:grid-cols-4" }, [
-      h("legend", { key: "legend", className: "mb-2 text-sm font-semibold text-foreground" }, "Segment data"),
-      h("label", { key: "segments", className: "space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Segment presence"),
-        h("select", { key: "control", value: objectFilter.segments || "", onChange: (event) => update("segments", event.target.value), className: `${selectClass} w-full` }, [
-          h("option", { key: "all", value: "" }, "Any"),
-          h("option", { key: "has", value: "has" }, "Has segments"),
-          h("option", { key: "none", value: "none" }, "No segments"),
-        ]),
-      ]),
-      compatibilityMode ? h("label", { key: "review", className: "space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Review state"),
-        h("select", { key: "control", value: objectFilter.reviewState || "", onChange: (event) => update("reviewState", event.target.value), className: `${selectClass} w-full` }, [
-          h("option", { key: "all", value: "" }, "Any"),
-          h("option", { key: "unreviewed", value: "unreviewed" }, "Has unreviewed"),
-          h("option", { key: "approved", value: "approved" }, "Has approved"),
-          h("option", { key: "rejected", value: "rejected" }, "Has rejected"),
-        ]),
-      ]) : null,
-      h("label", { key: "segment-tag", className: "space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Segment tag"),
-        h(EntityReferenceSelector, {
-          key: "control",
-          entityType: "tag",
-          value: segmentTagId,
-          onChange: (tagId) => update("segmentTagId", tagId),
-          placeholder: "Search Segment tags…",
-          inputClassName: selectorClass,
-          creatable: false,
-          allowCreate: false,
-        }),
-      ]),
-      compatibilityMode ? h("label", { key: "shots", className: "space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Shot boundaries"),
-        h("select", { key: "control", value: objectFilter.shotBoundaries || "", onChange: (event) => update("shotBoundaries", event.target.value), className: `${selectClass} w-full` }, [
-          h("option", { key: "all", value: "" }, "Any"),
-          h("option", { key: "has", value: "has" }, "Has"),
-          h("option", { key: "none", value: "none" }, "None"),
-        ]),
-      ]) : null,
-    ]),
-    h("fieldset", { key: "video-metadata", className: "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" }, [
-      h("legend", { key: "legend", className: "mb-2 text-sm font-semibold text-foreground" }, "Video metadata"),
-      h("label", { key: "video-tags", className: "segment-studio-reference-filter space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Video tags"),
-        h(EntityReferenceMultiSelector, {
-          key: "control",
-          entityType: "tag",
-          values: normalizeDiscoveryIds(objectFilter.videoTagIds),
-          onChange: (tagIds) => update("videoTagIds", tagIds.length > 0 ? tagIds : null),
-          placeholder: "Search Video tags…",
-          inputClassName: selectorClass,
-          creatable: false,
-          allowCreate: false,
-        }),
-      ]),
-      h("label", { key: "performers", className: "segment-studio-reference-filter space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Performers"),
-        h(EntityReferenceMultiSelector, {
-          key: "control",
-          entityType: "performer",
-          values: normalizeDiscoveryIds(objectFilter.performerIds),
-          onChange: (performerIds) => update("performerIds", performerIds.length > 0 ? performerIds : null),
-          placeholder: "Search performers…",
-          inputClassName: selectorClass,
-          creatable: false,
-          allowCreate: false,
-        }),
-      ]),
-      h("label", { key: "studio", className: "segment-studio-reference-filter space-y-1 text-xs text-secondary" }, [
-        h("span", { key: "label" }, "Studio"),
-        h(EntityReferenceSelector, {
-          key: "control",
-          entityType: "studio",
-          value: Number(objectFilter.studioId) || undefined,
-          onChange: (studioId) => update("studioId", studioId),
-          placeholder: "Search studios…",
-          inputClassName: selectorClass,
-          creatable: false,
-          allowCreate: false,
-        }),
-      ]),
-    ]),
-  ]);
-}
-
-export { DISCOVERY_URL_OPTIONS, DISCOVERY_SORT_OPTIONS, setPlainLinkNavigation, setBackLinkNavigation, SegmentSummary, DiscoveryCard, DiscoveryRow, DiscoveryFilters };
+export { DISCOVERY_URL_OPTIONS, DISCOVERY_SORT_OPTIONS, DISCOVERY_FILTER_CRITERIA, setPlainLinkNavigation, setBackLinkNavigation, SegmentSummary, DiscoveryCard, DiscoveryRow };

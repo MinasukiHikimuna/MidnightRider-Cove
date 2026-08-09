@@ -23,6 +23,19 @@ public sealed class VideoDiscoveryServiceTests
         values["performerIds"] = "21,invalid,22";
         values["studioId"] = "31";
         values["hasShotBoundaries"] = "true";
+        values["segmentTag"] = new StringValues(["11", "12"]);
+        values["excludeSegmentTag"] = "13";
+        values["segmentTagMode"] = "all";
+        values["videoTag"] = new StringValues(["43", "44"]);
+        values["excludeVideoTag"] = "45";
+        values["videoTagMode"] = "not-null";
+        values["performer"] = "23";
+        values["excludePerformer"] = "24";
+        values["studio"] = "32";
+        values["excludeStudio"] = "33";
+        values["includeSegmentSubtags"] = "true";
+        values["includeVideoSubtags"] = "true";
+        values["includeSubstudios"] = "true";
 
         var method = typeof(SegmentStudioExtension).GetMethod(
             "ParseDiscoveryQuery",
@@ -31,9 +44,20 @@ public sealed class VideoDiscoveryServiceTests
             method?.Invoke(null, [new QueryCollection(values), true, false]));
 
         Assert.Equal(expected, parsed.SegmentTagId);
-        Assert.Equal([41, 42], parsed.VideoTagIds);
-        Assert.Equal([21, 22], parsed.PerformerIds);
+        Assert.Equal([11, 12], parsed.SegmentTagIds);
+        Assert.Equal([13], parsed.ExcludedSegmentTagIds);
+        Assert.Equal("all", parsed.SegmentTagMode);
+        Assert.Equal([43, 44, 41, 42], parsed.VideoTagIds);
+        Assert.Equal([45], parsed.ExcludedVideoTagIds);
+        Assert.Equal("not-null", parsed.VideoTagMode);
+        Assert.Equal([23, 21, 22], parsed.PerformerIds);
+        Assert.Equal([24], parsed.ExcludedPerformerIds);
         Assert.Equal(31, parsed.StudioId);
+        Assert.Equal([32], parsed.StudioIds);
+        Assert.Equal([33], parsed.ExcludedStudioIds);
+        Assert.True(parsed.IncludeSegmentSubtags);
+        Assert.True(parsed.IncludeVideoSubtags);
+        Assert.True(parsed.IncludeSubstudios);
         Assert.True(parsed.HasShotBoundaries);
         Assert.Equal("full", parsed.Workflow);
     }
@@ -259,6 +283,60 @@ public sealed class VideoDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task NativeVideoTagFiltersSupportAllExclusionsAndPresenceModes()
+    {
+        await using var fixture = await DiscoveryFixture.CreateAsync();
+
+        var all = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, VideoTagIds: [41, 42], VideoTagMode: "all"),
+            CancellationToken.None);
+        var excluded = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, Sort: "title", Direction: "asc", ExcludedVideoTagIds: [41]),
+            CancellationToken.None);
+        var missing = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, Sort: "title", Direction: "asc", VideoTagMode: "null"),
+            CancellationToken.None);
+
+        Assert.Empty(all.Items);
+        Assert.Equal(["Beta", "Delta", "Gamma"], excluded.Items.Select(item => item.Title));
+        Assert.Equal(["Beta", "Delta"], missing.Items.Select(item => item.Title));
+    }
+
+    [Fact]
+    public async Task NativeTagAndStudioFiltersExpandSelectedHierarchies()
+    {
+        await using var fixture = await DiscoveryFixture.CreateAsync();
+
+        var tagResult = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, VideoTagIds: [40], IncludeVideoSubtags: true),
+            CancellationToken.None);
+        var studioResult = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, Sort: "title", Direction: "asc", StudioIds: [30], IncludeSubstudios: true),
+            CancellationToken.None);
+
+        Assert.Equal("Alpha", Assert.Single(tagResult.Items).Title);
+        Assert.Equal(["Alpha", "Beta", "Gamma"], studioResult.Items.Select(item => item.Title));
+    }
+
+    [Fact]
+    public async Task NativeStudioFilterSupportsAllSelectedStudios()
+    {
+        await using var fixture = await DiscoveryFixture.CreateAsync();
+
+        var result = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, StudioIds: [30, 31], StudioMode: "all"),
+            CancellationToken.None);
+
+        Assert.Empty(result.Items);
+    }
+
+    [Fact]
     public async Task PerformersMatchAnySelectedPerformer()
     {
         await using var fixture = await DiscoveryFixture.CreateAsync();
@@ -274,6 +352,24 @@ public sealed class VideoDiscoveryServiceTests
             CancellationToken.None);
 
         Assert.Equal(["Beta", "Gamma"], result.Items.Select(item => item.Title));
+    }
+
+    [Fact]
+    public async Task NativePerformerFiltersSupportAllAndExclusions()
+    {
+        await using var fixture = await DiscoveryFixture.CreateAsync();
+
+        var all = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, PerformerIds: [21, 23], PerformerMode: "all"),
+            CancellationToken.None);
+        var excluded = await VideoDiscoveryService.FindAsync(
+            fixture.Context,
+            new VideoDiscoveryQuery(Page: 1, PerPage: 20, Sort: "title", Direction: "asc", PerformerIds: [22, 23], ExcludedPerformerIds: [21]),
+            CancellationToken.None);
+
+        Assert.Equal("Gamma", Assert.Single(all.Items).Title);
+        Assert.Equal("Beta", Assert.Single(excluded.Items).Title);
     }
 
     [Fact]
@@ -443,11 +539,14 @@ public sealed class VideoDiscoveryServiceTests
                 new Video { Id = 3, Title = "Gamma", SearchText = "gamma rejected", StudioId = 32, UpdatedAt = now.AddMinutes(-3) },
                 new Video { Id = 4, Title = "Hidden", SearchText = "hidden", UpdatedAt = now },
                 new Video { Id = 5, Title = "Delta", SearchText = "delta empty", StudioId = 33, UpdatedAt = now.AddMinutes(-4) },
-                new Studio { Id = 31, Name = "Visible A" },
-                new Studio { Id = 32, Name = "Visible B" },
+                new Studio { Id = 30, Name = "Visible Parent" },
+                new Studio { Id = 31, Name = "Visible A", ParentId = 30 },
+                new Studio { Id = 32, Name = "Visible B", ParentId = 30 },
                 new Studio { Id = 33, Name = "Hidden" },
+                new Tag { Id = 40, Name = "Parent" },
                 new Tag { Id = 41, Name = "Direct" },
                 new Tag { Id = 42, Name = "Occurrence", MinOccurrenceSec = 5 },
+                new TagParent { ParentId = 40, ChildId = 41 },
                 new VideoTag { VideoId = 1, TagId = 41 },
                 new VideoTag { VideoId = 4, TagId = 41 },
                 new VideoPerformer { VideoId = 1, PerformerId = 21 },
@@ -572,6 +671,12 @@ public sealed class VideoDiscoveryServiceTests
             {
                 builder.HasKey(application => application.Id);
                 builder.Ignore(application => application.Tag);
+            });
+            modelBuilder.Entity<TagParent>(builder =>
+            {
+                builder.HasKey(link => new { link.ParentId, link.ChildId });
+                builder.Ignore(link => link.Parent);
+                builder.Ignore(link => link.Child);
             });
             modelBuilder.Entity<Studio>(builder =>
             {
