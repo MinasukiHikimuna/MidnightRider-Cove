@@ -34,6 +34,11 @@ public sealed class ExtensionTests
         Assert.Equal(["a"], createShortcut.DefaultBindings);
         Assert.Equal("Editing", createShortcut.Group);
         Assert.Equal("segment-studio", Assert.Single(createShortcut.Scopes).Page);
+        Assert.Null(Assert.Single(createShortcut.Scopes).Mode);
+        var moveToBinShortcut = Assert.Single(manifest.KeyboardActions, item => item.Id == "marker.moveToBin");
+        Assert.Equal("basic", Assert.Single(moveToBinShortcut.Scopes).Mode);
+        var rejectShortcut = Assert.Single(manifest.KeyboardActions, item => item.Id == "marker.reject");
+        Assert.Equal("full", Assert.Single(rejectShortcut.Scopes).Mode);
         var nextShortcut = Assert.Single(manifest.KeyboardActions, item => item.Id == "video.playNextSegment");
         Assert.Equal(["Shift+l"], nextShortcut.DefaultBindings);
     }

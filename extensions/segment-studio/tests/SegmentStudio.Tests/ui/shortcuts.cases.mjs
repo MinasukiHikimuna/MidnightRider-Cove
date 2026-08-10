@@ -317,6 +317,7 @@ test("native shortcut registrations keep keyboard ownership with the mounted edi
   assert.match(source, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
   assert.match(source, /id: shortcut\.id/);
   assert.match(source, /enabled: shortcutAvailableInMode\(shortcut, compatibilityMode\)/);
+  assert.match(source, /mode: compatibilityMode \? "full" : "basic"/);
   assert.match(source, /isEditorShortcutOwner\(event, editorRef\.current\)/);
   assert.match(source, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
   assert.match(source, /event === previousEvent/);

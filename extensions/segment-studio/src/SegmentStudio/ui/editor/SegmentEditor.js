@@ -807,6 +807,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     return SEGMENT_STUDIO_SHORTCUTS.map((shortcut) => ({
       id: shortcut.id,
       enabled: shortcutAvailableInMode(shortcut, compatibilityMode),
+      mode: compatibilityMode ? "full" : "basic",
       surface: "local",
       canHandle,
       action: ({ event }) => shortcutHandlerRef.current?.(shortcut.id, event),

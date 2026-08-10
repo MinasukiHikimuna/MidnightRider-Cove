@@ -7,6 +7,10 @@ internal static class SegmentStudioKeyboardActions
 {
     private static readonly UIKeyboardActionScope[] EditorScope =
         [new("local", Page: "segment-studio")];
+    private static readonly UIKeyboardActionScope[] BasicEditorScope =
+        [new("local", Page: "segment-studio") { Mode = "basic" }];
+    private static readonly UIKeyboardActionScope[] FullEditorScope =
+        [new("local", Page: "segment-studio") { Mode = "full" }];
 
     public static void AddTo(UIManifestBuilder builder)
     {
@@ -51,17 +55,17 @@ internal static class SegmentStudioKeyboardActions
             .AddKeyboardAction("navigation.previousAtPlayhead", "Select previous segment at the playhead", ["["], EditorScope, group: "Selection", order: 137)
             .AddKeyboardAction("navigation.nextAtPlayhead", "Select next segment at the playhead", ["]"], EditorScope, group: "Selection", order: 138)
             .AddKeyboardAction("navigation.nearestInCurrentSwimlane", "Select the segment nearest the playhead in this swimlane", ["p"], EditorScope, group: "Selection", order: 139)
-            .AddKeyboardAction("navigation.previousUnreviewedInSwimlane", "Select previous unreviewed segment in this swimlane", ["n"], EditorScope, group: "Selection", order: 140)
-            .AddKeyboardAction("navigation.previousUnreviewedGlobal", "Select previous unreviewed segment across swimlanes", ["Shift+n"], EditorScope, group: "Selection", order: 141)
-            .AddKeyboardAction("navigation.nextUnreviewedInSwimlane", "Select next unreviewed segment in this swimlane", ["m"], EditorScope, group: "Selection", order: 142)
-            .AddKeyboardAction("navigation.nextUnreviewedGlobal", "Select next unreviewed segment across swimlanes", ["Shift+m"], EditorScope, group: "Selection", order: 143)
+            .AddKeyboardAction("navigation.previousUnreviewedInSwimlane", "Select previous unreviewed segment in this swimlane", ["n"], FullEditorScope, group: "Selection", order: 140)
+            .AddKeyboardAction("navigation.previousUnreviewedGlobal", "Select previous unreviewed segment across swimlanes", ["Shift+n"], FullEditorScope, group: "Selection", order: 141)
+            .AddKeyboardAction("navigation.nextUnreviewedInSwimlane", "Select next unreviewed segment in this swimlane", ["m"], FullEditorScope, group: "Selection", order: 142)
+            .AddKeyboardAction("navigation.nextUnreviewedGlobal", "Select next unreviewed segment across swimlanes", ["Shift+m"], FullEditorScope, group: "Selection", order: 143)
             .AddKeyboardAction("navigation.nextTouchingPlayhead", "Select next segment near the playhead", ["Tab"], EditorScope, group: "Selection", order: 144)
             .AddKeyboardAction("navigation.previousTouchingPlayhead", "Select previous segment near the playhead", ["Shift+Tab"], EditorScope, group: "Selection", order: 145)
             .AddKeyboardAction("navigation.quickSearch", "Quick-search visible segments", ["f"], EditorScope, group: "Selection", order: 146)
-            .AddKeyboardAction("navigation.previousShot", "Jump to previous shot", ["y"], EditorScope, group: "Shots", order: 147)
-            .AddKeyboardAction("navigation.nextShot", "Jump to next shot", ["u"], EditorScope, group: "Shots", order: 148)
-            .AddKeyboardAction("shot.split", "Add or split a shot boundary at the playhead", ["Shift+a", "v"], EditorScope, group: "Shots", order: 149)
-            .AddKeyboardAction("shot.merge", "Remove the shot boundary at the playhead and merge adjacent shots", ["Shift+v"], EditorScope, group: "Shots", order: 150)
+            .AddKeyboardAction("navigation.previousShot", "Jump to previous shot", ["y"], FullEditorScope, group: "Shots", order: 147)
+            .AddKeyboardAction("navigation.nextShot", "Jump to next shot", ["u"], FullEditorScope, group: "Shots", order: 148)
+            .AddKeyboardAction("shot.split", "Add or split a shot boundary at the playhead", ["Shift+a", "v"], FullEditorScope, group: "Shots", order: 149)
+            .AddKeyboardAction("shot.merge", "Remove the shot boundary at the playhead and merge adjacent shots", ["Shift+v"], FullEditorScope, group: "Shots", order: 150)
             .AddKeyboardAction("markerGroup.toggleCollapse", "Collapse or expand the selected segment group", ["b"], EditorScope, group: "Segment groups", order: 151)
             .AddKeyboardAction("markerGroup.toggleAll", "Collapse or expand all segment groups", ["Shift+b"], EditorScope, group: "Segment groups", order: 152)
             .AddKeyboardAction("marker.create", "Create segment at the playhead", ["a"], EditorScope, group: "Editing", order: 153)
@@ -74,20 +78,20 @@ internal static class SegmentStudioKeyboardActions
             .AddKeyboardAction("marker.copyTiming", "Copy selected segment timing", ["t"], EditorScope, group: "Editing", order: 160)
             .AddKeyboardAction("marker.pasteTiming", "Paste copied timing onto the selected segment", ["Shift+t"], EditorScope, group: "Editing", order: 161)
             .AddKeyboardAction("marker.mergeSelection", "Merge selected segments in one swimlane", ["r"], EditorScope, group: "Editing", order: 162)
-            .AddKeyboardAction("marker.moveToBin", "Move selected segments to the recycling bin", ["x"], EditorScope, group: "Editing", order: 163)
-            .AddKeyboardAction("system.emptyBin", "Empty the recycling bin", ["Shift+x"], EditorScope, group: "Editing", order: 164)
+            .AddKeyboardAction("marker.moveToBin", "Move selected segments to the recycling bin", ["x"], BasicEditorScope, group: "Editing", order: 163)
+            .AddKeyboardAction("system.emptyBin", "Empty the recycling bin", ["Shift+x"], BasicEditorScope, group: "Editing", order: 164)
             .AddKeyboardAction("marker.toggleIncorrectExample", "Collect selected eligible AI segments as incorrect examples", ["c"], EditorScope, group: "AI feedback", order: 165)
             .AddKeyboardAction("marker.openIncorrectExamples", "Manage incorrect examples and download an AI Feedback ZIP", ["Shift+c"], EditorScope, group: "AI feedback", order: 166)
-            .AddKeyboardAction("marker.assignSlots", "Assign performers to segment slots", ["g"], EditorScope, group: "Editing", order: 167)
+            .AddKeyboardAction("marker.assignSlots", "Assign performers to segment slots", ["g"], FullEditorScope, group: "Editing", order: 167)
             .AddKeyboardAction("navigation.centerPlayhead", "Center timeline on playhead", ["h"], EditorScope, group: "Timeline", order: 168)
             .AddKeyboardAction("navigation.zoomIn", "Zoom in", ["+", "="], EditorScope, group: "Timeline", order: 169, repeatable: true)
             .AddKeyboardAction("navigation.zoomOut", "Zoom out", ["-", "_"], EditorScope, group: "Timeline", order: 170, repeatable: true)
             .AddKeyboardAction("navigation.resetZoom", "Fit timeline", ["0"], EditorScope, group: "Timeline", order: 171)
             .AddKeyboardAction("layout.growSwimlanes", "Give swimlanes more height", ["Mod+ArrowUp"], EditorScope, group: "Timeline", order: 172)
             .AddKeyboardAction("layout.shrinkSwimlanes", "Give swimlanes less height", ["Mod+ArrowDown"], EditorScope, group: "Timeline", order: 173)
-            .AddKeyboardAction("marker.confirm", "Approve or unapprove segment", ["z"], EditorScope, group: "Review", order: 174)
-            .AddKeyboardAction("system.publishApproved", "Preview approved draft publishing", ["Shift+z"], EditorScope, group: "Review", order: 175)
-            .AddKeyboardAction("marker.reject", "Reject or unreject segment", ["x"], EditorScope, group: "Review", order: 176)
-            .AddKeyboardAction("system.deleteRejected", "Delete all rejected segments", ["Shift+x"], EditorScope, group: "Review", order: 177);
+            .AddKeyboardAction("marker.confirm", "Approve or unapprove segment", ["z"], FullEditorScope, group: "Review", order: 174)
+            .AddKeyboardAction("system.publishApproved", "Preview approved draft publishing", ["Shift+z"], FullEditorScope, group: "Review", order: 175)
+            .AddKeyboardAction("marker.reject", "Reject or unreject segment", ["x"], FullEditorScope, group: "Review", order: 176)
+            .AddKeyboardAction("system.deleteRejected", "Delete all rejected segments", ["Shift+x"], FullEditorScope, group: "Review", order: 177);
     }
 }

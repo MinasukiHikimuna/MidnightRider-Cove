@@ -34,6 +34,7 @@ function SegmentStudioBinPage({ onNavigate, profile }) {
 
   useRegisterExtensionKeyboardActions("segment-studio", [{
     id: "system.emptyBin",
+    mode: "basic",
     surface: "local",
     canHandle: ({ event }) => {
       const ownerDocument = event.target?.ownerDocument ?? document;

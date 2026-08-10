@@ -550,6 +550,7 @@ test("editor mode exposes the complete recycling-bin workflow", () => {
   assert.match(source, /window\.confirm\(recyclingBinDeletionPrompt/);
   assert.match(bin, /system\.emptyBin/);
   assert.match(bin, /id: "system\.emptyBin"/);
+  assert.match(bin, /mode: "basic"/);
   assert.match(bin, /useRegisterExtensionKeyboardActions/);
   assert.match(bin, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
   assert.ok((bin.match(/notifyRecyclingBinChanged\(\)/g) || []).length >= 2);

@@ -383,7 +383,7 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     h("section", { key: "shortcut-bindings-panel", hidden: activeSettingsTab !== "shortcuts", className: "space-y-2 rounded-lg border border-border bg-surface p-4" }, [
       h("h2", { key: "title", className: "font-semibold text-foreground" }, "Keyboard bindings"),
       h("p", { key: "description", className: "text-sm text-secondary" },
-        "Segment Studio bindings now use Cove's keyboard shortcut profiles and conflict handling."),
+        "Segment Studio bindings now use Cove's keyboard shortcut settings and conflict handling."),
       h("a", { key: "link", href: "/settings/my/keyboard-shortcuts", className: "inline-flex text-sm font-medium text-accent hover:underline" },
         "Configure Segment Studio shortcuts in Cove settings →"),
     ]),
