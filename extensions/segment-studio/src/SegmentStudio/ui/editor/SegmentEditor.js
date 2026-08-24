@@ -10,8 +10,6 @@ import { requestJson } from "../shared/api.js";
 
 import { findUniquePerformerSlotAssignment } from "../discovery/model.js";
 
-import { canHandleEditorShortcutEvent, isEditorShortcutOwner } from "../shared/presentation.js";
-
 import { buildSegmentRailRows, expandedSwimlanes, groupSegmentsIntoSwimlanes, groupSelectedSwimlanes, groupSwimlanesBySegmentGroup, reconcileSegmentGroupKey, revealCollapsedSegmentGroup, segmentGroupKeyForSegment, visibleVirtualRows } from "./model/swimlanes.js";
 
 import { calculateTimelineRatioBounds, clampEditorPanelWidth, clampTimelineRatioForHeight } from "./model/timeline.js";
@@ -793,26 +791,12 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   });
 
   shortcutHandlerRef.current = executeShortcutById;
-  const keyboardActions = useMemo(() => {
-    let previousEvent;
-    let previousResult = false;
-    const canHandle = ({ event }) => {
-      if (event === previousEvent) return previousResult;
-      previousEvent = event;
-      const ownerDocument = event.target?.ownerDocument ?? editorRef.current?.ownerDocument ?? document;
-      previousResult = isEditorShortcutOwner(event, editorRef.current)
-        && canHandleEditorShortcutEvent(event, ownerDocument);
-      return previousResult;
-    };
-    return SEGMENT_STUDIO_SHORTCUTS.map((shortcut) => ({
+  const keyboardActions = useMemo(() => SEGMENT_STUDIO_SHORTCUTS.map((shortcut) => ({
       id: shortcut.id,
       enabled: shortcutAvailableInMode(shortcut, compatibilityMode),
-      mode: compatibilityMode ? "full" : "basic",
       surface: "local",
-      canHandle,
-      action: ({ event }) => shortcutHandlerRef.current?.(shortcut.id, event),
-    }));
-  }, [compatibilityMode]);
+      action: (invocation) => shortcutHandlerRef.current?.(shortcut.id, invocation),
+    })), [compatibilityMode]);
   useRegisterExtensionKeyboardActions("segment-studio", keyboardActions);
 
   const timelineRatioBounds = calculateTimelineRatioBounds(mediaStackHeight);

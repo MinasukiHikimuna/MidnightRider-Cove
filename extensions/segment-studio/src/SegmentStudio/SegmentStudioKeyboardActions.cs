@@ -7,10 +7,8 @@ internal static class SegmentStudioKeyboardActions
 {
     private static readonly UIKeyboardActionScope[] EditorScope =
         [new("local", Page: "segment-studio")];
-    private static readonly UIKeyboardActionScope[] BasicEditorScope =
-        [new("local", Page: "segment-studio") { Mode = "basic" }];
-    private static readonly UIKeyboardActionScope[] FullEditorScope =
-        [new("local", Page: "segment-studio") { Mode = "full" }];
+    private static readonly UIKeyboardActionScope[] BasicEditorScope = EditorScope;
+    private static readonly UIKeyboardActionScope[] FullEditorScope = EditorScope;
 
     public static void AddTo(UIManifestBuilder builder)
     {

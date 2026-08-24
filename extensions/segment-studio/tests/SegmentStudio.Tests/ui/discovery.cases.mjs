@@ -537,7 +537,7 @@ test("Enter accepts an unchanged tag only when autocomplete and IME are idle", (
 
 test("editor mode exposes the complete recycling-bin workflow", () => {
   const move = source.slice(source.indexOf("async function moveToBin"), source.indexOf("async function loadLineage"));
-  const bin = source.slice(source.indexOf("function SegmentStudioBinPage"), source.indexOf("function reviewStateLabel"));
+  const bin = sourceByModule["recycling-bin/SegmentStudioBinPage.js"];
   assert.match(source, /\/move-to-bin/);
   assert.match(move, /selectedSegments/);
   assert.match(move, /segments\/move-to-bin/);
@@ -550,9 +550,9 @@ test("editor mode exposes the complete recycling-bin workflow", () => {
   assert.match(source, /window\.confirm\(recyclingBinDeletionPrompt/);
   assert.match(bin, /system\.emptyBin/);
   assert.match(bin, /id: "system\.emptyBin"/);
-  assert.match(bin, /mode: "basic"/);
+  assert.doesNotMatch(bin, /mode: "basic"/);
   assert.match(bin, /useRegisterExtensionKeyboardActions/);
-  assert.match(bin, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
+  assert.doesNotMatch(bin, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
   assert.ok((bin.match(/notifyRecyclingBinChanged\(\)/g) || []).length >= 2);
   assert.deepEqual(
     ui.recyclingBinDeletionSummary([

@@ -133,10 +133,11 @@ test("the editor shortcut registry drives both dispatch and visible help", () =>
   assert.match(source, /function KeyboardShortcutsDialog/);
   assert.match(source, /Keyboard shortcuts/);
   assert.match(source, /useExtensionKeyboardBindings\("segment-studio"\)/);
-  assert.match(source, /executeShortcutById\(shortcutId, event\)/);
+  assert.match(source, /executeShortcutById\(shortcutId, invocation\)/);
   assert.match(source, /saveSelectedReviewState\("approved"\)/);
   assert.match(source, /saveSelectedReviewState\("rejected"\)/);
-  assert.match(source, /shortcut\.id === "system\.publishApproved"[\s\S]{0,100}openPublishApprovedDialog\(event\.target\)/);
+  assert.match(source, /shortcut\.id === "system\.publishApproved"[\s\S]{0,100}openPublishApprovedDialog\(invocation\.target\)/);
+  assert.doesNotMatch(sourceByModule["editor/actions/shortcuts.js"], /event\.preventDefault\(\)|event\.stopPropagation\(\)/);
   assert.match(source.slice(0, source.indexOf("const DISCOVERY_URL_OPTIONS")), /system\.deleteRejected/);
 });
 
@@ -295,6 +296,8 @@ test("frame stepping pauses playback and uses configured frame counts", () => {
 });
 
 test("native shortcut registrations keep keyboard ownership with the mounted editor", () => {
+  const editorSource = sourceByModule["editor/SegmentEditor.js"];
+  const shortcutActionsSource = sourceByModule["editor/actions/shortcuts.js"];
   const editor = new TestElement();
   const editorChild = new TestElement();
   const playerControl = new TestElement("[data-segment-player]");
@@ -314,17 +317,18 @@ test("native shortcut registrations keep keyboard ownership with the mounted edi
     { key: "Enter", target: body, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false },
     { querySelector: () => ({ role: "dialog" }) },
   ), false);
-  assert.match(source, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
-  assert.match(source, /id: shortcut\.id/);
-  assert.match(source, /enabled: shortcutAvailableInMode\(shortcut, compatibilityMode\)/);
-  assert.match(source, /mode: compatibilityMode \? "full" : "basic"/);
-  assert.match(source, /isEditorShortcutOwner\(event, editorRef\.current\)/);
-  assert.match(source, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
-  assert.match(source, /event === previousEvent/);
-  assert.match(source, /shortcutHandlerRef\.current = executeShortcutById/);
-  assert.doesNotMatch(source, /ownerDocument\.addEventListener\("keydown", listener, true\)/);
-  assert.doesNotMatch(source, /onKeyDownCapture: handleShortcut/);
-  assert.match(source, /shortcut\.id === "video\.playSelected"[\s\S]*requestAnimationFrame\(\(\) => editorRef\.current\?\.focus/);
+  assert.match(editorSource, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
+  assert.match(editorSource, /id: shortcut\.id/);
+  assert.match(editorSource, /enabled: shortcutAvailableInMode\(shortcut, compatibilityMode\)/);
+  assert.doesNotMatch(editorSource, /mode: compatibilityMode \? "full" : "basic"/);
+  assert.doesNotMatch(editorSource, /isEditorShortcutOwner\(event, editorRef\.current\)/);
+  assert.doesNotMatch(editorSource, /canHandleEditorShortcutEvent\(event, ownerDocument\)/);
+  assert.doesNotMatch(editorSource, /event === previousEvent/);
+  assert.match(editorSource, /action: \(invocation\) => shortcutHandlerRef\.current\?\.\(shortcut\.id, invocation\)/);
+  assert.match(editorSource, /shortcutHandlerRef\.current = executeShortcutById/);
+  assert.doesNotMatch(editorSource, /ownerDocument\.addEventListener\("keydown", listener, true\)/);
+  assert.doesNotMatch(editorSource, /onKeyDownCapture: handleShortcut/);
+  assert.match(shortcutActionsSource, /shortcut\.id === "video\.playSelected"[\s\S]*requestAnimationFrame\(\(\) => editorRef\.current\?\.focus/);
 });
 
 test("segment selection does not move or autoplay the playhead", () => {

@@ -2,8 +2,6 @@ import { h, useEffect, useRef, useRegisterExtensionKeyboardActions, useState } f
 
 import { completeOperation, confirmEmptyRecyclingBin, formatTime, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestJson } from "../shared/api.js";
 
-import { canHandleEditorShortcutEvent } from "../shared/presentation.js";
-
 import { SegmentStudioTabs, notifyRecyclingBinChanged } from "../shared/navigation.js";
 
 function SegmentStudioBinPage({ onNavigate, profile }) {
@@ -34,12 +32,7 @@ function SegmentStudioBinPage({ onNavigate, profile }) {
 
   useRegisterExtensionKeyboardActions("segment-studio", [{
     id: "system.emptyBin",
-    mode: "basic",
     surface: "local",
-    canHandle: ({ event }) => {
-      const ownerDocument = event.target?.ownerDocument ?? document;
-      return canHandleEditorShortcutEvent(event, ownerDocument);
-    },
     action: () => emptyBinRef.current?.(),
   }]);
 
