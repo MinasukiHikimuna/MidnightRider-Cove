@@ -9,7 +9,7 @@
     "metadata",
     "workflow"
   ],
-  "minCoveVersion": "1.1.1-dev.153",
+  "minCoveVersion": "1.3.2-dev.30",
   "entryDll": "SegmentStudio.dll",
   "jsBundle": "ui/SegmentStudio.js",
   "cssBundle": "ui/SegmentStudio.css",
