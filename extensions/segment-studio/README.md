@@ -8,6 +8,8 @@ extension-owned drafts and derived segments.
 Its extension ID intentionally remains `segment-studio` so pre-release installs,
 API routes, and migration receipts retain one continuous identity.
 
+Version 0.1.0 requires Cove 1.3.2-dev.33 or later.
+
 The extension includes video discovery, a timeline-first editor, review and
 recycling-bin workflows, segment groups, provenance inspection, integrity
 scanning, and AI feedback exports. See the packaged `docs` directory for the
