@@ -49,6 +49,7 @@ DECLARE
         '036_preserve_basic_feedback_anchors'
     ];
     actual TEXT[];
+    legacy_workspaces_not_empty BOOLEAN := FALSE;
 BEGIN
     SELECT array_agg(migration_name::TEXT ORDER BY migration_name)
     INTO actual
@@ -69,9 +70,18 @@ BEGIN
             'Segment Studio final schema objects are missing';
     END IF;
 
-    IF EXISTS (SELECT 1 FROM segment_studio_workspaces)
-       OR EXISTS (SELECT 1 FROM segment_studio_workspace_markers)
-    THEN
+    IF to_regclass('segment_studio_workspaces') IS NOT NULL THEN
+        EXECUTE 'SELECT EXISTS (SELECT 1 FROM segment_studio_workspaces)'
+        INTO legacy_workspaces_not_empty;
+    END IF;
+
+    IF NOT legacy_workspaces_not_empty
+       AND to_regclass('segment_studio_workspace_markers') IS NOT NULL THEN
+        EXECUTE 'SELECT EXISTS (SELECT 1 FROM segment_studio_workspace_markers)'
+        INTO legacy_workspaces_not_empty;
+    END IF;
+
+    IF legacy_workspaces_not_empty THEN
         RAISE EXCEPTION
             'Legacy Segment Studio workspace tables are not empty';
     END IF;
@@ -79,8 +89,8 @@ END
 $rebaseline$;
 
 DROP VIEW IF EXISTS segment_studio_item_compatibility;
-DROP TABLE segment_studio_workspace_markers;
-DROP TABLE segment_studio_workspaces;
+DROP TABLE IF EXISTS segment_studio_workspace_markers;
+DROP TABLE IF EXISTS segment_studio_workspaces;
 
 DELETE FROM extension_migrations
 WHERE extension_id = 'segment-studio';
