@@ -232,6 +232,7 @@ public sealed class CompletionCatalogTests
         Assert.Contains(manifest.Pages, x => x.Route == "missing-video" && x.Label == "Missing Video" && !x.ShowInNav);
         Assert.Contains(manifest.Pages, x => x.Route == "missing-scenes" && !x.ShowInNav && x.ComponentName == "LegacyMissingVideosPage");
         Assert.Contains(manifest.Pages, x => x.Route == "missing-scene" && !x.ShowInNav && x.ComponentName == "LegacyMissingVideoDetailPage");
+        Assert.Equal("list-checks", manifest.Pages.Single(x => x.Route == "missing-videos").Icon);
         Assert.All(manifest.Tabs, tab => Assert.Equal("Missing Videos", tab.Label));
         Assert.Equal(["performer", "studio", "tag"], manifest.Tabs.Select(x => x.PageType).ToArray());
         Assert.Collection(manifest.Tabs,

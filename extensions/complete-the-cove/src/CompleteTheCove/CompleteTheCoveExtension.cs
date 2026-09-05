@@ -42,7 +42,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     public override UIManifest GetUIManifest()
     {
         var manifest = ManifestBuilder()
-            .AddPage(new UIPageDefinition("missing-videos", "Complete the Cove", "puzzle", ShowInNav: true, NavOrder: 65,
+            .AddPage(new UIPageDefinition("missing-videos", "Complete the Cove", "list-checks", ShowInNav: true, NavOrder: 65,
                 RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "MissingVideosPage"))
             .AddPage(new UIPageDefinition("missing-video", "Missing Video", ShowInNav: false,
                 RequiredPermission: Permissions.ExtensionsConfigure, ComponentName: "MissingVideoDetailPage"))
