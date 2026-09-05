@@ -27,7 +27,8 @@ test("uses Cove's authenticated extension API runtime", async () => {
   assert.match(source, /import \{ extensionFetch \} from "@cove\/runtime\/api"/);
   assert.match(source, /const response = await extensionFetch\(url,/);
   assert.doesNotMatch(source, /const response = await fetch\(url,/);
-  assert.equal(manifest.minCoveVersion, "1.1.1-dev.153");
+  assert.equal(manifest.version, "1.2.1");
+  assert.equal(manifest.minCoveVersion, "1.4.0-rc.2");
 });
 
 test("accepts successful extension API responses with empty bodies", async () => {
