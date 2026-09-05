@@ -2,6 +2,16 @@
 
 This extension keeps a catalog of metadata-server videos that are missing from one Cove instance. It does not create Cove videos. Select a performer, studio, or tag from that entity's **Missing Videos** tab, then run a refresh there or from the top-level **Missing Videos** page. The main **Refresh** action refreshes every provider enabled for Complete the Cove; use its arrow menu to refresh only one enabled provider.
 
+## How refreshing avoids unnecessary work
+
+A refresh checks the full provider catalog for the selected performer, studio, or tag so it can detect new videos, removals, and metadata changes. Refreshing one record limits tracking-source synchronization and discovery to that record.
+
+- **Fewer provider requests:** StashBox and TPDB fetch up to 100 videos per page, with requests made sequentially. StashBox requests the total count only on the first page and queries a studio and its direct children together.
+- **Less local work:** Videos and their relationships are read in batches. Only changed metadata and relationships are written; unchanged videos keep their existing records and timestamps. Local ownership and exclusions determine which videos remain missing, while shared and ignored entries retain their existing rules.
+- **Reuse existing covers:** Cached covers are reused when their source URL is unchanged. Only new, changed, or previously unsuccessful covers are downloaded, sequentially through a reused connection pool.
+
+Reconciliation reports progress after each batch. Refreshing still reads the full matching catalog; it does not assume that older provider results are unchanged.
+
 ## Behavioral mapping
 
 - A selected performer maps independently to each supported metadata server for which it has a remote ID.

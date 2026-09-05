@@ -149,7 +149,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         try
         {
             EnsureRefreshProviders(discoveries, request.ProviderEndpoint);
-            await catalog.SynchronizeTargetSourcesAsync(enabledEndpoints, ct);
+            await catalog.SynchronizeTargetSourcesAsync(enabledEndpoints, ct, request.TargetType, request.EntityId);
             await RefreshProvidersAsync(catalog, discoveries, settings, request, progress, ct);
         }
         finally

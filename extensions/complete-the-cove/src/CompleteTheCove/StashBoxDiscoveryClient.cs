@@ -88,15 +88,14 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
         var ids = target.EntityType == CompletionTargetType.Studio
             ? await StudioIdsAsync(target.RemoteId, ct)
             : [target.RemoteId];
-        foreach (var id in ids)
+        int? total = null;
+        for (var page = 1; ; page++)
         {
-            for (var page = 1; ; page++)
-            {
-                var pageResult = await QueryVideosAsync(target.EntityType, id, page, ct);
-                foreach (var video in pageResult.Items)
-                    results.TryAdd(video.RemoteIds[0].Normalized, video);
-                if (pageResult.Items.Count == 0 || pageResult.Items.Count < 25) break;
-            }
+            var pageResult = await QueryVideosAsync(target.EntityType, ids, page, ct);
+            total ??= pageResult.Count;
+            foreach (var video in pageResult.Items)
+                results.TryAdd(video.RemoteIds[0].Normalized, video);
+            if (pageResult.Items.Count < 100 || (total.HasValue && (long)page * 100 >= total.Value)) break;
         }
         return results.Values.ToArray();
     }
@@ -108,19 +107,19 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
         return new[] { id }.Concat(doc.RootElement.GetProperty("data").GetProperty("findStudio").GetProperty("child_studios").EnumerateArray().Select(x => x.GetProperty("id").GetString()!)).ToArray();
     }
 
-    private async Task<(List<SourceVideo> Items, int Count)> QueryVideosAsync(CompletionTargetType mode, string id, int page, CancellationToken ct)
+    private async Task<(List<SourceVideo> Items, int? Count)> QueryVideosAsync(CompletionTargetType mode, IReadOnlyList<string> ids, int page, CancellationToken ct)
     {
         var field = mode switch { CompletionTargetType.Performer => "performers", CompletionTargetType.Studio => "studios", _ => "tags" };
         var query = $$"""
-          query($ids: [ID!]!, $page: Int!) { queryScenes(input: { {{field}}: { value: $ids, modifier: INCLUDES }, per_page: 25, page: $page }) { count scenes {
+          query($ids: [ID!]!, $page: Int!, $includeCount: Boolean!) { queryScenes(input: { {{field}}: { value: $ids, modifier: INCLUDES }, per_page: 100, page: $page }) { count @include(if: $includeCount) scenes {
             id title details release_date code urls { url } images { url } studio { id name parent { id name } }
-            performers { performer { id name disambiguation gender aliases } } tags { id name }
+            performers { performer { id name disambiguation } } tags { id name }
           } } }
           """;
-        using var doc = await SendAsync(query, new { ids = new[] { id }, page }, ct);
+        using var doc = await SendAsync(query, new { ids, page, includeCount = page == 1 }, ct);
         var root = doc.RootElement.GetProperty("data").GetProperty("queryScenes");
         var items = root.GetProperty("scenes").EnumerateArray().Select(video => MapVideo(video, _endpoint)).ToList();
-        return (items, root.GetProperty("count").GetInt32());
+        return (items, root.TryGetProperty("count", out var count) ? count.GetInt32() : null);
     }
 
     public static SourceVideo MapVideo(JsonElement video, string endpoint)

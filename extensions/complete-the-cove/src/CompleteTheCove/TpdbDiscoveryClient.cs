@@ -6,7 +6,7 @@ namespace CompleteTheCove;
 
 public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
 {
-    private const int PageSize = 25;
+    private const int PageSize = 100;
     private readonly HttpClient _http;
     private readonly string _endpoint;
     public string Endpoint => _endpoint;

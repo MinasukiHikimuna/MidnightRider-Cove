@@ -8,7 +8,8 @@ namespace CompleteTheCove;
 public sealed class CompletionCatalog(
     DbContext db,
     IBlobService blobs,
-    ILogger<CompletionCatalog> logger)
+    ILogger<CompletionCatalog> logger,
+    Func<string, CoverDownloadClient>? coverDownloaderFactory = null)
 {
     public async Task<CompletionTarget?> GetTargetAsync(CompletionTargetType type, int entityId, CancellationToken ct) =>
         await db.Set<CompletionTarget>().AsNoTracking()
@@ -115,10 +116,13 @@ public sealed class CompletionCatalog(
         return tracked;
     }
 
-    public async Task SynchronizeTargetSourcesAsync(IReadOnlyList<string> endpoints, CancellationToken ct)
+    public async Task SynchronizeTargetSourcesAsync(IReadOnlyList<string> endpoints, CancellationToken ct,
+        CompletionTargetType? targetType = null, int? entityId = null)
     {
         var normalizedEndpoints = endpoints.Select(NormalizeEndpoint).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var staleTargets = await db.Set<CompletionTarget>()
+        var targets = db.Set<CompletionTarget>().AsQueryable();
+        if (targetType.HasValue) targets = targets.Where(x => x.EntityType == targetType && x.EntityId == entityId);
+        var staleTargets = await targets
             .Where(x => !normalizedEndpoints.Contains(x.RemoteEndpoint)).ToListAsync(ct);
         if (staleTargets.Count > 0)
         {
@@ -126,7 +130,7 @@ public sealed class CompletionCatalog(
             await db.SaveChangesAsync(ct);
             await DeleteOrphansAsync(ct);
         }
-        var selections = await db.Set<CompletionTarget>().AsNoTracking()
+        var selections = await targets.AsNoTracking()
             .Select(x => new { x.EntityType, x.EntityId }).Distinct().ToListAsync(ct);
         foreach (var selection in selections)
         {
@@ -142,6 +146,8 @@ public sealed class CompletionCatalog(
     {
         var targets = await db.Set<CompletionTarget>().Where(x => x.EntityType == type && x.EntityId == entityId).ToListAsync(ct);
         if (targets.Count == 0) return;
+        var targetIds = targets.Select(x => x.Id).ToArray();
+        db.RemoveRange(await db.Set<CompletionVideoTarget>().Where(x => targetIds.Contains(x.TargetId)).ToListAsync(ct));
         db.RemoveRange(targets);
         await db.SaveChangesAsync(ct);
         await DeleteOrphansAsync(ct);
@@ -169,10 +175,17 @@ public sealed class CompletionCatalog(
         query = query.Where(x => x.RemoteEndpoint == endpoint);
         if (targetType.HasValue) query = query.Where(x => x.EntityType == targetType && x.EntityId == entityId);
         var targets = await query.OrderBy(x => x.Id).ToListAsync(ct);
+        if (targets.Count == 0)
+        {
+            progress.Report(1, "No tracked records for this provider.");
+            return new RefreshTotals(0, 0, 0, 0, 0);
+        }
+        var ownedEndpoints = (await db.Set<VideoRemoteId>().AsNoTracking()
+            .Select(x => x.Endpoint).Distinct().ToListAsync(ct))
+            .Where(value => SameProvider(value, endpoint)).ToArray();
         var owned = (await db.Set<VideoRemoteId>().AsNoTracking()
-            .Select(x => new { x.Endpoint, x.RemoteId }).ToListAsync(ct))
-            .Where(x => SameProvider(x.Endpoint, discovery.Endpoint))
-            .Select(x => x.RemoteId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Where(x => ownedEndpoints.Contains(x.Endpoint)).Select(x => x.RemoteId).ToListAsync(ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var totals = new RefreshTotals(targets.Count, 0, 0, 0, 0);
         for (var index = 0; index < targets.Count; index++)
         {
@@ -185,7 +198,9 @@ public sealed class CompletionCatalog(
             {
                 var discovered = await discovery.DiscoverAsync(target, ct);
                 progress.Report(progressMiddle, $"Reconciling {targetLabel} ({index + 1}/{targets.Count}; {discovered.Count} {(discovered.Count == 1 ? "video" : "videos")} found)...");
-                totals = await RefreshTargetAsync(target, discovery.Endpoint, discovered, settings, owned, totals, ct);
+                totals = await RefreshTargetAsync(target, discovery.Endpoint, discovered, settings, owned, totals,
+                    (done, count) => progress.Report(progressMiddle + (0.475 / targets.Count * done / Math.Max(1, count)),
+                        $"Reconciling {targetLabel}: {done}/{count} missing videos processed..."), ct);
                 target.LastRefreshAt = DateTime.UtcNow;
                 target.LastRefreshError = null;
                 target.LastSuccessfulRefreshAt = target.LastRefreshAt;
@@ -210,7 +225,7 @@ public sealed class CompletionCatalog(
         return totals;
     }
 
-    private async Task<RefreshTotals> RefreshTargetAsync(CompletionTarget target, string endpoint, IReadOnlyList<SourceVideo> discovered, CompleteSettings settings, HashSet<string> owned, RefreshTotals totals, CancellationToken ct)
+    private async Task<RefreshTotals> RefreshTargetAsync(CompletionTarget target, string endpoint, IReadOnlyList<SourceVideo> discovered, CompleteSettings settings, HashSet<string> owned, RefreshTotals totals, Action<int, int> report, CancellationToken ct)
     {
         var discoveredRemoteIds = discovered.SelectMany(video => video.RemoteIds)
             .Where(key => SameProvider(key.Endpoint, endpoint) && !string.IsNullOrWhiteSpace(key.RemoteId))
@@ -231,22 +246,59 @@ public sealed class CompletionCatalog(
             .Select(item => item.Video)
             .ToList();
 
-        var priorLinks = await db.Set<CompletionVideoTarget>().Include(x => x.Video).ThenInclude(video => video!.Tags)
+        var priorLinks = await db.Set<CompletionVideoTarget>().AsNoTracking().Include(x => x.Video).ThenInclude(video => video!.Tags)
             .Where(x => x.TargetId == target.Id).ToListAsync(ct);
+        endpoint = NormalizeEndpoint(endpoint);
         var keepVideoIds = new HashSet<int>();
-        foreach (var source in missing)
+        var priorVideoIds = priorLinks.Select(x => x.VideoId).ToHashSet();
+        var coverHost = new Uri(endpoint).Host;
+        using var downloader = coverDownloaderFactory?.Invoke(coverHost) ?? new CoverDownloadClient(coverHost);
+        var processed = 0;
+        foreach (var batch in missing.Chunk(100))
         {
-            var video = await UpsertVideoAsync(source, endpoint, ct);
-            keepVideoIds.Add(video.Id);
-            if (!priorLinks.Any(x => x.VideoId == video.Id))
-                db.Add(new CompletionVideoTarget { Video = video, Target = target });
+            ct.ThrowIfCancellationRequested();
+            var remoteIds = batch.Select(source => source.RemoteIds.First(key => SameProvider(key.Endpoint, endpoint)).RemoteId).ToArray();
+            // Split collection reads avoid multiplying performers × tags × URLs.
+            var existing = await db.Set<CompletionVideo>().AsSplitQuery()
+                .Include(x => x.Performers).Include(x => x.Tags).Include(x => x.Urls)
+                .Where(x => x.RemoteEndpoint == endpoint && remoteIds.Contains(x.RemoteId))
+                .ToDictionaryAsync(x => x.RemoteId, StringComparer.OrdinalIgnoreCase, ct);
+            var identities = await LoadLocalIdentitiesAsync(batch, endpoint, ct);
+            var saved = new List<CompletionVideo>();
+            foreach (var source in batch)
+            {
+                ct.ThrowIfCancellationRequested();
+                var remoteId = source.RemoteIds.First(key => SameProvider(key.Endpoint, endpoint)).RemoteId;
+                existing.TryGetValue(remoteId, out var video);
+                video = UpsertVideo(source, endpoint, remoteId, video, identities);
+                if (!priorVideoIds.Contains(video.Id))
+                    db.Add(new CompletionVideoTarget { Video = video, Target = target });
+                saved.Add(video);
+            }
+            await db.SaveChangesAsync(ct);
+            // Metadata is durable before network cover work. Only new/changed
+            // covers require an individual save; cached covers do no work.
+            for (var index = 0; index < batch.Length; index++)
+            {
+                ct.ThrowIfCancellationRequested();
+                await EnsureCoverAsync(saved[index], batch[index].CoverUrl, downloader, ct);
+            }
+            // A failed cover records an error without saving inside its catch.
+            await db.SaveChangesAsync(ct);
+            foreach (var video in saved) keepVideoIds.Add(video.Id);
+            // Keep the EF tracker bounded over large catalogs and subsequent targets.
+            DetachVideoGraphs();
+            processed += batch.Length;
+            report(processed, missing.Count);
         }
         var removed = priorLinks.Where(x => !keepVideoIds.Contains(x.VideoId)
             && (x.Video?.IsIgnored != true
                 || discoveredRemoteIds.Contains(x.Video.RemoteId)
                 || owned.Contains(x.Video.RemoteId)
                 || x.Video.Tags.Any(tag => settings.ExcludedTagNames.Contains(tag.Name)))).ToList();
-        db.RemoveRange(removed);
+        var removedIds = removed.Select(x => x.VideoId).ToArray();
+        db.RemoveRange(await db.Set<CompletionVideoTarget>()
+            .Where(x => x.TargetId == target.Id && removedIds.Contains(x.VideoId)).ToListAsync(ct));
         await db.SaveChangesAsync(ct);
         await DeleteOrphansAsync(ct);
         target.EligibleVideoCount = eligible.Count;
@@ -259,80 +311,101 @@ public sealed class CompletionCatalog(
         };
     }
 
-    private async Task<CompletionVideo> UpsertVideoAsync(SourceVideo source, string endpoint, CancellationToken ct)
+    private sealed record LocalIdentities(
+        Dictionary<string, int> Studios, Dictionary<string, int> Performers, Dictionary<string, int> Tags);
+
+    private async Task<LocalIdentities> LoadLocalIdentitiesAsync(SourceVideo[] videos, string endpoint, CancellationToken ct)
     {
-        endpoint = NormalizeEndpoint(endpoint);
-        var remoteId = source.RemoteIds[0].RemoteId;
-        var video = await db.Set<CompletionVideo>()
-            .Include(x => x.Performers).Include(x => x.Tags).Include(x => x.Urls)
-            .FirstOrDefaultAsync(x => x.RemoteEndpoint == endpoint && x.RemoteId == remoteId, ct);
+        var studioIds = videos.Select(x => x.Studio?.RemoteIds.FirstOrDefault()?.RemoteId).Where(x => x is not null).Distinct().ToArray();
+        var performerIds = videos.SelectMany(x => x.Performers).SelectMany(x => x.RemoteIds).Select(x => x.RemoteId).Distinct().ToArray();
+        var tagIds = videos.SelectMany(x => x.Tags).SelectMany(x => x.RemoteIds).Select(x => x.RemoteId).Distinct().ToArray();
+        var studios = await db.Set<StudioRemoteId>().AsNoTracking().Where(x => studioIds.Contains(x.RemoteId))
+            .Select(x => new { x.Endpoint, x.RemoteId, LocalId = x.StudioId }).ToListAsync(ct);
+        var performers = await db.Set<PerformerRemoteId>().AsNoTracking().Where(x => performerIds.Contains(x.RemoteId))
+            .Select(x => new { x.Endpoint, x.RemoteId, LocalId = x.PerformerId }).ToListAsync(ct);
+        var tags = await db.Set<TagRemoteId>().AsNoTracking().Where(x => tagIds.Contains(x.RemoteId))
+            .Select(x => new { x.Endpoint, x.RemoteId, LocalId = x.TagId }).ToListAsync(ct);
+        return new(
+            studios.Where(x => SameProvider(x.Endpoint, endpoint)).GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().LocalId, StringComparer.OrdinalIgnoreCase),
+            performers.Where(x => SameProvider(x.Endpoint, endpoint)).GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().LocalId, StringComparer.OrdinalIgnoreCase),
+            tags.Where(x => SameProvider(x.Endpoint, endpoint)).GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().LocalId, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private CompletionVideo UpsertVideo(SourceVideo source, string endpoint, string remoteId,
+        CompletionVideo? video, LocalIdentities identities)
+    {
         if (video is null)
         {
             video = new CompletionVideo { RemoteEndpoint = endpoint, RemoteId = remoteId };
             db.Add(video);
         }
+        var before = (video.Title, video.Code, video.Details, video.ReleaseDate, video.StudioRemoteId,
+            video.StudioName, video.CoveStudioId, video.ParentStudioRemoteId, video.ParentStudioName);
         video.Title = source.Title;
         video.Code = source.Code;
         video.Details = source.Details;
         video.ReleaseDate = DateOnly.TryParse(source.Date, out var date) ? date : null;
         video.StudioRemoteId = source.Studio?.RemoteIds.FirstOrDefault()?.RemoteId;
         video.StudioName = source.Studio?.Name;
-        video.CoveStudioId = video.StudioRemoteId is null ? null : (await db.Set<StudioRemoteId>().AsNoTracking()
-            .Where(x => x.RemoteId == video.StudioRemoteId).Select(x => new { x.Endpoint, x.StudioId }).ToListAsync(ct))
-            .Where(x => SameProvider(x.Endpoint, endpoint)).Select(x => (int?)x.StudioId).FirstOrDefault();
+        video.CoveStudioId = video.StudioRemoteId is not null && identities.Studios.TryGetValue(video.StudioRemoteId, out var studioId) ? studioId : null;
         video.ParentStudioRemoteId = source.Studio?.Parent?.RemoteIds.FirstOrDefault()?.RemoteId;
         video.ParentStudioName = source.Studio?.Parent?.Name;
-        video.UpdatedAt = DateTime.UtcNow;
-        db.RemoveRange(video.Performers);
-        db.RemoveRange(video.Tags);
-        db.RemoveRange(video.Urls);
-        var remotePerformerIds = source.Performers.Select(x => x.RemoteIds.FirstOrDefault()?.RemoteId)
-            .Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var localPerformerIds = remotePerformerIds.Count == 0
-            ? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-            : (await db.Set<PerformerRemoteId>().AsNoTracking()
-                .Where(x => remotePerformerIds.Contains(x.RemoteId))
-                .Select(x => new { x.Endpoint, x.RemoteId, x.PerformerId }).ToListAsync(ct))
-                .Where(x => SameProvider(x.Endpoint, endpoint))
-                .GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(x => x.Key, x => x.First().PerformerId, StringComparer.OrdinalIgnoreCase);
-        int? ResolveLocalPerformerId(string remoteId) => localPerformerIds.TryGetValue(remoteId, out var performerId) ? performerId : null;
-        var remoteTagIds = source.Tags.Select(x => x.RemoteIds.FirstOrDefault()?.RemoteId)
-            .Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var localTagIds = remoteTagIds.Count == 0
-            ? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-            : (await db.Set<TagRemoteId>().AsNoTracking().Where(x => remoteTagIds.Contains(x.RemoteId))
-                .Select(x => new { x.Endpoint, x.RemoteId, x.TagId }).ToListAsync(ct))
-                .Where(x => SameProvider(x.Endpoint, endpoint)).GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(x => x.Key, x => x.First().TagId, StringComparer.OrdinalIgnoreCase);
-        video.Performers = source.Performers.Select(x => new CompletionVideoPerformer
+        var changed = before != (video.Title, video.Code, video.Details, video.ReleaseDate, video.StudioRemoteId,
+            video.StudioName, video.CoveStudioId, video.ParentStudioRemoteId, video.ParentStudioName);
+        var performers = source.Performers.Select(x => new CompletionVideoPerformer
         {
             RemoteId = x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty,
-            CovePerformerId = ResolveLocalPerformerId(x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty),
+            CovePerformerId = identities.Performers.TryGetValue(x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty, out var performerId) ? performerId : null,
             Name = x.Name,
             Disambiguation = x.Disambiguation,
         }).ToList();
-        video.Tags = source.Tags.Select(x => new CompletionVideoTag
+        var tags = source.Tags.Select(x => new CompletionVideoTag
         {
             RemoteId = x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty,
-            CoveTagId = localTagIds.TryGetValue(x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty, out var tagId) ? tagId : null,
+            CoveTagId = identities.Tags.TryGetValue(x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty, out var tagId) ? tagId : null,
             Name = x.Name,
         }).ToList();
-        video.Urls = source.Urls.Where(IsSafeExternalUrl).Distinct(StringComparer.OrdinalIgnoreCase)
+        var urls = source.Urls.Where(IsSafeExternalUrl).Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(x => new CompletionVideoUrl { Url = x }).ToList();
-        await db.SaveChangesAsync(ct);
-        await EnsureCoverAsync(video, source.CoverUrl, endpoint, ct);
+        if (!video.Performers.Select(PerformerKey).Order().SequenceEqual(performers.Select(PerformerKey).Order()))
+        {
+            db.RemoveRange(video.Performers);
+            video.Performers = performers;
+            changed = true;
+        }
+        if (!video.Tags.Select(TagKey).Order().SequenceEqual(tags.Select(TagKey).Order()))
+        {
+            db.RemoveRange(video.Tags);
+            video.Tags = tags;
+            changed = true;
+        }
+        if (!video.Urls.Select(x => x.Url).Order(StringComparer.Ordinal).SequenceEqual(urls.Select(x => x.Url).Order(StringComparer.Ordinal)))
+        {
+            db.RemoveRange(video.Urls);
+            video.Urls = urls;
+            changed = true;
+        }
+        if (changed) video.UpdatedAt = DateTime.UtcNow;
         return video;
     }
 
-    private async Task EnsureCoverAsync(CompletionVideo video, string? sourceUrl, string endpoint, CancellationToken ct)
+    private static (string, int?, string, string?) PerformerKey(CompletionVideoPerformer x) =>
+        (x.RemoteId, x.CovePerformerId, x.Name, x.Disambiguation);
+    private static (string, int?, string) TagKey(CompletionVideoTag x) => (x.RemoteId, x.CoveTagId, x.Name);
+
+    private void DetachVideoGraphs()
+    {
+        foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.Entity is CompletionVideo
+            or CompletionVideoTarget or CompletionVideoPerformer or CompletionVideoTag or CompletionVideoUrl).ToArray())
+            entry.State = EntityState.Detached;
+    }
+
+    private async Task EnsureCoverAsync(CompletionVideo video, string? sourceUrl, CoverDownloadClient downloader, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(sourceUrl)) return;
         if (video.CoverBlobId is not null && string.Equals(video.CoverSourceUrl, sourceUrl, StringComparison.Ordinal)) return;
         try
         {
-            var host = new Uri(endpoint).Host;
-            using var downloader = new CoverDownloadClient(host);
             var cover = await downloader.DownloadAsync(sourceUrl, ct);
             await using var stream = new MemoryStream(cover.Bytes, writable: false);
             var blobId = await blobs.StoreBlobAsync(stream, cover.ContentType, ct);
@@ -340,8 +413,11 @@ public sealed class CompletionCatalog(
             video.CoverBlobId = blobId;
             video.CoverSourceUrl = sourceUrl;
             video.CoverError = null;
-            await db.SaveChangesAsync(ct);
-            if (!string.IsNullOrWhiteSpace(previous)) await blobs.DeleteBlobAsync(previous, ct);
+            video.UpdatedAt = DateTime.UtcNow;
+            // Finish persisting a downloaded cover before observing cancellation
+            // again, so its previous blob can be released safely.
+            await db.SaveChangesAsync(CancellationToken.None);
+            if (!string.IsNullOrWhiteSpace(previous)) await blobs.DeleteBlobAsync(previous, CancellationToken.None);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

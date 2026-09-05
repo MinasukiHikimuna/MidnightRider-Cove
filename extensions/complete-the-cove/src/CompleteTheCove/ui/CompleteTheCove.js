@@ -228,7 +228,7 @@ async function request(url, options) {
 async function runRefresh(body) {
   const started = await request("/api/extensions/com.midnightrider.complete-the-cove/jobs/refresh-catalog/run", { method: "POST", body: JSON.stringify(body) });
   for (;;) {
-    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    await new Promise((resolve) => window.setTimeout(resolve, 3000));
     const job = await request(`${API}/refresh/${encodeURIComponent(started.jobId)}`);
     if (job.completedAt || ["Completed", "Failed", "Cancelled", 2, 3, 4].includes(job.status)) {
       if (job.error) throw new Error(job.error);
@@ -362,7 +362,7 @@ function MissingVideoCard({ video, onNavigate }) {
 function RefreshSplitButton({ providers = [], refresh, refreshing, disabled = refreshing, label = "Refresh", title = "Refresh all providers" }) {
   const enabled = providers.filter((provider) => provider.enabled === true);
   return h("div", { className: "complete-the-cove-refresh-group" }, [
-    h("button", { key: "all", type: "button", disabled, onClick: () => refresh(), title, "aria-label": title, className: `complete-the-cove-refresh bg-accent font-semibold text-white disabled:opacity-60 ${enabled.length ? "" : "complete-the-cove-refresh-only"}` }, [h(RefreshCw, { key: "icon", className: `h-4 w-4 ${refreshing ? "animate-spin" : ""}` }), refreshing ? "Queued" : label]),
+    h("button", { key: "all", type: "button", disabled, onClick: () => refresh(), title, "aria-label": title, className: `complete-the-cove-refresh bg-accent font-semibold text-white disabled:opacity-60 ${enabled.length ? "" : "complete-the-cove-refresh-only"}` }, [h(RefreshCw, { key: "icon", className: `h-4 w-4 ${refreshing ? "animate-spin" : ""}` }), refreshing ? "Refreshing..." : label]),
     enabled.length ? h("details", { key: "choices", className: "complete-the-cove-refresh-choices relative" }, [
       h("summary", { key: "trigger", title: "Choose metadata provider", "aria-label": "Choose metadata provider", "aria-disabled": disabled, onClick: (event) => { if (disabled) event.preventDefault(); }, className: `complete-the-cove-refresh-arrow bg-accent text-white [&::-webkit-details-marker]:hidden ${disabled ? "pointer-events-none opacity-60" : ""}` }, h(ChevronDown, { className: "h-4 w-4" })),
       h("div", { key: "menu", className: "complete-the-cove-refresh-menu absolute right-0 top-full z-20 mt-1 min-w-56 rounded-md border border-border bg-card p-1 shadow-lg" }, enabled.map((provider) => h("button", { key: provider.endpoint, type: "button", disabled, onClick: (event) => { event.currentTarget.closest("details")?.removeAttribute("open"); refresh(provider); }, className: "block w-full rounded px-3 py-2 text-left text-sm text-secondary hover:bg-input hover:text-foreground disabled:opacity-60" }, `Refresh from ${provider.name || providerLabel(provider.endpoint)}`)))

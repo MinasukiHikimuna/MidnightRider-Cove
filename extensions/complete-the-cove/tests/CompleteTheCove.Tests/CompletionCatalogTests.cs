@@ -16,6 +16,184 @@ namespace CompleteTheCove.Tests;
 
 public sealed class CompletionCatalogTests
 {
+    [Fact]
+    public async Task Failed_last_cover_persists_its_error_without_failing_reconciliation()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        using var handler = new DelegateHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var catalog = new CompletionCatalog(db, new BlobStub(), NullLogger<CompletionCatalog>.Instance,
+            host => new CoverDownloadClient(host, handler));
+        var source = Video("failure") with { CoverUrl = "https://stashdb.org/failure.jpg" };
+        var totals = await catalog.RefreshAsync(new FakeDiscovery(source), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+        Assert.Equal(0, totals.Failed);
+        var stored = await db.Set<CompletionVideo>().AsNoTracking().SingleAsync();
+        Assert.NotNull(stored.CoverError);
+        Assert.Null(stored.CoverBlobId);
+    }
+
+    [Fact]
+    public async Task Tpdb_uses_large_pages_and_stops_at_reported_last_page()
+    {
+        var requests = 0;
+        using var client = new TpdbDiscoveryClient(
+            new() { Name = "TPDB", Endpoint = "https://theporndb.net/graphql" },
+            new DelegateHandler(request =>
+            {
+                requests++;
+                Assert.Contains($"page={requests}&per_page=100", request.RequestUri!.Query);
+                var data = Enumerable.Range((requests - 1) * 100, 100).Select(id => new { id = id.ToString(), title = "Video" });
+                return JsonResponse(JsonSerializer.Serialize(new { data, meta = new { current_page = requests, last_page = 2 } }));
+            }));
+        Assert.Equal(200, (await client.DiscoverAsync(Target(1, "one"), default)).Count);
+        Assert.Equal(2, requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cover_replacement_cleanup_survives_cancellation_and_deletion_failure(bool cancel)
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var settings = new CompleteSettings(new HashSet<string>());
+        var source = Video("first");
+        await Catalog(db).RefreshAsync(new FakeDiscovery(source), settings, null, null, new ProgressStub(), default);
+        var video = await db.Set<CompletionVideo>().SingleAsync();
+        video.CoverBlobId = "old-cover";
+        video.CoverSourceUrl = "https://stashdb.org/old.jpg";
+        await db.SaveChangesAsync();
+        using var cancellation = new CancellationTokenSource();
+        var blobs = new RecordingBlobs { ThrowOnDelete = !cancel };
+        var requests = 0;
+        using var handler = new DelegateHandler(_ =>
+        {
+            requests++;
+            if (cancel && requests == 2) cancellation.Cancel();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([1, 2, 3]) { Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg") } }
+            };
+        });
+        var catalog = new CompletionCatalog(db, blobs, NullLogger<CompletionCatalog>.Instance, host => new CoverDownloadClient(host, handler));
+        var discovery = new FakeDiscovery(source with { CoverUrl = "https://stashdb.org/new.jpg" }, Video("second") with { CoverUrl = "https://stashdb.org/second.jpg" });
+        if (cancel)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => catalog.RefreshAsync(discovery, settings, null, null, new ProgressStub(), cancellation.Token));
+        else
+        {
+            var totals = await catalog.RefreshAsync(discovery, settings, null, null, new ProgressStub(), default);
+            Assert.Equal(0, totals.Failed);
+            Assert.Equal(2, totals.Missing);
+        }
+        Assert.Contains("old-cover", blobs.Deleted);
+        var updated = await db.Set<CompletionVideo>().AsNoTracking().SingleAsync(x => x.RemoteId == "first");
+        Assert.Equal("https://stashdb.org/new.jpg", updated.CoverSourceUrl);
+        Assert.NotEqual("old-cover", updated.CoverBlobId);
+        if (!cancel) Assert.Equal("Deletion failed.", updated.CoverError);
+    }
+
+    [Fact]
+    public async Task Scoped_source_cleanup_does_not_remove_other_tracked_selections()
+    {
+        await using var db = CreateDb();
+        db.AddRange(Target(1, "one"), Target(2, "two"));
+        await db.SaveChangesAsync();
+        await Catalog(db).SynchronizeTargetSourcesAsync([], default, CompletionTargetType.Performer, 1);
+        Assert.Equal(2, (await db.Set<CompletionTarget>().SingleAsync()).EntityId);
+    }
+
+    [Fact]
+    public async Task Studio_discovery_queries_parent_and_children_together()
+    {
+        var requests = 0;
+        using var client = new StashBoxDiscoveryClient(
+            new() { Name = "Provider", Endpoint = "https://stashdb.org/graphql" },
+            new DelegateHandler(request =>
+            {
+                requests++;
+                using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                if (requests == 1) return JsonResponse("""{"data":{"findStudio":{"child_studios":[{"id":"child-a"},{"id":"child-b"}]}}}""");
+                Assert.Contains("studios: { value: $ids, modifier: INCLUDES }", body.RootElement.GetProperty("query").GetString());
+                Assert.Equal(["parent", "child-a", "child-b"], body.RootElement.GetProperty("variables").GetProperty("ids").EnumerateArray().Select(x => x.GetString()).ToArray());
+                return JsonResponse("""{"data":{"queryScenes":{"count":0,"scenes":[]}}}""");
+            }));
+        var target = Target(1, "parent");
+        target.EntityType = CompletionTargetType.Studio;
+        Assert.Empty(await client.DiscoverAsync(target, default));
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public async Task Batched_refresh_updates_changed_metadata_and_preserves_shared_links()
+    {
+        await using var db = CreateDb();
+        db.AddRange(Target(1, "one"), Target(2, "two"));
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        var settings = new CompleteSettings(new HashSet<string>());
+        var source = Video("shared");
+        await catalog.RefreshAsync(new FakeDiscovery(source), settings, null, null, new ProgressStub(), default);
+        var videoId = await db.Set<CompletionVideo>().Select(x => x.Id).SingleAsync();
+        await catalog.SetIgnoredAsync(videoId, true, default);
+        var updated = source with { Title = "Updated", Tags = [], Performers = [], Urls = ["https://example.test/updated"] };
+        await catalog.RefreshAsync(new FakeDiscovery(updated), settings, CompletionTargetType.Performer, 1, new ProgressStub(), default);
+        var video = await db.Set<CompletionVideo>().Include(x => x.Tags).Include(x => x.Performers).Include(x => x.Urls).SingleAsync();
+        Assert.Equal("Updated", video.Title);
+        Assert.True(video.IsIgnored);
+        Assert.Empty(video.Tags);
+        Assert.Empty(video.Performers);
+        Assert.Equal("https://example.test/updated", Assert.Single(video.Urls).Url);
+        Assert.Equal(2, await db.Set<CompletionVideoTarget>().CountAsync());
+    }
+
+    [Fact]
+    public async Task Refresh_batches_writes_and_leaves_unchanged_video_graphs_untouched()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var videos = Enumerable.Range(0, 205).Select(i => Video($"video-{i}")).ToArray();
+        var catalog = Catalog(db);
+        var settings = new CompleteSettings(new HashSet<string>());
+        var saves = db.SaveCalls;
+        await catalog.RefreshAsync(new FakeDiscovery(videos), settings, null, null, new ProgressStub(), default);
+        Assert.Equal(205, await db.Set<CompletionVideoTarget>().CountAsync());
+        Assert.True(db.SaveCalls - saves < 12, "Reconciliation should save batches, not every video.");
+        var timestamps = await db.Set<CompletionVideo>().AsNoTracking().OrderBy(x => x.Id).Select(x => x.UpdatedAt).ToArrayAsync();
+        var writes = db.CatalogWrites;
+        await catalog.RefreshAsync(new FakeDiscovery(videos), settings, null, null, new ProgressStub(), default);
+        Assert.Equal(writes, db.CatalogWrites);
+        Assert.Equal(timestamps, await db.Set<CompletionVideo>().AsNoTracking().OrderBy(x => x.Id).Select(x => x.UpdatedAt).ToArrayAsync());
+    }
+
+    [Theory]
+    [InlineData(100, 1)]
+    [InlineData(205, 3)]
+    public async Task Stashbox_uses_bounded_large_pages_without_an_extra_empty_request(int total, int expectedRequests)
+    {
+        var requests = 0;
+        using var client = new StashBoxDiscoveryClient(
+            new() { Name = "Provider", Endpoint = "https://stashdb.org/graphql", ApiKey = "secret" },
+            new DelegateHandler(request =>
+            {
+                using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                Assert.Contains("per_page: 100", body.RootElement.GetProperty("query").GetString());
+                var page = body.RootElement.GetProperty("variables").GetProperty("page").GetInt32();
+                Assert.Equal(page == 1, body.RootElement.GetProperty("variables").GetProperty("includeCount").GetBoolean());
+                Assert.Contains("count @include(if: $includeCount)", body.RootElement.GetProperty("query").GetString());
+                requests++;
+                var scenes = Enumerable.Range((page - 1) * 100, Math.Min(100, total - (page - 1) * 100))
+                    .Select(id => new { id = id.ToString(), title = "Video", urls = Array.Empty<object>(), images = Array.Empty<object>(), performers = Array.Empty<object>(), tags = Array.Empty<object>() });
+                var result = new Dictionary<string, object> { ["scenes"] = scenes };
+                if (page == 1) result["count"] = total;
+                return JsonResponse(JsonSerializer.Serialize(new { data = new { queryScenes = result } }));
+            }));
+        Assert.Equal(total, (await client.DiscoverAsync(Target(1, "one"), default)).Count);
+        Assert.Equal(expectedRequests, requests);
+    }
+
     [Theory]
     [InlineData(CompletionTargetType.Performer)]
     [InlineData(CompletionTargetType.Studio)]
@@ -368,7 +546,7 @@ public sealed class CompletionCatalogTests
         var video = Assert.Single(await client.DiscoverAsync(Target(1, "performer-1"), default));
 
         Assert.Equal(HttpMethod.Get, sent!.Method);
-        Assert.Equal("https://api.theporndb.net/performers/performer-1/scenes?page=1&per_page=25", sent.RequestUri!.ToString());
+        Assert.Equal("https://api.theporndb.net/performers/performer-1/scenes?page=1&per_page=100", sent.RequestUri!.ToString());
         Assert.Equal("Bearer", sent.Headers.Authorization?.Scheme);
         Assert.Equal("secret", sent.Headers.Authorization?.Parameter);
         Assert.Equal("scene-1", Assert.Single(video.RemoteIds).RemoteId);
@@ -401,7 +579,7 @@ public sealed class CompletionCatalogTests
         };
 
         Assert.Empty(await client.DiscoverAsync(target, default));
-        Assert.Equal("https://api.theporndb.net/sites/studio-1/scenes?page=1&per_page=25", sent!.AbsoluteUri);
+        Assert.Equal("https://api.theporndb.net/sites/studio-1/scenes?page=1&per_page=100", sent!.AbsoluteUri);
     }
 
     [Fact]
@@ -429,7 +607,7 @@ public sealed class CompletionCatalogTests
         Assert.Empty(await client.DiscoverAsync(target, default));
         Assert.Collection(sent,
             request => Assert.Equal("https://api.theporndb.net/tags?q=Tag%20Name&per_page=100", request.AbsoluteUri),
-            request => Assert.Equal("https://api.theporndb.net/scenes?tags%5B70%5D=Tag%20Name&page=1&per_page=25", request.AbsoluteUri));
+            request => Assert.Equal("https://api.theporndb.net/scenes?tags%5B70%5D=Tag%20Name&page=1&per_page=100", request.AbsoluteUri));
     }
 
     [Fact]
@@ -453,7 +631,7 @@ public sealed class CompletionCatalogTests
         };
 
         Assert.Empty(await client.DiscoverAsync(target, default));
-        Assert.Equal("https://api.theporndb.net/scenes?tags%5B70%5D=Tag%20Name&page=1&per_page=25", sent!.AbsoluteUri);
+        Assert.Equal("https://api.theporndb.net/scenes?tags%5B70%5D=Tag%20Name&page=1&per_page=100", sent!.AbsoluteUri);
     }
 
     [Fact]
@@ -1061,6 +1239,16 @@ public sealed class CompletionCatalogTests
 
     private sealed class TestDb(DbContextOptions options) : DbContext(options)
     {
+        public int SaveCalls { get; private set; }
+        public int CatalogWrites { get; private set; }
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            SaveCalls++;
+            ChangeTracker.DetectChanges();
+            CatalogWrites += ChangeTracker.Entries().Count(entry => entry.Entity is not CompletionTarget
+                && entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+            return base.SaveChangesAsync(cancellationToken);
+        }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             new CompleteTheCoveExtension().ConfigureModel(builder);
@@ -1114,6 +1302,19 @@ public sealed class CompletionCatalogTests
         public Task<string> StoreBlobAsync(Stream data, string contentType, CancellationToken ct = default) => Task.FromResult(Guid.NewGuid().ToString());
         public Task<(Stream Stream, string ContentType)?> GetBlobAsync(string blobId, CancellationToken ct = default) => Task.FromResult<(Stream, string)?>(null);
         public Task DeleteBlobAsync(string blobId, CancellationToken ct = default) => Task.CompletedTask;
+    }
+    private sealed class RecordingBlobs : IBlobService
+    {
+        public bool ThrowOnDelete { get; init; }
+        public List<string> Deleted { get; } = [];
+        public Task<string> StoreBlobAsync(Stream data, string contentType, CancellationToken ct = default) => Task.FromResult(Guid.NewGuid().ToString());
+        public Task<(Stream Stream, string ContentType)?> GetBlobAsync(string blobId, CancellationToken ct = default) => Task.FromResult<(Stream, string)?>(null);
+        public Task DeleteBlobAsync(string blobId, CancellationToken ct = default)
+        {
+            Deleted.Add(blobId);
+            if (ThrowOnDelete) throw new IOException("Deletion failed.");
+            return Task.CompletedTask;
+        }
     }
     private sealed class JobServiceStub : IJobService
     {
