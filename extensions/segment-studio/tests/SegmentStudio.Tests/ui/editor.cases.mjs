@@ -172,6 +172,7 @@ test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   assert.match(controller, /shotBoundaryFingerprint\(detail\.shotBoundaries \|\| \[\]\)/);
   assert.doesNotMatch(view, /Repair provenance|repair-analysis-provenance|backfillAnalysisProvenance/);
   assert.doesNotMatch(analysis, /analysisProvenanceRepair|backfillAnalysisProvenance|analysis-runs\/\$\{analysisRun\.id\}\/provenance/);
+  assert.doesNotMatch(view, /analysis-summary|AI candidates|Native segments updated/);
 });
 
 test("Basic structural commands record native history and use native restoration", () => {

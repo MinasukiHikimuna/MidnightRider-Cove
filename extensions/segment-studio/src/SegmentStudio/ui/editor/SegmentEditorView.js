@@ -212,15 +212,6 @@ function SegmentEditorView(props) {
                 }, label))),
               ]),
             ]) : null,
-            analysisRun?.status === "completed" ? h("span", {
-              key: "analysis-summary",
-              className: "px-1 text-xs text-secondary",
-              title: compatibilityMode
-                ? "AI candidates are stored for review; shot boundaries have been loaded into this editor."
-                : "AI tagging results were saved as native Cove segments.",
-            }, compatibilityMode
-              ? `${analysisRun.candidates?.length || 0} AI candidates`
-              : "Native segments updated") : null,
             compatibilityMode ? h("button", {
               key: "auto-assign-performers",
               type: "button",
