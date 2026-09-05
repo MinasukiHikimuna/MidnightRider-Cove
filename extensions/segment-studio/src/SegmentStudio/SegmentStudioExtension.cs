@@ -157,7 +157,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 "segment-studio",
                 "Segment Studio",
                 "SegmentStudioPage",
-                icon: "music",
+                icon: "scissors",
                 detailRoute: "segment-studio/:id",
                 navOrder: 65)
             .AddAction(
