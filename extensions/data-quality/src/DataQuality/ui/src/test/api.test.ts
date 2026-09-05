@@ -64,41 +64,28 @@ describe("Data Quality API adapter", () => {
     ).rejects.toThrow("1 earlier step(s) completed");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+});
 
-  it("does not restore a deleted account-imported review", async () => {
-    const imported = {
-      id: "account-review",
-      name: "Account review",
-      description: "",
-      view: {
-        filter: { page: 1, perPage: 24 },
-        objectFilter: {},
-        displayMode: "grid",
-        searchMode: "text",
-      },
-      actions: [],
-    };
-    fetchMock
-      .mockImplementationOnce(() =>
-        response({ user: { id: "user" }, permissions: ["*"] }),
-      )
-      .mockImplementationOnce(() =>
-        response([{ uiOptions: JSON.stringify([imported]) }]),
-      );
-    const first = await loadReviews();
-    expect(first.reviews.map((review) => review.id)).toEqual([
-      "account-review",
-    ]);
-    localStorage.setItem(first.storageKey, "[]");
-
-    fetchMock
-      .mockImplementationOnce(() =>
-        response({ user: { id: "user" }, permissions: ["*"] }),
-      )
-      .mockImplementationOnce(() =>
-        response([{ uiOptions: JSON.stringify([imported]) }]),
-      );
-    const second = await loadReviews();
-    expect(second.reviews).toEqual([]);
-  });
+it("waits out the public filtered-query cache after mutations but not skips", async () => {
+  const { settleReviewWrites } = await import("../api");
+  vi.useFakeTimers();
+  try {
+    let settled = false;
+    const pending = settleReviewWrites({
+      id: "a",
+      label: "Apply",
+      steps: [{ mode: "ADD", tagIds: [1] }],
+    }).then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(100);
+    await pending;
+    expect(settled).toBe(true);
+    await settleReviewWrites({ id: "s", label: "Skip", steps: [] });
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });

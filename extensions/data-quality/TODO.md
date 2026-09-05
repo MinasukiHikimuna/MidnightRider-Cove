@@ -35,15 +35,15 @@ Exit criterion: existing reviews can be run from the dedicated grid using keyboa
 
 Exit criterion: the core review loop works continuously from the keyboard without losing position or obscuring which videos an action affects.
 
-Phases 1–3 are the first delivery. Use actual review experience to prioritize phase 4.
+Phases 1–3 were the first delivery. Phases 4–6 now complete the extension-only workflows; registry publication remains deferred.
 
 ## Phase 4 — Make reviews easy to modify
 
-- [ ] Expand the compact in-route editor while preserving the current review position after save or cancel.
-- [ ] Support action duplication and reordering, ordered tag operations, clear shortcut assignments, and validation before saving.
-- [ ] Provide native filter editing with distinct temporary adjustments and saved queue updates.
-- [ ] Add configurable card annotations, tag bins, and per-review presentation settings, informed by Culture's editor.
-- [ ] Use plain-language action steps and test the adjust → resume workflow.
+- [x] Expand the compact in-route editor while preserving the current review position after save or cancel.
+- [x] Support action duplication and reordering, ordered tag operations, clear shortcut assignments, and validation before saving.
+- [x] Provide native filter editing with distinct temporary adjustments and saved queue updates.
+- [x] Add configurable card annotations, tag bins, and per-review presentation settings, informed by Culture's editor.
+- [x] Use plain-language action steps and test the adjust → resume workflow.
 
 Exit criterion: users can adapt a review during use without rebuilding it or losing their place.
 
@@ -51,18 +51,18 @@ Exit criterion: users can adapt a review during use without rebuilding it or los
 
 - [x] Keep the workflow behind narrow extension-owned storage, query, action, and review-surface boundaries.
 - [x] Build, install, and verify a development extension package through Cove's live UI.
-- [ ] Publish a durable registry package after establishing the post-merge Cove compatibility floor.
-- [ ] Persist review configuration per account across browsers.
+- [ ] Publish a durable registry package after establishing the post-merge Cove compatibility floor. **Explicitly deferred by this task; no registry publication, push, or PR is authorized.**
+- [x] Persist review configuration per account across browsers.
 - [x] Adopt existing browser-edited and account-imported prototype reviews without changing IDs or restoring locally deleted imports.
-- [ ] Add resumable review progress with defined behavior when the queue changes.
+- [x] Add resumable review progress with defined behavior when the queue changes.
 
 Exit criterion: the installed extension retains configuration and supports resuming reviews independently of the prototype sidebar.
 
 ## Phase 6 — Harden and retire the prototype
 
-- [ ] Verify large queues and the full set of permission variants.
+- [x] Verify large queues and the full set of permission variants.
 - [x] Verify keyboard conflicts, partial failures, and changing results for the phases 1–3 workflow.
-- [ ] Compare real review workflows with Culture and resolve remaining interaction friction.
+- [x] Compare real review workflows with Culture and resolve remaining interaction friction.
 - [x] Complete the automated tests, live-UI verification, and code review required for phases 1–3.
 - [x] Remove the prototype sidebar and links between Data Quality and the generic Videos list.
 
@@ -81,4 +81,14 @@ The interaction contract is recorded in `docs/data-quality-review-interaction.md
 
 The Data Quality extension owns the review route and contributes it to Cove's top-level navigation manifest, so the destination can be enabled and sorted in Settings → My → Interface with other extension pages. There is no link in either direction between it and the generic Videos list, and Cove core contains no Data Quality changes. The extension adopts the same account-imported and browser-edited review storage as the prototype and uses Cove's authenticated video query APIs, filter expressions, authorized bulk tag operations, tag-tree resolution, media URLs, and public video player. Grid, List, and Wall presentation modes preserve the same focus, selection, preview, and action behavior. Grid and Wall use Auto fit by default; Wall uses muted, viewport-aware generated previews without engagement tracking, while List provides compact horizontal rows. Manual card width remains available for grid views. A development ZIP containing the extension DLL, manifest, JavaScript, and CSS was packaged, installed, and verified through the live UI; registry publication remains deferred.
 
-Remaining limitations are intentionally deferred: the extension includes the existing compact review editor, while expanded filter editing and resumable route state belong to phase 4; visual-similarity queue evaluation is unavailable because Cove does not expose that search through its public extension API; view choice, manual card width, and page progress are session-only; account imports remain browser-adopted prototype storage; final registry packaging, the post-merge Cove compatibility floor, and configuration migration remain phase 5; atomic actions and undo remain the separate backend milestone. Successful actions refresh and advance, while partial failures report completed steps and retain retry context without claiming rollback.
+## Phase 4–6 delivery notes
+
+The editor now supports ordered action/step editing, action duplication and reordering, validated digit shortcuts, Cove's native filter dialog, explicit temporary and saved queues, annotations, descendant-tag bins, and per-review presentation. Saving or canceling returns to the current review position and selection. Configuration version 2 and progress version 1 use account-scoped saved-filter records; migration preserves review/action IDs, edits, imported-ID history, and local deletions. Original browser snapshots remain untouched for recovery and are no longer written by the extension. Unscoped legacy browser data is offered for explicit export/import because automatic migration cannot establish its account owner. Obsolete browser-only storage code and prototype-era guidance have been replaced; no active prototype surface remains.
+
+The verification suite covers editing, resumption, ordered actions, shortcuts, asynchronous saves and imports, cache expiry after mutation, changing results, migration and deletion history, malformed/future storage, concurrent reads, stale browser conflicts, permission transitions, and progress synchronization failures. Live checks covered Grid/List/Wall navigate → preview → act → advance; saved edit/cancel focus restoration on a later page; native temporary filtering/reset/save; annotations and tag bins; a queue exceeding 30,000 videos; cross-browser configuration and position/view persistence; a shrinking final page; real fixture mutations with an injected second-step failure; query/save failures and retries; injected read-only/browser-only permission responses; denied tag access; and player/navigation shortcut boundaries. Permission injection verifies the extension UI boundary; existing Cove authorization remains responsible for server enforcement. Disposable fixture records and private browser evidence remain task-local.
+
+Culture staging was inspected with populated queues and its rich editor. Task-local Culture was inspected separately: its editor was available but its backing Stash result requests failed. No staging data was changed. All product changes remain inside this extension.
+
+Final verification passed: 45 automated UI tests, production extension UI build, Cove production UI build (large-chunk warning), Release extension solution build, one focused C# test, development ZIP validation/installation, and independent final code review. See [storage-and-verification.md](docs/storage-and-verification.md) for the detailed persistence and changing-result contract.
+
+Remaining public-API boundaries: visual-similarity queue evaluation is unavailable; saved-filter writes lack atomic compare-and-swap, so simultaneous cross-browser writes remain a race despite revision checks; metadata actions wait approximately 1.1 seconds before refreshing because Cove caches identical filtered queries for one second and exposes no invalidation hook. Tag-bin counts cover the loaded page, and resumption uses identity within the saved page or its nearest index rather than scanning the whole library. Registry publication and its post-merge compatibility floor remain deferred. Atomic actions and undo remain the separate backend milestone.

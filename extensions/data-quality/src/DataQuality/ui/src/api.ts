@@ -1,6 +1,6 @@
 import { extensionFetch } from "@cove/runtime/api";
 import type { ReviewAction, VideoReview } from "./model";
-import { mergeReviews, parseReviews, validAction } from "./model";
+import { validAction, boundedFilter } from "./model";
 
 export interface VideoFile {
   id: number;
@@ -17,6 +17,7 @@ export interface Video {
   title?: string;
   date?: string;
   studioName?: string;
+  tags?: Array<{ id: number; name: string }>;
   performers: Array<{ id: number; name: string }>;
   files: VideoFile[];
   updatedAt: string;
@@ -30,8 +31,6 @@ export interface VideoPage {
   totalCount: number;
 }
 
-const REVIEW_IMPORT_SCOPE = "ext:cove-data-quality:video-reviews";
-const EXTENSION_STORAGE_PREFIX = "cove-data-quality-reviews-v1";
 const MODIFIERS: Record<string, string> = {
   EQUALS: "equals",
   NOT_EQUALS: "notEquals",
@@ -92,66 +91,12 @@ export async function request<T>(
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-export async function loadReviews(): Promise<{
-  reviews: VideoReview[];
-  storageKey: string;
-  canWrite: boolean;
-}> {
-  const me = await request<{ user: { id: string }; permissions: string[] }>(
-    "/api/auth/me",
-  );
-  const storageKey = `${EXTENSION_STORAGE_PREFIX}:${me.user.id}`;
-  const localSources = [
-    storageKey,
-    `cove-video-reviews-v1:${storageKey.split(":").at(-1)}`,
-    "page-videos",
-  ];
-  const local: VideoReview[][] = [];
-  const adoptedIds = new Set<string>();
-  for (const key of localSources) {
-    const raw = localStorage.getItem(key);
-    if (raw) local.push(parseReviews(raw));
-    const adopted: unknown = JSON.parse(
-      localStorage.getItem(`${key}:account-imports`) ?? "[]",
-    );
-    if (
-      !Array.isArray(adopted) ||
-      !adopted.every((id) => typeof id === "string")
-    )
-      throw new Error(
-        "Account import history could not be read. Existing browser reviews have been kept.",
-      );
-    for (const id of adopted) adoptedIds.add(id);
-  }
-  const records = await request<Array<{ uiOptions?: string | null }>>(
-    `/api/savedfilters?mode=${encodeURIComponent(REVIEW_IMPORT_SCOPE)}`,
-  );
-  const account = records.flatMap((record) =>
-    parseReviews(record.uiOptions ?? "[]"),
-  );
-  const localReviews = mergeReviews(...local);
-  const localIds = new Set(localReviews.map((review) => review.id));
-  const additions = account.filter(
-    (review) => !localIds.has(review.id) && !adoptedIds.has(review.id),
-  );
-  const reviews = mergeReviews(localReviews, additions);
-  for (const review of account) adoptedIds.add(review.id);
-  localStorage.setItem(storageKey, JSON.stringify(reviews));
-  localStorage.setItem(
-    `${storageKey}:account-imports`,
-    JSON.stringify([...adoptedIds]),
-  );
-  return {
-    reviews,
-    storageKey,
-    canWrite:
-      me.permissions.includes("*") || me.permissions.includes("videos.write"),
-  };
-}
-
-export function saveReviews(storageKey: string, reviews: VideoReview[]): void {
-  localStorage.setItem(storageKey, JSON.stringify(reviews));
-}
+export {
+  loadReviews,
+  saveReviews,
+  loadProgress,
+  saveProgress,
+} from "./storage";
 
 export async function findVideos(
   review: VideoReview,
@@ -176,7 +121,7 @@ export async function findVideos(
     signal,
     body: JSON.stringify(
       normalizeCriteria({
-        findFilter: filter,
+        findFilter: boundedFilter(filter),
         objectFilter,
         filterExpression,
       }),
@@ -204,7 +149,16 @@ export function videoPreviewStatusUrl(videoId: number): string {
   return `/api/stream/video/${videoId}/preview/status`;
 }
 
-async function resolveTagTree(parentIds: number[]): Promise<number[]> {
+// Cove's public filtered-query endpoint caches an identical request for one second.
+// No public invalidation/conditional-read API exists. Keep the action pending until
+// that cache expires, including after partial failure, before refreshing membership.
+export function settleReviewWrites(action: ReviewAction): Promise<void> {
+  return action.steps.length
+    ? new Promise((resolve) => window.setTimeout(resolve, 1100))
+    : Promise.resolve();
+}
+
+export async function resolveTagTree(parentIds: number[]): Promise<number[]> {
   const ids = new Set<number>();
   for (const parentId of parentIds) {
     await request(`/api/tags/${parentId}`);

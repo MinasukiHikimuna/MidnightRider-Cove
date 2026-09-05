@@ -32,8 +32,11 @@ import {
 import {
   findVideos,
   loadReviews,
+  loadProgress,
+  saveProgress,
   request,
   runReviewAction,
+  settleReviewWrites,
   saveReviews,
   videoCoverUrl,
   videoPreviewStatusUrl,
@@ -56,6 +59,21 @@ import {
   type VideoReview,
 } from "./model";
 import "./styles.css";
+import {
+  usePresentationTags,
+  annotations,
+  TagBins,
+  withTagBin,
+} from "./TagPresentation";
+import { QueueEditor } from "./QueueEditor";
+import {
+  actionShortcut,
+  moveItem,
+  reviewValidation,
+  boundedFilter,
+  resumeFocus,
+  queueSignature,
+} from "./model";
 
 type ReviewDisplayMode = "grid" | "list" | "wall";
 
@@ -83,7 +101,7 @@ function writeSelectedReviewId(reviewId: string) {
 }
 
 function pageFilter(value: Record<string, unknown>) {
-  return { ...value, page: 1, perPage: Number(value.perPage) || 40 };
+  return boundedFilter({ ...value, page: 1 });
 }
 
 function videoTitle(video: Video) {
@@ -102,13 +120,38 @@ export function DataQualityPage({
   onNavigate: (route: { page: string; id?: number }) => void;
 }) {
   const [reviews, setReviews] = useState<VideoReview[]>([]);
+  const [unassignedLegacy] = useState(() => {
+    try {
+      return localStorage.getItem("page-videos") !== null;
+    } catch {
+      return false;
+    }
+  });
   const [storageKey, setStorageKey] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState("");
   const [canWrite, setCanWrite] = useState(false);
+  const [canConfigure, setCanConfigure] = useState(true);
+  const [storageNotice, setStorageNotice] = useState("");
+  const [progressError, setProgressError] = useState("");
+  const [progressLoadBlocked, setProgressLoadBlocked] = useState(false);
+  const [progressReady, setProgressReady] = useState(false);
   const [activeId, setActiveId] = useState(selectedReviewId);
   const [managerOpen, setManagerOpen] = useState(false);
-  const review = reviews.find((item) => item.id === activeId) ?? null;
+  const [editCurrent, setEditCurrent] = useState(false);
+  const [temporaryEditor, setTemporaryEditor] = useState(false);
+  const [temporaryReview, setTemporaryReview] = useState<VideoReview | null>(
+    null,
+  );
+  const savedReview = reviews.find((item) => item.id === activeId) ?? null;
+  const review = useMemo(
+    () =>
+      temporaryReview?.id === activeId && savedReview
+        ? { ...savedReview, view: temporaryReview.view }
+        : savedReview,
+    [temporaryReview, activeId, savedReview],
+  );
+  const presentationTags = usePresentationTags(review);
   const [filter, setFilter] = useState<Record<string, unknown>>({
     page: 1,
     perPage: 40,
@@ -140,6 +183,7 @@ export function DataQualityPage({
   const gridRef = useRef<HTMLDivElement>(null);
   const loadGeneration = useRef(0);
   const actionGeneration = useRef(0);
+  const queueAbort = useRef<AbortController | null>(null);
 
   const loadAllReviews = useCallback(async () => {
     setReviewsLoading(true);
@@ -149,6 +193,8 @@ export function DataQualityPage({
       setReviews(result.reviews);
       setStorageKey(result.storageKey);
       setCanWrite(result.canWrite);
+      setCanConfigure(result.canConfigure ?? true);
+      setStorageNotice(result.storageNotice ?? "");
       if (activeId && !result.reviews.some((item) => item.id === activeId)) {
         setActiveId("");
         writeSelectedReviewId("");
@@ -172,11 +218,35 @@ export function DataQualityPage({
       targetFilter: Record<string, unknown>,
     ) => {
       const generation = ++loadGeneration.current;
+      queueAbort.current?.abort();
+      const controller = new AbortController();
+      queueAbort.current = controller;
+      targetFilter = boundedFilter(targetFilter);
+      setFilter(targetFilter);
       setQueueLoading(true);
       setQueueError("");
       try {
-        const result = await findVideos(targetReview, targetFilter);
-        if (generation === loadGeneration.current) setQueue(result);
+        let result = await findVideos(
+          targetReview,
+          targetFilter,
+          controller.signal,
+        );
+        const lastPage = Math.max(
+          1,
+          Math.ceil(result.totalCount / Number(targetFilter.perPage)),
+        );
+        if (Number(targetFilter.page) > lastPage) {
+          targetFilter = { ...targetFilter, page: lastPage };
+          result = await findVideos(
+            targetReview,
+            targetFilter,
+            controller.signal,
+          );
+        }
+        if (generation === loadGeneration.current) {
+          setQueue(result);
+          setFilter(targetFilter);
+        }
         return result;
       } catch (error) {
         if (generation === loadGeneration.current) {
@@ -196,6 +266,11 @@ export function DataQualityPage({
 
   useEffect(() => {
     actionGeneration.current += 1;
+    loadGeneration.current += 1;
+    queueAbort.current?.abort();
+    setProgressReady(false);
+    setProgressError("");
+    setProgressLoadBlocked(false);
     setSelectedIds(new Set());
     selectionVersions.current.clear();
     setFocusedId(null);
@@ -206,18 +281,132 @@ export function DataQualityPage({
     setMessage("");
     setActionError("");
     setQueue({ items: [], totalCount: 0 });
-    if (!review) return;
-    const nextFilter = pageFilter(review.view.filter);
-    setFilter(nextFilter);
-    setDisplayMode(initialDisplayMode(review));
-    setCardSize(null);
-    void fetchQueue(review, nextFilter).catch(() => undefined);
+    if (!review) {
+      setQueueLoading(false);
+      return;
+    }
+    let current = true;
+    setQueueLoading(true);
+    void (async () => {
+      let progress = null;
+      try {
+        progress = await loadProgress(storageKey, review.id);
+      } catch (error) {
+        if (current) {
+          setProgressLoadBlocked(true);
+          setProgressError(
+            error instanceof Error ? error.message : "Could not load progress.",
+          );
+        }
+      }
+      if (!current) return;
+      const resume =
+        progress?.signature === queueSignature(review) ? progress : null;
+      const nextFilter = resume
+        ? boundedFilter(resume.filter)
+        : pageFilter(review.view.filter);
+      setFilter(nextFilter);
+      setDisplayMode(resume?.displayMode ?? initialDisplayMode(review));
+      setCardSize(
+        resume ? resume.cardSize : (review.presentation?.cardSize ?? null),
+      );
+      try {
+        const result = await fetchQueue(review, nextFilter);
+        if (!current) return;
+        const nextFocus = resumeFocus(
+          result.items.map((item) => item.id),
+          resume?.focusedId ?? null,
+          resume?.index ?? 0,
+        );
+        setFocusedId(nextFocus);
+        focusCard(nextFocus);
+        if (progress && !resume)
+          setMessage(
+            "The saved queue changed. Review resumed at its first page.",
+          );
+        else if (resume)
+          setMessage(
+            "Review resumed. If results changed, focus uses the saved video on this page or the nearest position. Selection starts empty.",
+          );
+      } catch {
+        /* The queue exposes its retry state. */
+      }
+      if (current) setProgressReady(true);
+    })();
+    return () => {
+      current = false;
+      actionGeneration.current++;
+      loadGeneration.current++;
+      queueAbort.current?.abort();
+    };
   }, [review?.id]);
 
   const itemIds = useMemo(
     () => queue.items.map((item) => item.id),
     [queue.items],
   );
+  useEffect(() => {
+    if (
+      !progressReady ||
+      !review ||
+      !storageKey ||
+      queueLoading ||
+      queueError ||
+      pending ||
+      temporaryReview?.id === review.id ||
+      progressLoadBlocked
+    )
+      return;
+    const progress = {
+      version: 1 as const,
+      signature: queueSignature(review),
+      filter,
+      focusedId,
+      index: Math.max(0, itemIds.indexOf(focusedId ?? -1)),
+      displayMode,
+      cardSize,
+      updatedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(
+        storageKey + ":progress:" + review.id,
+        JSON.stringify(progress),
+      );
+    } catch {
+      /* Account save still attempted. */
+    }
+    if (progressError) return;
+    let current = true;
+    const timer = window.setTimeout(() => {
+      void saveProgress(storageKey, review.id, progress).catch((error) => {
+        if (current)
+          setProgressError(
+            "Progress is kept in this browser, but account sync failed. " +
+              (error instanceof Error ? error.message : "Retry."),
+          );
+      });
+    }, 600);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    progressReady,
+    storageKey,
+    review,
+    queueLoading,
+    queueError,
+    pending,
+    filter,
+    focusedId,
+    itemIds,
+    displayMode,
+    cardSize,
+    temporaryReview,
+    progressError,
+    progressLoadBlocked,
+  ]);
+
   const totalPages = Math.max(
     1,
     Math.ceil(queue.totalCount / Math.max(1, Number(filter.perPage) || 40)),
@@ -243,6 +432,10 @@ export function DataQualityPage({
       if (scroll) card?.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
   }, []);
+
+  useEffect(() => {
+    if (progressReady && !previewOpenRef.current) focusCard(focusedRef.current);
+  }, [progressReady, focusCard]);
 
   useEffect(() => {
     if (queueLoading || !itemIds.length) return;
@@ -296,6 +489,7 @@ export function DataQualityPage({
         !review ||
         pendingRef.current ||
         queueLoading ||
+        queueError ||
         !canWrite ||
         !actionTargets.length
       )
@@ -340,6 +534,8 @@ export function DataQualityPage({
         );
       }
       try {
+        await settleReviewWrites(action);
+        if (!isCurrent()) return;
         const refreshed = await fetchQueue(review, filter);
         if (!isCurrent()) return;
         let nextIds = refreshed.items.map((item) => item.id);
@@ -391,7 +587,16 @@ export function DataQualityPage({
         }
       }
     },
-    [canWrite, fetchQueue, filter, focusCard, itemIds, queueLoading, review],
+    [
+      canWrite,
+      fetchQueue,
+      filter,
+      focusCard,
+      itemIds,
+      queueLoading,
+      queueError,
+      review,
+    ],
   );
 
   function gridColumnCount() {
@@ -409,6 +614,7 @@ export function DataQualityPage({
       event.metaKey
     )
       return;
+    if (managerOpen || temporaryEditor) return;
     if (previewOpen && event.key === "Escape") {
       consumeShortcut(event);
       setPreviewOpen(false);
@@ -421,7 +627,10 @@ export function DataQualityPage({
       updateSelection(() => new Set());
       return;
     }
-    const actionIndex = /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : -1;
+    const actionIndex =
+      review?.actions.findIndex(
+        (action, index) => actionShortcut(action, index) === event.key,
+      ) ?? -1;
     if (actionIndex >= 0 && review?.actions[actionIndex]) {
       consumeShortcut(event);
       if (!pending && !queueLoading) void execute(review.actions[actionIndex]);
@@ -475,16 +684,34 @@ export function DataQualityPage({
     writeSelectedReviewId(id);
   }
 
-  function updateReviews(next: VideoReview[]): boolean {
+  async function updateReviews(next: VideoReview[]): Promise<boolean> {
     if (!storageKey) return false;
     try {
-      saveReviews(storageKey, next);
-    } catch {
-      return false;
+      await saveReviews(storageKey, next);
+    } catch (error) {
+      throw error;
     }
     setReviews(next);
     if (activeId && !next.some((item) => item.id === activeId))
       chooseReview("");
+    const updated = next.find((item) => item.id === activeId);
+    if (
+      updated &&
+      savedReview &&
+      JSON.stringify(updated) !== JSON.stringify(savedReview)
+    ) {
+      if (updated.view.displayMode !== savedReview.view.displayMode)
+        setDisplayMode(initialDisplayMode(updated));
+      if (updated.presentation?.cardSize !== savedReview.presentation?.cardSize)
+        setCardSize(updated.presentation?.cardSize ?? null);
+      if (queueSignature(updated) !== queueSignature(savedReview)) {
+        setTemporaryReview(null);
+        void resumeQueue(
+          updated,
+          boundedFilter({ ...updated.view.filter, page: filter.page }),
+        );
+      }
+    }
     return true;
   }
 
@@ -492,10 +719,25 @@ export function DataQualityPage({
     return <CenteredStatus label="Loading Data Quality reviews…" />;
   if (reviewsError)
     return (
-      <ErrorState
-        message={reviewsError}
-        onRetry={() => void loadAllReviews()}
-      />
+      <>
+        <button
+          className="dq-button"
+          onClick={() =>
+            void exportRecovery().catch((error) =>
+              setReviewsError(
+                "Could not export browser reviews. " +
+                  (error instanceof Error ? error.message : "Retry."),
+              ),
+            )
+          }
+        >
+          Export browser reviews
+        </button>
+        <ErrorState
+          message={reviewsError}
+          onRetry={() => void loadAllReviews()}
+        />
+      </>
     );
 
   return (
@@ -526,12 +768,61 @@ export function DataQualityPage({
         <button
           className="dq-button"
           type="button"
-          onClick={() => setManagerOpen(true)}
+          disabled={pending || queueLoading || !canConfigure}
+          onClick={() => {
+            setEditCurrent(false);
+            setManagerOpen(true);
+          }}
         >
           <Pencil /> Manage reviews
         </button>
       </header>
 
+      <p className="dq-status">{storageNotice}</p>
+      {unassignedLegacy && (
+        <details>
+          <summary>Unassigned legacy browser reviews</summary>
+          <p>
+            These old reviews have no account owner. They have not been copied
+            into this account. Export them for recovery, then import the reviews
+            only into the intended account. The original data and deletion
+            history stay in this browser.
+          </p>
+          <button
+            className="dq-button"
+            type="button"
+            onClick={() => {
+              const raw = localStorage.getItem("page-videos") ?? "[]";
+              const url = URL.createObjectURL(
+                new Blob([raw], { type: "application/json" }),
+              );
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "data-quality-unassigned-legacy-reviews.json";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export unassigned reviews
+          </button>
+        </details>
+      )}
+      {progressError && (
+        <p role="alert">
+          {progressError}{" "}
+          <button
+            type="button"
+            onClick={() => {
+              setProgressError("");
+              setProgressLoadBlocked(false);
+            }}
+          >
+            {progressLoadBlocked
+              ? "Start fresh progress"
+              : "Retry progress sync"}
+          </button>
+        </p>
+      )}
       {!review ? (
         <div className="dq-empty">
           <Film />
@@ -544,6 +835,83 @@ export function DataQualityPage({
       ) : (
         <>
           <section className="dq-toolbar">
+            <button
+              type="button"
+              className="dq-button"
+              disabled={pending || queueLoading || !canConfigure}
+              onClick={() => {
+                setEditCurrent(true);
+                setManagerOpen(true);
+              }}
+            >
+              Edit review
+            </button>
+            <button
+              type="button"
+              className="dq-button"
+              disabled={pending || queueLoading}
+              onClick={() => setTemporaryEditor(true)}
+            >
+              Adjust queue
+            </button>
+            {temporaryReview?.id === activeId && (
+              <>
+                <span>Temporary queue</span>
+                <button
+                  type="button"
+                  className="dq-button"
+                  disabled={pending || queueLoading || !canConfigure}
+                  onClick={() => {
+                    if (savedReview) {
+                      void updateReviews(
+                        reviews.map((item) =>
+                          item.id === activeId
+                            ? {
+                                ...item,
+                                view: {
+                                  ...review.view,
+                                  filter: { ...filter, page: 1 },
+                                },
+                              }
+                            : item,
+                        ),
+                      )
+                        .then(() => {
+                          setTemporaryReview(null);
+                          setMessage("Queue saved to this review.");
+                        })
+                        .catch((error) =>
+                          setActionError(
+                            error instanceof Error
+                              ? error.message
+                              : "Could not save queue.",
+                          ),
+                        );
+                    }
+                  }}
+                >
+                  Save queue to review
+                </button>
+                <button
+                  type="button"
+                  className="dq-button"
+                  disabled={pending || queueLoading}
+                  onClick={() => {
+                    setTemporaryReview(null);
+                    if (savedReview)
+                      void resumeQueue(
+                        savedReview,
+                        boundedFilter({
+                          ...savedReview.view.filter,
+                          page: filter.page,
+                        }),
+                      );
+                  }}
+                >
+                  Reset to saved queue
+                </button>
+              </>
+            )}
             <div className="dq-review-title">
               <h2>{review.name}</h2>
               {review.description && <p>{review.description}</p>}
@@ -628,7 +996,21 @@ export function DataQualityPage({
               Next
             </button>
           </section>
-          {actionError && (
+          {presentationTags.error && (
+            <p role="alert">{presentationTags.error}</p>
+          )}
+          <TagBins
+            videos={queue.items}
+            review={review}
+            trees={presentationTags.ids}
+            disabled={pending || queueLoading}
+            onChoose={(id) => {
+              const adjusted = withTagBin(review, id);
+              setTemporaryReview(adjusted);
+              void resumeQueue(adjusted, { ...filter, page: 1 });
+            }}
+          />
+          {actionError && !previewOpen && (
             <div role="alert" className="dq-alert">
               <AlertTriangle />
               {actionError}
@@ -692,11 +1074,17 @@ export function DataQualityPage({
                   key={action.id}
                   type="button"
                   disabled={
-                    pending || queueLoading || !canWrite || !targets.length
+                    pending ||
+                    queueLoading ||
+                    !!queueError ||
+                    !canWrite ||
+                    !targets.length
                   }
                   onClick={() => void execute(action)}
                 >
-                  {index < 9 && <kbd>{index + 1}</kbd>}
+                  {actionShortcut(action, index) && (
+                    <kbd>{actionShortcut(action, index)}</kbd>
+                  )}
                   <span>{action.label}</span>
                   <small>
                     {action.steps.length
@@ -730,7 +1118,8 @@ export function DataQualityPage({
           review={review}
           targetLabel={targetLabel}
           pending={pending}
-          refreshing={queueLoading}
+          refreshing={queueLoading || !!queueError}
+          error={actionError}
           canWrite={canWrite}
           selected={selectedIds.has(previewVideo.id)}
           hasPrevious={itemIds.indexOf(previewVideo.id) > 0}
@@ -751,17 +1140,63 @@ export function DataQualityPage({
           onOpen={() => onNavigate({ page: "video", id: previewVideo.id })}
         />
       )}
+      {temporaryEditor && review && (
+        <ReviewManager
+          reviews={reviews}
+          activeReview={{ ...review, view: { ...review.view, filter } }}
+          initialEdit
+          temporary
+          onSave={(next) => {
+            const adjusted = next.find((item) => item.id === activeId)!;
+            setTemporaryReview(adjusted);
+            void resumeQueue(
+              adjusted,
+              boundedFilter({ ...adjusted.view.filter, page: filter.page }),
+            );
+            return true;
+          }}
+          onChoose={() => undefined}
+          onClose={() => {
+            setTemporaryEditor(false);
+            focusCard(focusedRef.current, false);
+          }}
+        />
+      )}
       {managerOpen && (
         <ReviewManager
           reviews={reviews}
-          activeReview={review}
+          activeReview={savedReview}
+          initialEdit={editCurrent}
           onSave={updateReviews}
           onChoose={chooseReview}
-          onClose={() => setManagerOpen(false)}
+          onClose={() => {
+            setManagerOpen(false);
+            if (editCurrent) focusCard(focusedRef.current, false);
+          }}
         />
       )}
     </div>
   );
+
+  async function resumeQueue(
+    target: VideoReview,
+    nextFilter: Record<string, unknown>,
+  ) {
+    const priorFocus = focusedRef.current;
+    const priorIndex = Math.max(0, itemIds.indexOf(priorFocus ?? -1));
+    try {
+      const result = await fetchQueue(target, nextFilter);
+      const ids = result.items.map((item) => item.id);
+      setSelectedIds(
+        (current) => new Set([...current].filter((id) => ids.includes(id))),
+      );
+      const nextFocus = resumeFocus(ids, priorFocus, priorIndex);
+      setFocusedId(nextFocus);
+      if (!previewOpenRef.current) focusCard(nextFocus, false);
+    } catch {
+      /* The query error keeps the retry control and old queue visible. */
+    }
+  }
 
   function clearPageState() {
     setSelectedIds(new Set());
@@ -774,6 +1209,7 @@ export function DataQualityPage({
       <ReviewCard
         key={video.id}
         video={video}
+        annotation={annotations(video, review, presentationTags.ids)}
         displayMode={displayMode}
         focused={video.id === focusedId}
         selected={selectedIds.has(video.id)}
@@ -818,6 +1254,7 @@ function toggleOne(current: Set<number>, id: number) {
 
 function ReviewCard({
   video,
+  annotation,
   displayMode,
   focused,
   selected,
@@ -827,6 +1264,7 @@ function ReviewCard({
   onPreview,
 }: {
   video: Video;
+  annotation: string;
   displayMode: ReviewDisplayMode;
   focused: boolean;
   selected: boolean;
@@ -891,18 +1329,10 @@ function ReviewCard({
           {overlays}
         </div>
       )}
-      {displayMode !== "wall" && (
+      {(displayMode !== "wall" || annotation) && (
         <div className="dq-card-copy">
           <strong>{title}</strong>
-          <small>
-            {[
-              video.date,
-              video.studioName,
-              video.performers.map((performer) => performer.name).join(", "),
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </small>
+          <small>{annotation} </small>
         </div>
       )}
     </article>
@@ -992,6 +1422,7 @@ function ReviewPreview({
   targetLabel,
   pending,
   refreshing,
+  error,
   canWrite,
   selected,
   hasPrevious,
@@ -1008,6 +1439,7 @@ function ReviewPreview({
   targetLabel: string;
   pending: boolean;
   refreshing: boolean;
+  error: string;
   canWrite: boolean;
   selected: boolean;
   hasPrevious: boolean;
@@ -1183,6 +1615,11 @@ function ReviewPreview({
             <img src={videoScreenshotUrl(video)} alt="" />
           )}
         </div>
+        {error && (
+          <p role="alert" className="dq-alert">
+            {error}
+          </p>
+        )}
         <footer data-review-player-controls>
           {review.actions.map((action, index) => (
             <button
@@ -1191,7 +1628,9 @@ function ReviewPreview({
               disabled={pending || refreshing || !canWrite}
               onClick={() => void onAction(action)}
             >
-              {index < 9 && <kbd>{index + 1}</kbd>}
+              {actionShortcut(action, index) && (
+                <kbd>{actionShortcut(action, index)}</kbd>
+              )}
               {action.label}
             </button>
           ))}
@@ -1204,18 +1643,25 @@ function ReviewPreview({
 function ReviewManager({
   reviews,
   activeReview,
+  initialEdit = false,
+  temporary = false,
   onSave,
   onChoose,
   onClose,
 }: {
   reviews: VideoReview[];
   activeReview: VideoReview | null;
-  onSave: (reviews: VideoReview[]) => boolean;
+  initialEdit?: boolean;
+  temporary?: boolean;
+  onSave: (reviews: VideoReview[]) => boolean | Promise<boolean>;
   onChoose: (id: string) => void;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState<VideoReview | null>(null);
+  const [draft, setDraft] = useState<VideoReview | null>(() =>
+    initialEdit && activeReview ? structuredClone(activeReview) : null,
+  );
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -1238,7 +1684,7 @@ function ReviewManager({
     }
     if (event.key === "Escape") {
       consumeShortcut(event);
-      onClose();
+      if (!saving) onClose();
       return;
     }
     if (event.key !== "Tab") {
@@ -1292,25 +1738,48 @@ function ReviewManager({
     );
     setError("");
   }
-  function persistDraft() {
-    if (!draft || !draft.name.trim() || !draft.actions.every(validAction)) {
-      setError("Name the review and complete every action step before saving.");
+  async function persistDraft() {
+    if (saving) return;
+    if (!draft || reviewValidation(draft)) {
+      setError(draft ? reviewValidation(draft) : "Choose a review.");
       return;
     }
     const saved = { ...draft, name: draft.name.trim() };
     const next = reviews.some((item) => item.id === saved.id)
       ? reviews.map((item) => (item.id === saved.id ? saved : item))
       : [...reviews, saved];
-    if (!onSave(next)) {
+    setSaving(true);
+    setError("");
+    try {
+      if (!(await onSave(next))) throw new Error("Could not save reviews.");
+      onChoose(saved.id);
+      onClose();
+    } catch (error) {
       setError(
-        "Could not save reviews in this browser. Your edits are still open; free browser storage and retry.",
+        "Could not save reviews. Your edits are still open. " +
+          (error instanceof Error ? error.message : "Retry saving."),
       );
-      return;
+    } finally {
+      setSaving(false);
     }
-    onChoose(saved.id);
-    setDraft(null);
   }
-  function importFile(event: ChangeEvent<HTMLInputElement>) {
+  async function persistList(next: VideoReview[]) {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      if (!(await onSave(next))) throw new Error("Could not save reviews.");
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Could not save reviews.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function importFile(event: ChangeEvent<HTMLInputElement>) {
+    if (saving) return;
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -1318,22 +1787,21 @@ function ReviewManager({
       setError("Review files must be smaller than 2 MB.");
       return;
     }
-    file
-      .text()
-      .then((text) => {
-        const imported = parseReviews(text);
-        if (!onSave(mergeReviews(reviews, imported)))
-          throw new Error(
-            "Could not save reviews in this browser. Free browser storage and retry.",
-          );
-        setError("");
-      })
-      .catch((cause) =>
-        setError(
-          cause instanceof Error ? cause.message : "Could not import reviews.",
-        ),
+    setSaving(true);
+    setError("");
+    try {
+      const imported = parseReviews(await file.text());
+      if (!(await onSave(mergeReviews(reviews, imported))))
+        throw new Error("Could not save reviews.");
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not import reviews.",
       );
+    } finally {
+      setSaving(false);
+    }
   }
+
   return (
     <div
       ref={dialog}
@@ -1347,12 +1815,17 @@ function ReviewManager({
       <div className="dq-manager">
         <header>
           <div>
-            <h2>Manage reviews</h2>
-            <p>Existing reviews and actions remain editable in this browser.</p>
+            <h2>{temporary ? "Adjust queue temporarily" : "Manage reviews"}</h2>
+            <p>
+              {temporary
+                ? "Apply changes for this session. Saved review settings stay available through Reset to saved queue."
+                : "Edit your review, then save or cancel to resume your position."}
+            </p>
           </div>
           <button
             type="button"
             aria-label="Close review manager"
+            disabled={saving}
             onClick={onClose}
           >
             <X />
@@ -1363,74 +1836,74 @@ function ReviewManager({
             {error}
           </p>
         )}
-        {draft ? (
-          <ReviewEditor
-            draft={draft}
-            setDraft={setDraft}
-            onSave={persistDraft}
-            onCancel={() => setDraft(null)}
-          />
-        ) : (
-          <>
-            <div className="dq-manager-tools">
-              <button
-                className="dq-button"
-                type="button"
-                onClick={() => begin()}
-              >
-                <Plus /> New review
-              </button>
-              <label className="dq-button">
-                <Upload /> Import reviews
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={importFile}
-                />
-              </label>
-            </div>
-            <div className="dq-review-list">
-              {reviews.map((review) => (
-                <article key={review.id}>
-                  <div>
-                    <strong>{review.name}</strong>
-                    <p>{review.description || "No description"}</p>
-                  </div>
-                  <button type="button" onClick={() => begin(review)}>
-                    <Pencil /> Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      begin({
-                        ...structuredClone(review),
-                        id: crypto.randomUUID(),
-                        name: `${review.name} copy`,
-                      })
-                    }
-                  >
-                    Duplicate
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Delete ${review.name}`}
-                    onClick={() => {
-                      if (
-                        window.confirm(`Delete review “${review.name}”?`) &&
-                        !onSave(reviews.filter((item) => item.id !== review.id))
-                      )
-                        setError(
-                          "Could not save reviews in this browser. The review was not deleted; free browser storage and retry.",
-                        );
-                    }}
-                  >
-                    <Trash2 />
-                  </button>
-                </article>
-              ))}
-            </div>
-          </>
-        )}
+        <fieldset disabled={saving} className="dq-manager-content">
+          {draft ? (
+            <ReviewEditor
+              draft={draft}
+              temporary={temporary}
+              setDraft={setDraft}
+              onSave={() => void persistDraft()}
+              onCancel={onClose}
+            />
+          ) : (
+            <>
+              <div className="dq-manager-tools">
+                <button
+                  className="dq-button"
+                  type="button"
+                  onClick={() => begin()}
+                >
+                  <Plus /> New review
+                </button>
+                <label className="dq-button">
+                  <Upload /> Import reviews
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={importFile}
+                  />
+                </label>
+              </div>
+              <div className="dq-review-list">
+                {reviews.map((review) => (
+                  <article key={review.id}>
+                    <div>
+                      <strong>{review.name}</strong>
+                      <p>{review.description || "No description"}</p>
+                    </div>
+                    <button type="button" onClick={() => begin(review)}>
+                      <Pencil /> Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        begin({
+                          ...structuredClone(review),
+                          id: crypto.randomUUID(),
+                          name: `${review.name} copy`,
+                        })
+                      }
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${review.name}`}
+                      onClick={() => {
+                        if (window.confirm(`Delete review “${review.name}”?`))
+                          void persistList(
+                            reviews.filter((item) => item.id !== review.id),
+                          );
+                      }}
+                    >
+                      <Trash2 />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </fieldset>
       </div>
     </div>
   );
@@ -1438,11 +1911,13 @@ function ReviewManager({
 
 function ReviewEditor({
   draft,
+  temporary = false,
   setDraft,
   onSave,
   onCancel,
 }: {
   draft: VideoReview;
+  temporary?: boolean;
   setDraft: (review: VideoReview) => void;
   onSave: () => void;
   onCancel: () => void;
@@ -1456,113 +1931,228 @@ function ReviewEditor({
     });
   return (
     <div className="dq-editor">
-      <label>
-        Review name
-        <input
-          autoFocus
-          value={draft.name}
-          onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-        />
-      </label>
-      <label>
-        Description
-        <textarea
-          value={draft.description}
-          onChange={(event) =>
-            setDraft({ ...draft, description: event.target.value })
-          }
-        />
-      </label>
-      <p className="dq-editor-note">
-        The saved queue keeps its current filters, search, sort, page size, and
-        preferred view.
-      </p>
-      <h3>Actions</h3>
-      {draft.actions.map((action, index) => (
-        <fieldset key={action.id}>
-          <legend>Action {index + 1}</legend>
+      {!temporary && (
+        <>
           <label>
-            Button label
+            Review name
             <input
-              value={action.label}
+              autoFocus
+              aria-label="Review name"
+              value={draft.name}
               onChange={(event) =>
-                updateAction(index, { ...action, label: event.target.value })
+                setDraft({ ...draft, name: event.target.value })
               }
             />
           </label>
-          {action.steps.map((step, stepIndex) => (
-            <ActionStep
-              key={stepIndex}
-              step={step}
-              onChange={(next) =>
-                updateAction(index, {
-                  ...action,
-                  steps: action.steps.map((item, itemIndex) =>
-                    itemIndex === stepIndex ? next : item,
-                  ),
-                })
-              }
-              onRemove={() =>
-                updateAction(index, {
-                  ...action,
-                  steps: action.steps.filter(
-                    (_, itemIndex) => itemIndex !== stepIndex,
-                  ),
-                })
+          <label>
+            Description
+            <textarea
+              aria-label="Description"
+              value={draft.description}
+              onChange={(event) =>
+                setDraft({ ...draft, description: event.target.value })
               }
             />
+          </label>
+        </>
+      )}
+      <QueueEditor
+        draft={draft}
+        onChange={setDraft}
+        presentation={!temporary}
+      />
+      {!temporary && (
+        <>
+          <h3>Actions</h3>
+          <p>
+            Steps run in order. No steps means Skip. Earlier steps may remain
+            applied if a later step fails.
+          </p>
+          {draft.actions.map((action, index) => (
+            <fieldset key={action.id}>
+              <legend>Action {index + 1}</legend>
+              <div className="dq-row">
+                <button
+                  type="button"
+                  disabled={index === 0}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      actions: moveItem(draft.actions, index, -1),
+                    })
+                  }
+                >
+                  Move action up
+                </button>
+                <button
+                  type="button"
+                  disabled={index === draft.actions.length - 1}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      actions: moveItem(draft.actions, index, 1),
+                    })
+                  }
+                >
+                  Move action down
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      actions: [
+                        ...draft.actions.slice(0, index + 1),
+                        {
+                          ...structuredClone(action),
+                          id: crypto.randomUUID(),
+                          label: action.label + " copy",
+                          shortcut: "",
+                        },
+                        ...draft.actions.slice(index + 1),
+                      ],
+                    })
+                  }
+                >
+                  Duplicate action
+                </button>
+              </div>
+              <label>
+                Shortcut
+                <select
+                  value={action.shortcut ?? "auto"}
+                  onChange={(e) =>
+                    updateAction(index, {
+                      ...action,
+                      shortcut:
+                        e.target.value === "auto" ? undefined : e.target.value,
+                    })
+                  }
+                >
+                  <option value="auto">
+                    Position ({index < 9 ? index + 1 : "none"})
+                  </option>
+                  <option value="">None</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Button label
+                <input
+                  value={action.label}
+                  onChange={(event) =>
+                    updateAction(index, {
+                      ...action,
+                      label: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              {action.steps.map((step, stepIndex) => (
+                <ActionStep
+                  key={stepIndex}
+                  step={step}
+                  index={stepIndex}
+                  count={action.steps.length}
+                  onMove={(delta) =>
+                    updateAction(index, {
+                      ...action,
+                      steps: moveItem(action.steps, stepIndex, delta),
+                    })
+                  }
+                  onChange={(next) =>
+                    updateAction(index, {
+                      ...action,
+                      steps: action.steps.map((item, itemIndex) =>
+                        itemIndex === stepIndex ? next : item,
+                      ),
+                    })
+                  }
+                  onRemove={() =>
+                    updateAction(index, {
+                      ...action,
+                      steps: action.steps.filter(
+                        (_, itemIndex) => itemIndex !== stepIndex,
+                      ),
+                    })
+                  }
+                />
+              ))}
+              <div className="dq-row">
+                <button
+                  className="dq-button"
+                  type="button"
+                  onClick={() =>
+                    updateAction(index, {
+                      ...action,
+                      steps: [...action.steps, { mode: "ADD", tagIds: [] }],
+                    })
+                  }
+                >
+                  Add step
+                </button>
+                <button
+                  className="dq-button"
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      actions: draft.actions.filter(
+                        (_, itemIndex) => itemIndex !== index,
+                      ),
+                    })
+                  }
+                >
+                  Remove action
+                </button>
+              </div>
+            </fieldset>
           ))}
-          <div className="dq-row">
-            <button
-              className="dq-button"
-              type="button"
-              onClick={() =>
-                updateAction(index, {
-                  ...action,
-                  steps: [...action.steps, { mode: "ADD", tagIds: [] }],
-                })
-              }
-            >
-              Add step
-            </button>
-            <button
-              className="dq-button"
-              type="button"
-              onClick={() =>
-                setDraft({
-                  ...draft,
-                  actions: draft.actions.filter(
-                    (_, itemIndex) => itemIndex !== index,
-                  ),
-                })
-              }
-            >
-              Remove action
-            </button>
-          </div>
-        </fieldset>
-      ))}
-      <button
-        className="dq-button"
-        type="button"
-        onClick={() =>
-          setDraft({
-            ...draft,
-            actions: [
-              ...draft.actions,
-              { id: crypto.randomUUID(), label: "", steps: [] },
-            ],
-          })
-        }
-      >
-        Add action
-      </button>
+          <button
+            className="dq-button"
+            type="button"
+            onClick={() =>
+              setDraft({
+                ...draft,
+                actions: [
+                  ...draft.actions,
+                  { id: crypto.randomUUID(), label: "", steps: [] },
+                ],
+              })
+            }
+          >
+            Add action
+          </button>
+        </>
+      )}
       <div className="dq-editor-footer">
+        <button
+          className="dq-button"
+          type="button"
+          onClick={() => {
+            const url = URL.createObjectURL(
+              new Blob([JSON.stringify([draft], null, 2)], {
+                type: "application/json",
+              }),
+            );
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "data-quality-review.json";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          Export draft
+        </button>
         <button className="dq-button" type="button" onClick={onCancel}>
           Cancel
         </button>
         <button className="dq-button primary" type="button" onClick={onSave}>
-          Save review
+          {temporary ? "Apply temporary queue" : "Save review"}
         </button>
       </div>
     </div>
@@ -1571,15 +2161,38 @@ function ReviewEditor({
 
 function ActionStep({
   step,
+  index,
+  count,
+  onMove,
   onChange,
   onRemove,
 }: {
   step: ReviewStep;
+  index: number;
+  count: number;
+  onMove(delta: number): void;
   onChange: (step: ReviewStep) => void;
   onRemove: () => void;
 }) {
   return (
     <div className="dq-action-step">
+      <span>Step {index + 1}</span>
+      <button
+        type="button"
+        aria-label="Move step up"
+        disabled={index === 0}
+        onClick={() => onMove(-1)}
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        aria-label="Move step down"
+        disabled={index === count - 1}
+        onClick={() => onMove(1)}
+      >
+        ↓
+      </button>
       <select
         aria-label="Tag operation"
         value={step.mode}
@@ -1603,6 +2216,34 @@ function ActionStep({
       </button>
     </div>
   );
+}
+
+async function exportRecovery() {
+  const me = await request<{ user: { id: string | number } }>("/api/auth/me");
+  const id = String(me.user.id);
+  const current = localStorage.getItem("cove-data-quality-v2:" + id);
+  let raw =
+    current ??
+    localStorage.getItem("cove-data-quality-reviews-v1:" + id) ??
+    localStorage.getItem("cove-video-reviews-v1:" + id) ??
+    "[]";
+  if (current) {
+    try {
+      const config = JSON.parse(current);
+      if (Array.isArray(config.reviews))
+        raw = JSON.stringify(config.reviews, null, 2);
+    } catch {
+      /* Export the original corrupt payload without modifying it. */
+    }
+  }
+  const url = URL.createObjectURL(
+    new Blob([raw], { type: "application/json" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "data-quality-browser-recovery.json";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function CenteredStatus({ label }: { label: string }) {

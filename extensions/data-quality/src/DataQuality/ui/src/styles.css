@@ -548,3 +548,28 @@
     grid-template-columns: 1fr;
   }
 }
+
+.dq-action-step {
+  grid-template-columns: auto auto auto minmax(8rem, 1fr) minmax(
+      10rem,
+      2fr
+    ) auto;
+}
+.dq-editor .dq-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dq-editor .dq-checkbox input {
+  width: auto;
+}
+.dq-editor button {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.35rem;
+}
+@media (max-width: 700px) {
+  .dq-action-step {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

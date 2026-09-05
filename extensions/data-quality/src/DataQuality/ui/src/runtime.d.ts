@@ -7,6 +7,21 @@ declare module "@cove/runtime/api" {
 
 declare module "@cove/runtime/components" {
   import type { ComponentType, CSSProperties, ReactNode } from "react";
+  export const VIDEO_CRITERIA: Array<{
+    id: string;
+    label: string;
+    filterKey: string;
+  }>;
+  export const VIDEO_SORT_OPTIONS: Array<{ value: string; label: string }>;
+  export const FilterDialog: ComponentType<{
+    open: boolean;
+    onClose(): void;
+    criteria: typeof VIDEO_CRITERIA;
+    activeFilter: Record<string, unknown>;
+    onApply(filter: Record<string, unknown>): void;
+    supportsFilterExpressions?: boolean;
+    subjectLabel?: string;
+  }>;
   export const VideoPlayer: ComponentType<{
     streamUrl: string;
     posterUrl?: string;

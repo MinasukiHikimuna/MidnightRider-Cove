@@ -15,6 +15,7 @@ export interface ReviewStep {
 export interface ReviewAction {
   id: string;
   label: string;
+  shortcut?: string;
   steps: ReviewStep[];
 }
 
@@ -25,6 +26,83 @@ export interface VideoReview {
   view: ReviewView;
   actions: ReviewAction[];
   importNotes?: string[];
+  presentation?: {
+    cardSize?: number | null;
+    annotations?: Array<"date" | "studio" | "performers" | "tags">;
+    annotationParents?: number[];
+    binParents?: number[];
+  };
+}
+
+export function actionShortcut(action: ReviewAction, index: number): string {
+  const value = action.shortcut ?? (index < 9 ? String(index + 1) : "");
+  return /^[1-9]$/.test(value) ? value : "";
+}
+
+export function moveItem<T>(items: T[], index: number, delta: number): T[] {
+  const next = [...items];
+  const target = index + delta;
+  if (
+    index < 0 ||
+    target < 0 ||
+    index >= items.length ||
+    target >= items.length
+  )
+    return next;
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
+
+export function reviewValidation(review: VideoReview): string {
+  if (!review.name.trim() || !review.actions.every(validAction))
+    return "Name the review and complete every action step before saving.";
+  if (new Set(review.actions.map((a) => a.id)).size !== review.actions.length)
+    return "Action IDs must be unique within a review.";
+  const keys = review.actions
+    .map(
+      (action, index) =>
+        action.shortcut ?? (index < 9 ? String(index + 1) : ""),
+    )
+    .filter(Boolean);
+  if (
+    keys.some((key) => !/^[1-9]$/.test(key)) ||
+    new Set(keys).size !== keys.length
+  )
+    return "Assign each shortcut 1–9 only once, or choose None. Navigation and player keys are reserved.";
+  return "";
+}
+
+export function boundedFilter(
+  filter: Record<string, unknown>,
+): Record<string, unknown> {
+  const positive = (value: unknown, fallback: number) =>
+    Number.isFinite(Number(value)) && Number(value) > 0
+      ? Math.floor(Number(value))
+      : fallback;
+  return {
+    ...filter,
+    page: Math.max(1, positive(filter.page, 1)),
+    perPage: Math.max(1, Math.min(100, positive(filter.perPage, 40))),
+  };
+}
+
+export function resumeFocus(
+  ids: number[],
+  focusedId: number | null,
+  index: number,
+): number | null {
+  return focusedId != null && ids.includes(focusedId)
+    ? focusedId
+    : (ids[Math.max(0, Math.min(index, ids.length - 1))] ?? null);
+}
+
+export function queueSignature(review: VideoReview): string {
+  const { page: _page, ...filter } = review.view.filter;
+  return JSON.stringify([
+    filter,
+    review.view.objectFilter,
+    review.view.searchMode,
+  ]);
 }
 
 export function validAction(action: ReviewAction): boolean {
@@ -61,6 +139,7 @@ export function parseReviews(raw: string | null): VideoReview[] {
         review.view.objectFilter &&
         typeof review.view.objectFilter === "object" &&
         !Array.isArray(review.view.objectFilter) &&
+        validPresentation(review.presentation) &&
         (review.importNotes === undefined ||
           (Array.isArray(review.importNotes) &&
             review.importNotes.every(
@@ -71,6 +150,8 @@ export function parseReviews(raw: string | null): VideoReview[] {
           (action: ReviewAction) =>
             typeof action?.id === "string" &&
             typeof action.label === "string" &&
+            (action.shortcut === undefined ||
+              typeof action.shortcut === "string") &&
             Array.isArray(action.steps) &&
             action.steps.every((step) => step && Array.isArray(step.tagIds)) &&
             validAction(action),
@@ -81,7 +162,42 @@ export function parseReviews(raw: string | null): VideoReview[] {
       "Saved reviews could not be read. Existing browser data has been kept.",
     );
   }
+  if ((data as VideoReview[]).some((review) => reviewValidation(review)))
+    throw new Error(
+      "Saved reviews contain invalid actions or shortcuts. Existing data has been kept; assign shortcuts 1–9 only once or leave them empty.",
+    );
+  if (
+    new Set((data as VideoReview[]).map((review) => review.id)).size !==
+    data.length
+  )
+    throw new Error(
+      "Saved review IDs must be unique. Existing data has been kept.",
+    );
   return data as VideoReview[];
+}
+
+function validPresentation(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const settings = value as NonNullable<VideoReview["presentation"]>;
+  return (
+    (settings.cardSize === undefined ||
+      settings.cardSize === null ||
+      (Number.isFinite(settings.cardSize) &&
+        settings.cardSize >= 115 &&
+        settings.cardSize <= 380)) &&
+    (settings.annotations === undefined ||
+      (Array.isArray(settings.annotations) &&
+        settings.annotations.every((field) =>
+          ["date", "studio", "performers", "tags"].includes(field),
+        ))) &&
+    [settings.annotationParents, settings.binParents].every(
+      (ids) =>
+        ids === undefined ||
+        (Array.isArray(ids) &&
+          ids.every((id) => Number.isSafeInteger(id) && id > 0)),
+    )
+  );
 }
 
 export function mergeReviews(...sources: VideoReview[][]): VideoReview[] {
