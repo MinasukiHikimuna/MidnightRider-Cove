@@ -10,11 +10,35 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 
 namespace CompleteTheCove.Tests;
 
 public sealed class CompletionCatalogTests
 {
+    [Theory]
+    [InlineData(CompletionTargetType.Performer)]
+    [InlineData(CompletionTargetType.Studio)]
+    [InlineData(CompletionTargetType.Tag)]
+    public async Task Count_is_absent_until_tracked_and_preserves_tracked_zero(CompletionTargetType type)
+    {
+        await using var db = CreateDb();
+        async Task<int?> Count(int id)
+        {
+            var result = (IValueHttpResult)await CompleteTheCoveExtension.CountTarget(type, id, db, default);
+            return System.Text.Json.JsonSerializer.SerializeToElement(result.Value).GetProperty("count").Deserialize<int?>();
+        }
+        Assert.Null(await Count(1));
+        var target = new CompletionTarget { EntityType = type, EntityId = 1, DisplayName = "Tracked record", RemoteEndpoint = "https://example.test", RemoteId = "target" };
+        db.Add(target);
+        await db.SaveChangesAsync();
+        Assert.Equal(0, await Count(1));
+        db.Add(new CompletionVideoTarget { Target = target, Video = new CompletionVideo { RemoteEndpoint = "https://example.test", RemoteId = "video" } });
+        await db.SaveChangesAsync();
+        Assert.Equal(1, await Count(1));
+        Assert.Null(await Count(2));
+    }
+
     [Fact]
     public void Manifest_exposes_native_catalog_detail_and_entity_tabs()
     {

@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+test("tracking prompts name the performer, studio, or tag", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const declaration = source.match(/function EntityTab\([\s\S]*?(?=\nfunction MissingVideoDetailPage)/)?.[0];
+  assert.ok(declaration);
+  for (const type of ["performer", "studio", "tag"]) {
+    let call = 0;
+    const EntityTab = Function("useState", "useEffect", "h", "Puzzle", "API", `${declaration}; return EntityTab;`)(
+      () => [call++ === 0 ? { tracked: null } : false, () => {}],
+      () => {},
+      (tag, props, children) => ({ tag, props, children }),
+      "icon", "/api",
+    );
+    const view = EntityTab({ type, entityId: 1 });
+    assert.equal(view.children.find((child) => child?.props?.key === "track").children, `Track this ${type}`);
+    assert.match(view.children.find((child) => child?.props?.key === "help").children, new RegExp(`Track this ${type} across`));
+  }
+});
+
 test("uses Cove's authenticated extension API runtime", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const manifest = JSON.parse(await readFile(new URL("../src/CompleteTheCove/extension.json", import.meta.url), "utf8"));

@@ -689,8 +689,14 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     }
     private static async Task<IResult> GetTarget(CompletionTargetType type, int entityId, CompletionCatalog catalog, CancellationToken ct) =>
         Results.Ok(new { tracked = await catalog.GetTargetOverviewItemAsync(type, entityId, ct) });
-    private static async Task<IResult> CountTarget(CompletionTargetType type, int entityId, DbContext db, CancellationToken ct) =>
-        Results.Ok(new { count = await db.Set<CompletionVideo>().CountAsync(x => !x.IsIgnored && x.Targets.Any(t => t.Target!.EntityType == type && t.Target.EntityId == entityId), ct) });
+    internal static async Task<IResult> CountTarget(CompletionTargetType type, int entityId, DbContext db, CancellationToken ct)
+    {
+        var tracked = await db.Set<CompletionTarget>().AnyAsync(x => x.EntityType == type && x.EntityId == entityId, ct);
+        int? count = tracked
+            ? await db.Set<CompletionVideo>().CountAsync(x => !x.IsIgnored && x.Targets.Any(t => t.Target!.EntityType == type && t.Target.EntityId == entityId), ct)
+            : null;
+        return Results.Ok(new { count });
+    }
     private static async Task<IResult> Track(CompletionTargetType type, int entityId, CompletionCatalog catalog, CoveConfiguration configuration, CancellationToken ct)
     {
         var settings = CompleteSettings.From(configuration);
