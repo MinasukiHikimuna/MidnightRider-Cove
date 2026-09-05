@@ -1,18 +1,104 @@
 import React from "@cove/runtime/react";
 import { extensionFetch } from "@cove/runtime/api";
-import {
-  DAY_MS,
-  anniversaryYears,
-  clamp,
-  dailyKey,
-  deterministicShuffle,
-  isEmptyResult,
-  randomSeed,
-  readBoolean,
-} from "./discovery-utils.mjs";
+import { EntityReferenceSelector, GroupItemFeed, PerformerTile, VideoTile } from "@cove/runtime/components";
 
 const h = React.createElement;
 const MINUTE = 60;
+const DAY_MS = 86_400_000;
+const PERFORMER_CONNECTIONS_ENDPOINT = "/api/plugins/com.midnightrider.discovery-widgets/performer-connections";
+
+function clamp(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallback;
+}
+
+function readBoolean(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function dailyKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function stableSeed(...parts) {
+  const value = parts.join(":");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) & 0x7fffffff;
+}
+
+function randomSeed(day, instanceId, scope, revision = 0) {
+  return stableSeed(day, instanceId, scope, revision);
+}
+
+function randomRevisionStart(randomValue = Math.random()) {
+  return Math.floor(randomValue * 0x80000000) & 0x7fffffff;
+}
+
+function deterministicShuffle(items, seed) {
+  const result = [...items];
+  let state = seed || 1;
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const swapIndex = state % (index + 1);
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
+function anniversaryYears(date, historyYears) {
+  const month = date.getMonth();
+  const day = date.getDate();
+  return Array.from({ length: historyYears }, (_, index) => date.getFullYear() - index - 1)
+    .filter((year) => {
+      const candidate = new Date(year, month, day);
+      return candidate.getFullYear() === year && candidate.getMonth() === month && candidate.getDate() === day;
+    });
+}
+
+function isEmptyResult(value) {
+  return value == null || (Array.isArray(value) && value.length === 0);
+}
+
+function connectionTimeline(chain) {
+  const steps = Array.isArray(chain?.steps) ? chain.steps : [];
+  if (steps.length === 0) return [];
+  const items = [{ type: "performer", performer: steps[0].from, label: "Start" }];
+  steps.forEach((step, index) => {
+    const degree = index + 1;
+    items.push({ type: "scene", step, degree });
+    items.push({
+      type: "performer",
+      performer: step.to,
+      label: index === steps.length - 1 ? "Finish" : `Degree ${degree}`,
+    });
+  });
+  return items;
+}
+
+function snakePosition(index, itemCount, columns) {
+  const safeColumns = Math.max(1, Math.floor(columns));
+  const rowIndex = Math.floor(index / safeColumns);
+  const offset = index % safeColumns;
+  const forwards = rowIndex % 2 === 0;
+  const column = forwards ? offset + 1 : safeColumns - offset;
+  const hasNext = index < itemCount - 1;
+  return {
+    row: rowIndex + 1,
+    column,
+    link: !hasNext ? "none" : offset === safeColumns - 1 ? "down" : forwards ? "right" : "left",
+  };
+}
+
+function snakeColumnCount(width) {
+  return width > 640 ? 7 : 1;
+}
 
 function useDailyKey() {
   const [key, setKey] = React.useState(() => dailyKey());
@@ -456,6 +542,258 @@ function CurationQueueWidget({ configuration, onNavigate }) {
   }, state.value ? h(VideoGrid, { videos: state.value, onNavigate }) : null);
 }
 
+function readGroupId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
+function GroupFeedWidget({ configuration, onNavigate }) {
+  const groupId = readGroupId(configuration?.groupId);
+  if (!groupId) {
+    return h("div", { className: "discovery-message discovery-group-feed-message" },
+      h("strong", null, "Choose a group"),
+      h("p", null, "Open this widget's settings and select the group to browse here."));
+  }
+  return h(GroupItemFeed, { groupId, onNavigate });
+}
+
+function readPerformerId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
+function configuredConnectionMode(value) {
+  return value === "selected" ? "selected" : "random";
+}
+
+function ConnectionPerformerNode({ performer, label, position, onNavigate }) {
+  const route = { page: "performer", id: performer.id };
+  return h("li", {
+    className: "degrees-chain__item degrees-performer-node",
+    style: { gridRow: position.row, gridColumn: position.column },
+    "data-kind": "performer",
+    "data-link": position.link,
+    "aria-label": `${label}: ${performer.name}`,
+  },
+    h("span", { className: "degrees-chain__label" }, label),
+    h(PerformerTile, {
+      performer: {
+        id: performer.id,
+        name: performer.name,
+        imagePath: performer.imageUrl,
+        videoCount: performer.videoCount,
+      },
+      onClick: () => onNavigate(route),
+      onNavigate,
+    }));
+}
+
+function ConnectionSceneBridge({ step, degree, position, onNavigate }) {
+  const route = { page: "video", id: step.video.id };
+  return h("li", {
+    className: "degrees-chain__item degrees-scene-bridge",
+    style: { gridRow: position.row, gridColumn: position.column },
+    "data-kind": "scene",
+    "data-link": position.link,
+    "aria-label": `Connection ${degree}: ${step.from.name} and ${step.to.name} share ${step.video.title}`,
+  },
+    h("span", { className: "degrees-chain__label" }, `Connection ${degree}`),
+    h(VideoTile, {
+      video: {
+        id: step.video.id,
+        title: step.video.title,
+        date: step.video.date,
+        imagePath: step.video.imageUrl,
+        files: [],
+      },
+      onClick: () => onNavigate(route),
+    }));
+}
+
+function ConnectionTrail({ chain, onNavigate }) {
+  const chainRef = React.useRef(null);
+  const [columns, setColumns] = React.useState(() => snakeColumnCount(globalThis.innerWidth || 0));
+  React.useLayoutEffect(() => {
+    const element = chainRef.current;
+    if (!element) return undefined;
+    const container = element.parentElement;
+    if (!container) return undefined;
+    const updateColumns = () => {
+      const styles = getComputedStyle(container);
+      const width = container.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+      setColumns(snakeColumnCount(width));
+    };
+    updateColumns();
+    const observer = new ResizeObserver(updateColumns);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+  const timeline = connectionTimeline(chain);
+  const items = timeline.map((item, timelineIndex) => {
+    const position = snakePosition(timelineIndex, timeline.length, columns);
+    return item.type === "scene"
+      ? h(ConnectionSceneBridge, { key: `scene-${item.degree}-${item.step.video.id}`, step: item.step, degree: item.degree, position, onNavigate })
+      : h(ConnectionPerformerNode, { key: `performer-${item.performer.id}`, performer: item.performer, label: item.label, position, onNavigate });
+  });
+  return h("ol", {
+    ref: chainRef,
+    className: `degrees-chain${columns === 1 ? " is-stacked" : ""}`,
+    style: { "--degrees-columns": columns },
+    "aria-label": `${chain.degrees} degree performer connection`,
+  }, items);
+}
+
+function PerformerPicker({ label, value, placeholder, onChange }) {
+  const inputId = React.useId();
+  return h("div", { className: "degrees-picker" },
+    h("label", { htmlFor: inputId }, label),
+    h(EntityReferenceSelector, {
+      entityType: "performer",
+      inputId,
+      value,
+      selectedDisplay: "input",
+      placeholder,
+      creatable: false,
+      allowCreate: false,
+      inputClassName: "degrees-performer-picker",
+      onChange: (nextValue) => onChange(readPerformerId(nextValue)),
+    }));
+}
+
+function connectionEmptyCopy(reason, maxDegrees) {
+  if (reason === "performerUnavailable") return "One or both performers are unavailable or have no visible videos.";
+  if (reason === "noPath") return `No visible connection was found within ${maxDegrees} degree${maxDegrees === 1 ? "" : "s"}.`;
+  if (reason === "choosePerformers") return "Choose two different performers, then ask Cove to find their shortest visible connection.";
+  return "Cove needs at least one visible video shared by two performers before it can build a chain.";
+}
+
+function SixDegreesWidget({ configuration, instanceId, onNavigate }) {
+  const configuredMode = configuredConnectionMode(configuration?.mode);
+  const configuredStartId = readPerformerId(configuration?.startPerformerId);
+  const configuredEndId = readPerformerId(configuration?.endPerformerId);
+  const maxDegrees = clamp(configuration?.maxDegrees, 1, 6, 6);
+  const configuredSelectionIsValid = configuredStartId && configuredEndId && configuredStartId !== configuredEndId;
+  const randomRevision = React.useRef(null);
+  if (randomRevision.current === null) randomRevision.current = randomRevisionStart();
+  const initialMode = configuredMode;
+  const initialRequest = configuredMode === "selected" && configuredSelectionIsValid
+    ? { mode: "selected", startId: configuredStartId, endId: configuredEndId, maxDegrees, seed: 0 }
+    : configuredMode === "selected"
+      ? { mode: "idle", startId: null, endId: null, maxDegrees, seed: 0 }
+      : { mode: "random", startId: null, endId: null, maxDegrees, seed: randomSeed(dailyKey(), instanceId, "six-degrees", randomRevision.current) };
+  const [mode, setMode] = React.useState(initialMode);
+  const [startId, setStartId] = React.useState(configuredStartId);
+  const [endId, setEndId] = React.useState(configuredEndId);
+  const [request, setRequest] = React.useState(initialRequest);
+
+  React.useEffect(() => {
+    setMode(configuredMode);
+    setStartId(configuredStartId);
+    setEndId(configuredEndId);
+    setRequest(configuredMode === "selected" && configuredSelectionIsValid
+      ? { mode: "selected", startId: configuredStartId, endId: configuredEndId, maxDegrees, seed: 0 }
+      : configuredMode === "selected"
+        ? { mode: "idle", startId: null, endId: null, maxDegrees, seed: 0 }
+        : { mode: "random", startId: null, endId: null, maxDegrees, seed: randomSeed(dailyKey(), instanceId, "six-degrees", randomRevision.current) });
+  }, [configuredMode, configuredStartId, configuredEndId, configuredSelectionIsValid, instanceId, maxDegrees]);
+
+  const state = useAsyncData(async (signal) => {
+    if (request.mode === "idle") {
+      return { chain: null, emptyReason: "choosePerformers", maxDegrees: request.maxDegrees, performerCount: 0, videoCount: 0 };
+    }
+    const params = new URLSearchParams({ maxDegrees: String(request.maxDegrees), seed: String(request.seed) });
+    if (request.mode === "selected") {
+      params.set("startPerformerId", String(request.startId));
+      params.set("endPerformerId", String(request.endId));
+    }
+    return fetchJson(`${PERFORMER_CONNECTIONS_ENDPOINT}?${params}`, { signal });
+  }, [request.mode, request.startId, request.endId, request.maxDegrees, request.seed]);
+
+  const runRandom = () => {
+    randomRevision.current += 1;
+    setMode("random");
+    setRequest({
+      mode: "random",
+      startId: null,
+      endId: null,
+      maxDegrees,
+      seed: randomSeed(dailyKey(), instanceId, "six-degrees", randomRevision.current),
+    });
+  };
+  const runSelected = () => {
+    if (!startId || !endId || startId === endId) return;
+    setRequest({ mode: "selected", startId, endId, maxDegrees, seed: 0 });
+  };
+  const chooseSelectedMode = () => {
+    setMode("selected");
+    if (request.mode !== "selected") {
+      setRequest({ mode: "idle", startId: null, endId: null, maxDegrees, seed: 0 });
+    }
+  };
+  const changeStartPerformer = (value) => {
+    setStartId(value);
+    setRequest({ mode: "idle", startId: null, endId: null, maxDegrees, seed: 0 });
+  };
+  const changeEndPerformer = (value) => {
+    setEndId(value);
+    setRequest({ mode: "idle", startId: null, endId: null, maxDegrees, seed: 0 });
+  };
+  const swapPerformers = () => {
+    setStartId(endId);
+    setEndId(startId);
+    if (startId && endId && startId !== endId) {
+      setRequest({ mode: "selected", startId: endId, endId: startId, maxDegrees, seed: 0 });
+    }
+  };
+  const chain = state.value?.chain;
+  const selectedReady = !!startId && !!endId && startId !== endId;
+
+  return h("section", { className: "six-degrees" },
+    h("header", { className: "six-degrees__hero" },
+      h("div", null,
+        h("span", { className: "six-degrees__eyebrow" }, "Performer connections"),
+        h("h2", null, "Six Degrees of Johnny Sins"),
+        h("p", null, "Follow the shortest visible trail between performers through the videos they share."))),
+    h("div", { className: "degrees-controls" },
+      h("div", { className: "degrees-quick-actions" },
+        h("div", { className: "degrees-mode", role: "group", "aria-label": "Connection mode" },
+          h("button", { type: "button", className: mode === "random" ? "is-active" : "", "aria-pressed": mode === "random", onClick: runRandom }, "Random chain"),
+          h("button", { type: "button", className: mode === "selected" ? "is-active" : "", "aria-pressed": mode === "selected", onClick: chooseSelectedMode }, "Pick performers")),
+        h("button", { type: "button", className: "degrees-surprise", onClick: runRandom, disabled: state.loading },
+          h("span", { "aria-hidden": true }, "✦"), " Surprise me")),
+      mode === "selected" ? h("div", { className: "degrees-selection" },
+        h(PerformerPicker, { label: "From", value: startId, placeholder: "Choose the first performer...", onChange: changeStartPerformer }),
+        h("button", { type: "button", className: "degrees-swap", onClick: swapPerformers, disabled: !startId && !endId, title: "Swap performers", "aria-label": "Swap performers" }, "⇄"),
+        h(PerformerPicker, { label: "To", value: endId, placeholder: "Choose the second performer...", onChange: changeEndPerformer }),
+        h("button", { type: "button", className: "degrees-find", onClick: runSelected, disabled: !selectedReady || state.loading }, "Find connection")) : null),
+    h("div", { className: "degrees-stage", "aria-live": "polite" },
+      state.loading
+        ? h("div", { className: "degrees-loading", "aria-label": "Finding performer connection" },
+            h("span", null), h("span", null), h("span", null), h("span", null), h("span", null))
+        : state.error
+          ? h("div", { className: "degrees-empty", role: "alert" },
+              h("strong", null, "The connection search hit a dead end"),
+              h("p", null, state.error.message),
+              h("button", { type: "button", onClick: state.retry }, "Try again"))
+          : chain
+            ? h(React.Fragment, null,
+                h("div", { className: "degrees-summary" },
+                  h("span", null, chain.isRandom ? "Random shortest path" : "Shortest visible path"),
+                  h("strong", null, `${chain.degrees} degree${chain.degrees === 1 ? "" : "s"}`),
+                  h("span", null, `Maximum searched: ${state.value.maxDegrees}`)),
+                h(ConnectionTrail, { chain, onNavigate }))
+            : h("div", { className: "degrees-empty" },
+                h("span", { className: "degrees-empty__icon", "aria-hidden": true }, "⌁"),
+                h("strong", null, state.value?.emptyReason === "choosePerformers" ? "Choose your endpoints" : "No chain found"),
+                h("p", null, connectionEmptyCopy(state.value?.emptyReason, state.value?.maxDegrees || maxDegrees)))),
+    state.value && state.value.emptyReason !== "choosePerformers" ? h("footer", { className: "degrees-footer" },
+      h("span", null, `${state.value.performerCount.toLocaleString()} visible performers`),
+      h("span", { "aria-hidden": true }, "·"),
+      h("span", null, `${state.value.videoCount.toLocaleString()} connecting videos`),
+      h("span", { "aria-hidden": true }, "·"),
+      h("span", null, "Shared-video links only")) : null);
+}
+
 function EditorShell({ description, children }) {
   return h("fieldset", { className: "discovery-editor" }, h("legend", null, "Widget settings"), h("p", null, description), children);
 }
@@ -556,6 +894,59 @@ function CurationQueueEditor({ configuration, onChange, onValidityChange }) {
     h(SelectField, { label: "Issue", value: issue, options: Object.entries(CURATION_ISSUES).map(([value, item]) => ({ value, label: item.label })), onChange: (value) => change(configuration, onChange, "issue", value) }));
 }
 
+function GroupFeedEditor({ configuration, onChange, onValidityChange }) {
+  const groupId = readGroupId(configuration?.groupId);
+  const inputId = React.useId();
+  useValidity(!!groupId, "Choose a group for this feed.", onValidityChange);
+  return h(EditorShell, { description: "Choose the static or dynamic group whose ordered mixed items should fill this dashboard." },
+    h("div", { className: "discovery-group-picker-field" },
+      h("label", { htmlFor: inputId }, "Group"),
+      h(EntityReferenceSelector, {
+        entityType: "group",
+        inputId,
+        value: groupId,
+        selectedDisplay: "input",
+        placeholder: "Search groups...",
+        creatable: false,
+        allowCreate: false,
+        inputClassName: "discovery-group-picker",
+        onChange: (value) => change(configuration, onChange, "groupId", value ?? null),
+      })));
+}
+
+function SixDegreesEditor({ configuration, onChange, onValidityChange }) {
+  const mode = configuredConnectionMode(configuration?.mode);
+  const startPerformerId = readPerformerId(configuration?.startPerformerId);
+  const endPerformerId = readPerformerId(configuration?.endPerformerId);
+  const maxDegrees = configuration?.maxDegrees ?? 6;
+  const selectionValid = mode === "random" || !!startPerformerId && !!endPerformerId && startPerformerId !== endPerformerId;
+  const valid = selectionValid && maxDegrees >= 1 && maxDegrees <= 6;
+  useValidity(valid, mode === "selected" && !selectionValid
+    ? "Choose two different default performers."
+    : "Maximum degrees must be between 1 and 6.", onValidityChange);
+  return h(EditorShell, { description: "Choose whether this dashboard opens with a random chain or a particular pair of performers." },
+    h(SelectField, {
+      label: "Default mode",
+      value: mode,
+      options: [{ value: "random", label: "Random chain" }, { value: "selected", label: "Selected performers" }],
+      onChange: (value) => change(configuration, onChange, "mode", value),
+    }),
+    h(NumberField, { label: "Maximum degrees", value: maxDegrees, min: 1, max: 6, onChange: (value) => change(configuration, onChange, "maxDegrees", value) }),
+    mode === "selected" ? h("div", { className: "degrees-editor-pickers" },
+      h(PerformerPicker, {
+        label: "Starting performer",
+        value: startPerformerId,
+        placeholder: "Search performers...",
+        onChange: (value) => change(configuration, onChange, "startPerformerId", value ?? null),
+      }),
+      h(PerformerPicker, {
+        label: "Ending performer",
+        value: endPerformerId,
+        placeholder: "Search performers...",
+        onChange: (value) => change(configuration, onChange, "endPerformerId", value ?? null),
+      })) : null);
+}
+
 export default {
   components: {
     OnThisDayWidget,
@@ -572,5 +963,9 @@ export default {
     ContinueCollectionEditor,
     CurationQueueWidget,
     CurationQueueEditor,
+    GroupFeedWidget,
+    GroupFeedEditor,
+    SixDegreesWidget,
+    SixDegreesEditor,
   },
 };

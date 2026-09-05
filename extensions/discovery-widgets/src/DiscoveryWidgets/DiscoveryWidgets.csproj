@@ -2,4 +2,8 @@
 
   <!-- Cove host contracts are supplied compile-only by Directory.Build.targets. -->
 
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>
