@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Cove.Core.Entities;
 using SegmentStudio;
 
 namespace SegmentStudio.Tests;
@@ -529,6 +530,7 @@ public sealed class LineageReconciliationServiceTests
     {
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<SegmentStudioItem>(builder =>
             {
                 builder.HasKey(item => item.Id);
@@ -571,6 +573,8 @@ public sealed class LineageReconciliationServiceTests
                 builder.Ignore(performer => performer.Aliases);
                 builder.Ignore(performer => performer.PerformerTags);
                 builder.Ignore(performer => performer.VideoPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
                 builder.Ignore(performer => performer.RemoteIds);

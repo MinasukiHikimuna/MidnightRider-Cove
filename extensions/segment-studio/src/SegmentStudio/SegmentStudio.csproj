@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <CoveMinVersion>1.3.2-dev.33</CoveMinVersion>
+    <CoveMinVersion>1.4.0-rc.1</CoveMinVersion>
   </PropertyGroup>
 
   <!-- Cove host contracts are supplied compile-only by Directory.Build.targets. -->

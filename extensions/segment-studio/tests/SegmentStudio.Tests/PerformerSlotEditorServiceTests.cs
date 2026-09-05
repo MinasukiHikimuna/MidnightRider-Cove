@@ -116,6 +116,7 @@ public sealed class PerformerSlotEditorServiceTests
     {
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<Performer>(builder =>
             {
                 builder.HasKey(performer => performer.Id);
@@ -125,6 +126,8 @@ public sealed class PerformerSlotEditorServiceTests
                 builder.Ignore(performer => performer.VideoPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.RemoteIds);
             });
             modelBuilder.Entity<SegmentStudioSlotDefinitionSet>(builder => builder.HasKey(set => set.Id));

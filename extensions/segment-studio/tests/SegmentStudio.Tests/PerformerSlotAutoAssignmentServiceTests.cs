@@ -179,6 +179,7 @@ public sealed class PerformerSlotAutoAssignmentServiceTests
     {
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<Performer>(builder =>
             {
                 builder.HasKey(performer => performer.Id);
@@ -188,6 +189,8 @@ public sealed class PerformerSlotAutoAssignmentServiceTests
                 builder.Ignore(performer => performer.VideoPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.RemoteIds);
             });
             modelBuilder.Entity<VideoPerformer>(builder =>

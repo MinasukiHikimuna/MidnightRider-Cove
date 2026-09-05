@@ -518,6 +518,7 @@ public sealed class SegmentStudioBrowseAndSlotTests
     {
         protected override void OnModelCreating(ModelBuilder builder)
         {
+            builder.Ignore<Group>();
             builder.Entity<Tag>().HasKey(item => item.Id);
             builder.Entity<Tag>().HasQueryFilter(item => allowedTagId == null || item.Id == allowedTagId);
             builder.Entity<Tag>().Ignore(item => item.ParentRelations).Ignore(item => item.ChildRelations).Ignore(item => item.RemoteIds)
@@ -538,7 +539,8 @@ public sealed class SegmentStudioBrowseAndSlotTests
                 value => value == null ? null : JsonDocument.Parse(value, default(JsonDocumentOptions)));
             builder.Entity<Performer>().HasKey(item => item.Id);
             builder.Entity<Performer>().Ignore(item => item.Urls).Ignore(item => item.Aliases).Ignore(item => item.PerformerTags)
-                .Ignore(item => item.VideoPerformers).Ignore(item => item.ImagePerformers).Ignore(item => item.GalleryPerformers).Ignore(item => item.RemoteIds);
+                .Ignore(item => item.VideoPerformers).Ignore(item => item.AudioPerformers).Ignore(item => item.TextPerformers)
+                .Ignore(item => item.ImagePerformers).Ignore(item => item.GalleryPerformers).Ignore(item => item.RemoteIds);
             builder.Entity<SegmentStudioSlotDefinitionSet>().HasKey(item => item.Id);
             builder.Entity<SegmentStudioSlotDefinition>().HasKey(item => item.Id);
             builder.Entity<SegmentStudioSlotDefinitionGenderHint>().HasKey(item => new { item.SlotDefinitionId, item.GenderHint });

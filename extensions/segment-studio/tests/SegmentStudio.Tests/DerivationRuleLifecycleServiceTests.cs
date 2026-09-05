@@ -697,6 +697,7 @@ public sealed class DerivationRuleLifecycleServiceTests
     {
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<Tag>(builder =>
             {
                 builder.HasKey(tag => tag.Id);
@@ -757,6 +758,7 @@ public sealed class DerivationRuleLifecycleServiceTests
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<Video>(builder =>
             {
                 builder.ToTable("videos");
@@ -808,6 +810,8 @@ public sealed class DerivationRuleLifecycleServiceTests
                 builder.Ignore(performer => performer.VideoPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.RemoteIds);
             });
             modelBuilder.Entity<VideoPerformer>(builder =>

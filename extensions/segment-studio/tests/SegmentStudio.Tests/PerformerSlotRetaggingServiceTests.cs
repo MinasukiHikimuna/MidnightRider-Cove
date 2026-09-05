@@ -216,6 +216,7 @@ public sealed class PerformerSlotRetaggingServiceTests
     {
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<Performer>(builder =>
             {
                 builder.HasKey(performer => performer.Id);
@@ -223,6 +224,8 @@ public sealed class PerformerSlotRetaggingServiceTests
                 builder.Ignore(performer => performer.Aliases);
                 builder.Ignore(performer => performer.PerformerTags);
                 builder.Ignore(performer => performer.VideoPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
                 builder.Ignore(performer => performer.RemoteIds);

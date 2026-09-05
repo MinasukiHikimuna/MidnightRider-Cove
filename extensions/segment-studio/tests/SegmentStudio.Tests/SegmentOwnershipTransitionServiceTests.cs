@@ -3241,6 +3241,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
     {
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Ignore<Group>();
             modelBuilder.Entity<Video>(builder => { builder.ToTable("videos"); builder.HasKey(video => video.Id); builder.Ignore(video => video.Studio); builder.Ignore(video => video.ParentVideo); builder.Ignore(video => video.ChildVideos); builder.Ignore(video => video.Urls); builder.Ignore(video => video.Files); builder.Ignore(video => video.VideoTags); builder.Ignore(video => video.VideoPerformers); builder.Ignore(video => video.VideoGalleries); builder.Ignore(video => video.GroupItems); builder.Ignore(video => video.RemoteIds); builder.Ignore(video => video.PlayHistory); });
             modelBuilder.Entity<Tag>(builder => { builder.ToTable("tags"); builder.HasKey(tag => tag.Id); builder.Ignore(tag => tag.TagGroup); builder.Ignore(tag => tag.Aliases); builder.Ignore(tag => tag.ParentRelations); builder.Ignore(tag => tag.ChildRelations); builder.Ignore(tag => tag.RemoteIds); builder.Ignore(tag => tag.VideoTags); builder.Ignore(tag => tag.PerformerTags); builder.Ignore(tag => tag.ImageTags); builder.Ignore(tag => tag.GalleryTags); builder.Ignore(tag => tag.StudioTags); builder.Ignore(tag => tag.GroupTags); });
             modelBuilder.Entity<Segment>(builder => { builder.ToTable("segments"); builder.HasKey(segment => segment.Id); builder.Ignore(segment => segment.Tag); builder.Property(segment => segment.Payload).HasConversion(document => document == null ? null : document.RootElement.GetRawText(), json => json == null ? null : JsonDocument.Parse(json)); });
@@ -3262,7 +3263,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
                 builder.ToTable("field_provenance");
                 builder.HasKey(row => row.Id);
             });
-            modelBuilder.Entity<Performer>(builder => { builder.ToTable("performers"); builder.HasKey(performer => performer.Id); builder.Ignore(performer => performer.Urls); builder.Ignore(performer => performer.Aliases); builder.Ignore(performer => performer.PerformerTags); builder.Ignore(performer => performer.VideoPerformers); builder.Ignore(performer => performer.ImagePerformers); builder.Ignore(performer => performer.GalleryPerformers); builder.Ignore(performer => performer.RemoteIds); });
+            modelBuilder.Entity<Performer>(builder => { builder.ToTable("performers"); builder.HasKey(performer => performer.Id); builder.Ignore(performer => performer.Urls); builder.Ignore(performer => performer.Aliases); builder.Ignore(performer => performer.PerformerTags); builder.Ignore(performer => performer.VideoPerformers); builder.Ignore(performer => performer.AudioPerformers); builder.Ignore(performer => performer.TextPerformers); builder.Ignore(performer => performer.ImagePerformers); builder.Ignore(performer => performer.GalleryPerformers); builder.Ignore(performer => performer.RemoteIds); });
             modelBuilder.Entity<VideoPerformer>(builder => { builder.ToTable("video_performers"); builder.HasKey(link => new { link.VideoId, link.PerformerId }); builder.Ignore(link => link.Video); builder.Ignore(link => link.Performer); });
             SegmentStudioModelConfiguration.Configure(modelBuilder);
         }
