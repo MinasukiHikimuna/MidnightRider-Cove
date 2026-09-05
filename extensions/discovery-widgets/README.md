@@ -1,6 +1,6 @@
-# Discovery Widgets
+# Sample Widgets
 
-This extension contributes seven configurable Flow widgets—On This Day, Tag of the Day, Forgotten Favorites, Quick Watch, Performer Spotlight, Continue a Collection, and Curation Queue—plus two Canvas widgets. Group Feed renders one selected static or dynamic group as a mixed-media, document-scrolling feed. Six Degrees of Johnny Sins finds a random or user-selected shortest path between performers through videos in which they both appear.
+This extension contributes eight configurable Flow widgets—Library Pulse, On This Day, Tag of the Day, Forgotten Favorites, Quick Watch, Performer Spotlight, Continue a Collection, and Curation Queue—plus two Canvas widgets. Library Pulse demonstrates responsive library totals. Group Feed renders one selected static or dynamic group as a mixed-media, document-scrolling feed. Six Degrees of Johnny Sins finds a random or user-selected shortest path between performers through videos in which they both appear.
 
 It uses authenticated same-origin API access, deterministic per-day discovery with user-triggered reshuffling, local-midnight refresh, host-owned widget configuration, exact filtered navigation, permission-gated contributions, duplicate Flow widget instances, loading/error/empty states, and responsive CSS container queries. Group Feed delegates querying, entity hydration, engagement, and native feed presentation to Cove's `GroupItemFeed` runtime component. Six Degrees exposes one read-only extension endpoint that joins through Cove's authorization-filtered video and performer sets, bounds the graph to six degrees, and returns only the connecting path. The extension adds no database state.
 

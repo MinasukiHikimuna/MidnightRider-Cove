@@ -24,7 +24,7 @@ public sealed class DiscoveryWidgetsExtensionTests
         ((IManifestAware)extension).ApplyManifest(new ExtensionManifestFile
         {
             Id = "com.midnightrider.discovery-widgets",
-            Name = "Discovery Widgets",
+            Name = "Sample Widgets",
             Version = "0.1.0",
         });
         var manifest = extension.GetUIManifest();
@@ -46,6 +46,29 @@ public sealed class DiscoveryWidgetsExtensionTests
         Assert.Equal(6, configuration.GetProperty("maxDegrees").GetInt32());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, configuration.GetProperty("startPerformerId").ValueKind);
         Assert.Equal(System.Text.Json.JsonValueKind.Null, configuration.GetProperty("endPerformerId").ValueKind);
+    }
+
+    [Fact]
+    public void ManifestIncludesLibraryPulseFlowWidget()
+    {
+        var extension = new DiscoveryWidgetsExtension();
+        ((IManifestAware)extension).ApplyManifest(new ExtensionManifestFile
+        {
+            Id = "com.midnightrider.discovery-widgets",
+            Name = "Sample Widgets",
+            Version = "0.1.0",
+        });
+
+        var widget = Assert.Single(
+            extension.GetUIManifest().DashboardWidgets,
+            contribution => contribution.Id == "library-pulse");
+
+        Assert.Equal("Library Pulse", widget.Label);
+        Assert.Equal("LibraryPulseWidget", widget.ComponentName);
+        Assert.Equal("LibraryPulseEditor", widget.EditorComponentName);
+        Assert.True(widget.AllowMultiple);
+        Assert.Equal([DashboardWidgetPresentation.Flow], widget.SupportedPresentations);
+        Assert.Equal(DashboardWidgetPresentation.Flow, widget.DefaultPresentation);
     }
 
     [Fact]

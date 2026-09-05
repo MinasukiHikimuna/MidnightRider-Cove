@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <!-- Cove host contracts are supplied compile-only by Directory.Build.targets. -->
-
-</Project>

@@ -121,12 +121,14 @@ test("extension declares the complete dashboard widget catalog", async () => {
   const bundle = await readFile(new URL("assets/ui.mjs", extensionRoot), "utf8");
 
   assert.equal(manifest.id, "com.midnightrider.discovery-widgets");
+  assert.equal(manifest.name, "Sample Widgets");
   assert.equal(manifest.entryDll, "DiscoveryWidgets.dll");
   assert.equal(manifest.jsBundle, "assets/ui.mjs");
   assert.equal(manifest.cssBundle, "assets/ui.css");
   assert.doesNotMatch(bundle, /(?:from\s+|import\s*)["']\.\//, "the packaged entry bundle must not depend on omitted relative modules");
 
   const widgets = [
+    ["library-pulse", "LibraryPulseWidget", "LibraryPulseEditor"],
     ["on-this-day", "OnThisDayWidget", "OnThisDayEditor"],
     ["tag-of-the-day", "TagOfTheDayWidget", "TagOfTheDayEditor"],
     ["forgotten-favorites", "ForgottenFavoritesWidget", "ForgottenFavoritesEditor"],
@@ -146,7 +148,8 @@ test("extension declares the complete dashboard widget catalog", async () => {
     assert.match(bundle, new RegExp(editor));
   }
 
-  assert.equal(source.split("AddDashboardWidget(Widget(").length - 1, 9);
+  assert.equal(source.split("AddDashboardWidget(Widget(").length - 1, 10);
+  assert.equal(source.split(".AddDashboardWidget(").length - 1, 10);
   assert.match(source, /DashboardWidgetPresentation\.Canvas/);
   assert.match(bundle, /GroupItemFeed/);
   assert.match(bundle, /EntityReferenceSelector/);

@@ -21,6 +21,11 @@ public sealed class DiscoveryWidgetsExtension : FullExtensionBase
     public override UIManifest GetUIManifest()
         => ManifestBuilder()
             .AddDashboardWidget(Widget(
+                "library-pulse", "Library Pulse", "LibraryPulseWidget", "LibraryPulseEditor",
+                "Show configurable library totals in a responsive dashboard widget.", "activity",
+                new { metrics = new[] { "videos", "galleries", "groups", "performers" } },
+                [], order: 5))
+            .AddDashboardWidget(Widget(
                 "on-this-day", "On This Day", "OnThisDayWidget", "OnThisDayEditor",
                 "Rediscover videos released on today's date in past years.", "calendar-days",
                 new { count = 6, historyYears = 20 }, Permissions.VideosRead, order: 10))

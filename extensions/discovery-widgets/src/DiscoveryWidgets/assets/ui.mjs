@@ -6,6 +6,14 @@ const h = React.createElement;
 const MINUTE = 60;
 const DAY_MS = 86_400_000;
 const PERFORMER_CONNECTIONS_ENDPOINT = "/api/plugins/com.midnightrider.discovery-widgets/performer-connections";
+const LIBRARY_METRICS = {
+  videos: { label: "Videos", path: "/api/videos?page=1&perPage=1" },
+  galleries: { label: "Galleries", path: "/api/galleries?page=1&perPage=1" },
+  groups: { label: "Groups", path: "/api/groups?page=1&perPage=1" },
+  performers: { label: "Performers", path: "/api/performers?page=1&perPage=1" },
+  studios: { label: "Studios", path: "/api/studios?page=1&perPage=1" },
+  tags: { label: "Tags", path: "/api/tags?page=1&perPage=1" },
+};
 
 function clamp(value, min, max, fallback) {
   const number = Number(value);
@@ -191,6 +199,61 @@ function useAsyncData(loader, dependencies) {
     return () => controller.abort();
   }, [...dependencies, revision]);
   return { ...state, retry: () => setRevision((value) => value + 1) };
+}
+
+function normalizeLibraryMetrics(configuration, useDefaults = true) {
+  const selected = Array.isArray(configuration?.metrics) ? configuration.metrics : [];
+  const valid = selected.filter((key) => Object.hasOwn(LIBRARY_METRICS, key));
+  return valid.length || !useDefaults
+    ? valid.slice(0, 6)
+    : ["videos", "galleries", "groups", "performers"];
+}
+
+function LibraryPulseWidget({ configuration }) {
+  const metrics = React.useMemo(() => normalizeLibraryMetrics(configuration), [configuration]);
+  const state = useAsyncData(
+    async (signal) => Object.fromEntries(await Promise.all(metrics.map(async (key) => {
+      const body = await fetchJson(LIBRARY_METRICS[key].path, { signal });
+      return [key, Number(body.totalCount ?? 0)];
+    }))),
+    [metrics.join("|")]);
+
+  return h("section", { className: "library-pulse" },
+    h("div", { className: "library-pulse__header" },
+      h("div", null,
+        h("h2", null, "Library Pulse"),
+        h("span", { className: "library-pulse__badge" }, "Extension")),
+      state.error ? h("button", { type: "button", onClick: state.retry }, "Retry") : null),
+    state.error
+      ? h("p", { className: "library-pulse__error", role: "alert" }, state.error.message)
+      : h("div", { className: "library-pulse__grid" }, metrics.map((key) =>
+          h("article", { className: "library-pulse__metric", key },
+            h("span", null, LIBRARY_METRICS[key].label),
+            state.loading
+              ? h("span", { className: "library-pulse__skeleton", "aria-label": `Loading ${LIBRARY_METRICS[key].label}` })
+              : h("strong", null, new Intl.NumberFormat().format(state.value?.[key] ?? 0))))));
+}
+
+function LibraryPulseEditor({ configuration, onChange, onValidityChange }) {
+  const selected = normalizeLibraryMetrics(configuration, false);
+  useValidity(selected.length > 0, "Select at least one metric.", onValidityChange);
+  const toggle = (key) => {
+    const next = selected.includes(key)
+      ? selected.filter((item) => item !== key)
+      : [...selected, key];
+    onChange({ ...(configuration ?? {}), metrics: next });
+  };
+  return h("fieldset", { className: "library-pulse-editor" },
+    h("legend", null, "Metrics"),
+    h("p", null, "Choose up to six totals. The widget chooses its own column count from the available container width."),
+    Object.entries(LIBRARY_METRICS).map(([key, metric]) => h("label", { key },
+      h("input", {
+        type: "checkbox",
+        checked: selected.includes(key),
+        disabled: !selected.includes(key) && selected.length >= 6,
+        onChange: () => toggle(key),
+      }),
+      h("span", null, metric.label))));
 }
 
 function videoCover(video, seconds) {
@@ -949,6 +1012,8 @@ function SixDegreesEditor({ configuration, onChange, onValidityChange }) {
 
 export default {
   components: {
+    LibraryPulseWidget,
+    LibraryPulseEditor,
     OnThisDayWidget,
     OnThisDayEditor,
     TagOfTheDayWidget,
