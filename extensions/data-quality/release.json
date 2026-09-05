@@ -1,0 +1,9 @@
+{
+  "id": "com.midnightrider.data-quality",
+  "name": "DataQuality",
+  "tagPrefix": "com.midnightrider.data-quality/",
+  "solution": "DataQuality.slnx",
+  "project": "src/DataQuality/DataQuality.csproj",
+  "manifest": "src/DataQuality/extension.json",
+  "readme": "README.md"
+}
