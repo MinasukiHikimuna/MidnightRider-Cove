@@ -1,0 +1,11 @@
+{
+  "id": "com.midnightrider.library-pulse",
+  "name": "LibraryPulse",
+  "tagPrefix": "com.midnightrider.library-pulse/",
+  "solution": "LibraryPulse.slnx",
+  "project": "src/LibraryPulse/LibraryPulse.csproj",
+  "manifest": "src/LibraryPulse/extension.json",
+  "readme": "README.md",
+  "ui": "src/LibraryPulse/assets",
+  "uiPackagePath": "assets"
+}

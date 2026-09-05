@@ -1,0 +1,22 @@
+{
+  "id": "com.midnightrider.discovery-widgets",
+  "name": "Discovery Widgets",
+  "version": "0.1.0",
+  "description": "Seven responsive dashboard widgets for rediscovery, recommendations, progress, and library curation.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "categories": ["library", "ui"],
+  "minCoveVersion": "1.1.0",
+  "entryDll": "DiscoveryWidgets.dll",
+  "dependencies": {},
+  "externalDependencies": [],
+  "settings": [],
+  "tutorialTopics": [],
+  "jsBundle": "assets/ui.mjs",
+  "cssBundle": "assets/ui.css",
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

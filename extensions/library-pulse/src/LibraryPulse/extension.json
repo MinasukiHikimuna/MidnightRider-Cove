@@ -1,0 +1,22 @@
+{
+  "id": "com.midnightrider.library-pulse",
+  "name": "Library Pulse",
+  "version": "0.1.0",
+  "description": "Example responsive dashboard widget for Cove extension authors.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "categories": ["analytics", "ui"],
+  "minCoveVersion": "1.1.0",
+  "entryDll": "LibraryPulse.dll",
+  "dependencies": {},
+  "externalDependencies": [],
+  "settings": [],
+  "tutorialTopics": [],
+  "jsBundle": "assets/ui.mjs",
+  "cssBundle": "assets/ui.css",
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

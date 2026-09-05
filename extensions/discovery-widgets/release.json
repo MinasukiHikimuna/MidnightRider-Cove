@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.discovery-widgets",
+  "name": "DiscoveryWidgets",
+  "tagPrefix": "com.midnightrider.discovery-widgets/",
+  "solution": "DiscoveryWidgets.slnx",
+  "project": "src/DiscoveryWidgets/DiscoveryWidgets.csproj",
+  "manifest": "src/DiscoveryWidgets/extension.json",
+  "readme": "README.md",
+  "ui": "src/DiscoveryWidgets/assets",
+  "uiPackagePath": "assets",
+  "uiTest": "tests/discovery-utils.test.mjs"
+}
