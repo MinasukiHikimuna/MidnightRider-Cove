@@ -650,13 +650,7 @@ export function DataQualityPage({
       return;
     }
     if (pending || queueLoading) return;
-    if (previewOpen) {
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        consumeShortcut(event);
-        moveFocus(event.key === "ArrowLeft" ? -1 : 1);
-      }
-      return;
-    }
+    if (previewOpen) return;
     if (event.key === "Enter" && focusedId != null) {
       consumeShortcut(event);
       setPreviewOpen(true);
@@ -1068,7 +1062,6 @@ export function DataQualityPage({
             </main>
             <aside className="dq-actions">
               <strong>{targetLabel}</strong>
-              <p>Focus: {focusedVideo ? videoTitle(focusedVideo) : "none"}</p>
               {review.actions.map((action, index) => (
                 <button
                   key={action.id}
@@ -1490,33 +1483,41 @@ function ReviewPreview({
     }
   }
   function handlePlayerKey(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (
-      event.defaultPrevented ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey
-    )
-      return;
-    if (
-      (event.target as HTMLElement).closest("button, input, select, textarea")
-    )
-      return;
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+    if ((event.target as HTMLElement).closest(
+      'button, input, select, textarea, a, [contenteditable="true"], [role="combobox"], [role="slider"]',
+    )) return;
+    const arrow = event.key === "ArrowLeft" || event.key === "ArrowRight";
+    if (event.altKey && !arrow) return;
     const controls = playerControls.current;
     const videoElement = event.currentTarget.querySelector("video");
-    if (event.key === " " && controls) controls.toggle();
-    else if (
-      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
-      controls
-    ) {
+    if (event.key === "Enter" || event.key === "Escape") {
+      if (!event.repeat) onClose();
+    } else if (event.key === " " && controls) {
+      if (!event.repeat) controls.toggle();
+    } else if (arrow && controls) {
       controls.seekBy(
-        (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 5),
+        (event.key === "ArrowLeft" ? -1 : 1) *
+          (event.shiftKey ? 5 : event.altKey ? 10 : 60),
       );
+    } else if ((event.key === "," || event.key === ".") && controls) {
+      const sourceDuration = [file?.duration, videoElement?.duration].find(
+        (value) => value != null && Number.isFinite(value) && value > 0,
+      ) ?? 0;
+      const duration = video.parentVideoId != null
+        ? (video.clipEndSec ?? sourceDuration) - (video.clipStartSec ?? 0)
+        : sourceDuration;
+      if (Number.isFinite(duration) && duration > 0)
+        controls.seekBy((event.key === "," ? -1 : 1) * duration * 0.1);
+    } else if (event.key.toLowerCase() === "n" || event.key.toLowerCase() === "m") {
+      if (!event.repeat && !pending && !refreshing) {
+        if (event.key.toLowerCase() === "n" && hasPrevious) onPrevious();
+        if (event.key.toLowerCase() === "m" && hasNext) onNext();
+      }
     } else if (event.key === "ArrowUp" && videoElement)
       videoElement.volume = Math.min(1, videoElement.volume + 0.1);
     else if (event.key === "ArrowDown" && videoElement)
       videoElement.volume = Math.max(0, videoElement.volume - 0.1);
-    else if (event.key.toLowerCase() === "m" && videoElement)
-      videoElement.muted = !videoElement.muted;
     else return;
     consumeShortcut(event);
   }
@@ -1529,6 +1530,7 @@ function ReviewPreview({
       aria-label={`Review preview: ${title}`}
       className="dq-preview"
       onKeyDown={trapFocus}
+      onKeyDownCapture={handlePlayerKey}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -1581,10 +1583,10 @@ function ReviewPreview({
           className="dq-player"
           data-review-player-controls
           tabIndex={0}
-          onKeyDown={handlePlayerKey}
         >
           {file ? (
             <VideoPlayer
+              autostart
               streamUrl={videoStreamUrl(video.id)}
               posterUrl={videoScreenshotUrl(video)}
               format={file.format}
@@ -1620,6 +1622,9 @@ function ReviewPreview({
             {error}
           </p>
         )}
+        <p className="dq-editor-note">
+          Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m previous/next · Enter/Esc close
+        </p>
         <footer data-review-player-controls>
           {review.actions.map((action, index) => (
             <button

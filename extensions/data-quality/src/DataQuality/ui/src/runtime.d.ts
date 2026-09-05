@@ -23,6 +23,7 @@ declare module "@cove/runtime/components" {
     subjectLabel?: string;
   }>;
   export const VideoPlayer: ComponentType<{
+    autostart?: boolean;
     streamUrl: string;
     posterUrl?: string;
     format?: string;

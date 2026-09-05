@@ -431,7 +431,7 @@
   background: rgb(0 0 0 / 70%);
 }
 .dq-manager {
-  width: min(100%, 52rem);
+  width: min(100%, 72rem);
   max-height: calc(100dvh - 2rem);
   margin: auto;
   overflow-y: auto;
@@ -439,6 +439,10 @@
   border-radius: 0.75rem;
   background: var(--color-background);
   box-shadow: 0 1rem 3rem rgb(0 0 0 / 40%);
+}
+.dq-manager-content,
+.dq-editor fieldset {
+  min-width: 0;
 }
 .dq-manager header {
   position: sticky;
@@ -470,6 +474,7 @@
 }
 .dq-review-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.4rem;
   padding: 0 0.75rem 0.75rem;
 }
@@ -484,6 +489,7 @@
 .dq-review-list article > div {
   min-width: 0;
   flex: 1;
+  overflow-wrap: anywhere;
 }
 .dq-review-list p {
   overflow: hidden;
@@ -494,6 +500,7 @@
 }
 .dq-editor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   padding: 0.75rem;
 }
@@ -526,7 +533,7 @@
 }
 .dq-action-step {
   display: grid;
-  grid-template-columns: 12rem minmax(0, 1fr) auto;
+  grid-template-columns: auto auto auto minmax(8rem, 1fr) minmax(10rem, 2fr) auto;
   align-items: start;
   gap: 0.5rem;
   padding-top: 0.5rem;
@@ -544,16 +551,10 @@
     position: static;
     order: -1;
   }
-  .dq-action-step {
-    grid-template-columns: 1fr;
-  }
 }
 
-.dq-action-step {
-  grid-template-columns: auto auto auto minmax(8rem, 1fr) minmax(
-      10rem,
-      2fr
-    ) auto;
+.dq-action-step > * {
+  min-width: 0;
 }
 .dq-editor .dq-checkbox {
   display: flex;
@@ -569,7 +570,17 @@
   border-radius: 0.35rem;
 }
 @media (max-width: 700px) {
+  .dq-review-list article {
+    flex-wrap: wrap;
+  }
+  .dq-review-list article > div {
+    flex-basis: 100%;
+  }
   .dq-action-step {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .dq-action-step > select,
+  .dq-action-step > div {
+    grid-column: 1 / -1;
   }
 }

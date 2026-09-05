@@ -5,12 +5,14 @@ export const testVideoControls = {
   seekBy: vi.fn(),
 };
 export function VideoPlayer({
+  autostart,
   onPlaybackControlRegister,
 }: {
+  autostart?: boolean;
   onPlaybackControlRegister?: (controls: typeof testVideoControls) => void;
 }) {
   onPlaybackControlRegister?.(testVideoControls);
-  return <div data-testid="video-player" />;
+  return <div data-testid="video-player" data-autostart={autostart} />;
 }
 export function EntityReferenceMultiSelector() {
   return <div data-testid="tag-selector" />;

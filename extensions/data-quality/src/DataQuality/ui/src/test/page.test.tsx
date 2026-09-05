@@ -146,6 +146,10 @@ describe("Data Quality extension page", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Review preview: Video 2",
     });
+    expect(screen.getByTestId("video-player")).toHaveAttribute(
+      "data-autostart",
+      "true",
+    );
     const hostKeyHandler = vi.fn();
     window.addEventListener("keydown", hostKeyHandler);
     fireEvent.keyDown(dialog, { key: "1" });
@@ -155,6 +159,10 @@ describe("Data Quality extension page", () => {
       await screen.findByRole("dialog", { name: "Review preview: Video 1" }),
     ).toBeInTheDocument();
     expect(api.runReviewAction).toHaveBeenCalledWith(review.actions[0], [2]);
+    expect(screen.getByTestId("video-player")).toHaveAttribute(
+      "data-autostart",
+      "true",
+    );
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     await waitFor(() =>
       expect(
@@ -262,22 +270,55 @@ describe("Data Quality extension page", () => {
     );
   });
 
-  it("keeps playback shortcuts inside Cove's player scope", async () => {
+  it("supports Culture skimming shortcuts throughout the preview", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
     const first = await screen.findByRole("article", { name: "Video 1" });
     fireEvent.keyDown(first, { key: "Enter" });
-    const playerScope = (await screen.findByTestId("video-player")).closest(
-      ".dq-player",
-    )!;
+    const playerScope = await screen.findByRole("dialog");
     fireEvent.keyDown(playerScope, { key: " " });
     fireEvent.keyDown(playerScope, { key: "ArrowRight" });
     fireEvent.keyDown(playerScope, { key: "ArrowLeft", shiftKey: true });
     expect(testVideoControls.toggle).toHaveBeenCalledOnce();
-    expect(testVideoControls.seekBy).toHaveBeenNthCalledWith(1, 5);
-    expect(testVideoControls.seekBy).toHaveBeenNthCalledWith(2, -10);
+    fireEvent.keyDown(playerScope, { key: "ArrowRight", altKey: true });
+    fireEvent.keyDown(playerScope, { key: "," });
+    fireEvent.keyDown(playerScope, { key: "." });
+    [60, -5, 10, -6, 6].forEach((seconds, index) => {
+      expect(testVideoControls.seekBy).toHaveBeenNthCalledWith(index + 1, seconds);
+    });
     expect(
       screen.getByRole("dialog", { name: "Review preview: Video 1" }),
     ).toBeInTheDocument();
+    fireEvent.keyDown(playerScope, { key: "Enter" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(first).toHaveFocus();
+  });
+
+  it.each([
+    { parentVideoId: undefined, clipStartSec: undefined, clipEndSec: undefined, seconds: 6 },
+    { parentVideoId: 99, clipStartSec: 10, clipEndSec: 30, seconds: 2 },
+    { parentVideoId: 99, clipStartSec: 10, clipEndSec: undefined, seconds: 5 },
+  ])("uses full source or clip duration for percentage seeking: %j", async ({ seconds, ...clip }) => {
+    api.findVideos.mockResolvedValue({ items: [{ ...video(1), ...clip }], totalCount: 1 });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    fireEvent.keyDown(await screen.findByRole("article", { name: "Video 1" }), { key: "Enter" });
+    const dialog = await screen.findByRole("dialog");
+    const media = document.createElement("video");
+    Object.defineProperty(media, "duration", { value: 20 });
+    dialog.querySelector(".dq-player")!.append(media);
+    fireEvent.keyDown(dialog, { key: "." });
+    expect(testVideoControls.seekBy).toHaveBeenCalledWith(seconds);
+  });
+
+  it("preserves focused controls and navigates preview videos with n/m", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    fireEvent.keyDown(await screen.findByRole("article", { name: "Video 1" }), { key: "Enter" });
+    const close = await screen.findByRole("button", { name: "Close review preview" });
+    fireEvent.keyDown(close, { key: "Enter" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "m" });
+    expect(screen.getByRole("dialog", { name: "Review preview: Video 2" })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "n" });
+    expect(screen.getByRole("dialog", { name: "Review preview: Video 1" })).toBeInTheDocument();
   });
 });
 
