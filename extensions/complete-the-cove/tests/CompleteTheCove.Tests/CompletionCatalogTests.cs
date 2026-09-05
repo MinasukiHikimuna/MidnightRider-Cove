@@ -16,6 +16,33 @@ namespace CompleteTheCove.Tests;
 
 public sealed class CompletionCatalogTests
 {
+    [Theory]
+    [InlineData("asc", "undated,older,newer")]
+    [InlineData("desc", "newer,older,undated")]
+    public async Task Release_date_sort_treats_undated_videos_as_oldest(string direction, string expected)
+    {
+        await using var db = CreateDb();
+        db.AddRange(
+            new CompletionVideo { RemoteEndpoint = "https://example.test", RemoteId = "undated" },
+            new CompletionVideo { RemoteEndpoint = "https://example.test", RemoteId = "older", ReleaseDate = new DateOnly(2020, 1, 1) },
+            new CompletionVideo { RemoteEndpoint = "https://example.test", RemoteId = "newer", ReleaseDate = new DateOnly(2025, 1, 1) });
+        await db.SaveChangesAsync();
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = QueryString.Create("direction", direction);
+
+        var ordered = CompleteTheCoveExtension.ApplyVideoSort(context.Request, db.Set<CompletionVideo>().AsNoTracking());
+        var dateOrdering = Assert.IsAssignableFrom<System.Linq.Expressions.MethodCallExpression>(ordered.Expression);
+        Assert.Equal(direction == "asc" ? nameof(Queryable.ThenBy) : nameof(Queryable.ThenByDescending), dateOrdering.Method.Name);
+        var nullOrdering = Assert.IsAssignableFrom<System.Linq.Expressions.MethodCallExpression>(dateOrdering.Arguments[0]);
+        Assert.Equal(direction == "asc" ? nameof(Queryable.OrderBy) : nameof(Queryable.OrderByDescending), nullOrdering.Method.Name);
+        var quotedSelector = Assert.IsAssignableFrom<System.Linq.Expressions.UnaryExpression>(nullOrdering.Arguments[1]);
+        var selector = Assert.IsAssignableFrom<System.Linq.Expressions.LambdaExpression>(quotedSelector.Operand);
+        Assert.Equal(nameof(Nullable<DateOnly>.HasValue), Assert.IsAssignableFrom<System.Linq.Expressions.MemberExpression>(selector.Body).Member.Name);
+        var actual = await ordered.Select(video => video.RemoteId).ToArrayAsync();
+
+        Assert.Equal(expected.Split(','), actual);
+    }
+
     [Fact]
     public async Task Failed_last_cover_persists_its_error_without_failing_reconciliation()
     {

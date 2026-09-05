@@ -471,9 +471,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         if (Enum.TryParse<CompletionTargetType>(request.Query["targetType"], true, out var targetType) && int.TryParse(request.Query["targetId"], out var targetId))
             query = query.Where(x => x.Targets.Any(t => t.Target!.EntityType == targetType && t.Target.EntityId == targetId));
         var total = await query.CountAsync(ct);
-        query = request.Query["sort"] == "title"
-            ? request.Query["direction"] == "desc" ? query.OrderByDescending(x => x.Title) : query.OrderBy(x => x.Title)
-            : request.Query["direction"] == "asc" ? query.OrderBy(x => x.ReleaseDate) : query.OrderByDescending(x => x.ReleaseDate);
+        query = ApplyVideoSort(request, query);
         var items = await query.Skip((page - 1) * perPage).Take(perPage).Select(x => new
         {
             x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId, x.RemoteEndpoint, x.IsIgnored,
@@ -489,6 +487,13 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         }).ToListAsync(ct);
         return Results.Ok(new { items, total, page, perPage });
     }
+
+    internal static IOrderedQueryable<CompletionVideo> ApplyVideoSort(HttpRequest request, IQueryable<CompletionVideo> query) =>
+        request.Query["sort"] == "title"
+            ? request.Query["direction"] == "desc" ? query.OrderByDescending(x => x.Title) : query.OrderBy(x => x.Title)
+            : request.Query["direction"] == "asc"
+                ? query.OrderBy(x => x.ReleaseDate.HasValue).ThenBy(x => x.ReleaseDate)
+                : query.OrderByDescending(x => x.ReleaseDate.HasValue).ThenByDescending(x => x.ReleaseDate);
 
     private static async Task<IReadOnlyDictionary<int, IReadOnlyCollection<int>>> ExpandSelectedTagIdsAsync(
         HttpRequest request,
