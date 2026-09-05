@@ -10,9 +10,10 @@ public sealed class DataQualityExtension : CoveExtensionBase
         .AddPage(new UIPageDefinition(
             "data-quality",
             "Data Quality",
-            "clipboard-check",
+            "puzzle",
             ShowInNav: true,
             NavOrder: 15,
-            RequiredPermission: Permissions.VideosRead))
+            RequiredPermission: Permissions.VideosRead,
+            ComponentName: "DataQualityPage"))
         .Build();
 }

@@ -15,10 +15,10 @@ if (manifest.id !== extensionId || manifest.version !== version) {
   fail("package manifest identity does not match packaging arguments");
 }
 if (manifest.minCoveVersion !== "1.3.2-dev.244") {
-  fail("package must declare the host review-workspace compatibility floor");
+  fail("package must declare the required Cove extension-runtime compatibility floor");
 }
 
-for (const file of [manifest.entryDll, "README.md", "LICENSE"]) {
+for (const file of [manifest.entryDll, manifest.jsBundle, manifest.cssBundle, "README.md", "LICENSE"]) {
   if (!file || !fs.existsSync(path.join(packageRoot, file))) {
     fail(`missing package file: ${file}`);
   }
