@@ -22,6 +22,7 @@ public sealed class ExtensionTests
         Assert.Equal("segment-studio", page.Route);
         Assert.Equal("Segment Studio", page.Label);
         Assert.Equal("SegmentStudioPage", page.ComponentName);
+        Assert.Equal("music", page.Icon);
         Assert.True(page.ShowInNav);
         var action = Assert.Single(manifest.Actions);
         Assert.Equal("open-segment-studio", action.Id);
