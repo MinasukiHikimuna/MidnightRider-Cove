@@ -41,7 +41,7 @@ handler and DTO rather than a shared handler with conditionals.
 | Segments inventory tab and route | no | yes | Direct Basic URL redirects before fetching |
 | General settings | yes | yes | Mode-aware copy and transition controls |
 | Shortcut settings | yes | yes | Show only commands effective in the mode |
-| Organization / Segment groups | yes | yes | Shared group administration |
+| Assign, move, or unassign an editor tag in Cove tag groups | yes | yes | Shared inline action; group administration remains in Cove |
 | Performer slots settings | no | yes | No Basic route, panel, or request |
 | Derivation settings | no | yes | No Basic route, panel, or request |
 | Read native segments | yes | yes | Separate DTO projections |
@@ -155,8 +155,8 @@ In Basic:
 - top-level navigation contains Videos, but not Segments;
 - a direct request for the Segments or legacy review route redirects to Videos
   before the Full page mounts or fetches;
-- Settings contains General, Shortcuts, and Organization;
-- Performer slots is absent from Organization and from any dedicated tab;
+- Settings contains General and Shortcuts;
+- Performer slots is absent from Settings;
 - Derivation is absent;
 - the recycle bin is reachable from Basic editor and/or Basic navigation
   affordances.
@@ -748,8 +748,8 @@ Keep compatibility response aliases only while known callers migrate.
 
 - Basic tabs contain Videos and omit Segments;
 - a direct Basic Segments/review URL redirects before a Full fetch;
-- Basic Settings contains General, Shortcuts, and Organization, but no
-  Performer slots or Derivation;
+- Basic Settings contains General and Shortcuts, but no Performer slots,
+  Derivation, or Organization;
 - Basic filters contain only tag, Segment group, provenance source,
   confidence, and Include unscored segments;
 - Basic filters affect rail, timeline, counts, selection, and keyboard

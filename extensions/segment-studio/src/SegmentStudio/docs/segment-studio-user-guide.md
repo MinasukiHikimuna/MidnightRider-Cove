@@ -50,18 +50,21 @@ Cove's numbered pagination controls above and below the results.
 ## Review performer-slot coverage
 
 Open **Segment Studio → Settings → Performer slots** to see performer roles
-inline for every tag in a Segment group. Tags are organized in the same group
-and tag order used by the editor, and slot-bearing tags that are not assigned to
-a group appear under **Ungrouped**.
+inline for every tag in a Cove tag group. Tags are organized in the same group
+order used by the editor. Within a group, they use `Sort Name` when set and
+otherwise use their name. Slot-bearing tags without a group appear under
+**Ungrouped**.
 
 Each tag row shows all of its performer slots, gender hints, and whether the
 same performer may fill multiple slots. Tags without roles remain visible with
 a **No performer slots** label. Search by tag or slot label, filter to tags with
 or without slots, and collapse groups when you need a shorter overview.
 
-Choose **Edit** on a tag to use the same Segment group and performer-role editor
-available from the video editor and derivation settings. Saving refreshes the
-overview so the inline row reflects the new configuration.
+Choose **Edit** on a tag to use the same performer-role editor available from
+the video editor and derivation settings. This dialog also lets you assign,
+move, or unassign the tag in Cove's native tag groups. Manage the tag-group
+catalog in Cove's tag settings. Saving refreshes the overview so the inline row
+reflects the new configuration.
 
 ## Edit published segments
 
@@ -87,9 +90,10 @@ Bulk review is atomic. Segment Studio validates the complete selection before
 changing it, and a stale or invalid segment leaves the entire selection
 unchanged so it can be reloaded and retried safely.
 
-The segment rail and swimlane timeline use the same Segment groups and tag
-ordering. Select a group heading in either surface, or press **B**, to
-collapse or expand the group containing the selected segment. Collapsing changes
+The segment rail and swimlane timeline use Cove's native tag groups. Group order
+comes from Cove, and tags use **Sort Name** when set and otherwise use their
+name. Select a group heading in either surface, or press **B**, to collapse or
+expand the group containing the selected segment. Collapsing changes
 only the presentation: it does not clear the selected segment or modify segment
 data. The group heading remains available so it can be expanded again with the
 pointer, and pressing **B** also expands the hidden selected group. Segment Studio
@@ -137,7 +141,7 @@ add the range to the existing selection. You can also **Ctrl/Cmd+click** a
 segment after selecting one range, then **Shift+click** elsewhere in that
 segment's swimlane to add a second range without losing the first. Repeat this
 in the same or another swimlane. The segment detail pane groups the selection
-by the same Segment groups and performer swimlanes shown on the timeline. Each
+by the same Cove tag groups and performer swimlanes shown on the timeline. Each
 swimlane starts collapsed with selected and review-state counts; expand it to
 inspect segment timing, source, and derivation status. Choose a segment in the
 expanded list to reduce the selection and return to its editable detail view.
@@ -147,7 +151,7 @@ earliest start through the latest end (or the latest point time). Merging
 permanently removes the other segments and discards their model, run, confidence,
 and active provenance data.
 
-When Segment groups are configured, press **Shift+ArrowUp** or
+When tag groups are configured, press **Shift+ArrowUp** or
 **Shift+ArrowDown** to select the group above or below without changing the
 selected segment. The selected group is highlighted in the timeline; press
 **B** to collapse or reopen it.

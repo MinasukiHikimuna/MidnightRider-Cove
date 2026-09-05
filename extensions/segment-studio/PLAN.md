@@ -82,14 +82,13 @@ Segment Studio 0.7 is implemented as a MidnightRider full extension.
   navigation, and playhead-relative bracket navigation. Its time axis remains
   visible during vertical scrolling, and selection reveals the relevant lane
   without changing the horizontal timeline position.
-- `/segment-studio/settings` manages extension-owned **Segment groups**. Each
-  group is an ordered collection of canonical Cove tag references with its own
-  explicit internal order. Segment groups are intentionally independent of Cove
-  tag groups and change neither canonical tag metadata nor canonical segments.
-- Configured Segment groups determine the leading swimlane sections. Tags not
-  assigned to a Segment group remain visible in an alphabetically ordered
-  `Ungrouped` section. A canonical tag belongs to at most one Segment group;
-  explicitly adding it elsewhere moves the membership transactionally.
+- Cove's tag settings manage native **tag groups**. Segment Studio has no
+  Organization settings tab. Group order uses Cove's group order, while tags
+  within each group use `SortName` when set and otherwise name. The video editor
+  can assign, move, or unassign a tag through the native group catalog.
+- Configured tag groups determine the leading swimlane sections. Tags not
+  assigned to a tag group remain visible in a `SortName`-or-name ordered
+  `Ungrouped` section. A canonical tag belongs to at most one tag group.
 - Cove's normal global sidebar remains present. The state-colored marker rail is
   available beside the primary pane but can be collapsed; its visibility and the
   timeline split are remembered in browser-local storage. Marker creation, splitting,
@@ -149,22 +148,22 @@ step.
 
 ### Segment groups
 
-Segment groups are editor presentation settings, not workspaces and not a second
-tag taxonomy. The initial schema owns the group and membership tables.
-Groups and memberships have explicit stable orders. Database uniqueness
-constraints enforce one membership per canonical tag and one position per group.
-Canonical tag deletion cascades only the now-invalid extension membership.
-Extension-owned operation receipts let a database retry
-recognize an already committed settings mutation without replaying it over a
-newer change.
+Segment Studio uses Cove's native tag groups as its editor presentation groups,
+with Cove's tag settings as the administration surface. Native group order
+controls section order. Native tag `SortName`, falling back to name when unset,
+controls lane order in grouped and ungrouped sections. The video editor may
+assign, move, or unassign a tag through an existing group. Extension-owned operation
+receipts let a database retry recognize an already committed inline assignment
+without replaying it over a newer change. The explicit operator migration script
+for the earlier extension-owned model preserves existing native assignments and
+migrates every eligible ungrouped legacy tag.
 
-Reading settings or loading an editor performs no writes. Group changes require
-global `segments.write` plus `tags.read`; the canonical tag picker uses Cove's
-authenticated tag API and visibility rules. Ordered membership replacement and
-cross-group moves execute in one database transaction. All Segment group
-mutations share a PostgreSQL transaction-scoped advisory lock, re-read their
-inputs after a rollback retry, and use the transactionally committed receipt to
-preserve every successful mutation across an ambiguous commit acknowledgement.
+Reading settings or loading an editor performs no writes. Inline assignment uses
+Cove's native tag permission and changes exactly one tag
+in a database transaction. Tag-group mutations share a PostgreSQL
+transaction-scoped advisory lock, re-read their inputs after a rollback retry,
+and use the transactionally committed receipt to preserve every successful
+mutation across an ambiguous commit acknowledgement.
 
 ### Review payload
 
@@ -343,8 +342,8 @@ in this slice.
    canonical segment audit/revert operations for cross-device recovery?
 4. Which producers are permitted to overwrite reviewed timing or review payload,
    and should a generic producer policy protect user-reviewed segments?
-5. Should Segment groups gain drag-and-drop, collapsible sections, and grouped
-   marker-rail presentation after the ordered settings workflow is dogfooded?
+5. Should native tag groups gain more editor-specific presentation controls
+   after the settings workflow is dogfooded?
 6. What conservative retention window should prune committed Segment group
    operation receipts after all realistic database retry windows have elapsed?
 7. Do performer slots and derivations still belong in Segment Studio, or should
@@ -389,10 +388,10 @@ in this slice.
 
 ## Next slice
 
-Dogfood ordered Segment groups in realistic review sessions before expanding
-their presentation. The next focused settings/editor slice may add drag-and-drop
-ordering, collapsible group sections, and matching grouped presentation in the
-marker rail if those materially improve navigation. The next editing slice may
+Dogfood native tag groups in realistic review sessions before expanding their
+presentation. The next focused settings/editor slice may refine collapsible
+group sections and matching grouped presentation in the marker rail if those
+materially improve navigation. The next editing slice may
 add playhead-based start/end assignment, small timing
 nudges, selected-segment looping, and configurable auto-advance if real review
 sessions confirm their value. The playhead continues to use Cove's shared

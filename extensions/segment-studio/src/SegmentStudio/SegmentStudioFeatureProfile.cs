@@ -39,7 +39,6 @@ public static class SegmentStudioCapabilities
     public const string NavigationSegmentInventory = "navigation.segmentInventory";
     public const string SettingsGeneral = "settings.general";
     public const string SettingsShortcuts = "settings.shortcuts";
-    public const string SettingsOrganization = "settings.organization";
     public const string SettingsPerformerSlots = "settings.performerSlots";
     public const string SettingsDerivation = "settings.derivation";
     public const string NativeSegmentsRead = "nativeSegments.read";
@@ -89,7 +88,6 @@ public static class SegmentStudioFeatureProfileService
         SegmentStudioCapabilities.NavigationVideos,
         SegmentStudioCapabilities.SettingsGeneral,
         SegmentStudioCapabilities.SettingsShortcuts,
-        SegmentStudioCapabilities.SettingsOrganization,
         SegmentStudioCapabilities.NativeSegmentsRead,
         SegmentStudioCapabilities.NativeSegmentsCreate,
         SegmentStudioCapabilities.NativeSegmentsDuplicate,

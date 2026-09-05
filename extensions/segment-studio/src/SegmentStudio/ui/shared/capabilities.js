@@ -3,7 +3,6 @@ export const SEGMENT_STUDIO_CAPABILITIES = Object.freeze({
   navigationSegmentInventory: "navigation.segmentInventory",
   settingsGeneral: "settings.general",
   settingsShortcuts: "settings.shortcuts",
-  settingsOrganization: "settings.organization",
   settingsPerformerSlots: "settings.performerSlots",
   settingsDerivation: "settings.derivation",
   nativeSegmentsRead: "nativeSegments.read",
@@ -86,7 +85,6 @@ export function visibleSegmentStudioSettingsTabs(profile) {
   const candidates = [
     ["general", "General", SEGMENT_STUDIO_CAPABILITIES.settingsGeneral],
     ["shortcuts", "Shortcuts", SEGMENT_STUDIO_CAPABILITIES.settingsShortcuts],
-    ["organization", "Organization", SEGMENT_STUDIO_CAPABILITIES.settingsOrganization],
     ["performer-slots", "Performer slots", SEGMENT_STUDIO_CAPABILITIES.settingsPerformerSlots],
     ["derivation", "Derivation", SEGMENT_STUDIO_CAPABILITIES.settingsDerivation],
   ];

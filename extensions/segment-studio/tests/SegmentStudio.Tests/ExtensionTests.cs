@@ -77,7 +77,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(94, endpoints.Length);
+        Assert.Equal(95, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -261,15 +261,17 @@ public sealed class ExtensionTests
             ["POST /api/plugins/segment-studio/maintenance/lineage/issues/{issueId:guid}/repair/execute"] =
                 new([SegmentStudioExtension.LineageMaintenancePermission, SegmentStudioExtension.LineageManagePermission]),
             ["GET /api/plugins/segment-studio/segment-groups"] =
-                new([Permissions.SegmentsRead, Permissions.TagsRead]),
+                new([Permissions.TagsRead, Permissions.TagGroupsRead]),
             ["POST /api/plugins/segment-studio/segment-groups"] =
-                new([Permissions.SegmentsWrite, Permissions.TagsRead]),
+                new([Permissions.TagGroupsWrite]),
             ["PUT /api/plugins/segment-studio/segment-groups/{groupId:long}"] =
-                new([Permissions.SegmentsWrite, Permissions.TagsRead]),
+                new([Permissions.TagsWrite, Permissions.TagGroupsWrite]),
+            ["PUT /api/plugins/segment-studio/segment-groups/tags/{tagId:int}"] =
+                new([Permissions.TagsWrite]),
             ["PUT /api/plugins/segment-studio/segment-groups/order"] =
-                new([Permissions.SegmentsWrite, Permissions.TagsRead]),
+                new([Permissions.TagGroupsWrite]),
             ["DELETE /api/plugins/segment-studio/segment-groups/{groupId:long}"] =
-                new([Permissions.SegmentsWrite, Permissions.TagsRead]),
+                new([Permissions.TagGroupsDelete]),
             ["GET /api/plugins/segment-studio/videos"] =
                 new([Permissions.SegmentsRead]),
             ["GET /api/plugins/segment-studio/videos/{videoId:int}/editor"] =

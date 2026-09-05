@@ -2041,7 +2041,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     return Results.Ok(await SegmentGroupService.ListAsync(db, ct));
                 })
             .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsRead, Permissions.TagsRead)
+            .RequireCovePermission(PermissionMode.All, Permissions.TagsRead, Permissions.TagGroupsRead)
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentGroupsManage);
 
@@ -2072,7 +2072,41 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     }
                 })
             .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.TagsRead)
+            .RequireCovePermission(PermissionMode.All, Permissions.TagGroupsWrite)
+            .RequireSegmentStudioCapability(
+                SegmentStudioCapabilities.SegmentGroupsManage);
+
+        endpoints.MapPut(
+                "/api/plugins/segment-studio/segment-groups/tags/{tagId:int}",
+                async (int tagId, SegmentGroupAssignmentRequest request, DbContext db,
+                    ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
+                    CancellationToken ct) =>
+                {
+                    SegmentGroupMutationResult result;
+                    try
+                    {
+                        result = await SegmentGroupService.AssignTagGroupAuthorizedAsync(
+                            db,
+                            tagId,
+                            request.GroupId,
+                            (affectedTagIds, token) => SegmentStudioAuthorization.AuthorizeTagGroupAssignmentAsync(
+                                principalAccessor.Current, authorization, affectedTagIds, token),
+                            ct);
+                    }
+                    catch (DbUpdateException)
+                    {
+                        return Results.Conflict(new { error = "Tag groups changed concurrently. Reload and try again." });
+                    }
+                    return result.Status switch
+                    {
+                        SegmentGroupMutationStatus.Updated => Results.NoContent(),
+                        SegmentGroupMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
+                        SegmentGroupMutationStatus.Forbidden => Results.Json(new { error = result.Error }, statusCode: StatusCodes.Status403Forbidden),
+                        _ => Results.NotFound(new { error = result.Error }),
+                    };
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(PermissionMode.All, Permissions.TagsWrite)
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentGroupsManage);
 
@@ -2082,14 +2116,16 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
                     CancellationToken ct) =>
                 {
-                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupWriteAsync(
-                        principalAccessor.Current, authorization, ct);
-                    if (!access.Allowed)
-                        return Results.Json(new { error = access.Reason ?? "You cannot change Segment groups." }, statusCode: StatusCodes.Status403Forbidden);
                     SegmentGroupMutationResult result;
                     try
                     {
-                        result = await SegmentGroupService.UpdateAsync(db, groupId, request, ct);
+                        result = await SegmentGroupService.UpdateAuthorizedAsync(
+                            db,
+                            groupId,
+                            request,
+                            (affectedTagIds, token) => SegmentStudioAuthorization.AuthorizeSegmentGroupMembershipWriteAsync(
+                                principalAccessor.Current, authorization, affectedTagIds, token),
+                            ct);
                     }
                     catch (DbUpdateException)
                     {
@@ -2100,11 +2136,12 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         SegmentGroupMutationStatus.Updated => Results.Ok(result.Group),
                         SegmentGroupMutationStatus.Invalid => Results.BadRequest(new { error = result.Error }),
                         SegmentGroupMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
+                        SegmentGroupMutationStatus.Forbidden => Results.Json(new { error = result.Error }, statusCode: StatusCodes.Status403Forbidden),
                         _ => Results.NotFound(new { error = result.Error }),
                     };
                 })
             .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.TagsRead)
+            .RequireCovePermission(PermissionMode.All, Permissions.TagsWrite, Permissions.TagGroupsWrite)
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentGroupsManage);
 
@@ -2131,7 +2168,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         : Results.BadRequest(new { error = result.Error });
                 })
             .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.TagsRead)
+            .RequireCovePermission(PermissionMode.All, Permissions.TagGroupsWrite)
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentGroupsManage);
 
@@ -2140,7 +2177,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 async (long groupId, DbContext db, ICurrentPrincipalAccessor principalAccessor,
                     Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
                 {
-                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupWriteAsync(
+                    var access = await SegmentStudioAuthorization.AuthorizeSegmentGroupDeleteAsync(
                         principalAccessor.Current, authorization, ct);
                     if (!access.Allowed)
                         return Results.Json(new { error = access.Reason ?? "You cannot change Segment groups." }, statusCode: StatusCodes.Status403Forbidden);
@@ -2156,7 +2193,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     }
                 })
             .RequireAuthorization()
-            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsWrite, Permissions.TagsRead)
+            .RequireCovePermission(PermissionMode.All, Permissions.TagGroupsDelete)
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentGroupsManage);
 
@@ -2264,6 +2301,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 videoId,
                                 segment.TagId!.Value,
                                 segment.Tag != null ? segment.Tag.Name : null,
+                                segment.Tag != null ? segment.Tag.SortName : null,
                                 segment.StartSec,
                                 segment.EndSec,
                                 segment.Kind,
@@ -2309,6 +2347,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 segment.VideoId,
                                 segment.TagId,
                                 segment.TagName,
+                                segment.TagSortName,
                                 segment.StartSec,
                                 segment.EndSec,
                                 segment.Kind ?? "tag",
@@ -2352,6 +2391,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             segment.Id,
                             segment.TagId!.Value,
                             segment.Tag != null ? segment.Tag.Name : null,
+                            segment.Tag != null ? segment.Tag.SortName : null,
                             segment.StartSec,
                             segment.EndSec,
                             segment.Payload,
@@ -2381,6 +2421,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         videoId,
                         row.TagId,
                         row.TagName,
+                        row.TagSortName,
                         row.StartSec,
                         row.EndSec,
                         "approved",
@@ -2406,6 +2447,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                     videoId,
                                     item.TagId!.Value,
                                     tag.Name,
+                                    tag.SortName,
                                     item.StartSec!.Value,
                                     item.EndSec,
                                     item.ReviewState!,
@@ -4383,6 +4425,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         int VideoId,
         int TagId,
         string? TagName,
+        string? TagSortName,
         double StartSec,
         double? EndSec,
         string Kind,
@@ -4403,6 +4446,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         int VideoId,
         int TagId,
         string? TagName,
+        string? TagSortName,
         double StartSec,
         double? EndSec,
         string? Kind,
@@ -4457,6 +4501,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         int VideoId,
         int TagId,
         string? TagName,
+        string? TagSortName,
         double StartSec,
         double? EndSec,
         string ReviewState,
@@ -4473,6 +4518,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         int Id,
         int TagId,
         string? TagName,
+        string? TagSortName,
         double StartSec,
         double? EndSec,
         System.Text.Json.JsonDocument? Payload,

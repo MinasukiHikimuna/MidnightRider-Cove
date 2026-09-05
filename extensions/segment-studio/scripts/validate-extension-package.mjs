@@ -38,6 +38,23 @@ function validateDeclaredFile(label, relativePath) {
   if (!fs.existsSync(path.join(packageRoot, relativePath))) errors.push(`missing declared ${label} ${relativePath}`);
 }
 
+function validateModuleImports(relativePath) {
+  if (!isSafePackagePath(relativePath)) return;
+  const modulePath = path.join(packageRoot, relativePath);
+  if (!fs.existsSync(modulePath)) return;
+  const source = fs.readFileSync(modulePath, "utf8");
+  const importPattern = /\b(?:import|export)\b(?:[^"'`;]*?\bfrom\b)?\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
+  for (const match of source.matchAll(importPattern)) {
+    const specifier = match[1] ?? match[2];
+    if (!specifier.startsWith(".")) continue;
+    const importedPath = path.resolve(path.dirname(modulePath), specifier);
+    const importedRelativePath = path.relative(packageRoot, importedPath);
+    if (!isSafePackagePath(importedRelativePath) || !fs.existsSync(importedPath)) {
+      errors.push(`jsBundle imports missing package module ${specifier}`);
+    }
+  }
+}
+
 function walkFiles(directory) {
   const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -73,7 +90,10 @@ if (fs.existsSync(manifestPath)) {
   }
   if (manifest.version !== expectedVersion) errors.push(`manifest version is ${manifest.version}, expected ${expectedVersion}`);
   if (manifest.entryDll) validateDeclaredFile("entryDll", manifest.entryDll);
-  if (manifest.jsBundle) validateDeclaredFile("jsBundle", manifest.jsBundle);
+  if (manifest.jsBundle) {
+    validateDeclaredFile("jsBundle", manifest.jsBundle);
+    validateModuleImports(manifest.jsBundle);
+  }
   if (manifest.cssBundle) validateDeclaredFile("cssBundle", manifest.cssBundle);
 }
 

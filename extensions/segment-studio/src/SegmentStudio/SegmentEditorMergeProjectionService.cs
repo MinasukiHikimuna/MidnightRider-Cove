@@ -10,6 +10,7 @@ public sealed record SegmentEditorMergeSurvivor(
     int VideoId,
     int TagId,
     string? TagName,
+    string? TagSortName,
     double StartSec,
     double? EndSec,
     string ReviewState,
@@ -50,13 +51,13 @@ public static class SegmentEditorMergeProjectionService
                 .Select(item => (long?)item.Id)
                 .SingleOrDefaultAsync(ct)
             : null;
-        var tagName = await db.Set<Cove.Core.Entities.Tag>().AsNoTracking()
+        var tag = await db.Set<Cove.Core.Entities.Tag>().AsNoTracking()
             .Where(tag => tag.Id == snapshot.TagId)
-            .Select(tag => tag.Name)
+            .Select(tag => new { tag.Name, tag.SortName })
             .SingleOrDefaultAsync(ct);
         var survivor = new SegmentEditorMergeSurvivor(
             $"native:{snapshot.Id}", snapshot.Id, itemId, snapshot.Id,
-            snapshot.VideoId, snapshot.TagId, tagName, snapshot.StartSec,
+            snapshot.VideoId, snapshot.TagId, tag?.Name, tag?.SortName, snapshot.StartSec,
             snapshot.EndSec, includeApprovedSetVersion ? "approved" : snapshot.ReviewState,
             "native", true, 0, snapshot.UpdatedAt,
             snapshot.SourceKey, snapshot.SourceRunId, snapshot.Confidence, false);
@@ -79,11 +80,11 @@ public static class SegmentEditorMergeProjectionService
                 from item in db.Set<SegmentStudioItem>().AsNoTracking()
                 join tag in db.Set<Cove.Core.Entities.Tag>().AsNoTracking() on item.TagId equals tag.Id
                 where item.Id == snapshot.ItemId
-                select new { tag.Name, item.SourceKey, item.SourceRunId, item.Confidence })
+                select new { tag.Name, tag.SortName, item.SourceKey, item.SourceRunId, item.Confidence })
             .SingleAsync(ct);
         var survivor = new SegmentEditorMergeSurvivor(
             $"item:{snapshot.ItemId}", -snapshot.ItemId, snapshot.ItemId, null,
-            snapshot.VideoId, snapshot.TagId, canonical.Name, snapshot.StartSec,
+            snapshot.VideoId, snapshot.TagId, canonical.Name, canonical.SortName, snapshot.StartSec,
             snapshot.EndSec, snapshot.ReviewState, "extension", false,
             snapshot.Revision, snapshot.UpdatedAt, canonical.SourceKey!,
             canonical.SourceRunId, canonical.Confidence, false);

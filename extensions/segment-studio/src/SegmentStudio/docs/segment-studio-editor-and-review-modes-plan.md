@@ -710,11 +710,10 @@ through this roadmap rather than treated as independent user experiences.
   individual Reset control share one row. Remove the nested scrollable
   container and render the complete binding list in the normal settings-page
   flow, relying on whole-page scrolling.
-- [x] Keep performer-slot definitions in the in-editor workflow and make
-  Organization settings exclusively about Segment groups. Use full-width,
-  drag-first group cards for group and tag ordering, with group-local tag
-  pickers opened on demand. Do not render a global tag finder or legacy tag
-  terminology in Organization.
+- [x] Keep performer-slot definitions in the in-editor workflow. Remove Segment
+  Studio's Organization tab and use Cove's tag settings for native group
+  administration. Keep a focused in-editor action that assigns, moves, or
+  unassigns a tag through existing Cove tag groups.
 - [ ] Keep each performer-slot mapping on one row in the derived-rule editor.
   Replace the textual **Remove** action with an accessible trash-icon button.
 

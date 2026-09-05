@@ -840,7 +840,7 @@ public sealed class DirectSegmentReviewServiceTests
         Assert.False(groups.Allowed);
         Assert.Equal(Permissions.SegmentsRead, discovery.MissingPermission);
         Assert.Equal(Permissions.SegmentsRead, editor.MissingPermission);
-        Assert.Equal(Permissions.SegmentsRead, groups.MissingPermission);
+        Assert.Equal(Permissions.TagsRead, groups.MissingPermission);
     }
 
     [Fact]
@@ -894,7 +894,7 @@ public sealed class DirectSegmentReviewServiceTests
     }
 
     [Fact]
-    public async Task SegmentGroupWritesRequireSegmentWriteAndTagReadPermissions()
+    public async Task SegmentGroupWritesRequireNativeGroupWritePermission()
     {
         var authorization = new RecordingAuthorizationService(AuthorizationResult.Allow());
 
@@ -902,13 +902,13 @@ public sealed class DirectSegmentReviewServiceTests
             CovePrincipal.System(), authorization, CancellationToken.None);
 
         Assert.True(result.Allowed);
-        Assert.Equal(2, authorization.Calls);
-        Assert.Equal(Permissions.TagsRead, authorization.Permission);
+        Assert.Equal(1, authorization.Calls);
+        Assert.Equal(Permissions.TagGroupsWrite, authorization.Permission);
         Assert.Null(authorization.Entity);
     }
 
     [Fact]
-    public async Task SegmentGroupReadsRequireSegmentReadAndTagReadPermissions()
+    public async Task SegmentGroupReadsRequireNativeTagAndGroupReadPermissions()
     {
         var authorization = new RecordingAuthorizationService(AuthorizationResult.Allow());
 
@@ -917,14 +917,14 @@ public sealed class DirectSegmentReviewServiceTests
 
         Assert.True(result.Allowed);
         Assert.Equal(2, authorization.Calls);
-        Assert.Equal(Permissions.TagsRead, authorization.Permission);
+        Assert.Equal(Permissions.TagGroupsRead, authorization.Permission);
         Assert.Null(authorization.Entity);
     }
 
     [Theory]
     [InlineData(true, false)]
     [InlineData(false, true)]
-    public async Task SegmentGroupsRejectScopedTagPrincipals(
+    public async Task SegmentGroupReadsRejectScopedTagPrincipalsWithoutBlockingGroupWrites(
         bool readRestricted,
         bool readGranted)
     {
@@ -955,9 +955,38 @@ public sealed class DirectSegmentReviewServiceTests
             principal, authorization, CancellationToken.None);
 
         Assert.False(read.Allowed);
-        Assert.False(write.Allowed);
+        Assert.True(write.Allowed);
         Assert.Equal(Permissions.TagsRead, read.MissingPermission);
-        Assert.Equal(Permissions.TagsRead, write.MissingPermission);
+    }
+
+    [Fact]
+    public async Task SegmentGroupMembershipWritesAuthorizeEveryAffectedTag()
+    {
+        var deniedTag = EntityRef.Of(EntityKinds.Tag, 12);
+        var authorization = new RecordingAuthorizationService(AuthorizationResult.Allow(), deniedTag);
+
+        var result = await SegmentStudioAuthorization.AuthorizeSegmentGroupMembershipWriteAsync(
+            CovePrincipal.System(), authorization, [11, 12], CancellationToken.None);
+
+        Assert.False(result.Allowed);
+        Assert.Equal(Permissions.TagsWrite, result.MissingPermission);
+        Assert.Equal(4, authorization.Calls);
+        Assert.Equal(deniedTag, authorization.Entity);
+    }
+
+    [Fact]
+    public async Task InlineTagGroupAssignmentRequiresOnlyTagWriteAccess()
+    {
+        var tag = EntityRef.Of(EntityKinds.Tag, 11);
+        var authorization = new RecordingAuthorizationService(AuthorizationResult.Allow());
+
+        var result = await SegmentStudioAuthorization.AuthorizeTagGroupAssignmentAsync(
+            CovePrincipal.System(), authorization, [11], CancellationToken.None);
+
+        Assert.True(result.Allowed);
+        Assert.Equal(2, authorization.Calls);
+        Assert.Equal(Permissions.TagsWrite, authorization.Permission);
+        Assert.Equal(tag, authorization.Entity);
     }
 
     [Fact]
@@ -1514,6 +1543,8 @@ public sealed class DirectSegmentReviewServiceTests
                 builder.Ignore(performer => performer.Aliases);
                 builder.Ignore(performer => performer.PerformerTags);
                 builder.Ignore(performer => performer.VideoPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
                 builder.Ignore(performer => performer.RemoteIds);
@@ -1536,10 +1567,13 @@ public sealed class DirectSegmentReviewServiceTests
             modelBuilder.Entity<SegmentStudioSegmentProvenance>().HasKey(assertion => assertion.Id);
             modelBuilder.Entity<SegmentStudioDerivationRule>().HasKey(rule => rule.Id);
             modelBuilder.Entity<SegmentStudioDerivationEdge>().HasKey(edge => edge.Id);
+            modelBuilder.Ignore<Group>();
         }
     }
 
-    private sealed class RecordingAuthorizationService(AuthorizationResult result) : IAuthorizationService
+    private sealed class RecordingAuthorizationService(
+        AuthorizationResult result,
+        EntityRef? deniedEntity = null) : IAuthorizationService
     {
         public int Calls { get; private set; }
         public string? Permission { get; private set; }
@@ -1557,7 +1591,9 @@ public sealed class DirectSegmentReviewServiceTests
             Calls++;
             Permission = permission;
             Entity = entity;
-            return Task.FromResult(result);
+            return Task.FromResult(deniedEntity.HasValue && entity == deniedEntity
+                ? AuthorizationResult.Deny("Denied for test.", permission)
+                : result);
         }
 
         public void Require(CovePrincipal? principal, string permission, EntityRef? entity = null) =>

@@ -6,10 +6,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -22,6 +22,12 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/SegmentStudio/SegmentStudio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../scripts/migrate-segment-groups-to-cove-tag-groups.sql"
+          Link="scripts/migrate-segment-groups-to-cove-tag-groups.sql"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

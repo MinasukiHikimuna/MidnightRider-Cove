@@ -1,6 +1,7 @@
 namespace SegmentStudio.Tests;
 
 using Cove.Core.Entities;
+using Cove.Core.Auth;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -119,9 +120,14 @@ public sealed class SegmentGroupServiceTests
     }
 
     [Fact]
-    public async Task ReplacingMembersPreservesExplicitOrderAndMovesTagsBetweenGroups()
+    public async Task ReplacingMembersMovesTagsAndListsThemByEffectiveSortName()
     {
         await using var fixture = await SegmentGroupFixture.CreateAsync();
+
+        fixture.Context.Set<Tag>().Single(tag => tag.Id == 11).SortName = "Zulu";
+        fixture.Context.Set<Tag>().Single(tag => tag.Id == 12).SortName = "Alpha";
+        fixture.Context.Set<Tag>().Single(tag => tag.Id == 13).SortName = "Aardvark";
+        await fixture.Context.SaveChangesAsync();
 
         var first = await SegmentGroupService.CreateAsync(fixture.Context, "First", CancellationToken.None);
         var second = await SegmentGroupService.CreateAsync(fixture.Context, "Second", CancellationToken.None);
@@ -130,7 +136,7 @@ public sealed class SegmentGroupServiceTests
 
         var groups = await SegmentGroupService.ListAsync(fixture.Context, CancellationToken.None);
         Assert.Equal([11], groups.Single(group => group.Id == first.Id).Tags.Select(tag => tag.TagId));
-        Assert.Equal([12, 13], groups.Single(group => group.Id == second.Id).Tags.Select(tag => tag.TagId));
+        Assert.Equal([13, 12], groups.Single(group => group.Id == second.Id).Tags.Select(tag => tag.TagId));
     }
 
     [Fact]
@@ -149,6 +155,105 @@ public sealed class SegmentGroupServiceTests
     }
 
     [Fact]
+    public async Task AuthorizedUpdateChecksTheExactCurrentAndRequestedMembersInsideTheMutation()
+    {
+        await using var fixture = await SegmentGroupFixture.CreateAsync();
+        var group = await SegmentGroupService.CreateAsync(fixture.Context, "Review", CancellationToken.None);
+        await SegmentGroupService.UpdateAsync(
+            fixture.Context, group.Id, new SegmentGroupUpdateRequest("Review", [11]), CancellationToken.None);
+        IReadOnlyCollection<int>? authorizedTagIds = null;
+
+        var result = await SegmentGroupService.UpdateAuthorizedAsync(
+            fixture.Context,
+            group.Id,
+            new SegmentGroupUpdateRequest("Changed", [12]),
+            (tagIds, _) =>
+            {
+                authorizedTagIds = tagIds;
+                return Task.FromResult(AuthorizationResult.Deny("Denied for test.", Permissions.TagsWrite));
+            },
+            CancellationToken.None);
+
+        Assert.Equal(SegmentGroupMutationStatus.Forbidden, result.Status);
+        Assert.Equal([11, 12], authorizedTagIds!.Order());
+        var persisted = Assert.Single(await SegmentGroupService.ListAsync(fixture.Context, CancellationToken.None));
+        Assert.Equal("Review", persisted.Name);
+        Assert.Equal([11], persisted.Tags.Select(tag => tag.TagId));
+    }
+
+    [Fact]
+    public async Task InlineAssignmentChangesOnlyOneTagAndAuthorizesItInsideTheMutation()
+    {
+        await using var fixture = await SegmentGroupFixture.CreateAsync();
+        var group = await SegmentGroupService.CreateAsync(fixture.Context, "Review", CancellationToken.None);
+        await SegmentGroupService.UpdateAsync(
+            fixture.Context, group.Id, new SegmentGroupUpdateRequest("Review", [12]), CancellationToken.None);
+        IReadOnlyCollection<int>? authorizedTagIds = null;
+
+        var result = await SegmentGroupService.AssignTagGroupAuthorizedAsync(
+            fixture.Context,
+            11,
+            group.Id,
+            (tagIds, _) =>
+            {
+                authorizedTagIds = tagIds;
+                return Task.FromResult(AuthorizationResult.Allow());
+            },
+            CancellationToken.None);
+
+        Assert.Equal(SegmentGroupMutationStatus.Updated, result.Status);
+        Assert.Equal([11], authorizedTagIds);
+        Assert.Equal([11, 12], (await SegmentGroupService.ListAsync(fixture.Context, CancellationToken.None))
+            .Single().Tags.Select(tag => tag.TagId).Order());
+        Assert.Null(fixture.Context.Set<Tag>().Single(tag => tag.Id == 13).TagGroupId);
+    }
+
+    [Fact]
+    public async Task InlineAssignmentMovesAnAlreadyGroupedTag()
+    {
+        await using var fixture = await SegmentGroupFixture.CreateAsync();
+        var first = await SegmentGroupService.CreateAsync(fixture.Context, "First", CancellationToken.None);
+        var second = await SegmentGroupService.CreateAsync(fixture.Context, "Second", CancellationToken.None);
+        await SegmentGroupService.UpdateAsync(
+            fixture.Context, first.Id, new SegmentGroupUpdateRequest("First", [11]), CancellationToken.None);
+        IReadOnlyCollection<int>? authorizedTagIds = null;
+
+        var result = await SegmentGroupService.AssignTagGroupAuthorizedAsync(
+            fixture.Context,
+            11,
+            second.Id,
+            (tagIds, _) =>
+            {
+                authorizedTagIds = tagIds;
+                return Task.FromResult(AuthorizationResult.Allow());
+            },
+            CancellationToken.None);
+
+        Assert.Equal(SegmentGroupMutationStatus.Updated, result.Status);
+        Assert.Equal([11], authorizedTagIds);
+        Assert.Equal((int)second.Id, fixture.Context.Set<Tag>().Single(tag => tag.Id == 11).TagGroupId);
+    }
+
+    [Fact]
+    public async Task InlineAssignmentCanMakeAGroupedTagUngrouped()
+    {
+        await using var fixture = await SegmentGroupFixture.CreateAsync();
+        var group = await SegmentGroupService.CreateAsync(fixture.Context, "Review", CancellationToken.None);
+        await SegmentGroupService.UpdateAsync(
+            fixture.Context, group.Id, new SegmentGroupUpdateRequest("Review", [11]), CancellationToken.None);
+
+        var result = await SegmentGroupService.AssignTagGroupAuthorizedAsync(
+            fixture.Context,
+            11,
+            null,
+            (_, _) => Task.FromResult(AuthorizationResult.Allow()),
+            CancellationToken.None);
+
+        Assert.Equal(SegmentGroupMutationStatus.Updated, result.Status);
+        Assert.Null(fixture.Context.Set<Tag>().Single(tag => tag.Id == 11).TagGroupId);
+    }
+
+    [Fact]
     public async Task ReorderingRequiresEveryGroupExactlyOnce()
     {
         await using var fixture = await SegmentGroupFixture.CreateAsync();
@@ -164,23 +269,40 @@ public sealed class SegmentGroupServiceTests
     }
 
     [Fact]
-    public async Task SegmentGroupChangesNeverMutateTags()
+    public async Task ListingNormalizesEqualNativeGroupOrders()
     {
         await using var fixture = await SegmentGroupFixture.CreateAsync();
-        var before = await fixture.Context.Set<Tag>().AsNoTracking()
-            .OrderBy(tag => tag.Id)
-            .Select(tag => new { tag.Id, tag.Name, tag.TagGroupId })
-            .ToListAsync();
+        var first = await SegmentGroupService.CreateAsync(fixture.Context, "First", CancellationToken.None);
+        var second = await SegmentGroupService.CreateAsync(fixture.Context, "Second", CancellationToken.None);
+        await SegmentGroupService.UpdateAsync(fixture.Context, first.Id, new SegmentGroupUpdateRequest("First", [11]), CancellationToken.None);
+        await SegmentGroupService.UpdateAsync(fixture.Context, second.Id, new SegmentGroupUpdateRequest("Second", [12]), CancellationToken.None);
+        foreach (var group in fixture.Context.Set<TagGroup>()) group.SortOrder = 10;
+        await fixture.Context.SaveChangesAsync();
+
+        var groups = await SegmentGroupService.ListAsync(fixture.Context, CancellationToken.None);
+        var editorGroups = await SegmentGroupService.ListForTagsAsync(fixture.Context, [11, 12], CancellationToken.None);
+
+        Assert.Equal([0, 1], groups.Select(group => group.SortOrder));
+        Assert.Equal([0, 1], editorGroups.Select(group => group.SortOrder));
+    }
+
+    [Fact]
+    public async Task SegmentGroupChangesUseNativeTagGroupMembership()
+    {
+        await using var fixture = await SegmentGroupFixture.CreateAsync();
 
         var group = await SegmentGroupService.CreateAsync(fixture.Context, "Review", CancellationToken.None);
         await SegmentGroupService.UpdateAsync(fixture.Context, group.Id, new SegmentGroupUpdateRequest("Renamed", [13, 11]), CancellationToken.None);
-        _ = await SegmentGroupService.ListAsync(fixture.Context, CancellationToken.None);
 
-        var after = await fixture.Context.Set<Tag>().AsNoTracking()
+        var tags = await fixture.Context.Set<Tag>().AsNoTracking()
             .OrderBy(tag => tag.Id)
             .Select(tag => new { tag.Id, tag.Name, tag.TagGroupId })
             .ToListAsync();
-        Assert.Equal(before, after);
+        Assert.Equal((int)group.Id, tags.Single(tag => tag.Id == 11).TagGroupId);
+        Assert.Null(tags.Single(tag => tag.Id == 12).TagGroupId);
+        Assert.Equal((int)group.Id, tags.Single(tag => tag.Id == 13).TagGroupId);
+        Assert.Equal("Renamed", Assert.Single(await fixture.Context.Set<TagGroup>().AsNoTracking().ToListAsync()).Name);
+        Assert.Empty(await fixture.Context.Set<SegmentStudioSegmentGroup>().AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -230,7 +352,6 @@ public sealed class SegmentGroupServiceTests
             modelBuilder.Entity<Tag>(builder =>
             {
                 builder.HasKey(tag => tag.Id);
-                builder.Ignore(tag => tag.TagGroup);
                 builder.Ignore(tag => tag.Aliases);
                 builder.Ignore(tag => tag.ParentRelations);
                 builder.Ignore(tag => tag.ChildRelations);
@@ -241,7 +362,12 @@ public sealed class SegmentGroupServiceTests
                 builder.Ignore(tag => tag.GalleryTags);
                 builder.Ignore(tag => tag.StudioTags);
                 builder.Ignore(tag => tag.GroupTags);
+                builder.HasOne(tag => tag.TagGroup)
+                    .WithMany(group => group.Tags)
+                    .HasForeignKey(tag => tag.TagGroupId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
+            modelBuilder.Entity<TagGroup>(builder => builder.HasKey(group => group.Id));
             modelBuilder.Entity<Segment>(builder =>
             {
                 builder.HasKey(segment => segment.Id);
@@ -272,11 +398,14 @@ public sealed class SegmentGroupServiceTests
                 builder.Ignore(performer => performer.Aliases);
                 builder.Ignore(performer => performer.PerformerTags);
                 builder.Ignore(performer => performer.VideoPerformers);
+                builder.Ignore(performer => performer.AudioPerformers);
+                builder.Ignore(performer => performer.TextPerformers);
                 builder.Ignore(performer => performer.ImagePerformers);
                 builder.Ignore(performer => performer.GalleryPerformers);
                 builder.Ignore(performer => performer.RemoteIds);
             });
             SegmentStudioModelConfiguration.Configure(modelBuilder);
+            modelBuilder.Ignore<Group>();
         }
     }
 }

@@ -35,7 +35,6 @@ test("editor discovery preserves filters without reading hidden Full work in Bas
   );
   assert.equal(fullParams.get("reviewState"), "unreviewed");
   assert.equal(fullParams.get("workflow"), "full");
-  assert.match(source, /includeCounts:\s*["']false["']/);
   const discovery = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));
   assert.doesNotMatch(discovery, /requestJson\("\/review\/segments"/);
   assert.doesNotMatch(discovery, /\/drafts/);

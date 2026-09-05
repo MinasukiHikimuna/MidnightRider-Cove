@@ -35,13 +35,11 @@ public static class SegmentStudioAuthorization
         IAuthorizationService authorization,
         CancellationToken ct)
     {
-        var segmentAccess = await authorization.AuthorizeAsync(principal, Permissions.SegmentsRead, entity: null, ct);
-        if (!segmentAccess.Allowed) return segmentAccess;
-        var segmentScope = AuthorizeUnscopedSegmentRead(principal);
-        if (!segmentScope.Allowed) return segmentScope;
         var tagScope = AuthorizeUnscopedTagConfiguration(principal);
         if (!tagScope.Allowed) return tagScope;
-        return await authorization.AuthorizeAsync(principal, Permissions.TagsRead, entity: null, ct);
+        var tags = await authorization.AuthorizeAsync(principal, Permissions.TagsRead, entity: null, ct);
+        if (!tags.Allowed) return tags;
+        return await authorization.AuthorizeAsync(principal, Permissions.TagGroupsRead, entity: null, ct);
     }
 
     public static async Task<AuthorizationResult> AuthorizePerformerSlotReadAsync(
@@ -95,9 +93,11 @@ public static class SegmentStudioAuthorization
     {
         var read = await AuthorizePerformerSlotReadAsync(principal, authorization, ct);
         if (!read.Allowed) return read;
-        var configuration = await AuthorizeSegmentGroupWriteAsync(principal, authorization, ct);
-        if (!configuration.Allowed) return configuration;
-        return configuration;
+        var segments = await authorization.AuthorizeAsync(principal, Permissions.SegmentsWrite, entity: null, ct);
+        if (!segments.Allowed) return segments;
+        var tagScope = AuthorizeUnscopedTagConfiguration(principal);
+        if (!tagScope.Allowed) return tagScope;
+        return await authorization.AuthorizeAsync(principal, Permissions.TagsRead, entity: null, ct);
     }
 
     public static async Task<AuthorizationResult> AuthorizePerformerSlotAssignmentWriteAsync(
@@ -113,11 +113,43 @@ public static class SegmentStudioAuthorization
         IAuthorizationService authorization,
         CancellationToken ct)
     {
-        var segmentAccess = await authorization.AuthorizeAsync(principal, Permissions.SegmentsWrite, entity: null, ct);
-        if (!segmentAccess.Allowed) return segmentAccess;
-        var tagScope = AuthorizeUnscopedTagConfiguration(principal);
-        if (!tagScope.Allowed) return tagScope;
-        return await authorization.AuthorizeAsync(principal, Permissions.TagsRead, entity: null, ct);
+        return await authorization.AuthorizeAsync(principal, Permissions.TagGroupsWrite, entity: null, ct);
+    }
+
+    public static async Task<AuthorizationResult> AuthorizeSegmentGroupMembershipWriteAsync(
+        CovePrincipal? principal, IAuthorizationService authorization,
+        IReadOnlyCollection<int> affectedTagIds, CancellationToken ct)
+    {
+        var tags = await authorization.AuthorizeAsync(principal, Permissions.TagsWrite, entity: null, ct);
+        if (!tags.Allowed) return tags;
+        var groups = await authorization.AuthorizeAsync(principal, Permissions.TagGroupsWrite, entity: null, ct);
+        if (!groups.Allowed) return groups;
+        var tagResults = await authorization.AuthorizeManyAsync(
+            principal,
+            Permissions.TagsWrite,
+            affectedTagIds.Distinct().Select(tagId => EntityRef.Of(EntityKinds.Tag, tagId)).ToArray(),
+            ct);
+        return tagResults.FirstOrDefault(result => !result.Allowed, AuthorizationResult.Allow());
+    }
+
+    public static async Task<AuthorizationResult> AuthorizeTagGroupAssignmentAsync(
+        CovePrincipal? principal, IAuthorizationService authorization,
+        IReadOnlyCollection<int> affectedTagIds, CancellationToken ct)
+    {
+        var tags = await authorization.AuthorizeAsync(principal, Permissions.TagsWrite, entity: null, ct);
+        if (!tags.Allowed) return tags;
+        var tagResults = await authorization.AuthorizeManyAsync(
+            principal,
+            Permissions.TagsWrite,
+            affectedTagIds.Distinct().Select(tagId => EntityRef.Of(EntityKinds.Tag, tagId)).ToArray(),
+            ct);
+        return tagResults.FirstOrDefault(result => !result.Allowed, AuthorizationResult.Allow());
+    }
+
+    public static async Task<AuthorizationResult> AuthorizeSegmentGroupDeleteAsync(
+        CovePrincipal? principal, IAuthorizationService authorization, CancellationToken ct)
+    {
+        return await authorization.AuthorizeAsync(principal, Permissions.TagGroupsDelete, entity: null, ct);
     }
 
     private static AuthorizationResult AuthorizeUnscopedTagConfiguration(CovePrincipal? principal)

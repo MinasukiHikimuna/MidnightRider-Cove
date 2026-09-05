@@ -6,7 +6,9 @@
   "project": "src/SegmentStudio/SegmentStudio.csproj",
   "manifest": "src/SegmentStudio/extension.json",
   "readme": "README.md",
-  "ui": "src/SegmentStudio/ui",
+  "ui": "src/SegmentStudio/dist",
+  "uiPackagePath": "dist",
+  "uiBuildDirectory": "src/SegmentStudio/ui",
   "uiTest": "tests/SegmentStudio.Tests/SegmentStudioUi.test.mjs",
   "pythonTests": "tests/SegmentStudio.Tests/SegmentStudioMarkerMigration.test.py tests/SegmentStudio.Tests/SegmentStudioMarkerReplacement.test.py tests/SegmentStudio.Tests/SegmentStudioLineageMigration.test.py",
   "docs": "src/SegmentStudio/docs"

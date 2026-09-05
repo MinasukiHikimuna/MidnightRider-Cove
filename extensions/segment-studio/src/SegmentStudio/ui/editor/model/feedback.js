@@ -50,7 +50,9 @@ export function applyFeedbackEditorDelta(detail, delta) {
   );
   const nextSegments = (detail.segments || [])
     .filter((segment) => !removedIds.has(segment.id))
-    .map((segment) => upserted.get(segment.id) || segment);
+    .map((segment) => upserted.has(segment.id)
+      ? { ...segment, ...upserted.get(segment.id) }
+      : segment);
   const retainedIds = new Set(nextSegments.map((segment) => segment.id));
   for (const segment of upserted.values()) {
     if (!retainedIds.has(segment.id)) nextSegments.push(segment);

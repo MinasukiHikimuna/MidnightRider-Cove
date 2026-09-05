@@ -11,7 +11,7 @@
   ],
   "minCoveVersion": "1.3.2-dev.33",
   "entryDll": "SegmentStudio.dll",
-  "jsBundle": "ui/SegmentStudio.js",
-  "cssBundle": "ui/SegmentStudio.css",
+  "jsBundle": "dist/ui.mjs",
+  "cssBundle": "dist/ui.css",
   "dependencies": {}
 }

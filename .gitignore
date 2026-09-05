@@ -4,6 +4,7 @@ artifacts/
 extensions/animated-tag-previews/src/AnimatedTagPreviews/dist/
 extensions/animated-tag-previews/src/AnimatedTagPreviews/ui/node_modules/
 extensions/external-sign-in/src/ExternalSignIn/ui/node_modules/
+extensions/segment-studio/src/SegmentStudio/ui/node_modules/
 *.zip
 .DS_Store
 **/.venv/

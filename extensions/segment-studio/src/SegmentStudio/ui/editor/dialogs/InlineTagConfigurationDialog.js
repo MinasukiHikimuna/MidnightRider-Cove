@@ -6,8 +6,6 @@ import { requestJson } from "../../shared/api.js";
 
 import { handleModalKey, trapModalFocus } from "../../shared/presentation.js";
 
-import { segmentGroupAssignmentMutation } from "../model/swimlanes.js";
-
 import { formatGenderHint, performerSlotLabel } from "../model/history.js";
 
 function InlineTagConfigurationDialog({
@@ -19,6 +17,7 @@ function InlineTagConfigurationDialog({
 }) {
   const [model, setModel] = useState(null);
   const [segmentGroups, setSegmentGroups] = useState([]);
+  const [currentGroupId, setCurrentGroupId] = useState(null);
   const [targetGroupId, setTargetGroupId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busySection, setBusySection] = useState(null);
@@ -47,6 +46,7 @@ function InlineTagConfigurationDialog({
           (group.tags || []).some((tag) => Number(tag.tagId) === Number(tagId)));
         setModel(loadedModel);
         setSegmentGroups(loadedGroups);
+        setCurrentGroupId(currentGroup?.id ?? null);
         setTargetGroupId(currentGroup == null ? "" : String(currentGroup.id));
         setConfirmedAssignedDeletion(false);
       })
@@ -141,18 +141,18 @@ function InlineTagConfigurationDialog({
   }
 
   async function saveGroup() {
-    const mutation = segmentGroupAssignmentMutation(segmentGroups, tagId, targetGroupId || null);
-    if (!mutation) return;
+    const targetGroup = targetGroupId === "" ? null : Number(targetGroupId);
+    if (targetGroup === currentGroupId) return;
     setBusySection("group");
-    setMessage("Saving Segment group…");
+    setMessage("Saving tag group…");
     try {
-      await requestJson(`/segment-groups/${mutation.groupId}`, {
+      await requestJson(`/segment-groups/tags/${tagId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: mutation.name, tagIds: mutation.tagIds }),
+        body: JSON.stringify({ groupId: targetGroup }),
       });
     } catch (error) {
-      setMessage(error.message || "Unable to save Segment group.");
+      setMessage(error.message || "Unable to assign the tag group.");
       setBusySection(null);
       return;
     }
@@ -161,18 +161,25 @@ function InlineTagConfigurationDialog({
         requestJson("/segment-groups"),
         onSaved(),
       ]);
-      if (catalogResult.status === "fulfilled") setSegmentGroups(catalogResult.value);
+      if (catalogResult.status === "fulfilled") {
+        setSegmentGroups(catalogResult.value);
+        const assignedGroup = catalogResult.value.find((group) =>
+          (group.tags || []).some((tag) => Number(tag.tagId) === Number(tagId)));
+        const assignedGroupId = assignedGroup?.id ?? null;
+        setCurrentGroupId(assignedGroupId);
+        setTargetGroupId(assignedGroupId == null ? "" : String(assignedGroupId));
+      }
       setMessage(
         catalogResult.status === "fulfilled" && editorResult.status === "fulfilled"
-          ? "Segment group saved."
-          : "Segment group saved, but the configuration could not be fully refreshed.",
+          ? "Tag group saved."
+          : "Tag group saved, but the configuration could not be fully refreshed.",
       );
     } finally {
       setBusySection(null);
     }
   }
 
-  const groupMutation = segmentGroupAssignmentMutation(segmentGroups, tagId, targetGroupId || null);
+  const currentGroup = segmentGroups.find((group) => Number(group.id) === Number(currentGroupId));
   const buttonClass = "rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50";
   return h("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
@@ -197,16 +204,17 @@ function InlineTagConfigurationDialog({
       }, `Configure Tag: ${tagName}`),
       h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
         performerSlotsEnabled
-          ? "Assign this tag to a Segment group and configure its performer roles."
-          : "Assign this tag to a Segment group."),
+          ? "Assign this tag to a Cove tag group and configure its performer roles."
+          : "Assign this tag to a Cove tag group."),
     ]),
     h("div", { key: "body", className: "min-h-0 flex-1 space-y-5 overflow-y-auto p-5" }, [
       h("section", { key: "group", className: "space-y-3", "aria-labelledby": "inline-tag-segment-group-heading" }, [
         h("div", { key: "heading" }, [
-          h("h3", { key: "title", id: "inline-tag-segment-group-heading", className: "text-sm font-semibold text-foreground" }, "Segment group"),
-          h("p", { key: "copy", className: "text-xs text-secondary" }, "Choose where this tag appears in the swimlane hierarchy."),
+          h("h3", { key: "title", id: "inline-tag-segment-group-heading", className: "text-sm font-semibold text-foreground" }, "Cove tag group"),
+          h("p", { key: "copy", className: "text-xs text-secondary" },
+            "Choose where this tag appears in the swimlane hierarchy."),
         ]),
-        h("label", { key: "choice", className: "block space-y-1 text-xs text-secondary" }, [
+        !loading ? h("label", { key: "choice", className: "block space-y-1 text-xs text-secondary" }, [
           h("span", { key: "label" }, "Assigned group"),
           h("select", {
             key: "select",
@@ -219,14 +227,14 @@ function InlineTagConfigurationDialog({
             ...segmentGroups.map((group) =>
               h("option", { key: group.id, value: String(group.id) }, group.name)),
           ]),
-        ]),
-        h("button", {
+        ]) : null,
+        !loading ? h("button", {
           key: "save",
           type: "button",
-          disabled: busySection != null || !groupMutation,
+          disabled: busySection != null || (targetGroupId === "" ? null : Number(targetGroupId)) === currentGroupId,
           onClick: saveGroup,
           className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50",
-        }, busySection === "group" ? "Saving…" : "Save Segment group"),
+        }, busySection === "group" ? "Saving…" : "Save tag group") : null,
       ]),
       performerSlotsEnabled ? h("section", { key: "slots", className: "space-y-3 border-t border-border pt-5", "aria-labelledby": "inline-tag-slots-heading" }, [
         h("div", { key: "heading" }, [

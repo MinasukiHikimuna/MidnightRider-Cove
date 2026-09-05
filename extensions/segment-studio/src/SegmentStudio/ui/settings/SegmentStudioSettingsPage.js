@@ -5,7 +5,6 @@ import { readMergeConfirmationPreference, writeMergeConfirmationPreference } fro
 import {
   completeOperation,
   operationIdFor,
-  requestCoveJson,
   requestJson,
 } from "../shared/api.js";
 
@@ -18,8 +17,6 @@ import {
 
 import { setBackLinkNavigation } from "../discovery/components.js";
 
-import { SegmentGroupCard, moveSegmentGroupTag, reorderSegmentGroups } from "./organization.js";
-
 import { DerivedSegmentRuleSettings } from "./derivation/DerivedSegmentRuleSettings.js";
 
 import { PlaybackShortcutSettings } from "./shortcuts.js";
@@ -31,16 +28,6 @@ import { SegmentStudioModeSelector } from "../shared/navigation.js";
 function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
   const [groups, setGroups] = useState([]);
-  const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [pickerGroupId, setPickerGroupId] = useState(null);
-  const [pickerQuery, setPickerQuery] = useState("");
-  const [pickerOptions, setPickerOptions] = useState([]);
-  const [pickerLoading, setPickerLoading] = useState(false);
-  const [selectedTagIds, setSelectedTagIds] = useState([]);
-  const [dragState, setDragState] = useState(null);
-  const [dropTarget, setDropTarget] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [analysisBaseUrl, setAnalysisBaseUrl] = useState("");
@@ -65,10 +52,8 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     loadGroups(controller.signal)
-      .catch((error) => { if (error.name !== "AbortError") setMessage(error.message || "Unable to load Segment groups."); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .catch((error) => { if (error.name !== "AbortError") setMessage(error.message || "Unable to load tag groups."); });
     return () => controller.abort();
   }, []);
 
@@ -101,177 +86,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
       .finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
     return () => controller.abort();
   }, [profile.effectiveMode]);
-
-  useEffect(() => {
-    if (pickerGroupId == null) {
-      setPickerOptions([]);
-      setPickerLoading(false);
-      return undefined;
-    }
-    const controller = new AbortController();
-    setPickerLoading(true);
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams({ page: "1", perPage: "100", sort: "name", direction: "asc", includeCounts: "false" });
-      if (pickerQuery.trim()) params.set("q", pickerQuery.trim());
-      requestCoveJson(`/api/tags?${params}`, { signal: controller.signal })
-        .then((loaded) => setPickerOptions(loaded.items || []))
-        .catch((error) => { if (error.name !== "AbortError") setMessage(error.message || "Unable to load tags."); })
-        .finally(() => { if (!controller.signal.aborted) setPickerLoading(false); });
-    }, 150);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [pickerGroupId, pickerQuery]);
-
-  async function runMutation(action, successMessage) {
-    setBusy(true);
-    setMessage("");
-    try {
-      await action();
-      await loadGroups();
-      setMessage(successMessage);
-      return true;
-    } catch (error) {
-      try { await loadGroups(); } catch {}
-      setMessage(error.message || "Unable to change Segment groups.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function createGroup(event) {
-    event.preventDefault();
-    const name = newName.trim();
-    if (!name) return;
-    runMutation(() => requestJson("/segment-groups", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    }), "Segment group created.").then((saved) => {
-      if (!saved) return;
-      setNewName("");
-      setShowCreateGroup(false);
-    });
-  }
-
-  function updateGroup(group, next) {
-    return runMutation(() => requestJson(`/segment-groups/${group.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(next),
-    }), "Segment group saved.");
-  }
-
-  function closePicker() {
-    setPickerGroupId(null);
-    setPickerQuery("");
-    setPickerOptions([]);
-    setSelectedTagIds([]);
-  }
-
-  function togglePicker(groupId) {
-    if (pickerGroupId === groupId) {
-      closePicker();
-      return;
-    }
-    setPickerGroupId(groupId);
-    setPickerQuery("");
-    setPickerOptions([]);
-    setSelectedTagIds([]);
-  }
-
-  function toggleTagSelection(tagId) {
-    setSelectedTagIds((current) =>
-      current.includes(tagId)
-        ? current.filter((candidate) => candidate !== tagId)
-        : [...current, tagId]);
-  }
-
-  async function addSelectedTags(group) {
-    const tagIds = [
-      ...group.tags.map((tag) => tag.tagId),
-      ...selectedTagIds.filter((tagId) => !group.tags.some((tag) => tag.tagId === tagId)),
-    ];
-    const saved = await updateGroup(group, { name: group.name, tagIds });
-    if (saved) closePicker();
-  }
-
-  function removeTag(group, tagId) {
-    return updateGroup(group, {
-      name: group.name,
-      tagIds: group.tags.filter((tag) => tag.tagId !== tagId).map((tag) => tag.tagId),
-    });
-  }
-
-  function startGroupDrag(event, groupId) {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", `segment-group:${groupId}`);
-    setDragState({ kind: "group", groupId });
-    setDropTarget(null);
-  }
-
-  function startTagDrag(event, tagId, sourceGroupId) {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", `segment-tag:${tagId}`);
-    setDragState({ kind: "tag", tagId, sourceGroupId });
-    setDropTarget(null);
-  }
-
-  function endDrag() {
-    setDragState(null);
-    setDropTarget(null);
-  }
-
-  function dropGroup() {
-    if (dragState?.kind !== "group" || dropTarget?.kind !== "group") {
-      endDrag();
-      return;
-    }
-    const sourceIndex = groups.findIndex((group) => group.id === dragState.groupId);
-    const targetIndex = dropTarget.index > sourceIndex ? dropTarget.index - 1 : dropTarget.index;
-    const next = reorderSegmentGroups(groups, dragState.groupId, targetIndex);
-    endDrag();
-    if (next === groups || next.every((group, index) => group.id === groups[index]?.id)) return;
-    setGroups(next);
-    runMutation(() => requestJson("/segment-groups/order", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupIds: next.map((group) => group.id) }),
-    }), "Segment group order saved.");
-  }
-
-  function dropTag() {
-    if (dragState?.kind !== "tag" || dropTarget?.kind !== "tag") {
-      endDrag();
-      return;
-    }
-    const sourceGroup = groups.find((group) => group.id === dragState.sourceGroupId);
-    const sourceIndex = sourceGroup?.tags.findIndex((tag) => tag.tagId === dragState.tagId) ?? -1;
-    const targetIndex = dragState.sourceGroupId === dropTarget.groupId && dropTarget.index > sourceIndex
-      ? dropTarget.index - 1
-      : dropTarget.index;
-    const next = moveSegmentGroupTag(groups, dragState.tagId, dropTarget.groupId, targetIndex);
-    endDrag();
-    if (next === groups) return;
-    const unchanged = next.every((group, groupIndex) =>
-      group.tags.every((tag, tagIndex) => tag.tagId === groups[groupIndex]?.tags[tagIndex]?.tagId)
-      && group.tags.length === groups[groupIndex]?.tags.length);
-    if (unchanged) return;
-    const targetGroup = next.find((group) => group.id === dropTarget.groupId);
-    setGroups(next);
-    runMutation(() => requestJson(`/segment-groups/${targetGroup.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: targetGroup.name,
-        tagIds: targetGroup.tags.map((tag) => tag.tagId),
-      }),
-    }), dragState.sourceGroupId === targetGroup.id ? "Tag order saved." : "Tag moved to another group.");
-  }
-
-  function deleteGroup(group) {
-    if (!window.confirm(`Delete Segment group “${group.name}”? Tags and segments will not be changed.`)) return;
-    runMutation(() => requestJson(`/segment-groups/${group.id}`, { method: "DELETE" }), "Segment group deleted.");
-  }
 
   async function saveMode(nextMode) {
     if (nextMode === profile.requestedMode) return;
@@ -364,8 +178,8 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
       h("h1", { key: "title", className: "text-2xl font-semibold text-foreground" }, "Segment Studio settings"),
       h("p", { key: "description", className: "max-w-3xl text-sm text-secondary" },
         profile.effectiveMode === "full"
-          ? "Configure the Segment Studio workflow, shortcuts, organization, performer roles, and derivation behavior."
-          : "Configure the Segment Studio workflow, shortcuts, and organization."),
+          ? "Configure the Segment Studio workflow, shortcuts, performer roles, and derivation behavior."
+          : "Configure the Segment Studio workflow and shortcuts."),
     ]),
     h("nav", { key: "settings-tabs", "aria-label": "Settings sections", className: "flex gap-1 overflow-x-auto border-b border-border" },
       settingsTabs.map(([key, label]) => h("button", {
@@ -488,89 +302,7 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
         onSegmentGroupsChanged: () => loadGroups(),
       }))
       : null,
-    h("section", { key: "organization-heading", hidden: activeSettingsTab !== "organization", className: "flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border bg-surface p-4" }, [
-      h("div", { key: "copy" }, [
-        h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "Segment groups"),
-        h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
-          "Create ordered groups, then drag groups and tags into the order used by the editor."),
-      ]),
-      h("button", {
-        key: "create",
-        type: "button",
-        disabled: busy,
-        onClick: () => {
-          setShowCreateGroup(true);
-          setNewName("");
-        },
-        className: "rounded-md border border-accent bg-accent/15 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent/25 disabled:opacity-50",
-      }, "Create group"),
-      showCreateGroup ? h("form", {
-        key: "form",
-        onSubmit: createGroup,
-        className: "flex w-full flex-wrap items-end gap-2 border-t border-border pt-3",
-      }, [
-        h("label", { key: "name", className: "min-w-[14rem] flex-1 space-y-1 text-xs text-secondary" }, [
-          h("span", { key: "label" }, "Group name"),
-          h("input", {
-            key: "input",
-            value: newName,
-            maxLength: 200,
-            autoFocus: true,
-            onChange: (event) => setNewName(event.target.value),
-            onKeyDown: (event) => {
-              if (event.key !== "Escape") return;
-              setShowCreateGroup(false);
-              setNewName("");
-            },
-            placeholder: "Group name",
-            className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-          }),
-        ]),
-        h("button", { key: "submit", type: "submit", disabled: busy || !newName.trim(), className: "rounded-md border border-accent bg-accent/20 px-3 py-2 text-sm font-medium text-foreground disabled:opacity-50" }, "Create"),
-        h("button", {
-          key: "cancel",
-          type: "button",
-          disabled: busy,
-          onClick: () => {
-            setShowCreateGroup(false);
-            setNewName("");
-          },
-          className: "rounded-md border border-border px-3 py-2 text-sm font-medium text-secondary hover:bg-muted/40",
-        }, "Cancel"),
-      ]) : null,
-    ]),
     message ? h("p", { key: "message", role: "status", className: "rounded-md border border-border bg-card px-3 py-2 text-sm text-secondary" }, message) : null,
-    activeSettingsTab === "organization" && loading ? h("p", { key: "loading", role: "status", className: "text-sm text-secondary" }, "Loading Segment groups…") : null,
-    activeSettingsTab === "organization" && !loading && groups.length === 0 ? h("p", { key: "empty", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" }, "No Segment groups configured yet.") : null,
-    ...groups.map((group, groupIndex) => h("div", { key: group.id, hidden: activeSettingsTab !== "organization" },
-      h(SegmentGroupCard, {
-        group,
-        groups,
-        groupIndex,
-        busy,
-        pickerOpen: pickerGroupId === group.id,
-        pickerQuery,
-        pickerOptions,
-        pickerLoading,
-        selectedTagIds,
-        dragState,
-        dropTarget,
-        onTogglePicker: togglePicker,
-        onPickerQueryChange: setPickerQuery,
-        onToggleTagSelection: toggleTagSelection,
-        onAddTags: addSelectedTags,
-        onCancelPicker: closePicker,
-        onUpdate: updateGroup,
-        onDelete: deleteGroup,
-        onRemoveTag: removeTag,
-        onGroupDragStart: startGroupDrag,
-        onTagDragStart: startTagDrag,
-        onDragEnd: endDrag,
-        onGroupDragOver: (index) => setDropTarget({ kind: "group", index }),
-        onGroupDrop: dropGroup,
-        onTagDragOver: (groupId, index) => setDropTarget({ kind: "tag", groupId, index }),
-        onTagDrop: dropTag,
-      }))),
   ]);
 }
 

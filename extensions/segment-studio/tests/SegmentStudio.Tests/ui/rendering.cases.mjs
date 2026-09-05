@@ -350,6 +350,26 @@ test("C and Shift+C use durable incorrect-example feedback", () => {
   assert.match(source, /AI Feedback\$\{incorrectExamples\.length \? ` \(\$\{incorrectExamples\.length\}\)` : ""\}/);
 });
 
+test("feedback deltas preserve tag SortName metadata used by ungrouped lanes", () => {
+  const detail = ui.applyFeedbackEditorDelta(
+    {
+      segments: [
+        { id: 1, tagId: 10, tagName: "Zulu", tagSortName: "01", startSec: 1, key: "native:1" },
+        { id: 2, tagId: 20, tagName: "Alpha", tagSortName: "02", startSec: 2, key: "native:2" },
+      ],
+      performerSlots: [],
+      performerSlotRevisions: {},
+    },
+    { upsertedBasicSegments: [{ id: 1, tagId: 10, tagName: "Zulu", startSec: 1, key: "native:1" }] },
+  );
+
+  assert.equal(detail.segments.find((segment) => segment.id === 1).tagSortName, "01");
+  assert.deepEqual(
+    ui.groupSegmentsIntoSwimlanes(detail.segments).map((lane) => lane.label),
+    ["Zulu", "Alpha"],
+  );
+});
+
 test("feedback frame sampling matches Marker Studio thresholds and clamps inside segments", () => {
   assert.deepEqual(ui.feedbackFrameTimestamps(10, null), [10]);
   assert.deepEqual(ui.feedbackFrameTimestamps(10, 20), [14]);

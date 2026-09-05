@@ -106,34 +106,35 @@ test("filled and unfilled assignments form separate lanes even with one complete
   ]);
 });
 
-test("Segment groups order tag lanes independently from Cove tag groups", () => {
+test("native Cove tag groups and SortName order tag lanes", () => {
   const groups = [
     {
       id: 8,
       name: "Primary group",
       sortOrder: 0,
       tags: [
-        { tagId: 20, tagName: "Beta", sortOrder: 0 },
-        { tagId: 10, tagName: "Alpha", sortOrder: 1 },
+        { tagId: 20, tagName: "Beta", tagSortName: "01 Beta", sortOrder: 0 },
+        { tagId: 10, tagName: "Alpha", tagSortName: "02 Alpha", sortOrder: 1 },
       ],
     },
   ];
   const lanes = ui.groupSegmentsIntoSwimlanes([
     { id: 1, tagId: 10, tagName: "Alpha", startSec: 1, endSec: 2, reviewState: "unreviewed" },
     { id: 2, tagId: 20, tagName: "Beta", startSec: 2, endSec: 3, reviewState: "approved" },
-    { id: 3, tagId: 30, tagName: "Gamma", startSec: 3, endSec: 4, reviewState: "rejected" },
+    { id: 3, tagId: 30, tagName: "Gamma", tagSortName: "02 Gamma", startSec: 3, endSec: 4, reviewState: "rejected" },
+    { id: 4, tagId: 40, tagName: "Delta", tagSortName: "01 Delta", startSec: 4, endSec: 5, reviewState: "approved" },
   ], groups);
 
-  assert.deepEqual(lanes.map((lane) => lane.label), ["Beta", "Alpha", "Gamma"]);
-  assert.deepEqual(lanes.map((lane) => lane.segmentGroupName), ["Primary group", "Primary group", null]);
+  assert.deepEqual(lanes.map((lane) => lane.label), ["Beta", "Alpha", "Delta", "Gamma"]);
+  assert.deepEqual(lanes.map((lane) => lane.segmentGroupName), ["Primary group", "Primary group", null, null]);
   const grouped = ui.groupSwimlanesBySegmentGroup(lanes);
   assert.deepEqual(grouped.map((group) => [group.name, group.lanes.map((lane) => lane.label)]), [
     ["Primary group", ["Beta", "Alpha"]],
-    ["Ungrouped", ["Gamma"]],
+    ["Ungrouped", ["Delta", "Gamma"]],
   ]);
   assert.deepEqual(grouped.map((group) => group.counts), [
     { unreviewed: 1, approved: 1, rejected: 0 },
-    { unreviewed: 0, approved: 0, rejected: 1 },
+    { unreviewed: 0, approved: 1, rejected: 1 },
   ]);
   assert.equal(ui.swimlaneStripeBackground(0), "var(--color-surface)");
   assert.match(ui.swimlaneStripeBackground(1), /color-mix.*--color-muted.*--color-surface/);
@@ -142,6 +143,27 @@ test("Segment groups order tag lanes independently from Cove tag groups", () => 
   assert.equal(ui.swimlaneMarkerTop(2), 2.84375);
   assert.match(source, /backgroundColor: stripeBackground/);
   assert.match(source, /top: `\$\{swimlaneMarkerTop\(track\)\}rem`/);
+});
+
+test("equal native group orders remain contiguous in response order", () => {
+  const groups = [
+    { id: 1, name: "First", sortOrder: 10, tags: [
+      { tagId: 11, tagName: "First A", sortOrder: 0 },
+      { tagId: 12, tagName: "First B", sortOrder: 1 },
+    ] },
+    { id: 2, name: "Second", sortOrder: 10, tags: [
+      { tagId: 21, tagName: "Second A", sortOrder: 0 },
+      { tagId: 22, tagName: "Second B", sortOrder: 1 },
+    ] },
+  ];
+  const segments = [11, 12, 21, 22].map((tagId, index) => ({
+    id: index + 1, tagId, tagName: groups.flatMap((group) => group.tags).find((tag) => tag.tagId === tagId).tagName,
+    startSec: index, endSec: index + 1, reviewState: "unreviewed",
+  }));
+
+  const lanes = ui.groupSegmentsIntoSwimlanes(segments, groups);
+  assert.deepEqual(lanes.map((lane) => lane.segmentGroupName), ["First", "First", "Second", "Second"]);
+  assert.deepEqual(ui.groupSwimlanesBySegmentGroup(lanes).map((group) => group.name), ["First", "Second"]);
 });
 
 test("Segment groups can collapse their swimlanes without losing segment state", () => {
@@ -230,7 +252,7 @@ test("Shift+Up and Shift+Down select collapsible swimlane groups for B", () => {
   assert.match(source, /data-selected-timeline-group/);
 });
 
-test("settings route and editor consume extension-owned Segment groups", () => {
+test("settings route omits organization while the editor consumes native Cove tag groups", () => {
   const settings = source.slice(source.indexOf("function SegmentStudioSettingsPage"), source.indexOf("function SegmentStudioTabs"));
   assert.equal(ui.isSegmentStudioSettingsRoute(null, "settings", "/segment-studio"), true);
   assert.equal(ui.isSegmentStudioSettingsRoute("settings", null, "/segment-studio"), true);
@@ -241,9 +263,8 @@ test("settings route and editor consume extension-owned Segment groups", () => {
   assert.match(source, /isSegmentStudioSettingsRoute\(id, slug, window\.location\.pathname\)/);
   assert.match(source, /function SegmentStudioSettingsPage/);
   assert.match(source, /\/segment-groups/);
-  assert.match(source, /Segment groups/);
+  assert.doesNotMatch(settings, /Organization|Cove tag groups|Create group/);
   assert.match(source, /groupSegmentsIntoSwimlanes\(segments, segmentGroups, performerSlots\)/);
-  assert.doesNotMatch(source, /\/api\/tag-groups/);
   assert.doesNotMatch(settings, /Lineage maintenance/);
   assert.doesNotMatch(settings, /reviewButtonClass/);
 });

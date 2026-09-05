@@ -46,6 +46,7 @@ public sealed record IncorrectExampleBasicEditorSegment(
     int VideoId,
     int TagId,
     string? TagName,
+    string? TagSortName,
     double StartSec,
     double? EndSec,
     string Kind,
@@ -103,6 +104,7 @@ public static class IncorrectExampleEditorDeltaService
                     videoId,
                     candidate.TagId!.Value,
                     tag.Name,
+                    tag.SortName,
                     candidate.StartSec,
                     candidate.EndSec,
                     "unreviewed",
@@ -135,9 +137,9 @@ public static class IncorrectExampleEditorDeltaService
                 && candidate.HostType == SegmentHostType.Video
                 && candidate.HostId == videoId
                 && candidate.Kind == "tag", ct);
-        var tagName = await db.Set<Tag>().AsNoTracking()
+        var tag = await db.Set<Tag>().AsNoTracking()
             .Where(tag => tag.Id == segment.TagId)
-            .Select(tag => tag.Name)
+            .Select(tag => new { tag.Name, tag.SortName })
             .SingleAsync(ct);
         var provenance = !includeFieldProvenance
             || db.Model.FindEntityType(typeof(FieldProvenance)) is null
@@ -164,7 +166,8 @@ public static class IncorrectExampleEditorDeltaService
             segment.Id,
             videoId,
             segment.TagId!.Value,
-            tagName,
+            tag.Name,
+            tag.SortName,
             segment.StartSec,
             segment.EndSec,
             segment.Kind ?? "tag",
@@ -247,6 +250,7 @@ public static class IncorrectExampleEditorDeltaService
                     videoId,
                     item.TagId!.Value,
                     tag.Name,
+                    tag.SortName,
                     item.StartSec!.Value,
                     item.EndSec,
                     item.ReviewState!,
@@ -273,6 +277,7 @@ public static class IncorrectExampleEditorDeltaService
                     segment.Id,
                     TagId = segment.TagId!.Value,
                     TagName = tag.Name,
+                    TagSortName = tag.SortName,
                     segment.StartSec,
                     segment.EndSec,
                     segment.UpdatedAt,
@@ -289,6 +294,7 @@ public static class IncorrectExampleEditorDeltaService
             videoId,
             segment.TagId,
             segment.TagName,
+            segment.TagSortName,
             segment.StartSec,
             segment.EndSec,
             "approved",

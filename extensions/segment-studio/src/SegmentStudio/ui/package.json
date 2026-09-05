@@ -1,0 +1,13 @@
+{
+  "name": "@cove-extension/segment-studio-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && node copy-css.mjs",
+    "test": "node --test ../../../tests/SegmentStudio.Tests/SegmentStudioUi.test.mjs"
+  },
+  "devDependencies": {
+    "vite": "6.4.3"
+  }
+}

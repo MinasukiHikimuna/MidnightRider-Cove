@@ -123,12 +123,12 @@ function splitLaneByPerformerAssignments(lane, slotsBySegment) {
 
 export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], performerSlots = []) {
   const tagPlacement = new Map();
-  for (const group of segmentGroups) {
+  for (const [groupIndex, group] of segmentGroups.entries()) {
     for (const tag of group.tags || []) {
       tagPlacement.set(tag.tagId, {
         segmentGroupId: group.id,
         segmentGroupName: group.name,
-        segmentGroupSortOrder: group.sortOrder,
+        segmentGroupSortOrder: groupIndex,
         segmentGroupTagSortOrder: tag.sortOrder,
       });
     }
@@ -142,6 +142,7 @@ export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], perform
         key,
         tagId: segment.tagId,
         label,
+        tagSortName: segment.tagSortName || null,
         ...(tagPlacement.get(segment.tagId) || {
           segmentGroupId: null,
           segmentGroupName: null,
@@ -167,42 +168,11 @@ export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], perform
   return [...laneMap.values()]
     .sort((left, right) => left.segmentGroupSortOrder - right.segmentGroupSortOrder
       || left.segmentGroupTagSortOrder - right.segmentGroupTagSortOrder
-      || left.label.localeCompare(right.label)
+      || (left.tagSortName || left.label).localeCompare(right.tagSortName || right.label, undefined, {
+        sensitivity: "base",
+      })
       || left.key.localeCompare(right.key))
     .flatMap((lane) => splitLaneByPerformerAssignments(lane, slotsBySegment));
-}
-
-export function segmentGroupAssignmentMutation(groups, tagId, targetGroupId) {
-  const numericTagId = Number(tagId);
-  const currentGroup = groups.find((group) =>
-    (group.tags || []).some((tag) => Number(tag.tagId) === numericTagId));
-  const numericTargetGroupId = targetGroupId == null || targetGroupId === ""
-    ? null
-    : Number(targetGroupId);
-
-  if (numericTargetGroupId == null) {
-    if (!currentGroup) return null;
-    return {
-      groupId: currentGroup.id,
-      name: currentGroup.name,
-      tagIds: currentGroup.tags
-        .map((tag) => Number(tag.tagId))
-        .filter((candidateTagId) => candidateTagId !== numericTagId),
-    };
-  }
-
-  const targetGroup = groups.find((group) => Number(group.id) === numericTargetGroupId);
-  if (!targetGroup || Number(currentGroup?.id) === numericTargetGroupId) return null;
-  return {
-    groupId: targetGroup.id,
-    name: targetGroup.name,
-    tagIds: [
-      ...targetGroup.tags
-        .map((tag) => Number(tag.tagId))
-        .filter((candidateTagId) => candidateTagId !== numericTagId),
-      numericTagId,
-    ],
-  };
 }
 
 export function groupSwimlanesBySegmentGroup(lanes) {

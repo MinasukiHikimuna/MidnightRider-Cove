@@ -308,7 +308,6 @@ test("settings expose only sections present in the server feature profile", () =
     capabilities: [
       ui.SEGMENT_STUDIO_CAPABILITIES.settingsGeneral,
       ui.SEGMENT_STUDIO_CAPABILITIES.settingsShortcuts,
-      ui.SEGMENT_STUDIO_CAPABILITIES.settingsOrganization,
     ],
   };
   const fullProfile = {
@@ -320,11 +319,11 @@ test("settings expose only sections present in the server feature profile", () =
   };
   assert.deepEqual(
     ui.visibleSegmentStudioSettingsTabs(basicProfile).map(([key]) => key),
-    ["general", "shortcuts", "organization"],
+    ["general", "shortcuts"],
   );
   assert.deepEqual(
     ui.visibleSegmentStudioSettingsTabs(fullProfile).map(([key]) => key),
-    ["general", "shortcuts", "organization", "performer-slots", "derivation"],
+    ["general", "shortcuts", "performer-slots", "derivation"],
   );
   assert.match(settings, /visibleSegmentStudioSettingsTabs\(profile\)/);
   assert.match(settings, /Analysis service/);
@@ -341,6 +340,7 @@ test("settings expose only sections present in the server feature profile", () =
   assert.doesNotMatch(settings, /Find (?:canonical|Segment) tags to add/);
   assert.match(settings, /"aria-current": activeSettingsTab === key \? "page"/);
   assert.match(settings, /className: "mx-auto w-full max-w-none space-y-5 px-0 py-4 sm:py-6"/);
+  assert.doesNotMatch(settings, /Organization|Create group|SegmentGroupCard/);
 });
 
 test("General settings order workflow, confirmations, then Full-only analysis", () => {
@@ -360,72 +360,13 @@ test("General settings order workflow, confirmations, then Full-only analysis", 
   assert.match(settings, /profile\.effectiveMode === "full"\s*\? h\("section", \{ key: "analysis"/);
 });
 
-test("Organization settings use a drag-first card organizer with on-demand tag pickers", () => {
-  const card = source.slice(
-    source.indexOf("function SegmentGroupCard"),
-    source.indexOf("function SlotDefinitionSettings"),
-  );
+test("settings leave native tag group administration to Cove", () => {
   const settings = source.slice(
     source.indexOf("function SegmentStudioSettingsPage"),
     source.indexOf("function SegmentStudioTabs"),
   );
-
-  assert.match(card, /draggable: !busy/);
-  assert.match(card, /data-segment-group-drag-handle/);
-  assert.match(card, /data-segment-tag-drag-handle/);
-  assert.match(card, /Add tags to \$\{group\.name\}/);
-  assert.match(card, /Rename group/);
-  assert.match(card, /Delete group/);
-  assert.match(card, /selectedTagIds/);
-  assert.doesNotMatch(card, /Move .* up|Move .* down|Add or move Segment tag/);
-  assert.doesNotMatch(card, /renderTagDropLine|group\.tags\.flatMap/);
-  assert.match(card, /data-segment-tag-drop-indicator/);
-  assert.match(card, /pointer-events-none absolute left-0 right-0/);
-  assert.doesNotMatch(card, /-left-px|-right-px|-top-1|-bottom-1/);
-  assert.match(card, /groupIndex === groups\.length - 1[\s\S]*dropTarget\.index === groups\.length/);
-  assert.match(settings, /Create group/);
-  assert.match(settings, /showCreateGroup/);
-  assert.doesNotMatch(settings, /tagSearch|Find Segment tags to add/);
-});
-
-test("Organization reorder helpers preserve ordering and move tags between groups", () => {
-  const groups = [
-    {
-      id: 1,
-      name: "First",
-      sortOrder: 0,
-      tags: [
-        { tagId: 11, tagName: "Alpha", sortOrder: 0 },
-        { tagId: 12, tagName: "Beta", sortOrder: 1 },
-      ],
-    },
-    {
-      id: 2,
-      name: "Second",
-      sortOrder: 1,
-      tags: [{ tagId: 13, tagName: "Gamma", sortOrder: 0 }],
-    },
-    { id: 3, name: "Empty", sortOrder: 2, tags: [] },
-  ];
-
-  const reordered = ui.reorderSegmentGroups(groups, 3, 0);
-  assert.deepEqual(reordered.map((group) => group.id), [3, 1, 2]);
-  assert.deepEqual(reordered.map((group) => group.sortOrder), [0, 1, 2]);
-
-  const withinGroup = ui.moveSegmentGroupTag(groups, 12, 1, 0);
-  assert.deepEqual(withinGroup[0].tags.map((tag) => tag.tagId), [12, 11]);
-  assert.deepEqual(withinGroup[0].tags.map((tag) => tag.sortOrder), [0, 1]);
-
-  const acrossGroups = ui.moveSegmentGroupTag(groups, 12, 2, 1);
-  assert.deepEqual(acrossGroups[0].tags.map((tag) => tag.tagId), [11]);
-  assert.deepEqual(acrossGroups[1].tags.map((tag) => tag.tagId), [13, 12]);
-  assert.deepEqual(acrossGroups[1].tags.map((tag) => tag.sortOrder), [0, 1]);
-
-  const intoEmpty = ui.moveSegmentGroupTag(groups, 11, 3, 0);
-  assert.deepEqual(intoEmpty[0].tags.map((tag) => tag.tagId), [12]);
-  assert.deepEqual(intoEmpty[2].tags.map((tag) => tag.tagId), [11]);
-  assert.equal(ui.moveSegmentGroupTag(groups, 999, 3, 0), groups);
-  assert.equal(ui.reorderSegmentGroups(groups, 999, 0), groups);
+  assert.doesNotMatch(settings, /organization|Organization|Create group|Rename group|Delete group/);
+  assert.doesNotMatch(source, /function SegmentGroupCard|reorderSegmentGroups|moveSegmentGroupTag/);
 });
 
 test("performer slot overview groups tags and appends slot-bearing ungrouped tags", () => {
@@ -554,44 +495,17 @@ test("in-editor slot configuration retains assignment-aware deletion", () => {
   assert.doesNotMatch(settings, /Performer slot definitions/);
 });
 
-test("inline swimlane tag configuration preserves complete off-video group membership", () => {
-  const groups = [
-    {
-      id: 1,
-      name: "Acts",
-      tags: [
-        { tagId: 10, tagName: "Alpha", sortOrder: 0 },
-        { tagId: 20, tagName: "Beta", sortOrder: 1 },
-      ],
-    },
-    {
-      id: 2,
-      name: "Finishes",
-      tags: [
-        { tagId: 30, tagName: "Off-video tag", sortOrder: 0 },
-        { tagId: 40, tagName: "Another off-video tag", sortOrder: 1 },
-      ],
-    },
-    { id: 3, name: "Empty group", tags: [] },
-  ];
-
-  assert.deepEqual(ui.segmentGroupAssignmentMutation(groups, 20, 2), {
-    groupId: 2,
-    name: "Finishes",
-    tagIds: [30, 40, 20],
-  });
-  assert.deepEqual(ui.segmentGroupAssignmentMutation(groups, 20, null), {
-    groupId: 1,
-    name: "Acts",
-    tagIds: [10],
-  });
-  assert.deepEqual(ui.segmentGroupAssignmentMutation(groups, 20, 3), {
-    groupId: 3,
-    name: "Empty group",
-    tagIds: [20],
-  });
-  assert.equal(ui.segmentGroupAssignmentMutation(groups, 20, 1), null);
-  assert.equal(ui.segmentGroupAssignmentMutation(groups, 99, null), null);
+test("inline tag configuration assigns, moves, and ungroups tags", () => {
+  const dialog = sourceByModule["editor/dialogs/InlineTagConfigurationDialog.js"];
+  assert.match(dialog, /setCurrentGroupId\(currentGroup\?\.id \?\? null\)/);
+  assert.match(dialog, /setTargetGroupId\(currentGroup == null \? "" : String\(currentGroup\.id\)\)/);
+  assert.match(dialog, /const targetGroup = targetGroupId === "" \? null : Number\(targetGroupId\)/);
+  assert.match(dialog, /requestJson\(`\/segment-groups\/tags\/\$\{tagId\}`/);
+  assert.match(dialog, /body: JSON\.stringify\(\{ groupId: targetGroup \}\)/);
+  assert.match(dialog, /h\("option", \{ key: "ungrouped", value: "" \}, "Ungrouped"\)/);
+  assert.match(dialog, /!loading \? h\("label"[\s\S]*h\("select"/);
+  assert.match(dialog, /Save tag group/);
+  assert.doesNotMatch(dialog, /tagIds: mutation\.tagIds|Save Segment group/);
 });
 
 test("swimlane titles open inline tag configuration for groups and performer slots", () => {
@@ -615,15 +529,15 @@ test("swimlane titles open inline tag configuration for groups and performer slo
   assert.match(timeline, /absolute left-0\.5[\s\S]*opacity-0/);
   assert.match(timeline, /style: \{ width: "1\.125rem", height: "1\.125rem", fontSize: "1rem", lineHeight: 1, opacity: hoveredLaneKey === lane\.key \? 1 : undefined \}/);
   assert.match(dialog, /Configure Tag: \$\{tagName\}/);
-  assert.match(dialog, /Segment group/);
-  assert.match(dialog, /Ungrouped/);
+  assert.match(dialog, /Cove tag group/);
+  assert.match(dialog, /"Ungrouped"/);
   assert.match(dialog, /requestJson\("\/segment-groups"/);
   assert.match(dialog, /h\("select"[\s\S]*segmentGroups\.map\(\(group\)/);
   assert.doesNotMatch(dialog, /name: "inline-tag-segment-group"/);
   assert.match(dialog, /Performer slots/);
   assert.match(dialog, /Allow the same performer in multiple slots/);
   assert.match(dialog, /requestJson\(`\/slot-definitions\/\$\{tagId\}`/);
-  assert.match(dialog, /requestJson\(`\/segment-groups\/\$\{mutation\.groupId\}`/);
+  assert.match(dialog, /requestJson\(`\/segment-groups\/tags\/\$\{tagId\}`/);
   assert.match(dialog, /confirmDeleteAssigned: confirmedAssignedDeletion/);
   assert.match(dialog, /saved, but the configuration could not be fully refreshed/);
   assert.match(dialog, /definition\._clientKey/);

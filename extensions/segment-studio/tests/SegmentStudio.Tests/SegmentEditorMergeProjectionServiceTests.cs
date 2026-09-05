@@ -18,7 +18,7 @@ public sealed class SegmentEditorMergeProjectionServiceTests
         await using var db = new MergeProjectionDbContext(options);
         await db.Database.EnsureCreatedAsync();
         var now = DateTime.UtcNow;
-        db.Add(new Tag { Id = 9, Name = "Merged" });
+        db.Add(new Tag { Id = 9, Name = "Merged", SortName = "01 Merged" });
         db.AddRange(
             new SegmentStudioItem
             {
@@ -64,6 +64,8 @@ public sealed class SegmentEditorMergeProjectionServiceTests
         Assert.Equal([41], native.RemovedSegmentIds);
         Assert.Equal([31], native.RemovedItemIds);
         Assert.Equal("Merged", native.Survivor.TagName);
+        Assert.Equal("01 Merged", draft.Survivor.TagSortName);
+        Assert.Equal("01 Merged", native.Survivor.TagSortName);
         Assert.Equal("consistent", native.ItemMetadata![30].Lineage!.IntegrityState);
         Assert.Null(basicNative.Survivor.ItemId);
         Assert.Equal("unreviewed", basicNative.Survivor.ReviewState);
