@@ -199,6 +199,16 @@ export function FilterDialog({
 }) {
   return (
     <div role="dialog" aria-label="Video filters">
+      <button onClick={() => (testFilterControls.result = {})}>Clear all</button>
+      <button
+        aria-label="Dismiss filters"
+        onClick={() => {
+          testFilterControls.result = { organized: true };
+          onClose();
+        }}
+      >
+        Backdrop
+      </button>
       <button onClick={() => onApply(testFilterControls.result)}>
         Apply filters
       </button>
@@ -219,6 +229,7 @@ export function DetailListToolbar({
   availableDisplayModes = [],
   zoomLevel,
   onZoomChange,
+  criteriaDefinitions = [],
   objectFilter = {},
   onObjectFilterChange,
 }: {
@@ -233,6 +244,11 @@ export function DetailListToolbar({
   availableDisplayModes?: Array<"grid" | "list" | "wall">;
   zoomLevel?: number;
   onZoomChange?(level: number): void;
+  criteriaDefinitions?: Array<{
+    id: string;
+    label: string;
+    filterKey: string;
+  }>;
   objectFilter?: Record<string, unknown>;
   onObjectFilterChange?(filter: Record<string, unknown>): void;
 }) {
@@ -333,11 +349,53 @@ export function DetailListToolbar({
       </div>
       {activeCount > 0 && (
         <div role="region" aria-label="Applied filters">
-          {Object.keys(objectFilter).map((key) => (
-            <button key={key} type="button" onClick={() => setFiltersOpen(true)}>
-              {key}
-            </button>
-          ))}
+          {Object.keys(objectFilter).map((key) => {
+            const label =
+              criteriaDefinitions.find(
+                (criterion) => criterion.filterKey === key,
+              )?.label ?? key;
+            const value = Array.isArray(objectFilter[key])
+              ? objectFilter[key]
+                  .map((item) =>
+                    item && typeof item === "object" && "label" in item
+                      ? String(item.label)
+                      : "",
+                  )
+                  .filter(Boolean)
+                  .join(", ")
+              : "";
+            return (
+              <React.Fragment key={key}>
+                <button
+                  type="button"
+                  aria-label={`Edit filter: ${label}`}
+                  onClick={() => setFiltersOpen(true)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Delete" && event.key !== "Backspace")
+                      return;
+                    const next = { ...objectFilter };
+                    delete next[key];
+                    onObjectFilterChange?.(next);
+                    onFilterChange({ ...filter, page: 1 });
+                  }}
+                >
+                  {label}{value ? `: ${value}` : ""}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove filter: ${label}`}
+                  onClick={() => {
+                    const next = { ...objectFilter };
+                    delete next[key];
+                    onObjectFilterChange?.(next);
+                    onFilterChange({ ...filter, page: 1 });
+                  }}
+                >
+                  Remove
+                </button>
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
       {filtersOpen && (

@@ -77,6 +77,12 @@ import {
 } from "./TagPresentation";
 import { QueueEditor } from "./QueueEditor";
 import {
+  presentCustomFieldCriteria,
+  preserveCustomFieldCriteria,
+  stripCustomFieldPresentation,
+  unresolvedCustomFieldTagIds,
+} from "./CustomFieldPresentation";
+import {
   actionShortcut,
   reviewValidation,
   boundedFilter,
@@ -87,6 +93,13 @@ import {
 type ReviewDisplayMode = "grid" | "wall";
 
 const defaultCardSize = 180;
+const customFieldQueueCriterion = {
+  id: "custom-fields",
+  label: "Custom Fields",
+  filterKey: "customFieldCriteria",
+  type: "string",
+  supported: false,
+};
 
 function initialDisplayMode(review: VideoReview): ReviewDisplayMode {
   return review.view.displayMode === "wall" ? "wall" : "grid";
@@ -232,11 +245,64 @@ export function DataQualityPage({
     useState<ConfirmedAbsentTagsFieldStatus | null>(null);
   const [absenceFieldError, setAbsenceFieldError] = useState("");
   const [absenceFieldPending, setAbsenceFieldPending] = useState(false);
+  const [customFieldTagNames, setCustomFieldTagNames] = useState<
+    Record<string, string>
+  >({});
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
   const loadGeneration = useRef(0);
   const actionGeneration = useRef(0);
   const queueAbort = useRef<AbortController | null>(null);
+  const allowCustomFieldRemoval = useRef(false);
+
+  useEffect(() => {
+    const ids = review
+      ? unresolvedCustomFieldTagIds(review.view.objectFilter)
+      : [];
+    setCustomFieldTagNames({});
+    if (!ids.length) return;
+    const controller = new AbortController();
+    let current = true;
+    void Promise.all(
+      ids.map(async (id) => {
+        try {
+          const tag = await request<{ name?: string }>(`/api/tags/${id}`, {
+            signal: controller.signal,
+          });
+          return tag.name?.trim() ? ([String(id), tag.name] as const) : null;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (current)
+        setCustomFieldTagNames(
+          Object.fromEntries(entries.filter((entry) => entry !== null)),
+        );
+    });
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [review?.id, review?.view.objectFilter]);
+
+  const toolbarObjectFilter = useMemo(
+    () =>
+      review
+        ? presentCustomFieldCriteria(
+            review.view.objectFilter,
+            customFieldTagNames,
+          )
+        : {},
+    [customFieldTagNames, review],
+  );
+  const queueCriteria = useMemo(
+    () =>
+      Array.isArray(toolbarObjectFilter.customFieldCriteria)
+        ? [...VIDEO_CRITERIA, customFieldQueueCriterion]
+        : VIDEO_CRITERIA,
+    [toolbarObjectFilter.customFieldCriteria],
+  );
 
   const loadAllReviews = useCallback(async () => {
     setReviewsLoading(true);
@@ -977,6 +1043,49 @@ export function DataQualityPage({
             }`}
             aria-disabled={pending || queueLoading || undefined}
             inert={pending || queueLoading ? true : undefined}
+            onClickCapture={(event) => {
+              const button =
+                event.target instanceof Element
+                  ? event.target.closest("button")
+                  : null;
+              if (
+                button?.getAttribute("aria-label") ===
+                  "Remove filter: Custom Fields" ||
+                button?.textContent?.trim() === "Clear all"
+              )
+                allowCustomFieldRemoval.current = true;
+              else if (
+                button?.getAttribute("aria-label")?.startsWith("Filters") ||
+                button?.getAttribute("aria-label")?.startsWith("Edit filter:")
+              )
+                allowCustomFieldRemoval.current = false;
+              else if (
+                button?.textContent?.trim() === "Cancel" ||
+                button?.getAttribute("aria-label")?.startsWith("Close ")
+              )
+                allowCustomFieldRemoval.current = false;
+            }}
+            onKeyDownCapture={(event) => {
+              const button =
+                event.target instanceof Element
+                  ? event.target.closest("button")
+                  : null;
+              if (
+                (event.key === "Delete" || event.key === "Backspace") &&
+                button?.getAttribute("aria-label") ===
+                  "Edit filter: Custom Fields"
+              ) {
+                event.preventDefault();
+                event.stopPropagation();
+                allowCustomFieldRemoval.current = true;
+                button.parentElement
+                  ?.querySelector<HTMLButtonElement>(
+                    'button[aria-label="Remove filter: Custom Fields"]',
+                  )
+                  ?.click();
+              } else if (event.key === "Escape")
+                allowCustomFieldRemoval.current = false;
+            }}
           >
             <DetailListToolbar
               filter={queueError ? loadedFilter : filter}
@@ -995,11 +1104,19 @@ export function DataQualityPage({
                 setCardSize(Math.round(225 + level * 50))
               }
               cardSizeEntityType="videos"
-              criteriaDefinitions={VIDEO_CRITERIA}
-              objectFilter={review.view.objectFilter}
+              criteriaDefinitions={queueCriteria}
+              objectFilter={toolbarObjectFilter}
               onObjectFilterChange={(objectFilter) => {
-                if (!pending && !queueLoading)
-                  pendingToolbarObjectFilter.current = objectFilter;
+                if (!pending && !queueLoading) {
+                  const stripped = stripCustomFieldPresentation(objectFilter);
+                  pendingToolbarObjectFilter.current =
+                    preserveCustomFieldCriteria(
+                      review.view.objectFilter,
+                      stripped,
+                      allowCustomFieldRemoval.current,
+                    );
+                  allowCustomFieldRemoval.current = false;
+                }
               }}
               showPagingControls={false}
             />

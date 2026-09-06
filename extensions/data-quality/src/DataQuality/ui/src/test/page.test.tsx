@@ -889,7 +889,7 @@ it("uses the native video toolbar and resets all queue values to review defaults
   expect(screen.getByLabelText("Items per page")).toHaveValue("24");
   expect(screen.getByRole("button", { name: "Filters, 1 active" })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Applied filters" })).toHaveTextContent(
-    "titleCriterion",
+    "Title",
   );
 
   fireEvent.change(screen.getByLabelText("Search list"), {
@@ -981,6 +981,121 @@ it("changes sort and page size directly from the native toolbar", async () => {
     ),
   );
   expect(screen.queryByText("Adjust queue")).not.toBeInTheDocument();
+});
+
+it("preserves custom field rows through dialog applies and removes them explicitly", async () => {
+  const customFieldCriteria = [
+    {
+      key: "confirmed_absent_tags",
+      type: "tag",
+      value: "17",
+      modifier: "EXCLUDES",
+    },
+    { key: "review_status", type: "text", value: "", modifier: "IS_NULL" },
+  ];
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: { customFieldCriteria },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  api.request.mockResolvedValue({ name: "Example tag" });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(
+    await screen.findByRole("button", { name: "Edit filter: Custom Fields" }),
+  ).toHaveTextContent(
+    "Confirmed absent tags Excludes Example tag, Review status Is Null",
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 1 active" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({
+          objectFilter: { organized: true, customFieldCriteria },
+        }),
+      }),
+      expect.anything(),
+      expect.anything(),
+    ),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({
+          objectFilter: { organized: true, customFieldCriteria },
+        }),
+      }),
+      expect.anything(),
+      expect.anything(),
+    ),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({ objectFilter: {} }),
+      }),
+      expect.anything(),
+      expect.anything(),
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Reset to review defaults" }),
+    ).not.toBeInTheDocument(),
+  );
+  const customChip = await screen.findByRole("button", {
+    name: "Edit filter: Custom Fields",
+  });
+  fireEvent.keyDown(customChip, { key: "Delete" });
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({ objectFilter: {} }),
+      }),
+      expect.anything(),
+      expect.anything(),
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Reset to review defaults" }),
+    ).not.toBeInTheDocument(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove filter: Custom Fields" }),
+  );
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({ objectFilter: {} }),
+      }),
+      expect.anything(),
+      expect.anything(),
+    ),
+  );
 });
 
 it("does not retain a temporary queue for reordered equivalent filters", async () => {
