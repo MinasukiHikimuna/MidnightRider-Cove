@@ -17,6 +17,8 @@ const { api, review } = vi.hoisted(() => ({
     findVideos: vi.fn(),
     runReviewAction: vi.fn(),
     settleReviewWrites: vi.fn().mockResolvedValue(undefined),
+    getConfirmedAbsentTagsFieldStatus: vi.fn(),
+    createConfirmedAbsentTagsField: vi.fn(),
     saveReviews: vi.fn(),
     request: vi.fn(),
   },
@@ -76,6 +78,12 @@ beforeEach(() => {
   api.loadProgress.mockReset().mockResolvedValue(null);
   api.saveProgress.mockReset().mockResolvedValue(undefined);
   api.saveReviews.mockReset().mockResolvedValue(undefined);
+  api.getConfirmedAbsentTagsFieldStatus.mockReset().mockResolvedValue({
+    kind: "ready",
+    definition: {},
+    message: "",
+  });
+  api.createConfirmedAbsentTagsField.mockReset().mockResolvedValue(undefined);
   api.request.mockReset().mockResolvedValue({ available: true });
   testVideoControls.toggle.mockReset();
   testVideoControls.seekBy.mockReset();
@@ -126,6 +134,72 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("offers explicit setup when the absence field is missing", async () => {
+    api.getConfirmedAbsentTagsFieldStatus
+      .mockResolvedValueOnce({
+        kind: "missing",
+        message: "Create the Confirmed absent tags custom field.",
+      })
+      .mockResolvedValueOnce({ kind: "ready", definition: {}, message: "" });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const setup = await screen.findByRole("button", {
+      name: "Set up tag assessments",
+    });
+    fireEvent.click(setup);
+    await waitFor(() =>
+      expect(api.createConfirmedAbsentTagsField).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() => expect(setup).not.toBeInTheDocument());
+  });
+
+  it("rechecks tag assessment setup after a transient failure", async () => {
+    api.getConfirmedAbsentTagsFieldStatus
+      .mockRejectedValueOnce(new Error("Temporarily unavailable"))
+      .mockResolvedValueOnce({ kind: "ready", definition: {}, message: "" });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const retry = await screen.findByRole("button", { name: "Check again" });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Temporarily unavailable",
+    );
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(api.getConfirmedAbsentTagsFieldStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not run an unavailable assessment through its shortcut", async () => {
+    api.loadReviews.mockResolvedValue({
+      reviews: [
+        {
+          ...review,
+          actions: [
+            {
+              id: "assess",
+              label: "Assess",
+              steps: [{ mode: "MARK_ABSENT" as const, tagIds: [3] }],
+            },
+          ],
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    api.getConfirmedAbsentTagsFieldStatus.mockResolvedValue({
+      kind: "missing",
+      message: "Setup required",
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const first = await screen.findByRole("article", { name: "Video 1" });
+    fireEvent.keyDown(first, { key: "1" });
+
+    expect(api.runReviewAction).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /Assess.*1 step\(s\)/ }),
+    ).toBeDisabled();
+  });
+
   it("does not reserve a notice row for healthy account storage", async () => {
     const { container } = render(<DataQualityPage onNavigate={vi.fn()} />);
 
@@ -781,6 +855,23 @@ it("saves explicitly reordered tag operations", async () => {
   expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
     { mode: "REMOVE", tagIds: [4] },
     { mode: "ADD", tagIds: [3] },
+  ]);
+});
+
+it("edits and saves all tag assessment modes", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+  const operation = screen.getByLabelText("Tag operation");
+  expect(operation).toHaveTextContent("Mark present");
+  expect(operation).toHaveTextContent("Mark absent");
+  expect(operation).toHaveTextContent("Clear absence");
+  fireEvent.change(operation, { target: { value: "MARK_ABSENT" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
+  expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
+    { mode: "MARK_ABSENT", tagIds: [3] },
   ]);
 });
 

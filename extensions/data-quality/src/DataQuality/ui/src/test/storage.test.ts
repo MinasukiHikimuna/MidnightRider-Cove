@@ -77,6 +77,41 @@ it("migrates edited reviews to the account and reads them from a clean browser",
   });
 });
 
+it("saves and reloads assessment actions and confirmed-absence queue exclusions", async () => {
+  const loaded = await loadReviews();
+  const assessed = {
+    ...review,
+    view: {
+      ...review.view,
+      objectFilter: {
+        customFieldCriteria: [
+          {
+            key: "confirmed_absent_tags",
+            type: "tag",
+            modifier: "EXCLUDES",
+            value: "17",
+          },
+        ],
+      },
+    },
+    actions: [
+      {
+        id: "present",
+        label: "Present",
+        steps: [{ mode: "MARK_PRESENT" as const, tagIds: [17] }],
+      },
+      {
+        id: "absent",
+        label: "Not present",
+        steps: [{ mode: "MARK_ABSENT" as const, tagIds: [17] }],
+      },
+    ],
+  };
+  await saveReviews(loaded.storageKey, [assessed]);
+  localStorage.clear();
+  expect((await loadReviews()).reviews).toEqual([assessed]);
+});
+
 it("treats the newest empty browser snapshot as an intentional deletion", async () => {
   localStorage.setItem("cove-data-quality-reviews-v1:u", "[]");
   localStorage.setItem("cove-video-reviews-v1:u", JSON.stringify([review]));

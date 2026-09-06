@@ -8,7 +8,13 @@ export interface ReviewView {
 }
 
 export interface ReviewStep {
-  mode: "ADD" | "REMOVE" | "REMOVE_TREE";
+  mode:
+    | "ADD"
+    | "REMOVE"
+    | "REMOVE_TREE"
+    | "MARK_PRESENT"
+    | "MARK_ABSENT"
+    | "CLEAR_ABSENCE";
   tagIds: number[];
 }
 
@@ -54,6 +60,8 @@ export function moveItem<T>(items: T[], index: number, delta: number): T[] {
 }
 
 export function reviewValidation(review: VideoReview): string {
+  if (review.actions.some(hasContradictoryAssessments))
+    return "An action cannot contain contradictory assessments for the same tag.";
   if (!review.name.trim() || !review.actions.every(validAction))
     return "Name the review and complete every action step before saving.";
   if (new Set(review.actions.map((a) => a.id)).size !== review.actions.length)
@@ -110,11 +118,39 @@ export function validAction(action: ReviewAction): boolean {
     Boolean(action.label.trim()) &&
     action.steps.every(
       (step) =>
-        ["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode) &&
+        [
+          "ADD",
+          "REMOVE",
+          "REMOVE_TREE",
+          "MARK_PRESENT",
+          "MARK_ABSENT",
+          "CLEAR_ABSENCE",
+        ].includes(step.mode) &&
         step.tagIds.length > 0 &&
         step.tagIds.every((id) => Number.isSafeInteger(id) && id > 0),
-    )
+    ) &&
+    !hasContradictoryAssessments(action)
   );
+}
+
+export function hasAssessmentSteps(action: ReviewAction): boolean {
+  return action.steps.some((step) =>
+    ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode),
+  );
+}
+
+function hasContradictoryAssessments(action: ReviewAction): boolean {
+  const assessments = new Map<number, ReviewStep["mode"]>();
+  for (const step of action.steps) {
+    if (!["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode))
+      continue;
+    for (const id of step.tagIds) {
+      const previous = assessments.get(id);
+      if (previous && previous !== step.mode) return true;
+      assessments.set(id, step.mode);
+    }
+  }
+  return false;
 }
 
 export function parseReviews(raw: string | null): VideoReview[] {

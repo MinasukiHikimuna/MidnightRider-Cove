@@ -1,6 +1,22 @@
 import { extensionFetch } from "@cove/runtime/api";
 import type { ReviewAction, VideoReview } from "./model";
-import { validAction, boundedFilter } from "./model";
+import { hasAssessmentSteps, validAction, boundedFilter } from "./model";
+
+export const CONFIRMED_ABSENT_TAGS_KEY = "confirmed_absent_tags";
+const CONFIRMED_ABSENT_TAGS_LABEL = "Confirmed absent tags";
+
+interface CustomFieldDefinition {
+  key: string;
+  label?: string;
+  type: string;
+  entityTypes: string[];
+  filterable: boolean;
+  isMultiValue: boolean;
+}
+
+export type ConfirmedAbsentTagsFieldStatus =
+  | { kind: "ready"; definition: CustomFieldDefinition; message: "" }
+  | { kind: "missing" | "incompatible"; message: string };
 
 export interface VideoFile {
   id: number;
@@ -17,7 +33,13 @@ export interface Video {
   title?: string;
   date?: string;
   studioName?: string;
-  tags?: Array<{ id: number; name: string }>;
+  tags?: Array<{
+    id: number;
+    name: string;
+    isDerived?: boolean;
+    canRemove?: boolean;
+  }>;
+  customFields?: Record<string, unknown> | null;
   performers: Array<{ id: number; name: string }>;
   files: VideoFile[];
   updatedAt: string;
@@ -58,7 +80,11 @@ function normalizeCriteria(value: unknown): unknown {
         key,
         key === "modifier" && typeof entry === "string"
           ? (MODIFIERS[entry] ?? entry)
-          : normalizeCriteria(entry),
+          : key === "key" &&
+              typeof entry === "string" &&
+              entry.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY.toLowerCase()
+            ? entry.toLowerCase()
+            : normalizeCriteria(entry),
       ]),
     );
   }
@@ -79,8 +105,9 @@ export async function request<T>(
       const body = (await response.json()) as {
         message?: string;
         detail?: string;
+        error?: string;
       };
-      message = body.message || body.detail || message;
+      message = body.message || body.detail || body.error || message;
     } catch {
       // Keep the status message when the response is not JSON.
     }
@@ -193,6 +220,170 @@ export async function resolveTagTree(parentIds: number[]): Promise<number[]> {
   return [...ids];
 }
 
+function definitionProblem(definition: CustomFieldDefinition): string {
+  const problems: string[] = [];
+  if (definition.type !== "tag") problems.push('type "tag"');
+  if (!definition.isMultiValue) problems.push("multiple values enabled");
+  if (!definition.entityTypes.includes("video"))
+    problems.push("video applicability");
+  if (!definition.filterable) problems.push("filtering enabled");
+  return problems.length
+    ? `The ${CONFIRMED_ABSENT_TAGS_KEY} custom field is incompatible. It must have ${problems.join(", ")}.`
+    : "";
+}
+
+export async function getConfirmedAbsentTagsFieldStatus(): Promise<ConfirmedAbsentTagsFieldStatus> {
+  const definitions = await request<CustomFieldDefinition[]>(
+    "/api/custom-fields",
+  );
+  const definition = definitions.find(
+    (item) =>
+      item.key.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY.toLowerCase(),
+  );
+  if (!definition)
+    return {
+      kind: "missing",
+      message: `Create the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field before applying tag assessments.`,
+    };
+  const message = definitionProblem(definition);
+  return message
+    ? { kind: "incompatible", message }
+    : { kind: "ready", definition, message: "" };
+}
+
+export async function createConfirmedAbsentTagsField(): Promise<void> {
+  const status = await getConfirmedAbsentTagsFieldStatus();
+  if (status.kind === "ready") return;
+  if (status.kind === "incompatible") throw new Error(status.message);
+  await request("/api/custom-fields", {
+    method: "POST",
+    body: JSON.stringify({
+      key: CONFIRMED_ABSENT_TAGS_KEY,
+      label: CONFIRMED_ABSENT_TAGS_LABEL,
+      type: "tag",
+      entityTypes: ["video"],
+      filterable: true,
+      sortable: false,
+      isMultiValue: true,
+    }),
+  });
+}
+
+function uniqueIds(ids: readonly number[]): number[] {
+  return [...new Set(ids)];
+}
+
+function customFieldTagIds(value: unknown): number[] {
+  if (value == null) return [];
+  if (
+    !Array.isArray(value) ||
+    value.some((id) => !Number.isSafeInteger(id) || Number(id) <= 0)
+  )
+    throw new Error(
+      `The ${CONFIRMED_ABSENT_TAGS_KEY} value is not a valid tag list.`,
+    );
+  return uniqueIds(value as number[]);
+}
+
+function directlyAssignedTagIds(video: Video): number[] {
+  return uniqueIds(
+    (video.tags ?? [])
+      .filter((tag) => tag.canRemove !== false || tag.isDerived !== true)
+      .map((tag) => tag.id),
+  );
+}
+
+async function runAssessmentAction(
+  action: ReviewAction,
+  ids: number[],
+): Promise<void> {
+  let status: ConfirmedAbsentTagsFieldStatus;
+  try {
+    status = await getConfirmedAbsentTagsFieldStatus();
+  } catch (error) {
+    throw new Error(
+      `Could not verify the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
+    );
+  }
+  if (status.kind !== "ready") throw new Error(status.message);
+
+  const resolvedSteps = await Promise.all(
+    action.steps.map(async (step) => ({
+      ...step,
+      tagIds:
+        step.mode === "REMOVE_TREE"
+          ? await resolveTagTree(step.tagIds)
+          : uniqueIds(step.tagIds),
+    })),
+  );
+  const legacySteps = resolvedSteps.filter((step) =>
+    ["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
+  );
+  const assessmentSteps = resolvedSteps.filter((step) =>
+    ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode),
+  );
+  const targets = uniqueIds(ids);
+  const fieldKey = status.definition.key;
+  let completed = 0;
+  for (const id of targets) {
+    try {
+      const video = await request<Video>(`/api/videos/${id}`);
+      const originalTagIds = directlyAssignedTagIds(video);
+      const originalCustomFields = { ...(video.customFields ?? {}) };
+      const rawAbsent = originalCustomFields[fieldKey];
+      const originalAbsentIds = customFieldTagIds(rawAbsent);
+      const tagIds = new Set(originalTagIds);
+      const absentIds = new Set(originalAbsentIds);
+
+      for (const step of legacySteps) {
+        for (const tagId of step.tagIds) {
+          if (step.mode === "ADD") tagIds.add(tagId);
+          else tagIds.delete(tagId);
+        }
+      }
+      for (const step of assessmentSteps) {
+        for (const tagId of step.tagIds) {
+          if (step.mode === "MARK_PRESENT") {
+            tagIds.add(tagId);
+            absentIds.delete(tagId);
+          } else if (step.mode === "MARK_ABSENT") {
+            tagIds.delete(tagId);
+            absentIds.add(tagId);
+          } else {
+            absentIds.delete(tagId);
+          }
+        }
+      }
+
+      const nextTagIds = [...tagIds];
+      const nextAbsentIds = [...absentIds];
+      const unchanged =
+        JSON.stringify(originalTagIds) === JSON.stringify(nextTagIds) &&
+        JSON.stringify(originalAbsentIds) === JSON.stringify(nextAbsentIds) &&
+        (rawAbsent === undefined
+          ? nextAbsentIds.length === 0
+          : JSON.stringify(rawAbsent) === JSON.stringify(originalAbsentIds));
+      if (!unchanged) {
+        await request(`/api/videos/${id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            tagIds: nextTagIds,
+            customFields: {
+              ...originalCustomFields,
+              [fieldKey]: nextAbsentIds,
+            },
+          }),
+        });
+      }
+      completed++;
+    } catch (error) {
+      throw new Error(
+        `Assessment stopped after ${completed} video${completed === 1 ? "" : "s"} completed; video ${id} was affected. Refresh and inspect it before retrying. ${error instanceof Error ? error.message : "Request failed."}`,
+      );
+    }
+  }
+}
+
 export async function runReviewAction(
   action: ReviewAction,
   ids: number[],
@@ -203,6 +394,10 @@ export async function runReviewAction(
     ids.some((id) => !Number.isSafeInteger(id) || id <= 0)
   ) {
     throw new Error("Choose videos and configure a valid action first.");
+  }
+  if (hasAssessmentSteps(action)) {
+    await runAssessmentAction(action, ids);
+    return;
   }
   const steps = await Promise.all(
     action.steps.map(async (step) => ({

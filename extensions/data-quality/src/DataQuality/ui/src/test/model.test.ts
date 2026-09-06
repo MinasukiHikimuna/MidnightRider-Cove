@@ -3,6 +3,7 @@ import {
   getNextReviewFocus,
   getReviewActionTargets,
   parseReviews,
+  reviewValidation,
   toggleShownReviewSelection,
   validAction,
 } from "../model";
@@ -56,5 +57,44 @@ describe("Data Quality review model", () => {
     expect(() => parseReviews('[{"id":"broken"}]')).toThrow(
       /could not be read/i,
     );
+  });
+
+  it("accepts assessment modes and rejects contradictory tag assessments", () => {
+    const base = {
+      id: "review",
+      name: "Review",
+      description: "",
+      view: {
+        filter: {},
+        objectFilter: {},
+        displayMode: "grid" as const,
+        searchMode: "text",
+      },
+    };
+    const mixed = {
+      id: "assess",
+      label: "Assess",
+      steps: [
+        { mode: "MARK_PRESENT" as const, tagIds: [3, 3] },
+        { mode: "MARK_ABSENT" as const, tagIds: [4] },
+        { mode: "CLEAR_ABSENCE" as const, tagIds: [5] },
+      ],
+    };
+    expect(validAction(mixed)).toBe(true);
+    expect(reviewValidation({ ...base, actions: [mixed] })).toBe("");
+    expect(
+      reviewValidation({
+        ...base,
+        actions: [
+          {
+            ...mixed,
+            steps: [
+              { mode: "MARK_PRESENT", tagIds: [3] },
+              { mode: "MARK_ABSENT", tagIds: [3] },
+            ],
+          },
+        ],
+      }),
+    ).toMatch(/contradictory/i);
   });
 });

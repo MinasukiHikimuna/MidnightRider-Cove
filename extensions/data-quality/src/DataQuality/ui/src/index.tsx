@@ -40,7 +40,9 @@ import {
   ZoomOut,
 } from "@cove/runtime/lucide-react";
 import {
+  createConfirmedAbsentTagsField,
   findVideos,
+  getConfirmedAbsentTagsFieldStatus,
   loadReviews,
   loadProgress,
   saveProgress,
@@ -55,10 +57,12 @@ import {
   videoStreamUrl,
   type Video,
   type VideoPage,
+  type ConfirmedAbsentTagsFieldStatus,
 } from "./api";
 import {
   getNextReviewFocus,
   getReviewActionTargets,
+  hasAssessmentSteps,
   isReviewShortcutTarget,
   mergeReviews,
   parseReviews,
@@ -209,6 +213,10 @@ export function DataQualityPage({
   const [pendingTargetLabel, setPendingTargetLabel] = useState("");
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
+  const [absenceFieldStatus, setAbsenceFieldStatus] =
+    useState<ConfirmedAbsentTagsFieldStatus | null>(null);
+  const [absenceFieldError, setAbsenceFieldError] = useState("");
+  const [absenceFieldPending, setAbsenceFieldPending] = useState(false);
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
   const loadGeneration = useRef(0);
@@ -241,6 +249,23 @@ export function DataQualityPage({
   useEffect(() => {
     void loadAllReviews();
   }, []);
+
+  const refreshAbsenceFieldStatus = useCallback(async () => {
+    setAbsenceFieldError("");
+    try {
+      setAbsenceFieldStatus(await getConfirmedAbsentTagsFieldStatus());
+    } catch (error) {
+      setAbsenceFieldStatus(null);
+      setAbsenceFieldError(
+        "Tag assessment setup could not be checked. " +
+          (error instanceof Error ? error.message : "Request failed."),
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAbsenceFieldStatus();
+  }, [refreshAbsenceFieldStatus]);
 
   const fetchQueue = useCallback(
     async (
@@ -512,6 +537,8 @@ export function DataQualityPage({
         queueLoading ||
         queueError ||
         !canWrite ||
+        (hasAssessmentSteps(action) &&
+          absenceFieldStatus?.kind !== "ready") ||
         !actionTargets.length
       )
         return;
@@ -610,6 +637,7 @@ export function DataQualityPage({
     },
     [
       canWrite,
+      absenceFieldStatus,
       fetchQueue,
       filter,
       focusCard,
@@ -779,6 +807,50 @@ export function DataQualityPage({
       </header>
 
       {storageNotice && <p className="dq-status">{storageNotice}</p>}
+      {absenceFieldStatus?.kind === "missing" && (
+        <div role="status" className="dq-status">
+          {absenceFieldStatus.message}{" "}
+          <button
+            type="button"
+            disabled={absenceFieldPending}
+            onClick={() => {
+              setAbsenceFieldPending(true);
+              setAbsenceFieldError("");
+              void createConfirmedAbsentTagsField()
+                .then(refreshAbsenceFieldStatus)
+                .catch((error) =>
+                  setAbsenceFieldError(
+                    "Could not create the Confirmed absent tags custom field. " +
+                      (error instanceof Error
+                        ? error.message
+                        : "Request failed."),
+                  ),
+                )
+                .finally(() => setAbsenceFieldPending(false));
+            }}
+          >
+            {absenceFieldPending ? "Setting up…" : "Set up tag assessments"}
+          </button>
+        </div>
+      )}
+      {(absenceFieldStatus?.kind === "incompatible" || absenceFieldError) && (
+        <div role="alert" className="dq-alert">
+          <AlertTriangle />
+          {absenceFieldError || absenceFieldStatus?.message}
+          <button
+            type="button"
+            disabled={absenceFieldPending}
+            onClick={() => {
+              setAbsenceFieldPending(true);
+              void refreshAbsenceFieldStatus().finally(() =>
+                setAbsenceFieldPending(false),
+              );
+            }}
+          >
+            {absenceFieldPending ? "Checking…" : "Check again"}
+          </button>
+        </div>
+      )}
       {unassignedLegacy && (
         <details>
           <summary>Unassigned legacy browser reviews</summary>
@@ -1071,6 +1143,8 @@ export function DataQualityPage({
                     queueLoading ||
                     !!queueError ||
                     !canWrite ||
+                    (hasAssessmentSteps(action) &&
+                      absenceFieldStatus?.kind !== "ready") ||
                     !targets.length
                   }
                   onClick={() => void execute(action)}
@@ -1114,6 +1188,7 @@ export function DataQualityPage({
           refreshing={queueLoading || !!queueError}
           error={actionError}
           canWrite={canWrite}
+          assessmentReady={absenceFieldStatus?.kind === "ready"}
           selected={selectedIds.has(previewVideo.id)}
           hasPrevious={itemIds.indexOf(previewVideo.id) > 0}
           hasNext={
@@ -1453,6 +1528,7 @@ function ReviewPreview({
   refreshing,
   error,
   canWrite,
+  assessmentReady,
   selected,
   hasPrevious,
   hasNext,
@@ -1470,6 +1546,7 @@ function ReviewPreview({
   refreshing: boolean;
   error: string;
   canWrite: boolean;
+  assessmentReady: boolean;
   selected: boolean;
   hasPrevious: boolean;
   hasNext: boolean;
@@ -1671,7 +1748,12 @@ function ReviewPreview({
             <button
               key={action.id}
               type="button"
-              disabled={pending || refreshing || !canWrite}
+              disabled={
+                pending ||
+                refreshing ||
+                !canWrite ||
+                (hasAssessmentSteps(action) && !assessmentReady)
+              }
               onClick={() => void onAction(action)}
             >
               {actionShortcut(action, index) && (
@@ -2308,6 +2390,9 @@ function ActionStep({
         <option value="ADD">Add tags</option>
         <option value="REMOVE">Remove tags</option>
         <option value="REMOVE_TREE">Remove tags and descendants</option>
+        <option value="MARK_PRESENT">Mark present</option>
+        <option value="MARK_ABSENT">Mark absent</option>
+        <option value="CLEAR_ABSENCE">Clear absence</option>
       </select>
       <EntityReferenceMultiSelector
         entityType="tag"

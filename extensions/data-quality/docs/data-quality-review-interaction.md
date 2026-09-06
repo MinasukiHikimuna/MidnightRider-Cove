@@ -24,11 +24,11 @@ Preview actions use the same target rule as the grid. The preview states whether
 
 ## Advancement and changing queues
 
-Before an action begins, the route records the ordered target IDs, the focused ID, its loaded index, the current selection version, and whether the preview is open. After every action attempt it refreshes the queue because successful steps and partial failures may change membership.
+Before an action begins, the route records the ordered target IDs, the focused ID, its loaded index, the current selection version, and whether the preview is open. Legacy actions keep their ordered bulk-step behavior. Actions with explicit present/absent assessments resolve tag trees before writes and process videos sequentially, applying legacy steps in order before the exact-ID assessments determine their named tags' final state. After every action attempt the route waits for cache settlement and refreshes the queue because success or partial failure may change membership.
 
 After a fully successful metadata action or a skip action, processed targets are removed from selection. If the user changed selection while the request was pending, only processed IDs that remain selected are removed; all new selections are preserved. Focus advances to the first still-matching item at or after the old focused index. If no item remains there, it uses the preceding item. When a refreshed page becomes empty and a later page cannot exist, the route moves to the nearest valid previous page. A preview stays open on that successor when one exists and closes into the empty state when none exists.
 
-After failure, focus and preview remain on the same item when it still matches. If completed steps removed it from the queue, the same successor rule applies. Selection is retained for targets that still match so the reviewer can inspect and retry. The error must identify completed steps and the failed step; the extension does not claim rollback or undo.
+After failure, focus and preview remain on the same item when it still matches. If completed work removed it from the queue, the same successor rule applies. Selection is retained for targets that still match so the reviewer can inspect and retry. A legacy-action error identifies completed and failed steps; an assessment-action error identifies completed videos and the affected video. The extension does not claim rollback or undo.
 
 Loading keeps the existing grid visible but marks actions unavailable. Initial load, empty results, refresh, and query failure have distinct messages and retry controls. A result refresh must never temporarily retarget an action.
 
