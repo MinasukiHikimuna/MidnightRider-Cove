@@ -265,10 +265,10 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     await screen.findByRole("article", { name: "Video 1" });
-    const heading = screen.getByRole("heading", { name: "Data Quality" });
+    const heading = screen.getByRole("heading", { name: review.name });
     const manage = screen.getByRole("button", { name: "Manage reviews" });
 
-    expect(heading.parentElement).toContainElement(manage);
+    expect(heading.closest("header")).toContainElement(manage);
     expect(manage).toContainHTML("svg");
     expect(manage).toHaveTextContent("");
     expect(
@@ -278,29 +278,82 @@ describe("Data Quality extension page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("starts the video toolbar with a compact review selector and edit icon", async () => {
+  it("puts the active review name and description in the page header", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     await screen.findByRole("article", { name: "Video 1" });
-    const select = screen.getByLabelText("Review");
-    const toolbar = select.closest(".dq-queue-toolbar");
+    const heading = screen.getByRole("heading", { name: review.name });
+    const header = heading.closest("header");
     const edit = screen.getByRole("button", { name: "Edit review" });
 
-    expect(toolbar).not.toBeNull();
-    expect(toolbar?.firstElementChild).toContainElement(select);
-    expect(select).toHaveDisplayValue(review.name);
-    expect(screen.getByRole("option", { name: "Choose a review…" })).toHaveValue(
-      "",
+    expect(header).toContainElement(screen.getByText(review.description));
+    expect(header).toContainElement(
+      screen.getByRole("button", { name: "All reviews" }),
     );
-    expect(toolbar).toHaveStyle(
-      `--dq-review-select-width: ${Math.min(32, Math.max(12, review.name.length + 3))}ch`,
-    );
+    expect(header).toContainElement(edit);
     expect(edit).toContainHTML("svg");
     expect(edit).toHaveTextContent("");
+    expect(screen.queryByLabelText("Review")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: review.name }),
+      screen.getByRole("toolbar", { name: "Video list controls" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render a generic header while a requested review is loading", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof api.loadReviews>>) => void;
+    api.loadReviews.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    expect(
+      screen.queryByRole("heading", { name: "Data Quality" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(review.description)).toBeInTheDocument();
+    expect(screen.getByText("Loading reviews…")).toBeInTheDocument();
+
+    await act(async () =>
+      finish({ reviews: [review], storageKey: "reviews", canWrite: true }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: review.name }),
+    ).toBeInTheDocument();
+  });
+
+  it("lists available reviews with their matching video counts", async () => {
+    window.history.replaceState(null, "", "/data-quality");
+    const other = {
+      ...review,
+      id: "other",
+      name: "Other",
+      description: "Another queue",
+    };
+    api.loadReviews.mockResolvedValue({
+      reviews: [review, other],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    api.findVideos.mockImplementation(async (target, targetFilter) => ({
+      items: Number(targetFilter.perPage) === 1 ? [] : [video(1)],
+      totalCount: target.id === review.id ? 2 : 17,
+    }));
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const browser = await screen.findByRole("region", { name: "Reviews" });
+    expect(within(browser).getByText("2 videos")).toBeInTheDocument();
+    expect(within(browser).getByText("17 videos")).toBeInTheDocument();
+    expect(api.findVideos).toHaveBeenCalledWith(
+      review,
+      expect.objectContaining({ page: 1, perPage: 1 }),
+      expect.anything(),
+    );
+
+    fireEvent.click(within(browser).getByRole("button", { name: /Other/ }));
+    expect(
+      await screen.findByRole("heading", { name: "Other" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the visible video range and total in the toolbar", async () => {
@@ -1308,11 +1361,8 @@ it("keeps new selections made during an action and clamps keyboard movement", as
 it("clears loading when a pending review is deselected", async () => {
   api.findVideos.mockImplementation(() => new Promise(() => undefined));
   render(<DataQualityPage onNavigate={vi.fn()} />);
-  const select = await screen.findByLabelText("Review");
-  fireEvent.change(select, { target: { value: "" } });
-  await waitFor(() =>
-    expect(screen.getByLabelText("Review").closest(".dq-toolbar")).not.toBeNull(),
-  );
+  fireEvent.click(await screen.findByRole("button", { name: "All reviews" }));
+  await screen.findByRole("region", { name: "Reviews" });
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Manage reviews" }),
@@ -1388,9 +1438,9 @@ it("does not carry an old review synchronization failure into a different review
   });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await waitFor(() => expect(api.saveProgress).toHaveBeenCalled());
-  fireEvent.change(screen.getByLabelText("Review"), {
-    target: { value: "other" },
-  });
+  fireEvent.click(screen.getByRole("button", { name: "All reviews" }));
+  const browser = await screen.findByRole("region", { name: "Reviews" });
+  fireEvent.click(within(browser).getByRole("button", { name: /Other/ }));
   await waitFor(() =>
     expect(api.findVideos).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "other" }),

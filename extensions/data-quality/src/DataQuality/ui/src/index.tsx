@@ -193,6 +193,9 @@ export function DataQualityPage({
   const [progressLoadBlocked, setProgressLoadBlocked] = useState(false);
   const [progressReady, setProgressReady] = useState(false);
   const [activeId, setActiveId] = useState(selectedReviewId);
+  const [reviewCounts, setReviewCounts] = useState<
+    Record<string, number | null>
+  >({});
   const [managerOpen, setManagerOpen] = useState(false);
   const [editCurrent, setEditCurrent] = useState(false);
   const [temporaryReview, setTemporaryReview] = useState<VideoReview | null>(
@@ -330,6 +333,31 @@ export function DataQualityPage({
   useEffect(() => {
     void loadAllReviews();
   }, []);
+
+  useEffect(() => {
+    if (activeId || reviews.length === 0) return;
+    const controller = new AbortController();
+    setReviewCounts({});
+    for (const item of reviews) {
+      void findVideos(
+        item,
+        boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
+        controller.signal,
+      )
+        .then((result) => {
+          if (!controller.signal.aborted)
+            setReviewCounts((current) => ({
+              ...current,
+              [item.id]: result.totalCount,
+            }));
+        })
+        .catch(() => {
+          if (!controller.signal.aborted)
+            setReviewCounts((current) => ({ ...current, [item.id]: null }));
+        });
+    }
+    return () => controller.abort();
+  }, [activeId, reviews]);
 
   const refreshAbsenceFieldStatus = useCallback(async () => {
     setAbsenceFieldError("");
@@ -840,7 +868,7 @@ export function DataQualityPage({
   }
 
   if (reviewsLoading)
-    return <CenteredStatus label="Loading Data Quality reviews…" />;
+    return <CenteredStatus label="Loading reviews…" />;
   if (reviewsError)
     return (
       <>
@@ -867,9 +895,41 @@ export function DataQualityPage({
   return (
     <div className="data-quality-page" onKeyDown={handleKeyDown}>
       <header className="data-quality-header">
-        <h1>Data Quality</h1>
+        {review && (
+          <button
+            className="dq-header-action"
+            type="button"
+            aria-label="All reviews"
+            title="All reviews"
+            disabled={pending}
+            onClick={() => chooseReview("")}
+          >
+            <ChevronLeft />
+          </button>
+        )}
+        <div className="dq-header-copy">
+          <h1>{review?.name ?? "Data Quality"}</h1>
+          {review?.description && (
+            <p className="dq-review-description">{review.description}</p>
+          )}
+        </div>
+        {review && savedReview && (
+          <button
+            type="button"
+            className="dq-header-action"
+            aria-label="Edit review"
+            title="Edit review"
+            disabled={pending || queueLoading || !canConfigure}
+            onClick={() => {
+              setEditCurrent(true);
+              setManagerOpen(true);
+            }}
+          >
+            <Pencil />
+          </button>
+        )}
         <button
-          className="dq-header-settings"
+          className="dq-header-action"
           type="button"
           aria-label="Manage reviews"
           title="Manage reviews"
@@ -972,71 +1032,8 @@ export function DataQualityPage({
           </button>
         </p>
       )}
-      {!review && (
-        <section className="dq-toolbar">
-          <label className="dq-review-select">
-            Review
-            <select
-              value=""
-              disabled={pending}
-              onChange={(event) => chooseReview(event.target.value)}
-            >
-              <option value="">Choose a review…</option>
-              {reviews.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </section>
-      )}
-      {review?.description && (
-        <p className="dq-review-description">{review.description}</p>
-      )}
       {review && savedReview && (
-        <section
-          className="dq-queue-toolbar"
-          aria-label="Video queue toolbar"
-          style={
-            {
-              "--dq-review-select-width": `${Math.min(
-                32,
-                Math.max(12, review.name.length + 3),
-              )}ch`,
-            } as React.CSSProperties
-          }
-        >
-          <div className="dq-queue-review-controls">
-            <label>
-              <span className="dq-sr-only">Review</span>
-              <select
-                aria-label="Review"
-                value={review.id}
-                disabled={pending}
-                onChange={(event) => chooseReview(event.target.value)}
-              >
-                <option value="">Choose a review…</option>
-                {reviews.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              aria-label="Edit review"
-              title="Edit review"
-              disabled={pending || queueLoading || !canConfigure}
-              onClick={() => {
-                setEditCurrent(true);
-                setManagerOpen(true);
-              }}
-            >
-              <Pencil />
-            </button>
-          </div>
+        <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
           <div
             className={`dq-native-toolbar-host${
               pending || queueLoading ? " dq-native-toolbar-disabled" : ""
@@ -1145,14 +1142,48 @@ export function DataQualityPage({
         </section>
       )}
       {!review ? (
-        <div className="dq-empty">
-          <Film />
-          <p>
-            {reviews.length
-              ? "Choose a saved review to open its queue."
-              : "No saved reviews are available in this browser."}
-          </p>
-        </div>
+        reviews.length ? (
+          <section
+            className="dq-review-browser"
+            aria-labelledby="dq-reviews-title"
+          >
+            <div className="dq-review-browser-heading">
+              <h2 id="dq-reviews-title">Reviews</h2>
+              <p>Choose a review to open its video queue.</p>
+            </div>
+            <div className="dq-review-browser-list">
+              {reviews.map((item) => {
+                const count = reviewCounts[item.id];
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => chooseReview(item.id)}
+                  >
+                    <span className="dq-review-browser-copy">
+                      <strong>{item.name}</strong>
+                      {item.description && <span>{item.description}</span>}
+                    </span>
+                    <span className="dq-review-count" aria-live="polite">
+                      {count === undefined
+                        ? "Counting…"
+                        : count === null
+                          ? "Count unavailable"
+                          : `${count.toLocaleString()} ${count === 1 ? "video" : "videos"}`}
+                    </span>
+                    <ChevronRight />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          <div className="dq-empty">
+            <Film />
+            <p>No saved reviews are available in this browser.</p>
+          </div>
+        )
       ) : (
         <>
           {presentationTags.error && (
