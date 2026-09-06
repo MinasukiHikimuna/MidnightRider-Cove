@@ -261,6 +261,23 @@ describe("Data Quality extension page", () => {
     ).toHaveClass("dq-status");
   });
 
+  it("places review management beside the title as an icon", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 1" });
+    const heading = screen.getByRole("heading", { name: "Data Quality" });
+    const manage = screen.getByRole("button", { name: "Manage reviews" });
+
+    expect(heading.parentElement).toContainElement(manage);
+    expect(manage).toContainHTML("svg");
+    expect(manage).toHaveTextContent("");
+    expect(
+      screen.queryByText(
+        "A focused queue for previewing videos and applying saved review actions.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("starts the video toolbar with a compact review selector and edit icon", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 

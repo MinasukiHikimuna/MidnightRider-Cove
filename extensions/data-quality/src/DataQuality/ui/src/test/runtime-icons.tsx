@@ -14,6 +14,7 @@ export const List = Icon;
 export const Pencil = Icon;
 export const Play = Icon;
 export const Plus = Icon;
+export const Settings = Icon;
 export const Trash2 = Icon;
 export const Upload = Icon;
 export const X = Icon;

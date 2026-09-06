@@ -31,6 +31,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Settings,
   Trash2,
   Upload,
   X,
@@ -800,23 +801,19 @@ export function DataQualityPage({
   return (
     <div className="data-quality-page" onKeyDown={handleKeyDown}>
       <header className="data-quality-header">
-        <div>
-          <h1>Data Quality</h1>
-          <p>
-            A focused queue for previewing videos and applying saved review
-            actions.
-          </p>
-        </div>
+        <h1>Data Quality</h1>
         <button
-          className="dq-button"
+          className="dq-header-settings"
           type="button"
+          aria-label="Manage reviews"
+          title="Manage reviews"
           disabled={pending || queueLoading || !canConfigure}
           onClick={() => {
             setEditCurrent(false);
             setManagerOpen(true);
           }}
         >
-          <Pencil /> Manage reviews
+          <Settings />
         </button>
       </header>
 
