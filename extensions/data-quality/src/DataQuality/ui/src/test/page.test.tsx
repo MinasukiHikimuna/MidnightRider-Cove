@@ -9,10 +9,8 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DataQualityPage, objectFiltersEqual } from "../index";
 import { presentedVideo } from "../TagPresentation";
-import {
-  testFilterControls,
-  testVideoControls,
-} from "@cove/runtime/components";
+import { testVideoControls } from "@cove/runtime/components";
+import { testFilterControls } from "./runtime-components";
 
 const { api, review } = vi.hoisted(() => ({
   api: {
@@ -903,7 +901,7 @@ it("shows saved filters in a collapsed panel and adjusts them temporarily", asyn
   fireEvent.click(disclosure);
   expect(
     screen.getByRole("region", { name: "Current queue filters" }),
-  ).toHaveTextContent("titleCriterion");
+  ).toHaveTextContent("Title");
 
   fireEvent.click(screen.getByRole("button", { name: "Adjust queue" }));
   fireEvent.change(screen.getByLabelText("Search"), {
@@ -955,6 +953,338 @@ it("shows saved filters in a collapsed panel and adjusts them temporarily", asyn
   expect(
     screen.queryByRole("button", { name: "Reset filters to review defaults" }),
   ).not.toBeInTheDocument();
+});
+
+it("summarizes expression leaves, related criteria, and resolved entity names", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: {
+            _filterExpression: {
+              operator: "OR",
+              children: [
+                {
+                  filter: {
+                    tagsCriterion: {
+                      value: [10],
+                      excludes: [11],
+                      modifier: "INCLUDES_ALL",
+                    },
+                  },
+                },
+                {
+                  filter: {
+                    performerFilterCriterion: {
+                      mode: "none",
+                      conditionOperator: "or",
+                      findFilter: { q: "guest" },
+                      objectFilter: {
+                        tagsCriterion: {
+                          value: [12],
+                          modifier: "INCLUDES",
+                        },
+                      },
+                    },
+                  },
+                },
+                {
+                  filter: {
+                    remoteIdValueCriterion: {
+                      value: "remote-123",
+                      modifier: "EQUALS",
+                    },
+                    remoteIdCriterion: {
+                      value: "metadata.example",
+                      modifier: "EQUALS",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  api.request.mockImplementation(async (path: string) => {
+    const id = Number(path.split("/").at(-1));
+    if (path.startsWith("/api/tags/") && Number.isFinite(id)) {
+      return { id, name: { 10: "Alpha", 11: "Beta", 12: "Gamma" }[id] };
+    }
+    return { available: true };
+  });
+
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(
+    screen.getByRole("button", { name: "Filters, 3 active" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
+
+  const summaries = screen.getByRole("region", {
+    name: "Current queue filters",
+  });
+  await waitFor(() =>
+    expect(summaries).toHaveTextContent("Alpha but not Beta"),
+  );
+  expect(summaries).toHaveTextContent(
+    "Any · Related Performers: No matches · Any condition · search “guest” · Tags: Gamma",
+  );
+  expect(summaries).toHaveTextContent(
+    "Any · Remote ID: metadata.example · is remote-123",
+  );
+});
+
+it("preserves nested expression operators and multi-value semantics", async () => {
+  const namedTags = { "10": "Alpha", "11": "Beta" };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: {
+            _filterExpression: {
+              operator: "NONE",
+              children: [
+                {
+                  group: {
+                    operator: "JUST_ONE",
+                    children: [
+                      {
+                        filter: {
+                          tagsCriterion: {
+                            value: [10, 11],
+                            modifier: "INCLUDES",
+                            _names: namedTags,
+                          },
+                        },
+                      },
+                      {
+                        filter: {
+                          tagsCriterion: {
+                            value: [10, 11],
+                            modifier: "INCLUDES_ALL",
+                            depth: -1,
+                            _names: namedTags,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  group: {
+                    operator: "NOT",
+                    children: [
+                      {
+                        filter: {
+                          tagsCriterion: {
+                            value: [10, 11],
+                            modifier: "EXCLUDES",
+                            _names: namedTags,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  filter: {
+                    remoteIdCriterion: {
+                      value: "metadata.example",
+                      modifier: "NOT_NULL",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(
+    screen.getByRole("button", { name: "Filters, 4 active" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
+  const summaries = screen.getByRole("region", {
+    name: "Current queue filters",
+  });
+  expect(summaries).toHaveTextContent("None › Just One · Tags: Alpha or Beta");
+  expect(summaries).toHaveTextContent(
+    "None › Just One · Tags: Alpha and Beta with sub-tags",
+  );
+  expect(summaries).toHaveTextContent(
+    "None › Exclude · Tags: neither Alpha nor Beta",
+  );
+  expect(summaries).toHaveTextContent(
+    "None · Remote ID: metadata.example · is set",
+  );
+});
+
+it("shows explicit and legacy related-expression match scopes", async () => {
+  const relatedLeaf = {
+    filter: {
+      performerFilterCriterion: { mode: "atLeastOne", _matchAll: true },
+    },
+  };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: {
+            _filterExpression: {
+              operator: "AND",
+              children: [
+                {
+                  group: {
+                    operator: "AND",
+                    relatedScope: {
+                      filterKey: "performerFilterCriterion",
+                      matchMode: "distinct",
+                    },
+                    children: [relatedLeaf, relatedLeaf],
+                  },
+                },
+                {
+                  group: {
+                    operator: "AND",
+                    distinctRelatedMatches: false,
+                    children: [
+                      relatedLeaf,
+                      relatedLeaf,
+                      {
+                        filter: {
+                          performerFilterCriterion: { mode: "every" },
+                        },
+                      },
+                      {
+                        filter: {
+                          titleCriterion: {
+                            value: "outside scope",
+                            modifier: "EQUALS",
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(
+    screen.getByRole("button", { name: "Filters, 6 active" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
+  const summaries = screen.getByRole("region", {
+    name: "Current queue filters",
+  });
+  expect(summaries).toHaveTextContent(
+    "All › Related Performers · All · Separate matches · Related Performers",
+  );
+  expect(summaries).toHaveTextContent(
+    "All › Related Performers · All · Matches may overlap · Related Performers",
+  );
+  expect(summaries).toHaveTextContent(
+    "All › All · Related Performers: Every match",
+  );
+  expect(summaries).toHaveTextContent("All › All · Title: is outside scope");
+});
+
+it("shows tag-duration units and ranges", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: {
+            tagDurationCriterion: {
+              clauses: [
+                {
+                  tagId: 10,
+                  modifier: "BETWEEN",
+                  value: 20,
+                  value2: 40,
+                  unit: "percent",
+                },
+                {
+                  tagId: 11,
+                  modifier: "GREATER_THAN",
+                  value: 30,
+                  unit: "seconds",
+                },
+              ],
+              _names: { "10": "Alpha", "11": "Beta" },
+            },
+          },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
+  const summaries = screen.getByRole("region", {
+    name: "Current queue filters",
+  });
+  expect(summaries).toHaveTextContent(
+    "Tag Duration: Alpha between 20% and 40% · Beta greater than 30 seconds",
+  );
+});
+
+it("shows the selected hash algorithm", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: {
+            fingerprintCriterion: {
+              type: "phash",
+              value: "abc123",
+              modifier: "EQUALS",
+            },
+          },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
+  expect(
+    screen.getByRole("region", { name: "Current queue filters" }),
+  ).toHaveTextContent("Hash: pHash is abc123");
 });
 
 it("does not retain a temporary queue for reordered equivalent filters", async () => {
@@ -1021,7 +1351,7 @@ it("keeps filter controls inert while the queue is loading", async () => {
   ).toBeDisabled();
   expect(screen.getByRole("button", { name: "Adjust queue" })).toBeDisabled();
   const filterChip = screen.getByRole("button", {
-    name: "Edit filter organized",
+    name: "Edit filter: Organized",
   });
   expect(filterChip.closest("[aria-disabled='true']")).not.toBeNull();
   fireEvent.click(filterChip);

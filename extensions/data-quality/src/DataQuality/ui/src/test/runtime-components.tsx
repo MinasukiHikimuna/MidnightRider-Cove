@@ -121,57 +121,72 @@ export function VideoCard({
   );
 }
 
-export const VIDEO_CRITERIA = [];
+const RELATED_PERFORMER_CRITERIA = [
+  {
+    id: "tags",
+    label: "Tags",
+    type: "multiId",
+    entityType: "tags",
+    filterKey: "tagsCriterion",
+  },
+  {
+    id: "tagDuration",
+    label: "Tag Duration",
+    type: "tagDuration",
+    entityType: "tags",
+    filterKey: "tagDurationCriterion",
+  },
+];
+export const VIDEO_CRITERIA = [
+  {
+    id: "title",
+    label: "Title",
+    type: "string",
+    filterKey: "titleCriterion",
+  },
+  {
+    id: "tags",
+    label: "Tags",
+    type: "multiId",
+    entityType: "tags",
+    filterKey: "tagsCriterion",
+  },
+  {
+    id: "tagDuration",
+    label: "Tag Duration",
+    type: "tagDuration",
+    entityType: "tags",
+    filterKey: "tagDurationCriterion",
+  },
+  {
+    id: "hash",
+    label: "Hash",
+    type: "hash",
+    filterKey: "fingerprintCriterion",
+    options: [
+      { value: "oshash", label: "OSHash" },
+      { value: "md5", label: "MD5" },
+      { value: "phash", label: "pHash" },
+    ],
+  },
+  {
+    id: "relatedPerformers",
+    label: "Related Performers",
+    type: "related",
+    entityType: "performers",
+    filterKey: "performerFilterCriterion",
+    supportsDistinctSiblingMatches: true,
+    relatedCriteria: () => RELATED_PERFORMER_CRITERIA,
+  },
+  {
+    id: "remoteId",
+    label: "Remote ID",
+    type: "remoteId",
+    filterKey: "remoteIdValueCriterion",
+    secondaryFilterKey: "remoteIdCriterion",
+  },
+];
 export const VIDEO_SORT_OPTIONS = [{ value: "date", label: "Date" }];
-export function countActiveObjectFilters(
-  _criteria: unknown[],
-  objectFilter: Record<string, unknown>,
-) {
-  return Object.keys(objectFilter).length;
-}
-export function FilterButton({
-  activeCount,
-  onClick,
-  disabled,
-}: {
-  activeCount: number;
-  onClick(): void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={activeCount ? `Filters, ${activeCount} active` : "Filters"}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      Filters
-    </button>
-  );
-}
-export function ActiveObjectFilterChips({
-  objectFilter,
-  ariaLabel,
-  onEdit,
-}: {
-  objectFilter: Record<string, unknown>;
-  ariaLabel?: string;
-  onEdit(target: unknown): void;
-}) {
-  return (
-    <div role="region" aria-label={ariaLabel}>
-      {Object.keys(objectFilter).map((key) => (
-        <button
-          key={key}
-          aria-label={`Edit filter ${key}`}
-          onClick={() => onEdit(key)}
-        >
-          {key}
-        </button>
-      ))}
-    </div>
-  );
-}
 export const testFilterControls = {
   result: { organized: true } as Record<string, unknown>,
 };

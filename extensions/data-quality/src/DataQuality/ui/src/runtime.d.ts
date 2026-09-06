@@ -88,23 +88,6 @@ declare module "@cove/runtime/components" {
     filterKey: string;
   }>;
   export const VIDEO_SORT_OPTIONS: Array<{ value: string; label: string }>;
-  export const ActiveObjectFilterChips: ComponentType<{
-    criteriaDefinitions: typeof VIDEO_CRITERIA;
-    objectFilter: Record<string, unknown>;
-    onRemove(target: unknown): void;
-    onEdit(target: unknown): void;
-    ariaLabel?: string;
-    removable?: boolean;
-  }>;
-  export function countActiveObjectFilters(
-    criteriaDefinitions: typeof VIDEO_CRITERIA,
-    objectFilter: Record<string, unknown>,
-  ): number;
-  export const FilterButton: ComponentType<{
-    activeCount: number;
-    onClick(): void;
-    disabled?: boolean;
-  }>;
   export const FilterDialog: ComponentType<{
     open: boolean;
     onClose(): void;
@@ -150,9 +133,6 @@ declare module "@cove/runtime/components" {
     pause: { (...args: unknown[]): void; mockReset(): void };
     toggle: { (...args: unknown[]): void; mockReset(): void };
     seekBy: { (...args: unknown[]): void; mockReset(): void };
-  };
-  export const testFilterControls: {
-    result: Record<string, unknown>;
   };
 }
 
