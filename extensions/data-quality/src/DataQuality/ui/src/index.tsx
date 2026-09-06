@@ -254,6 +254,7 @@ export function DataQualityPage({
   const [queue, setQueue] = useState<VideoPage>({ items: [], totalCount: 0 });
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState("");
+  const [queueRetryFromEnd, setQueueRetryFromEnd] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const selectedRef = useRef(selectedIds);
   selectedRef.current = selectedIds;
@@ -414,13 +415,17 @@ export function DataQualityPage({
     async (
       targetReview: VideoReview,
       targetFilter: Record<string, unknown>,
+      startFromEnd = false,
     ) => {
       const generation = ++loadGeneration.current;
       queueAbort.current?.abort();
       const controller = new AbortController();
       queueAbort.current = controller;
       targetFilter = boundedFilter(targetFilter);
+      const requestedPage = Number(targetFilter.page);
+      if (startFromEnd) targetFilter = { ...targetFilter, page: 1 };
       setFilter(targetFilter);
+      setQueueRetryFromEnd(startFromEnd);
       setQueueLoading(true);
       setQueueError("");
       try {
@@ -433,8 +438,11 @@ export function DataQualityPage({
           1,
           Math.ceil(result.totalCount / Number(targetFilter.perPage)),
         );
-        if (Number(targetFilter.page) > lastPage) {
-          targetFilter = { ...targetFilter, page: lastPage };
+        const targetPage = startFromEnd
+          ? lastPage
+          : Math.min(requestedPage, lastPage);
+        if (Number(targetFilter.page) !== targetPage) {
+          targetFilter = { ...targetFilter, page: targetPage };
           result = await findVideos(
             targetReview,
             targetFilter,
@@ -514,7 +522,11 @@ export function DataQualityPage({
         resume ? (resume.cardSize ?? defaultCardSize) : defaultCardSize,
       );
       try {
-        const result = await fetchQueue(review, nextFilter);
+        const result = await fetchQueue(
+          review,
+          nextFilter,
+          !resume && review.view.startFrom !== "beginning",
+        );
         if (!current) return;
         const nextFocus = resumeFocus(
           result.items.map((item) => item.id),
@@ -1333,7 +1345,11 @@ export function DataQualityPage({
                 <ErrorState
                   message={queueError}
                   onRetry={() =>
-                    void fetchQueue(review, filter).catch(() => undefined)
+                    void fetchQueue(
+                      review,
+                      filter,
+                      queueRetryFromEnd,
+                    ).catch(() => undefined)
                   }
                 />
               )}
@@ -1453,11 +1469,12 @@ export function DataQualityPage({
   async function resumeQueue(
     target: VideoReview,
     nextFilter: Record<string, unknown>,
+    startFromEnd = false,
   ) {
     const priorFocus = focusedRef.current;
     const priorIndex = Math.max(0, itemIds.indexOf(priorFocus ?? -1));
     try {
-      const result = await fetchQueue(target, nextFilter);
+      const result = await fetchQueue(target, nextFilter, startFromEnd);
       const ids = result.items.map((item) => item.id);
       setSelectedIds(
         (current) => new Set([...current].filter((id) => ids.includes(id))),
@@ -1508,7 +1525,11 @@ export function DataQualityPage({
     });
     setTemporaryReview(null);
     setMessage("Review queue defaults restored.");
-    void resumeQueue(savedReview, targetFilter);
+    void resumeQueue(
+      savedReview,
+      targetFilter,
+      savedReview.view.startFrom !== "beginning",
+    );
   }
 
   function saveTemporaryQueue() {
@@ -2130,19 +2151,22 @@ function ReviewManager({
             id: crypto.randomUUID(),
             name: "",
             description: "",
-            view: structuredClone(
-              activeReview?.view ?? {
-                filter: {
-                  page: 1,
-                  perPage: 40,
-                  sort: "date",
-                  direction: "desc",
+            view: {
+              ...structuredClone(
+                activeReview?.view ?? {
+                  filter: {
+                    page: 1,
+                    perPage: 40,
+                    sort: "date",
+                    direction: "desc",
+                  },
+                  objectFilter: {},
+                  displayMode: "grid",
+                  searchMode: "text",
                 },
-                objectFilter: {},
-                displayMode: "grid",
-                searchMode: "text",
-              },
-            ),
+              ),
+              startFrom: "end",
+            },
             actions: [],
           },
     );

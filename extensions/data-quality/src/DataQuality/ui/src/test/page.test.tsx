@@ -35,6 +35,7 @@ const { api, review } = vi.hoisted(() => ({
       objectFilter: {},
       displayMode: "grid" as const,
       searchMode: "text",
+      startFrom: "beginning" as const,
     },
     actions: [
       {
@@ -396,6 +397,88 @@ describe("Data Quality extension page", () => {
         "1–24 of 182",
       ),
     ).toBe(count);
+  });
+
+  it("opens a review at the last page by default", async () => {
+    const endReview = {
+      ...review,
+      view: { ...review.view, startFrom: undefined },
+    };
+    api.loadReviews.mockResolvedValue({
+      reviews: [endReview],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    api.findVideos
+      .mockResolvedValueOnce({ items: [video(1), video(2)], totalCount: 50 })
+      .mockResolvedValueOnce({ items: [video(49), video(50)], totalCount: 50 });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 49" });
+    expect(api.findVideos).toHaveBeenNthCalledWith(
+      1,
+      endReview,
+      expect.objectContaining({ page: 1, perPage: 24 }),
+      expect.anything(),
+    );
+    expect(api.findVideos).toHaveBeenNthCalledWith(
+      2,
+      endReview,
+      expect.objectContaining({ page: 3, perPage: 24 }),
+      expect.anything(),
+    );
+    expect(screen.getByText("49–50 of 50")).toBeInTheDocument();
+  });
+
+  it("can open a review at the beginning", async () => {
+    const beginningReview = {
+      ...review,
+      view: { ...review.view, startFrom: "beginning" as const },
+    };
+    api.loadReviews.mockResolvedValue({
+      reviews: [beginningReview],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    api.findVideos.mockResolvedValue({
+      items: [video(1), video(2)],
+      totalCount: 50,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 1" });
+    expect(api.findVideos).toHaveBeenCalledTimes(1);
+    expect(api.findVideos).toHaveBeenCalledWith(
+      beginningReview,
+      expect.objectContaining({ page: 1, perPage: 24 }),
+      expect.anything(),
+    );
+  });
+
+  it("retries a failed end-start probe at the last page", async () => {
+    const endReview = {
+      ...review,
+      view: { ...review.view, startFrom: "end" as const },
+    };
+    api.loadReviews.mockResolvedValue({
+      reviews: [endReview],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    api.findVideos
+      .mockRejectedValueOnce(new Error("Temporarily unavailable"))
+      .mockResolvedValueOnce({ items: [video(1), video(2)], totalCount: 50 })
+      .mockResolvedValueOnce({ items: [video(49), video(50)], totalCount: 50 });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await screen.findByRole("article", { name: "Video 49" });
+    expect(api.findVideos).toHaveBeenNthCalledWith(
+      3,
+      endReview,
+      expect.objectContaining({ page: 3, perPage: 24 }),
+      expect.anything(),
+    );
   });
 
   it("aligns review actions with the grid below the top pagination", async () => {
@@ -1594,6 +1677,12 @@ it("keeps edits across review sections and saves the combined draft", async () =
   });
   fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
   expect(screen.getByLabelText("Description")).not.toBeVisible();
+  expect(screen.getByLabelText("Start from")).toHaveDisplayValue(
+    "The beginning",
+  );
+  fireEvent.change(screen.getByLabelText("Start from"), {
+    target: { value: "end" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
@@ -1630,7 +1719,11 @@ it("keeps edits across review sections and saves the combined draft", async () =
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   expect(api.saveReviews.mock.calls[0][1][0]).toMatchObject({
     description: "Check metadata",
-    view: { objectFilter: { organized: true }, displayMode: "wall" },
+    view: {
+      objectFilter: { organized: true },
+      displayMode: "wall",
+      startFrom: "end",
+    },
     presentation: { annotations: ["tags"] },
   });
 });

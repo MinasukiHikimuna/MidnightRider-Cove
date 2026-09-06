@@ -5,6 +5,7 @@ export interface ReviewView {
   objectFilter: Record<string, unknown>;
   displayMode: DisplayMode;
   searchMode: string;
+  startFrom?: "beginning" | "end";
 }
 
 export interface ReviewStep {
@@ -169,6 +170,8 @@ export function parseReviews(raw: string | null): VideoReview[] {
         typeof review.view === "object" &&
         ["grid", "list", "wall", "tagger"].includes(review.view.displayMode) &&
         typeof review.view.searchMode === "string" &&
+        (review.view.startFrom === undefined ||
+          ["beginning", "end"].includes(review.view.startFrom)) &&
         review.view.filter &&
         typeof review.view.filter === "object" &&
         !Array.isArray(review.view.filter) &&

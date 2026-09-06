@@ -92,6 +92,25 @@ export function QueueEditor({
                 }
               />
             </label>
+            <label>
+              Start from
+              <select
+                aria-label="Start from"
+                value={draft.view.startFrom ?? "end"}
+                onChange={(e) =>
+                  onChange({
+                    ...draft,
+                    view: {
+                      ...draft.view,
+                      startFrom: e.target.value as "beginning" | "end",
+                    },
+                  })
+                }
+              >
+                <option value="end">The end</option>
+                <option value="beginning">The beginning</option>
+              </select>
+            </label>
           </div>
           <button
             type="button"
