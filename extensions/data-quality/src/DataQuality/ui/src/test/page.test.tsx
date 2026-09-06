@@ -238,8 +238,22 @@ describe("Data Quality extension page", () => {
   it("switches to wall previews and keeps the review editor on the extension page", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
     await screen.findByRole("article", { name: "Video 1" });
-    fireEvent.click(screen.getByRole("button", { name: "wall" }));
-    expect(screen.getByRole("button", { name: "wall" })).toHaveAttribute(
+    const viewGroup = screen.getByRole("group", { name: "Review view" });
+    for (const mode of ["Grid", "List", "Wall"]) {
+      expect(screen.getByRole("button", { name: mode })).toContainHTML("svg");
+    }
+    expect(viewGroup).toHaveClass("dq-view-switch");
+    expect(
+      screen.queryByRole("button", { name: "Auto fit" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Card size: 180px" })).toHaveClass(
+      "themed-range-input",
+    );
+    expect(document.querySelector(".dq-grid")).toHaveStyle({
+      "--dq-card-width": "180px",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Wall" }));
+    expect(screen.getByRole("button", { name: "Wall" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -488,7 +502,7 @@ it("resumes a changed page at a surviving identity and never restores selection"
   await waitFor(() =>
     expect(screen.getByRole("article", { name: "Video 2" })).toHaveFocus(),
   );
-  expect(screen.getByRole("button", { name: "list" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "List" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -499,6 +513,10 @@ it("resumes a changed page at a surviving identity and never restores selection"
     expect.anything(),
   );
   expect(screen.getByText("Showing 25-48 of 48")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Grid" }));
+  expect(
+    screen.getByRole("slider", { name: "Card size: 260px" }),
+  ).toBeInTheDocument();
 });
 it("clamps a deleted last page in a large queue and keeps the renderer bounded", async () => {
   api.loadProgress.mockResolvedValue({
@@ -526,6 +544,9 @@ it("clamps a deleted last page in a large queue and keeps the renderer bounded",
   );
   expect(screen.getByText("Showing 101-103 of 103")).toBeInTheDocument();
   expect(screen.getAllByRole("article")).toHaveLength(3);
+  expect(
+    screen.getByRole("slider", { name: "Card size: 180px" }),
+  ).toBeInTheDocument();
 });
 it("does not save or enable video actions for a read-only account", async () => {
   api.loadReviews.mockResolvedValue({
@@ -595,7 +616,7 @@ it("clears loading when a pending review is deselected", async () => {
 it("preserves manually selected presentation when only the description changes", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "list" }));
+  fireEvent.click(screen.getByRole("button", { name: "List" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.change(screen.getByLabelText("Description"), {
     target: { value: "New description" },
@@ -604,7 +625,7 @@ it("preserves manually selected presentation when only the description changes",
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
-  expect(screen.getByRole("button", { name: "list" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "List" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -775,6 +796,10 @@ it("keeps edits across review sections and saves the combined draft", async () =
   fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+  expect(screen.getByLabelText("Preferred card width")).toHaveValue("180");
+  expect(
+    screen.queryByRole("option", { name: "Auto fit" }),
+  ).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Preferred view"), {
     target: { value: "wall" },
   });

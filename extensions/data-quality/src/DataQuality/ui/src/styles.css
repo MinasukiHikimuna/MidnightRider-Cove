@@ -48,6 +48,10 @@
   line-height: 1rem;
   white-space: nowrap;
 }
+.data-quality-page .themed-range-input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
 .dq-button,
 .dq-actions button,
 .dq-preview button,
@@ -108,29 +112,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.dq-view-switch {
-  display: flex;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-}
-.dq-view-switch button {
-  padding: 0.3rem 0.55rem;
-  color: var(--color-secondary);
-  font-size: 0.75rem;
-  text-transform: capitalize;
-}
-.dq-view-switch button[aria-pressed="true"] {
-  background: var(--color-accent);
-  color: white;
-}
-.dq-card-size {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--color-muted);
-  font-size: 0.75rem;
 }
 .dq-workspace {
   display: grid;

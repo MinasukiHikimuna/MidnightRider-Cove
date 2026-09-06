@@ -157,15 +157,13 @@ export function QueueEditor({
             <label>
               Preferred card width
               <select
-                value={settings.cardSize ?? "auto"}
+                value={settings.cardSize ?? 180}
                 onChange={(e) =>
                   updatePresentation({
-                    cardSize:
-                      e.target.value === "auto" ? null : Number(e.target.value),
+                    cardSize: Number(e.target.value),
                   })
                 }
               >
-                <option value="auto">Auto fit</option>
                 {[130, 180, 260, 380].map((size) => (
                   <option key={size} value={size}>
                     {size} px

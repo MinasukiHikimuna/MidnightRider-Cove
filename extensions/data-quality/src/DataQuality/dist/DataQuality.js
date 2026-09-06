@@ -1,14 +1,14 @@
-import { jsxs as c, jsx as n, Fragment as oe } from "react/jsx-runtime";
-import { useState as v, useEffect as ee, useMemo as St, useRef as U, useCallback as ve } from "react";
-import { VIDEO_SORT_OPTIONS as Nt, FilterDialog as nr, VIDEO_CRITERIA as ir, EntityReferenceMultiSelector as rt, DetailListPagination as or, VideoPlayer as ar, getResolutionLabel as sr, formatDuration as lr, EntityDetailTabs as cr, SortableList as Et } from "@cove/runtime/components";
-import { Pencil as Lt, Film as Ct, AlertTriangle as Dt, Loader2 as Ut, ChevronLeft as dr, ChevronRight as ur, ExternalLink as fr, X as jt, Plus as pr, Upload as hr, Trash2 as Ft, Check as gr, Play as mr, GripVertical as Jt } from "@cove/runtime/lucide-react";
-import { extensionFetch as wr } from "@cove/runtime/api";
-function Ae(e, t) {
+import { jsxs as c, jsx as n, Fragment as de } from "react/jsx-runtime";
+import { useState as v, useEffect as ee, useMemo as Ct, useRef as U, useCallback as ve } from "react";
+import { VIDEO_SORT_OPTIONS as Et, FilterDialog as ar, VIDEO_CRITERIA as sr, EntityReferenceMultiSelector as it, DetailListPagination as lr, VideoPlayer as cr, getResolutionLabel as dr, formatDuration as ur, EntityDetailTabs as fr, SortableList as qt } from "@cove/runtime/components";
+import { Pencil as jt, LayoutGrid as pr, List as hr, Grid3X3 as gr, ZoomOut as mr, ZoomIn as wr, Film as Rt, AlertTriangle as Ft, Loader2 as Jt, ChevronLeft as br, ChevronRight as yr, ExternalLink as vr, X as zt, Plus as Sr, Upload as Nr, Trash2 as _t, Check as Cr, Play as Er, GripVertical as Kt } from "@cove/runtime/lucide-react";
+import { extensionFetch as qr } from "@cove/runtime/api";
+function Ie(e, t) {
   const r = e.shortcut ?? (t < 9 ? String(t + 1) : "");
   return /^[1-9]$/.test(r) ? r : "";
 }
-function nt(e) {
-  if (!e.name.trim() || !e.actions.every(st))
+function ot(e) {
+  if (!e.name.trim() || !e.actions.every(ct))
     return "Name the review and complete every action step before saving.";
   if (new Set(e.actions.map((r) => r.id)).size !== e.actions.length)
     return "Action IDs must be unique within a review.";
@@ -17,7 +17,7 @@ function nt(e) {
   ).filter(Boolean);
   return t.some((r) => !/^[1-9]$/.test(r)) || new Set(t).size !== t.length ? "Assign each shortcut 1–9 only once, or choose None. Navigation and player keys are reserved." : "";
 }
-function ge(e) {
+function me(e) {
   const t = (r, i) => Number.isFinite(Number(r)) && Number(r) > 0 ? Math.floor(Number(r)) : i;
   return {
     ...e,
@@ -25,10 +25,10 @@ function ge(e) {
     perPage: Math.max(1, Math.min(100, t(e.perPage, 40)))
   };
 }
-function qt(e, t, r) {
+function It(e, t, r) {
   return t != null && e.includes(t) ? t : e[Math.max(0, Math.min(r, e.length - 1))] ?? null;
 }
-function je(e) {
+function Ue(e) {
   const { page: t, ...r } = e.view.filter;
   return JSON.stringify([
     r,
@@ -36,25 +36,25 @@ function je(e) {
     e.view.searchMode
   ]);
 }
-function st(e) {
+function ct(e) {
   return !!e.label.trim() && e.steps.every(
     (t) => ["ADD", "REMOVE", "REMOVE_TREE"].includes(t.mode) && t.tagIds.length > 0 && t.tagIds.every((r) => Number.isSafeInteger(r) && r > 0)
   );
 }
-function Ie(e) {
+function Ae(e) {
   if (!e) return [];
   const t = JSON.parse(e);
   if (!Array.isArray(t) || !t.every(
-    (r) => r && typeof r == "object" && typeof r.id == "string" && typeof r.name == "string" && typeof r.description == "string" && r.view && typeof r.view == "object" && ["grid", "list", "wall", "tagger"].includes(r.view.displayMode) && typeof r.view.searchMode == "string" && r.view.filter && typeof r.view.filter == "object" && !Array.isArray(r.view.filter) && r.view.objectFilter && typeof r.view.objectFilter == "object" && !Array.isArray(r.view.objectFilter) && br(r.presentation) && (r.importNotes === void 0 || Array.isArray(r.importNotes) && r.importNotes.every(
+    (r) => r && typeof r == "object" && typeof r.id == "string" && typeof r.name == "string" && typeof r.description == "string" && r.view && typeof r.view == "object" && ["grid", "list", "wall", "tagger"].includes(r.view.displayMode) && typeof r.view.searchMode == "string" && r.view.filter && typeof r.view.filter == "object" && !Array.isArray(r.view.filter) && r.view.objectFilter && typeof r.view.objectFilter == "object" && !Array.isArray(r.view.objectFilter) && Rr(r.presentation) && (r.importNotes === void 0 || Array.isArray(r.importNotes) && r.importNotes.every(
       (i) => typeof i == "string"
     )) && Array.isArray(r.actions) && r.actions.every(
-      (i) => typeof (i == null ? void 0 : i.id) == "string" && typeof i.label == "string" && (i.shortcut === void 0 || typeof i.shortcut == "string") && Array.isArray(i.steps) && i.steps.every((a) => a && Array.isArray(a.tagIds)) && st(i)
+      (i) => typeof (i == null ? void 0 : i.id) == "string" && typeof i.label == "string" && (i.shortcut === void 0 || typeof i.shortcut == "string") && Array.isArray(i.steps) && i.steps.every((a) => a && Array.isArray(a.tagIds)) && ct(i)
     )
   ))
     throw new Error(
       "Saved reviews could not be read. Existing browser data has been kept."
     );
-  if (t.some((r) => nt(r)))
+  if (t.some((r) => ot(r)))
     throw new Error(
       "Saved reviews contain invalid actions or shortcuts. Existing data has been kept; assign shortcuts 1–9 only once or leave them empty."
     );
@@ -64,7 +64,7 @@ function Ie(e) {
     );
   return t;
 }
-function br(e) {
+function Rr(e) {
   if (e === void 0) return !0;
   if (!e || typeof e != "object" || Array.isArray(e)) return !1;
   const t = e;
@@ -74,17 +74,17 @@ function br(e) {
     (r) => r === void 0 || Array.isArray(r) && r.every((i) => Number.isSafeInteger(i) && i > 0)
   );
 }
-function it(...e) {
+function at(...e) {
   const t = [], r = /* @__PURE__ */ new Set();
   for (const i of e)
     for (const a of i)
       r.has(a.id) || (r.add(a.id), t.push(a));
   return t;
 }
-function Rt(e, t) {
+function At(e, t) {
   return e.size > 0 ? [...e].sort((r, i) => r - i) : t == null ? [] : [t];
 }
-function yr(e, t, r, i) {
+function Ir(e, t, r, i) {
   if (t.length === 0) return null;
   if (r == null) return t[0];
   if (!i && t.includes(r)) return r;
@@ -100,25 +100,25 @@ function yr(e, t, r, i) {
   }
   return t[Math.min(a, t.length - 1)];
 }
-function vr(e, t) {
+function Ar(e, t) {
   const r = new Set(e), i = t.length > 0 && t.every((a) => r.has(a));
   for (const a of t)
     i ? r.delete(a) : r.add(a);
   return r;
 }
-function Sr(e) {
+function Or(e) {
   return e instanceof HTMLElement ? !e.closest(
     'input, textarea, select, button, a, video, [contenteditable="true"], [role="combobox"], [data-review-player-controls]'
   ) : !1;
 }
-const _t = "ext:com.midnightrider.data-quality:configuration", Nr = "ext:cove-data-quality:video-reviews", ot = "ext:com.midnightrider.data-quality:progress", Oe = /* @__PURE__ */ new Map(), Fe = /* @__PURE__ */ new Map(), et = (e, t) => e.includes("*") || e.includes(t), Je = (e) => V(`/api/savedfilters?mode=${encodeURIComponent(e)}`), Er = () => ({
+const Vt = "ext:com.midnightrider.data-quality:configuration", kr = "ext:cove-data-quality:video-reviews", st = "ext:com.midnightrider.data-quality:progress", Oe = /* @__PURE__ */ new Map(), je = /* @__PURE__ */ new Map(), tt = (e, t) => e.includes("*") || e.includes(t), Je = (e) => V(`/api/savedfilters?mode=${encodeURIComponent(e)}`), xr = () => ({
   version: 2,
   revision: crypto.randomUUID(),
   reviews: [],
   deletedIds: [],
   importedIds: []
 });
-function at(e) {
+function lt(e) {
   if (!Array.isArray(e) || !e.every((t) => typeof t == "string"))
     throw new Error(
       "Review migration history is invalid. Existing data has been kept."
@@ -137,12 +137,12 @@ function Se(e) {
     );
   return {
     ...t,
-    reviews: Ie(JSON.stringify(t.reviews)),
-    deletedIds: at(t.deletedIds),
-    importedIds: at(t.importedIds)
+    reviews: Ae(JSON.stringify(t.reviews)),
+    deletedIds: lt(t.deletedIds),
+    importedIds: lt(t.importedIds)
   };
 }
-function Cr(e) {
+function Pr(e) {
   const t = [
     `cove-data-quality-reviews-v1:${e}`,
     `cove-video-reviews-v1:${e}`
@@ -152,10 +152,10 @@ function Cr(e) {
   for (const a of t) {
     const d = localStorage.getItem(a);
     if (d !== null) {
-      const l = Ie(d);
+      const l = Ae(d);
       r ?? (r = l), l.forEach((b) => i.add(b.id));
     }
-    at(
+    lt(
       JSON.parse(localStorage.getItem(`${a}:account-imports`) ?? "[]")
     ).forEach((l) => i.add(l));
   }
@@ -165,34 +165,34 @@ function Cr(e) {
     present: r !== void 0
   };
 }
-async function zt(e) {
+async function Qt(e) {
   const t = await V("/api/auth/me");
   if (String(t.user.id) !== e.userId)
     throw new Error("The signed-in account changed. Reload before saving.");
 }
-function Kt(e, t) {
-  const r = (Fe.get(e) ?? Promise.resolve()).catch(() => {
+function Bt(e, t) {
+  const r = (je.get(e) ?? Promise.resolve()).catch(() => {
   }).then(t);
-  return Fe.set(e, r), r.finally(() => {
-    Fe.get(e) === r && Fe.delete(e);
+  return je.set(e, r), r.finally(() => {
+    je.get(e) === r && je.delete(e);
   }).catch(() => {
   }), r;
 }
 let Re = null;
-function qr() {
+function Tr() {
   if (Re) return Re;
-  const e = Rr();
+  const e = Mr();
   return Re = e, e.finally(() => {
     Re === e && (Re = null);
   }).catch(() => {
   }), e;
 }
-async function Rr() {
+async function Mr() {
   var g;
-  const e = await V("/api/auth/me"), t = String(e.user.id), r = `cove-data-quality-v2:${t}`, i = et(e.permissions, "savedfilters.read"), a = i && et(e.permissions, "savedfilters.write"), d = i ? (await Je(_t)).filter((N) => N.name === "Data Quality configuration").sort((N, R) => N.id - R.id) : [];
+  const e = await V("/api/auth/me"), t = String(e.user.id), r = `cove-data-quality-v2:${t}`, i = tt(e.permissions, "savedfilters.read"), a = i && tt(e.permissions, "savedfilters.write"), d = i ? (await Je(Vt)).filter((N) => N.name === "Data Quality configuration").sort((N, R) => N.id - R.id) : [];
   if (d.length > 1) {
     const N = (R) => {
-      const { revision: C, ...O } = Se(R.uiOptions);
+      const { revision: E, ...O } = Se(R.uiOptions);
       return JSON.stringify(O);
     };
     if (d.some((R) => N(R) !== N(d[0])))
@@ -207,15 +207,15 @@ async function Rr() {
         });
     d.splice(1);
   }
-  let l = d.length ? Se(d[0].uiOptions) : Er();
+  let l = d.length ? Se(d[0].uiOptions) : xr();
   const b = localStorage.getItem(`${r}:migrated`) === "true", S = localStorage.getItem(r), y = localStorage.getItem(`${r}:local-only`) === "true";
   !d.length && S && (l = Se(S));
   let s = !d.length;
   if (d.length && y && S) {
     const N = Se(S);
-    if (N.reviews.some((C) => {
-      const O = l.reviews.find(($) => $.id === C.id);
-      return O && JSON.stringify(O) !== JSON.stringify(C);
+    if (N.reviews.some((E) => {
+      const O = l.reviews.find(($) => $.id === E.id);
+      return O && JSON.stringify(O) !== JSON.stringify(E);
     }))
       throw new Error(
         "Browser-only reviews conflict with account edits. Neither version was overwritten. Export the browser reviews before reconciling them with the account configuration."
@@ -225,8 +225,8 @@ async function Rr() {
     ];
     l = {
       ...l,
-      reviews: it(l.reviews, N.reviews).filter(
-        (C) => !R.includes(C.id)
+      reviews: at(l.reviews, N.reviews).filter(
+        (E) => !R.includes(E.id)
       ),
       deletedIds: R,
       importedIds: [
@@ -235,39 +235,39 @@ async function Rr() {
     }, s = !0;
   }
   if (!b) {
-    const N = JSON.stringify(l), R = Cr(t);
-    if (d.length && R.reviews.some((A) => {
-      const h = l.reviews.find((q) => q.id === A.id);
-      return h && JSON.stringify(h) !== JSON.stringify(A);
+    const N = JSON.stringify(l), R = Pr(t);
+    if (d.length && R.reviews.some((I) => {
+      const h = l.reviews.find((q) => q.id === I.id);
+      return h && JSON.stringify(h) !== JSON.stringify(I);
     }))
       throw new Error(
         "Unmigrated browser reviews conflict with account edits. Neither version was overwritten. Export the browser reviews for recovery, then use a fresh browser to review the account configuration."
       );
-    const C = i ? (await Je(Nr)).flatMap(
-      (A) => Ie(A.uiOptions ?? "[]")
+    const E = i ? (await Je(kr)).flatMap(
+      (I) => Ae(I.uiOptions ?? "[]")
     ) : [], O = R.known.filter(
-      (A) => !R.reviews.some((h) => h.id === A)
+      (I) => !R.reviews.some((h) => h.id === I)
     ), $ = /* @__PURE__ */ new Set([...l.deletedIds, ...O]);
     l = {
       ...l,
-      reviews: it(
+      reviews: at(
         R.reviews,
         l.reviews,
-        C.filter(
-          (A) => !R.known.includes(A.id) && !l.importedIds.includes(A.id)
+        E.filter(
+          (I) => !R.known.includes(I.id) && !l.importedIds.includes(I.id)
         )
-      ).filter((A) => !$.has(A.id)),
+      ).filter((I) => !$.has(I.id)),
       deletedIds: [...$],
       importedIds: [
         .../* @__PURE__ */ new Set([
           ...l.importedIds,
           ...R.known,
-          ...C.map((A) => A.id)
+          ...E.map((I) => I.id)
         ])
       ]
     }, s || (s = JSON.stringify(l) !== N);
   }
-  const u = {
+  const f = {
     userId: t,
     recordId: (g = d[0]) == null ? void 0 : g.id,
     config: l,
@@ -275,9 +275,9 @@ async function Rr() {
     writable: a,
     durable: a
   };
-  if (Oe.set(r, u), s && a) {
+  if (Oe.set(r, f), s && a) {
     const N = l;
-    d.length && (u.config = Se(d[0].uiOptions)), await Vt(r, N), l = u.config;
+    d.length && (f.config = Se(d[0].uiOptions)), await Gt(r, N), l = f.config;
   } else d.length || (localStorage.setItem(r, JSON.stringify(l)), !i && (!b || y) && localStorage.setItem(`${r}:local-only`, "true"));
   if (!i) localStorage.setItem(`${r}:migrated`, "true");
   else if (a)
@@ -288,12 +288,12 @@ async function Rr() {
   return {
     reviews: l.reviews,
     storageKey: r,
-    canWrite: et(e.permissions, "videos.write"),
+    canWrite: tt(e.permissions, "videos.write"),
     canConfigure: !i || a,
     storageNotice: i ? a ? "" : "Account reviews are read-only. Saved filter write permission is required to save configuration and progress." : "Reviews and progress are saved only in this browser. Saved filter read and write permissions enable account storage."
   };
 }
-async function Vt(e, t) {
+async function Gt(e, t) {
   const r = Oe.get(e);
   if (!r) throw new Error("Reload reviews before saving.");
   if (r.readable && !r.writable)
@@ -302,7 +302,7 @@ async function Vt(e, t) {
     );
   const i = { ...t, revision: crypto.randomUUID() };
   if (r.durable) {
-    if (await zt(r), r.recordId != null) {
+    if (await Qt(r), r.recordId != null) {
       const d = await V(
         `/api/savedfilters/${r.recordId}`
       );
@@ -316,7 +316,7 @@ async function Vt(e, t) {
       {
         method: r.recordId == null ? "POST" : "PUT",
         body: JSON.stringify({
-          mode: _t,
+          mode: Vt,
           name: "Data Quality configuration",
           uiOptions: JSON.stringify(i)
         })
@@ -331,12 +331,12 @@ async function Vt(e, t) {
     } catch {
     }
 }
-function Ar(e, t) {
-  return Ie(JSON.stringify(t)), Kt(e, async () => {
+function $r(e, t) {
+  return Ae(JSON.stringify(t)), Bt(e, async () => {
     const r = Oe.get(e);
     if (!r) throw new Error("Reload reviews before saving.");
     const i = r.config.reviews.filter((a) => !t.some((d) => d.id === a.id)).map((a) => a.id);
-    await Vt(e, {
+    await Gt(e, {
       ...r.config,
       reviews: t,
       deletedIds: [
@@ -345,7 +345,7 @@ function Ar(e, t) {
     });
   });
 }
-function At(e) {
+function Ot(e) {
   const t = JSON.parse(e);
   if ((t == null ? void 0 : t.version) !== 1 || typeof t.signature != "string" || !t.filter || typeof t.filter != "object" || Array.isArray(t.filter) || !Number.isSafeInteger(t.index) || t.index < 0 || t.focusedId !== null && (!Number.isSafeInteger(t.focusedId) || t.focusedId <= 0) || !["grid", "list", "wall"].includes(t.displayMode) || t.cardSize !== null && (!Number.isFinite(t.cardSize) || t.cardSize < 115 || t.cardSize > 380) || !Number.isFinite(t.updatedAt))
     throw new Error(
@@ -353,27 +353,27 @@ function At(e) {
     );
   return t;
 }
-async function Ir(e, t) {
+async function Lr(e, t) {
   const r = Oe.get(e);
   if (!r) return null;
-  const i = localStorage.getItem(`${e}:progress:${t}`), a = i ? At(i) : null;
+  const i = localStorage.getItem(`${e}:progress:${t}`), a = i ? Ot(i) : null;
   if (!r.readable) return a;
-  const d = (await Je(ot)).find(
+  const d = (await Je(st)).find(
     (b) => b.name === t
-  ), l = d ? At(d.uiOptions) : null;
+  ), l = d ? Ot(d.uiOptions) : null;
   return a && (!l || a.updatedAt > l.updatedAt) ? a : l;
 }
-function Or(e, t, r) {
+function Dr(e, t, r) {
   const i = `${e}:progress:${t}`;
   try {
     localStorage.setItem(i, JSON.stringify(r));
   } catch {
   }
-  return Kt(i, async () => {
+  return Bt(i, async () => {
     const a = Oe.get(e);
     if (!(a != null && a.writable)) return;
-    await zt(a);
-    const d = (await Je(ot)).find(
+    await Qt(a);
+    const d = (await Je(st)).find(
       (l) => l.name === t
     );
     await V(
@@ -381,7 +381,7 @@ function Or(e, t, r) {
       {
         method: d ? "PUT" : "POST",
         body: JSON.stringify({
-          mode: ot,
+          mode: st,
           name: t,
           uiOptions: JSON.stringify(r)
         })
@@ -389,7 +389,7 @@ function Or(e, t, r) {
     );
   });
 }
-const kr = {
+const Ur = {
   EQUALS: "equals",
   NOT_EQUALS: "notEquals",
   GREATER_THAN: "greaterThan",
@@ -407,18 +407,18 @@ const kr = {
   UNDER_PATH: "underPath",
   NOT_UNDER_PATH: "notUnderPath"
 };
-function _e(e) {
-  return Array.isArray(e) ? e.map(_e) : e && typeof e == "object" ? Object.fromEntries(
+function ze(e) {
+  return Array.isArray(e) ? e.map(ze) : e && typeof e == "object" ? Object.fromEntries(
     Object.entries(e).map(([t, r]) => [
       t,
-      t === "modifier" && typeof r == "string" ? kr[r] ?? r : _e(r)
+      t === "modifier" && typeof r == "string" ? Ur[r] ?? r : ze(r)
     ])
   ) : e;
 }
 async function V(e, t = {}) {
   const r = new Headers(t.headers);
   !(t.body instanceof FormData) && !r.has("Content-Type") && r.set("Content-Type", "application/json");
-  const i = await wr(e, { ...t, headers: r });
+  const i = await qr(e, { ...t, headers: r });
   if (!i.ok) {
     let d = i.statusText || `Request failed (${i.status}).`;
     try {
@@ -432,7 +432,7 @@ async function V(e, t = {}) {
   const a = await i.text();
   return a ? JSON.parse(a) : void 0;
 }
-async function It(e, t, r) {
+async function kt(e, t, r) {
   const i = { ...e.view.objectFilter }, a = i._filterExpression;
   if (delete i._filterExpression, delete i.includeCompilationGroups, e.view.searchMode === "visual" && typeof t.q == "string" && t.q.trim())
     throw new Error(
@@ -442,33 +442,33 @@ async function It(e, t, r) {
     method: "POST",
     signal: r,
     body: JSON.stringify(
-      _e({
-        findFilter: ge(t),
+      ze({
+        findFilter: me(t),
         objectFilter: i,
         filterExpression: a
       })
     )
   });
 }
-function Qt(e) {
+function Ht(e) {
   return `/api/videos/${e.id}/image?max=640&v=${encodeURIComponent(e.updatedAt)}`;
 }
-function Pr(e) {
+function jr(e) {
   return `/api/stream/video/${e}`;
 }
-function Ot(e) {
+function xt(e) {
   return `/api/stream/video/${e.id}/screenshot?v=${encodeURIComponent(e.updatedAt)}`;
 }
-function xr(e) {
+function Fr(e) {
   return `/api/stream/video/${e}/preview`;
 }
-function Tr(e) {
+function Jr(e) {
   return `/api/stream/video/${e}/preview/status`;
 }
-function Mr(e) {
+function zr(e) {
   return e.steps.length ? new Promise((t) => window.setTimeout(t, 1100)) : Promise.resolve();
 }
-async function Bt(e) {
+async function Wt(e) {
   const t = /* @__PURE__ */ new Set();
   for (const r of e) {
     await V(`/api/tags/${r}`), t.add(r);
@@ -476,7 +476,7 @@ async function Bt(e) {
       const a = await V("/api/tags/find", {
         method: "POST",
         body: JSON.stringify(
-          _e({
+          ze({
             findFilter: { page: i, perPage: 1e3, sort: "id", direction: "asc" },
             objectFilter: {
               parentsCriterion: {
@@ -498,13 +498,13 @@ async function Bt(e) {
   }
   return [...t];
 }
-async function $r(e, t) {
-  if (!st(e) || t.length === 0 || t.some((i) => !Number.isSafeInteger(i) || i <= 0))
+async function _r(e, t) {
+  if (!ct(e) || t.length === 0 || t.some((i) => !Number.isSafeInteger(i) || i <= 0))
     throw new Error("Choose videos and configure a valid action first.");
   const r = await Promise.all(
     e.steps.map(async (i) => ({
       mode: i.mode === "ADD" ? "ADD" : "REMOVE",
-      tagIds: i.mode === "REMOVE_TREE" ? await Bt(i.tagIds) : i.tagIds
+      tagIds: i.mode === "REMOVE_TREE" ? await Wt(i.tagIds) : i.tagIds
     }))
   );
   for (let i = 0; i < r.length; i++)
@@ -523,7 +523,7 @@ async function $r(e, t) {
       );
     }
 }
-function Lr(e) {
+function Kr(e) {
   var l, b;
   const [t, r] = v({}), [i, a] = v(""), d = JSON.stringify([
     .../* @__PURE__ */ new Set([
@@ -535,7 +535,7 @@ function Lr(e) {
     let S = !0;
     return r({}), a(""), Promise.all(
       JSON.parse(d).map(
-        async (y) => [y, await Bt([y])]
+        async (y) => [y, await Wt([y])]
       )
     ).then((y) => {
       S && r(Object.fromEntries(y));
@@ -548,7 +548,7 @@ function Lr(e) {
     };
   }, [d]), { ids: t, error: i };
 }
-function Dr(e, t, r) {
+function Vr(e, t, r) {
   const i = t == null ? void 0 : t.presentation, a = (i == null ? void 0 : i.annotations) ?? ["date", "studio", "performers"], d = (i == null ? void 0 : i.annotationParents) ?? [];
   return [
     a.includes("date") && e.date,
@@ -564,7 +564,7 @@ function Dr(e, t, r) {
     ).map((l) => l.name).join(", ")
   ].filter(Boolean).join(" · ");
 }
-function Ur({
+function Qr({
   videos: e,
   review: t,
   trees: r,
@@ -574,18 +574,18 @@ function Ur({
   var b, S, y;
   const d = new Set(
     (((b = t.presentation) == null ? void 0 : b.binParents) ?? []).flatMap(
-      (s) => (r[s] ?? []).filter((u) => u !== s)
+      (s) => (r[s] ?? []).filter((f) => f !== s)
     )
   ), l = /* @__PURE__ */ new Map();
   for (const s of e)
-    for (const u of s.tags ?? [])
-      if (d.has(u.id)) {
-        const g = l.get(u.id) ?? { name: u.name, count: 0 };
-        g.count++, l.set(u.id, g);
+    for (const f of s.tags ?? [])
+      if (d.has(f.id)) {
+        const g = l.get(f.id) ?? { name: f.name, count: 0 };
+        g.count++, l.set(f.id, g);
       }
   return (y = (S = t.presentation) == null ? void 0 : S.binParents) != null && y.length ? /* @__PURE__ */ c("div", { className: "dq-row", "aria-label": "Tag bins", children: [
     /* @__PURE__ */ n("span", { children: "Tags on this page:" }),
-    [...l].sort((s, u) => s[1].name.localeCompare(u[1].name)).map(([s, u]) => /* @__PURE__ */ c(
+    [...l].sort((s, f) => s[1].name.localeCompare(f[1].name)).map(([s, f]) => /* @__PURE__ */ c(
       "button",
       {
         className: "dq-button",
@@ -593,9 +593,9 @@ function Ur({
         disabled: i,
         onClick: () => a(s),
         children: [
-          u.name,
+          f.name,
           " (",
-          u.count,
+          f.count,
           ")"
         ]
       },
@@ -604,7 +604,7 @@ function Ur({
     !l.size && /* @__PURE__ */ n("span", { children: "No matching tag bins on this page." })
   ] }) : null;
 }
-function jr(e, t) {
+function Br(e, t) {
   const { _filterExpression: r, ...i } = e.view.objectFilter;
   return {
     ...e,
@@ -631,7 +631,7 @@ function jr(e, t) {
     }
   };
 }
-function kt({
+function Pt({
   draft: e,
   onChange: t,
   presentation: r = !0,
@@ -641,7 +641,7 @@ function kt({
     ...e,
     view: { ...e.view, filter: { ...l, ...s } }
   }), S = e.presentation ?? {}, y = (s) => t({ ...e, presentation: { ...S, ...s } });
-  return /* @__PURE__ */ c(oe, { children: [
+  return /* @__PURE__ */ c(de, { children: [
     i && /* @__PURE__ */ c("fieldset", { className: "dq-queue-fields", children: [
       /* @__PURE__ */ n("legend", { children: "Queue" }),
       /* @__PURE__ */ c("label", { children: [
@@ -664,8 +664,8 @@ function kt({
               value: String(l.sort ?? "date"),
               onChange: (s) => b({ sort: s.target.value, sorts: void 0 }),
               children: [
-                !Nt.some((s) => s.value === l.sort) && l.sort != null && /* @__PURE__ */ n("option", { value: String(l.sort), children: String(l.sort) }),
-                Nt.map((s) => /* @__PURE__ */ n("option", { value: s.value, children: s.label }, s.value))
+                !Et.some((s) => s.value === l.sort) && l.sort != null && /* @__PURE__ */ n("option", { value: String(l.sort), children: String(l.sort) }),
+                Et.map((s) => /* @__PURE__ */ n("option", { value: s.value, children: s.label }, s.value))
               ]
             }
           )
@@ -718,11 +718,11 @@ function kt({
         ". Choose which videos enter the queue."
       ] }),
       a && /* @__PURE__ */ n("div", { onKeyDown: (s) => s.stopPropagation(), children: /* @__PURE__ */ n(
-        nr,
+        ar,
         {
           open: !0,
           onClose: () => d(!1),
-          criteria: ir,
+          criteria: sr,
           activeFilter: e.view.objectFilter,
           supportsFilterExpressions: !0,
           subjectLabel: "videos",
@@ -732,7 +732,7 @@ function kt({
         }
       ) })
     ] }),
-    r && /* @__PURE__ */ c(oe, { children: [
+    r && /* @__PURE__ */ c(de, { children: [
       /* @__PURE__ */ n("h3", { children: "Appearance" }),
       /* @__PURE__ */ n("p", { className: "dq-editor-note", children: "Choose how videos and tags appear while reviewing." }),
       /* @__PURE__ */ c("div", { className: "dq-field-grid", children: [
@@ -755,27 +755,24 @@ function kt({
         ] }),
         /* @__PURE__ */ c("label", { children: [
           "Preferred card width",
-          /* @__PURE__ */ c(
+          /* @__PURE__ */ n(
             "select",
             {
-              value: S.cardSize ?? "auto",
+              value: S.cardSize ?? 180,
               onChange: (s) => y({
-                cardSize: s.target.value === "auto" ? null : Number(s.target.value)
+                cardSize: Number(s.target.value)
               }),
-              children: [
-                /* @__PURE__ */ n("option", { value: "auto", children: "Auto fit" }),
-                [130, 180, 260, 380].map((s) => /* @__PURE__ */ c("option", { value: s, children: [
-                  s,
-                  " px"
-                ] }, s))
-              ]
+              children: [130, 180, 260, 380].map((s) => /* @__PURE__ */ c("option", { value: s, children: [
+                s,
+                " px"
+              ] }, s))
             }
           )
         ] })
       ] }),
       /* @__PURE__ */ n("h4", { children: "Card annotations" }),
       /* @__PURE__ */ n("div", { className: "dq-annotation-options", children: ["date", "studio", "performers", "tags"].map((s) => {
-        const u = S.annotations ?? [
+        const f = S.annotations ?? [
           "date",
           "studio",
           "performers"
@@ -785,9 +782,9 @@ function kt({
             "input",
             {
               type: "checkbox",
-              checked: u.includes(s),
+              checked: f.includes(s),
               onChange: (g) => y({
-                annotations: g.target.checked ? [...u, s] : u.filter((N) => N !== s)
+                annotations: g.target.checked ? [...f, s] : f.filter((N) => N !== s)
               })
             }
           ),
@@ -796,7 +793,7 @@ function kt({
       }) }),
       /* @__PURE__ */ n("p", { children: "Show annotated tags only below these parents (empty means all tags)." }),
       /* @__PURE__ */ n(
-        rt,
+        it,
         {
           entityType: "tag",
           values: S.annotationParents ?? [],
@@ -807,7 +804,7 @@ function kt({
       /* @__PURE__ */ n("h4", { children: "Tag bins" }),
       /* @__PURE__ */ n("p", { children: "Choose parent tags. Their descendants become temporary queue filters. Counts describe the loaded page." }),
       /* @__PURE__ */ n(
-        rt,
+        it,
         {
           entityType: "tag",
           values: S.binParents ?? [],
@@ -818,13 +815,14 @@ function kt({
     ] })
   ] });
 }
-function Pt(e) {
+const Fe = 180, rt = 115, Tt = 380;
+function Mt(e) {
   return e.view.displayMode === "wall" || e.view.displayMode === "list" ? e.view.displayMode : "grid";
 }
-function Fr() {
+function Gr() {
   return new URLSearchParams(window.location.search).get("review") ?? "";
 }
-function xt(e) {
+function $t(e) {
   const t = new URLSearchParams(window.location.search);
   e ? t.set("review", e) : t.delete("review");
   const r = t.toString();
@@ -834,22 +832,22 @@ function xt(e) {
     `${window.location.pathname}${r ? `?${r}` : ""}`
   );
 }
-function Jr(e) {
-  return ge({ ...e, page: 1 });
+function Hr(e) {
+  return me({ ...e, page: 1 });
 }
-function _r(e, t) {
+function Wr(e, t) {
   if (t === 0) return "Showing 0 of 0";
   const r = Number(e.perPage) || 40, i = Math.max(1, Math.ceil(t / r)), a = Math.min(Math.max(1, Number(e.page) || 1), i), d = (a - 1) * r + 1, l = Math.min(a * r, t);
   return `Showing ${d.toLocaleString()}-${l.toLocaleString()} of ${t.toLocaleString()}`;
 }
-function Ht(e) {
+function Xt(e) {
   var t;
   return e.title || ((t = e.files[0]) == null ? void 0 : t.basename) || `Video ${e.id}`;
 }
 function X(e) {
   e.preventDefault(), e.stopPropagation(), e.nativeEvent.stopImmediatePropagation();
 }
-function zr({
+function Xr({
   onNavigate: e
 }) {
   const [t, r] = v([]), [i] = v(() => {
@@ -858,30 +856,30 @@ function zr({
     } catch {
       return !1;
     }
-  }), [a, d] = v(""), [l, b] = v(!0), [S, y] = v(""), [s, u] = v(!1), [g, N] = v(!0), [R, C] = v(""), [O, $] = v(""), [A, h] = v(!1), [q, k] = v(!1), [p, T] = v(Fr), [F, L] = v(!1), [ae, ne] = v(!1), [se, lt] = v(!1), [Q, Ne] = v(
+  }), [a, d] = v(""), [l, b] = v(!0), [S, y] = v(""), [s, f] = v(!1), [g, N] = v(!0), [R, E] = v(""), [O, $] = v(""), [I, h] = v(!1), [q, k] = v(!1), [p, T] = v(Gr), [F, L] = v(!1), [oe, ne] = v(!1), [ae, dt] = v(!1), [Q, Ne] = v(
     null
-  ), _ = t.find((o) => o.id === p) ?? null, m = St(
-    () => (Q == null ? void 0 : Q.id) === p && _ ? { ..._, view: Q.view } : _,
-    [Q, p, _]
-  ), ke = Lr(m), [M, Ee] = v({
+  ), z = t.find((o) => o.id === p) ?? null, m = Ct(
+    () => (Q == null ? void 0 : Q.id) === p && z ? { ...z, view: Q.view } : z,
+    [Q, p, z]
+  ), ke = Kr(m), [M, Ce] = v({
     page: 1,
     perPage: 40,
     sort: "date",
     direction: "desc"
-  }), [Gt, Wt] = v({
+  }), [Yt, Zt] = v({
     page: 1,
     perPage: 40
-  }), [Y, ct] = v({ items: [], totalCount: 0 }), [P, Pe] = v(!1), [ie, dt] = v(""), [le, fe] = v(() => /* @__PURE__ */ new Set()), ze = U(le);
-  ze.current = le;
-  const me = U(/* @__PURE__ */ new Map()), [B, te] = v(null), H = U(B);
-  H.current = B;
-  const [re, we] = v(!1), ce = U(re);
-  ce.current = re;
-  const ut = U(null), [de, Ke] = v("grid"), [be, xe] = v(null), [j, Ve] = v(!1), Te = U(!1), [Xt, Qe] = v(""), [ft, Me] = v(""), [Be, Ce] = v(""), He = U(/* @__PURE__ */ new Map()), pt = U(null), ye = U(0), $e = U(0), Le = U(null), ht = ve(async () => {
+  }), [Y, ut] = v({ items: [], totalCount: 0 }), [x, xe] = v(!1), [ie, ft] = v(""), [se, ue] = v(() => /* @__PURE__ */ new Set()), _e = U(se);
+  _e.current = se;
+  const we = U(/* @__PURE__ */ new Map()), [B, te] = v(null), G = U(B);
+  G.current = B;
+  const [re, be] = v(!1), le = U(re);
+  le.current = re;
+  const pt = U(null), [fe, Ke] = v("grid"), [pe, Ve] = v(Fe), [j, Qe] = v(!1), Pe = U(!1), [er, Be] = v(""), [ht, Te] = v(""), [Ge, Ee] = v(""), He = U(/* @__PURE__ */ new Map()), gt = U(null), ye = U(0), Me = U(0), $e = U(null), mt = ve(async () => {
     b(!0), y("");
     try {
-      const o = await qr();
-      r(o.reviews), d(o.storageKey), u(o.canWrite), N(o.canConfigure ?? !0), C(o.storageNotice ?? ""), p && !o.reviews.some((f) => f.id === p) && (T(""), xt(""));
+      const o = await Tr();
+      r(o.reviews), d(o.storageKey), f(o.canWrite), N(o.canConfigure ?? !0), E(o.storageNotice ?? ""), p && !o.reviews.some((u) => u.id === p) && (T(""), $t(""));
     } catch (o) {
       y(
         o instanceof Error ? o.message : "Could not load reviews."
@@ -891,94 +889,94 @@ function zr({
     }
   }, [p]);
   ee(() => {
-    ht();
+    mt();
   }, []);
-  const pe = ve(
-    async (o, f) => {
+  const he = ve(
+    async (o, u) => {
       var D;
       const w = ++ye.current;
-      (D = Le.current) == null || D.abort();
-      const E = new AbortController();
-      Le.current = E, f = ge(f), Ee(f), Pe(!0), dt("");
+      (D = $e.current) == null || D.abort();
+      const C = new AbortController();
+      $e.current = C, u = me(u), Ce(u), xe(!0), ft("");
       try {
-        let I = await It(
+        let A = await kt(
           o,
-          f,
-          E.signal
+          u,
+          C.signal
         );
-        const G = Math.max(
+        const H = Math.max(
           1,
-          Math.ceil(I.totalCount / Number(f.perPage))
+          Math.ceil(A.totalCount / Number(u.perPage))
         );
-        return Number(f.page) > G && (f = { ...f, page: G }, I = await It(
+        return Number(u.page) > H && (u = { ...u, page: H }, A = await kt(
           o,
-          f,
-          E.signal
-        )), w === ye.current && (ct(I), Ee(f), Wt(f)), I;
-      } catch (I) {
-        throw w === ye.current && dt(
-          I instanceof Error ? I.message : "Could not load the review queue."
-        ), I;
+          u,
+          C.signal
+        )), w === ye.current && (ut(A), Ce(u), Zt(u)), A;
+      } catch (A) {
+        throw w === ye.current && ft(
+          A instanceof Error ? A.message : "Could not load the review queue."
+        ), A;
       } finally {
-        w === ye.current && Pe(!1);
+        w === ye.current && xe(!1);
       }
     },
     []
   );
   ee(() => {
-    var f;
-    if ($e.current += 1, ye.current += 1, (f = Le.current) == null || f.abort(), k(!1), $(""), h(!1), fe(/* @__PURE__ */ new Set()), me.current.clear(), te(null), we(!1), Ve(!1), Te.current = !1, Qe(""), Me(""), Ce(""), ct({ items: [], totalCount: 0 }), !m) {
-      Pe(!1);
+    var u;
+    if (Me.current += 1, ye.current += 1, (u = $e.current) == null || u.abort(), k(!1), $(""), h(!1), ue(/* @__PURE__ */ new Set()), we.current.clear(), te(null), be(!1), Qe(!1), Pe.current = !1, Be(""), Te(""), Ee(""), ut({ items: [], totalCount: 0 }), !m) {
+      xe(!1);
       return;
     }
     let o = !0;
-    return Pe(!0), (async () => {
-      var I;
+    return xe(!0), (async () => {
+      var A;
       let w = null;
       try {
-        w = await Ir(a, m.id);
-      } catch (G) {
+        w = await Lr(a, m.id);
+      } catch (H) {
         o && (h(!0), $(
-          G instanceof Error ? G.message : "Could not load progress."
+          H instanceof Error ? H.message : "Could not load progress."
         ));
       }
       if (!o) return;
-      const E = (w == null ? void 0 : w.signature) === je(m) ? w : null, D = E ? ge(E.filter) : Jr(m.view.filter);
-      Ee(D), Ke((E == null ? void 0 : E.displayMode) ?? Pt(m)), xe(
-        E ? E.cardSize : ((I = m.presentation) == null ? void 0 : I.cardSize) ?? null
+      const C = (w == null ? void 0 : w.signature) === Ue(m) ? w : null, D = C ? me(C.filter) : Hr(m.view.filter);
+      Ce(D), Ke((C == null ? void 0 : C.displayMode) ?? Mt(m)), Ve(
+        C ? C.cardSize ?? Fe : ((A = m.presentation) == null ? void 0 : A.cardSize) ?? Fe
       );
       try {
-        const G = await pe(m, D);
+        const H = await he(m, D);
         if (!o) return;
-        const z = qt(
-          G.items.map((he) => he.id),
-          (E == null ? void 0 : E.focusedId) ?? null,
-          (E == null ? void 0 : E.index) ?? 0
+        const _ = It(
+          H.items.map((ge) => ge.id),
+          (C == null ? void 0 : C.focusedId) ?? null,
+          (C == null ? void 0 : C.index) ?? 0
         );
-        te(z), J(z);
+        te(_), J(_);
       } catch {
       }
       o && k(!0);
     })(), () => {
       var w;
-      o = !1, $e.current++, ye.current++, (w = Le.current) == null || w.abort();
+      o = !1, Me.current++, ye.current++, (w = $e.current) == null || w.abort();
     };
   }, [m == null ? void 0 : m.id]);
-  const x = St(
+  const P = Ct(
     () => Y.items.map((o) => o.id),
     [Y.items]
   );
   ee(() => {
-    if (!q || !m || !a || P || ie || j || (Q == null ? void 0 : Q.id) === m.id || A)
+    if (!q || !m || !a || x || ie || j || (Q == null ? void 0 : Q.id) === m.id || I)
       return;
     const o = {
       version: 1,
-      signature: je(m),
+      signature: Ue(m),
       filter: M,
       focusedId: B,
-      index: Math.max(0, x.indexOf(B ?? -1)),
-      displayMode: de,
-      cardSize: be,
+      index: Math.max(0, P.indexOf(B ?? -1)),
+      displayMode: fe,
+      cardSize: pe,
       updatedAt: Date.now()
     };
     try {
@@ -989,211 +987,211 @@ function zr({
     } catch {
     }
     if (O) return;
-    let f = !0;
+    let u = !0;
     const w = window.setTimeout(() => {
-      Or(a, m.id, o).catch((E) => {
-        f && $(
-          "Progress is kept in this browser, but account sync failed. " + (E instanceof Error ? E.message : "Retry.")
+      Dr(a, m.id, o).catch((C) => {
+        u && $(
+          "Progress is kept in this browser, but account sync failed. " + (C instanceof Error ? C.message : "Retry.")
         );
       });
     }, 600);
     return () => {
-      f = !1, window.clearTimeout(w);
+      u = !1, window.clearTimeout(w);
     };
   }, [
     q,
     a,
     m,
-    P,
+    x,
     ie,
     j,
     M,
     B,
-    x,
-    de,
-    be,
+    P,
+    fe,
+    pe,
     Q,
     O,
-    A
+    I
   ]);
-  const Ge = Y.items.find((o) => o.id === B) ?? null;
-  re && Ge && (ut.current = Ge);
-  const ue = Ge ?? (re ? ut.current : null), Yt = Rt(le, B), gt = le.size > 0 ? `${le.size} selected video${le.size === 1 ? "" : "s"}` : B == null ? "no video" : "focused video", J = ve((o, f = !0) => {
+  const We = Y.items.find((o) => o.id === B) ?? null;
+  re && We && (pt.current = We);
+  const ce = We ?? (re ? pt.current : null), tr = At(se, B), wt = se.size > 0 ? `${se.size} selected video${se.size === 1 ? "" : "s"}` : B == null ? "no video" : "focused video", J = ve((o, u = !0) => {
     o != null && window.requestAnimationFrame(() => {
       const w = He.current.get(o);
-      w == null || w.focus({ preventScroll: !0 }), f && (w == null || w.scrollIntoView({ block: "nearest", inline: "nearest" }));
+      w == null || w.focus({ preventScroll: !0 }), u && (w == null || w.scrollIntoView({ block: "nearest", inline: "nearest" }));
     });
   }, []);
   ee(() => {
-    q && !ce.current && J(H.current);
+    q && !le.current && J(G.current);
   }, [q, J]), ee(() => {
-    P || !x.length || (H.current == null || !x.includes(H.current)) && (te(x[0]), ce.current || J(x[0]));
-  }, [J, x, P]);
+    x || !P.length || (G.current == null || !P.includes(G.current)) && (te(P[0]), le.current || J(P[0]));
+  }, [J, P, x]);
   const qe = ve(
     (o) => {
-      fe((f) => {
-        const w = o(f);
-        for (const E of /* @__PURE__ */ new Set([...f, ...w]))
-          f.has(E) !== w.has(E) && me.current.set(
-            E,
-            (me.current.get(E) ?? 0) + 1
+      ue((u) => {
+        const w = o(u);
+        for (const C of /* @__PURE__ */ new Set([...u, ...w]))
+          u.has(C) !== w.has(C) && we.current.set(
+            C,
+            (we.current.get(C) ?? 0) + 1
           );
         return w;
       });
     },
     []
-  ), We = ve(
-    (o) => {
-      if (!x.length) return;
-      const f = Math.max(
-        0,
-        x.indexOf(H.current ?? x[0])
-      ), w = x[Math.max(0, Math.min(x.length - 1, f + o))];
-      te(w), ce.current || J(w);
-    },
-    [J, x]
   ), Xe = ve(
+    (o) => {
+      if (!P.length) return;
+      const u = Math.max(
+        0,
+        P.indexOf(G.current ?? P[0])
+      ), w = P[Math.max(0, Math.min(P.length - 1, u + o))];
+      te(w), le.current || J(w);
+    },
+    [J, P]
+  ), Ye = ve(
     async (o) => {
-      const f = Rt(
-        ze.current,
-        H.current
+      const u = At(
+        _e.current,
+        G.current
       );
-      if (!m || Te.current || P || ie || !s || !f.length)
+      if (!m || Pe.current || x || ie || !s || !u.length)
         return;
-      const w = ++$e.current, E = m.id, D = [...x], I = H.current, G = new Map(
-        f.map((K) => [K, me.current.get(K) ?? 0])
-      ), z = () => w === $e.current && m.id === E;
-      Te.current = !0, Ve(!0), Qe(
-        ze.current.size ? `${f.length} selected videos` : "the focused video"
-      ), Me(""), Ce("");
-      let he = !1;
+      const w = ++Me.current, C = m.id, D = [...P], A = G.current, H = new Map(
+        u.map((K) => [K, we.current.get(K) ?? 0])
+      ), _ = () => w === Me.current && m.id === C;
+      Pe.current = !0, Qe(!0), Be(
+        _e.current.size ? `${u.length} selected videos` : "the focused video"
+      ), Te(""), Ee("");
+      let ge = !1;
       try {
-        if (await $r(o, f), he = !0, !z()) return;
-        fe((K) => {
+        if (await _r(o, u), ge = !0, !_()) return;
+        ue((K) => {
           const W = new Set(K);
-          for (const Z of f)
-            (me.current.get(Z) ?? 0) === G.get(Z) && W.delete(Z);
+          for (const Z of u)
+            (we.current.get(Z) ?? 0) === H.get(Z) && W.delete(Z);
           return W;
-        }), Me(
-          `${o.label}: ${f.length} video${f.length === 1 ? "" : "s"} ${o.steps.length ? "updated" : "skipped"}.`
+        }), Te(
+          `${o.label}: ${u.length} video${u.length === 1 ? "" : "s"} ${o.steps.length ? "updated" : "skipped"}.`
         );
       } catch (K) {
-        if (!z()) return;
-        Ce(
+        if (!_()) return;
+        Ee(
           K instanceof Error ? K.message : "Action failed."
         );
       }
       try {
-        if (await Mr(o), !z()) return;
-        const K = await pe(m, M);
-        if (!z()) return;
+        if (await zr(o), !_()) return;
+        const K = await he(m, M);
+        if (!_()) return;
         let W = K.items.map((Z) => Z.id);
         if (!W.length && K.totalCount > 0 && Number(M.page) > 1) {
-          const Z = Math.max(1, Number(M.page) - 1), Ue = { ...M, page: Z };
-          Ee(Ue), W = (await pe(m, Ue)).items.map((Ze) => Ze.id), fe(
-            (Ze) => new Set([...Ze].filter((rr) => W.includes(rr)))
+          const Z = Math.max(1, Number(M.page) - 1), De = { ...M, page: Z };
+          Ce(De), W = (await he(m, De)).items.map((et) => et.id), ue(
+            (et) => new Set([...et].filter((or) => W.includes(or)))
           );
-          const vt = W.at(-1) ?? null;
-          te(vt), ce.current || J(vt);
+          const Nt = W.at(-1) ?? null;
+          te(Nt), le.current || J(Nt);
         } else {
-          fe(
-            (Ue) => new Set([...Ue].filter((yt) => W.includes(yt)))
+          ue(
+            (De) => new Set([...De].filter((St) => W.includes(St)))
           );
-          const Z = yr(
+          const Z = Ir(
             D,
             W,
-            I,
-            he && f.includes(I ?? -1)
+            A,
+            ge && u.includes(A ?? -1)
           );
-          te(Z), ce.current && Z == null && we(!1), ce.current || J(Z);
+          te(Z), le.current && Z == null && be(!1), le.current || J(Z);
         }
       } catch (K) {
-        z() && Ce(
-          (W) => `${W ? `${W} ` : ""}${he ? "The action completed, but " : ""}the queue could not be refreshed. ${K instanceof Error ? K.message : "Refresh failed."}`
+        _() && Ee(
+          (W) => `${W ? `${W} ` : ""}${ge ? "The action completed, but " : ""}the queue could not be refreshed. ${K instanceof Error ? K.message : "Refresh failed."}`
         );
       } finally {
-        z() && (Te.current = !1, Ve(!1), Qe(""));
+        _() && (Pe.current = !1, Qe(!1), Be(""));
       }
     },
     [
       s,
-      pe,
+      he,
       M,
       J,
-      x,
       P,
+      x,
       ie,
       m
     ]
   );
-  function Zt() {
+  function rr() {
     var w;
-    const o = (w = pt.current) == null ? void 0 : w.firstElementChild, f = o ? getComputedStyle(o).gridTemplateColumns : "";
-    return Math.max(1, f.split(" ").filter(Boolean).length);
+    const o = (w = gt.current) == null ? void 0 : w.firstElementChild, u = o ? getComputedStyle(o).gridTemplateColumns : "";
+    return Math.max(1, u.split(" ").filter(Boolean).length);
   }
-  function er(o) {
-    if (o.defaultPrevented || o.repeat || o.ctrlKey || o.altKey || o.metaKey || F || se) return;
+  function nr(o) {
+    if (o.defaultPrevented || o.repeat || o.ctrlKey || o.altKey || o.metaKey || F || ae) return;
     if (re && o.key === "Escape") {
-      X(o), we(!1), J(H.current);
+      X(o), be(!1), J(G.current);
       return;
     }
-    if (!Sr(o.target)) return;
+    if (!Or(o.target)) return;
     if (o.key === "Escape") {
       X(o), qe(() => /* @__PURE__ */ new Set());
       return;
     }
-    const f = (m == null ? void 0 : m.actions.findIndex(
-      (D, I) => Ae(D, I) === o.key
+    const u = (m == null ? void 0 : m.actions.findIndex(
+      (D, A) => Ie(D, A) === o.key
     )) ?? -1;
-    if (f >= 0 && (m != null && m.actions[f])) {
-      X(o), !j && !P && Xe(m.actions[f]);
+    if (u >= 0 && (m != null && m.actions[u])) {
+      X(o), !j && !x && Ye(m.actions[u]);
       return;
     }
     if (!re && o.key === " ") {
-      X(o), B != null && qe((D) => tt(D, B));
+      X(o), B != null && qe((D) => nt(D, B));
       return;
     }
     if (!re && o.key.toLowerCase() === "a") {
       X(o), qe(
-        (D) => vr(D, x)
+        (D) => Ar(D, P)
       );
       return;
     }
-    if (j || P || re) return;
+    if (j || x || re) return;
     if (o.key === "Enter" && B != null) {
-      X(o), we(!0);
+      X(o), be(!0);
       return;
     }
-    const w = Zt(), E = o.key === "ArrowLeft" ? -1 : o.key === "ArrowRight" ? 1 : o.key === "ArrowUp" ? -w : o.key === "ArrowDown" ? w : 0;
-    E && (X(o), We(E));
+    const w = rr(), C = o.key === "ArrowLeft" ? -1 : o.key === "ArrowRight" ? 1 : o.key === "ArrowUp" ? -w : o.key === "ArrowDown" ? w : 0;
+    C && (X(o), Xe(C));
   }
-  function Ye(o) {
-    T(o), xt(o);
+  function Ze(o) {
+    T(o), $t(o);
   }
-  async function mt(o) {
-    var w, E, D;
+  async function bt(o) {
+    var w, C, D;
     if (!a) return !1;
     try {
-      await Ar(a, o);
-    } catch (I) {
-      throw I;
+      await $r(a, o);
+    } catch (A) {
+      throw A;
     }
-    r(o), p && !o.some((I) => I.id === p) && Ye("");
-    const f = o.find((I) => I.id === p);
-    return f && _ && JSON.stringify(f) !== JSON.stringify(_) && (f.view.displayMode !== _.view.displayMode && Ke(Pt(f)), ((w = f.presentation) == null ? void 0 : w.cardSize) !== ((E = _.presentation) == null ? void 0 : E.cardSize) && xe(((D = f.presentation) == null ? void 0 : D.cardSize) ?? null), je(f) !== je(_) && (Ne(null), De(
-      f,
-      ge({ ...f.view.filter, page: M.page })
+    r(o), p && !o.some((A) => A.id === p) && Ze("");
+    const u = o.find((A) => A.id === p);
+    return u && z && JSON.stringify(u) !== JSON.stringify(z) && (u.view.displayMode !== z.view.displayMode && Ke(Mt(u)), ((w = u.presentation) == null ? void 0 : w.cardSize) !== ((C = z.presentation) == null ? void 0 : C.cardSize) && Ve(((D = u.presentation) == null ? void 0 : D.cardSize) ?? Fe), Ue(u) !== Ue(z) && (Ne(null), Le(
+      u,
+      me({ ...u.view.filter, page: M.page })
     ))), !0;
   }
   if (l)
-    return /* @__PURE__ */ n(Mt, { label: "Loading Data Quality reviews…" });
+    return /* @__PURE__ */ n(Dt, { label: "Loading Data Quality reviews…" });
   if (S)
-    return /* @__PURE__ */ c(oe, { children: [
+    return /* @__PURE__ */ c(de, { children: [
       /* @__PURE__ */ n(
         "button",
         {
           className: "dq-button",
-          onClick: () => void Wr().catch(
+          onClick: () => void on().catch(
             (o) => y(
               "Could not export browser reviews. " + (o instanceof Error ? o.message : "Retry.")
             )
@@ -1202,14 +1200,14 @@ function zr({
         }
       ),
       /* @__PURE__ */ n(
-        $t,
+        Ut,
         {
           message: S,
-          onRetry: () => void ht()
+          onRetry: () => void mt()
         }
       )
     ] });
-  return /* @__PURE__ */ c("div", { className: "data-quality-page", onKeyDown: er, children: [
+  return /* @__PURE__ */ c("div", { className: "data-quality-page", onKeyDown: nr, children: [
     /* @__PURE__ */ c("header", { className: "data-quality-header", children: [
       /* @__PURE__ */ c("div", { children: [
         /* @__PURE__ */ n("h1", { children: "Data Quality" }),
@@ -1220,12 +1218,12 @@ function zr({
         {
           className: "dq-button",
           type: "button",
-          disabled: j || P || !g,
+          disabled: j || x || !g,
           onClick: () => {
             ne(!1), L(!0);
           },
           children: [
-            /* @__PURE__ */ n(Lt, {}),
+            /* @__PURE__ */ n(jt, {}),
             " Manage reviews"
           ]
         }
@@ -1241,10 +1239,10 @@ function zr({
           className: "dq-button",
           type: "button",
           onClick: () => {
-            const o = localStorage.getItem("page-videos") ?? "[]", f = URL.createObjectURL(
+            const o = localStorage.getItem("page-videos") ?? "[]", u = URL.createObjectURL(
               new Blob([o], { type: "application/json" })
             ), w = document.createElement("a");
-            w.href = f, w.download = "data-quality-unassigned-legacy-reviews.json", w.click(), URL.revokeObjectURL(f);
+            w.href = u, w.download = "data-quality-unassigned-legacy-reviews.json", w.click(), URL.revokeObjectURL(u);
           },
           children: "Export unassigned reviews"
         }
@@ -1260,7 +1258,7 @@ function zr({
           onClick: () => {
             $(""), h(!1);
           },
-          children: A ? "Start fresh progress" : "Retry progress sync"
+          children: I ? "Start fresh progress" : "Retry progress sync"
         }
       )
     ] }),
@@ -1272,7 +1270,7 @@ function zr({
           {
             value: (m == null ? void 0 : m.id) ?? "",
             disabled: j,
-            onChange: (o) => Ye(o.target.value),
+            onChange: (o) => Ze(o.target.value),
             children: [
               /* @__PURE__ */ n("option", { value: "", children: "Choose a review…" }),
               t.map((o) => /* @__PURE__ */ n("option", { value: o.id, children: o.name }, o.id))
@@ -1280,14 +1278,14 @@ function zr({
           }
         )
       ] }),
-      m && /* @__PURE__ */ n("span", { className: "dq-range-count", children: _r(Gt, Y.totalCount) }),
-      m && /* @__PURE__ */ c(oe, { children: [
+      m && /* @__PURE__ */ n("span", { className: "dq-range-count", children: Wr(Yt, Y.totalCount) }),
+      m && /* @__PURE__ */ c(de, { children: [
         /* @__PURE__ */ n(
           "button",
           {
             type: "button",
             className: "dq-button",
-            disabled: j || P || !g,
+            disabled: j || x || !g,
             onClick: () => {
               ne(!0), L(!0);
             },
@@ -1299,21 +1297,21 @@ function zr({
           {
             type: "button",
             className: "dq-button",
-            disabled: j || P,
-            onClick: () => lt(!0),
+            disabled: j || x,
+            onClick: () => dt(!0),
             children: "Adjust queue"
           }
         ),
-        (Q == null ? void 0 : Q.id) === p && /* @__PURE__ */ c(oe, { children: [
+        (Q == null ? void 0 : Q.id) === p && /* @__PURE__ */ c(de, { children: [
           /* @__PURE__ */ n("span", { children: "Temporary queue" }),
           /* @__PURE__ */ n(
             "button",
             {
               type: "button",
               className: "dq-button",
-              disabled: j || P || !g,
+              disabled: j || x || !g,
               onClick: () => {
-                _ && mt(
+                z && bt(
                   t.map(
                     (o) => o.id === p ? {
                       ...o,
@@ -1324,9 +1322,9 @@ function zr({
                     } : o
                   )
                 ).then(() => {
-                  Ne(null), Me("Queue saved to this review.");
+                  Ne(null), Te("Queue saved to this review.");
                 }).catch(
-                  (o) => Ce(
+                  (o) => Ee(
                     o instanceof Error ? o.message : "Could not save queue."
                   )
                 );
@@ -1339,12 +1337,12 @@ function zr({
             {
               type: "button",
               className: "dq-button",
-              disabled: j || P,
+              disabled: j || x,
               onClick: () => {
-                Ne(null), _ && De(
-                  _,
-                  ge({
-                    ..._.view.filter,
+                Ne(null), z && Le(
+                  z,
+                  me({
+                    ...z.view.filter,
                     page: M.page
                   })
                 );
@@ -1357,107 +1355,109 @@ function zr({
         /* @__PURE__ */ n(
           "div",
           {
-            className: "dq-view-switch",
+            className: "dq-view-switch flex min-h-10 items-center gap-0.5 rounded-lg border border-border bg-card/70 px-1.5 py-1 shadow-sm sm:min-h-0",
             role: "group",
             "aria-label": "Review view",
-            children: ["grid", "list", "wall"].map((o) => /* @__PURE__ */ n(
+            children: [
+              { mode: "grid", label: "Grid", Icon: pr },
+              { mode: "list", label: "List", Icon: hr },
+              { mode: "wall", label: "Wall", Icon: gr }
+            ].map(({ mode: o, label: u, Icon: w }) => /* @__PURE__ */ n(
               "button",
               {
                 type: "button",
-                "aria-pressed": de === o,
+                className: `inline-flex min-h-10 min-w-10 items-center justify-center rounded-md border border-transparent p-2 text-secondary hover:bg-card/80 hover:text-foreground focus:border-accent focus:outline-none sm:min-h-0 sm:min-w-0 sm:p-1.5 ${fe === o ? "bg-background/60 text-accent shadow-sm" : ""}`,
+                "aria-label": u,
+                title: u,
+                "aria-pressed": fe === o,
                 onClick: () => Ke(o),
-                children: o
+                children: /* @__PURE__ */ n(w, { className: "h-3.5 w-3.5" })
               },
               o
             ))
           }
         ),
-        de !== "list" && /* @__PURE__ */ c(oe, { children: [
-          /* @__PURE__ */ c("label", { className: "dq-card-size", children: [
-            "Card width",
-            /* @__PURE__ */ n(
-              "input",
-              {
-                "aria-label": "Review card size",
-                type: "range",
-                min: "115",
-                max: "380",
-                step: "5",
-                value: be ?? (de === "wall" ? 130 : 180),
-                onChange: (o) => xe(Number(o.target.value))
-              }
-            )
-          ] }),
+        fe !== "list" && /* @__PURE__ */ c("div", { className: "hidden items-center gap-1 pl-1 md:flex", children: [
+          /* @__PURE__ */ n(mr, { className: "h-3 w-3 text-muted" }),
           /* @__PURE__ */ n(
-            "button",
+            "input",
             {
-              className: `dq-button ${be == null ? "active" : ""}`,
-              type: "button",
-              onClick: () => xe(null),
-              children: "Auto fit"
+              "aria-label": `Card size: ${pe}px`,
+              title: `Card size: ${pe}px`,
+              type: "range",
+              min: rt,
+              max: Tt,
+              step: "5",
+              className: "themed-range-input h-1 w-16 cursor-pointer sm:w-20",
+              value: pe,
+              style: {
+                "--range-fill": `${(pe - rt) / (Tt - rt) * 100}%`
+              },
+              onChange: (o) => Ve(Number(o.target.value))
             }
-          )
+          ),
+          /* @__PURE__ */ n(wr, { className: "h-3 w-3 text-muted" })
         ] })
       ] })
     ] }),
-    m ? /* @__PURE__ */ c(oe, { children: [
+    m ? /* @__PURE__ */ c(de, { children: [
       ke.error && /* @__PURE__ */ n("p", { role: "alert", children: ke.error }),
       /* @__PURE__ */ n(
-        Ur,
+        Qr,
         {
           videos: Y.items,
           review: m,
           trees: ke.ids,
-          disabled: j || P,
+          disabled: j || x,
           onChoose: (o) => {
-            const f = jr(m, o);
-            Ne(f), De(f, { ...M, page: 1 });
+            const u = Br(m, o);
+            Ne(u), Le(u, { ...M, page: 1 });
           }
         }
       ),
-      Be && !re && /* @__PURE__ */ c("div", { role: "alert", className: "dq-alert", children: [
-        /* @__PURE__ */ n(Dt, {}),
-        Be
+      Ge && !re && /* @__PURE__ */ c("div", { role: "alert", className: "dq-alert", children: [
+        /* @__PURE__ */ n(Ft, {}),
+        Ge
       ] }),
-      ft && /* @__PURE__ */ n("p", { role: "status", className: "dq-status", children: ft }),
+      ht && /* @__PURE__ */ n("p", { role: "status", className: "dq-status", children: ht }),
       /* @__PURE__ */ c("div", { className: "dq-workspace", children: [
         /* @__PURE__ */ c("main", { children: [
-          wt("top"),
-          P && !Y.items.length && /* @__PURE__ */ n(Mt, { label: "Loading review queue…" }),
-          ie && !P && /* @__PURE__ */ n(
-            $t,
+          yt("top"),
+          x && !Y.items.length && /* @__PURE__ */ n(Dt, { label: "Loading review queue…" }),
+          ie && !x && /* @__PURE__ */ n(
+            Ut,
             {
               message: ie,
-              onRetry: () => void pe(m, M).catch(() => {
+              onRetry: () => void he(m, M).catch(() => {
               })
             }
           ),
-          !P && !ie && !Y.items.length && /* @__PURE__ */ c("div", { className: "dq-empty", children: [
-            /* @__PURE__ */ n(Ct, {}),
+          !x && !ie && !Y.items.length && /* @__PURE__ */ c("div", { className: "dq-empty", children: [
+            /* @__PURE__ */ n(Rt, {}),
             /* @__PURE__ */ n("p", { children: "No videos match this review." })
           ] }),
-          !!Y.items.length && /* @__PURE__ */ n("div", { ref: pt, children: de === "list" ? /* @__PURE__ */ n("div", { className: "dq-list", "data-review-layout": "list", children: Y.items.map(bt) }) : /* @__PURE__ */ n(
+          !!Y.items.length && /* @__PURE__ */ n("div", { ref: gt, children: fe === "list" ? /* @__PURE__ */ n("div", { className: "dq-list", "data-review-layout": "list", children: Y.items.map(vt) }) : /* @__PURE__ */ n(
             "div",
             {
               className: "dq-grid",
               style: {
-                "--dq-card-width": be == null ? de === "wall" ? "clamp(115px, 10vw, 150px)" : "clamp(145px, 14vw, 180px)" : `${be}px`
+                "--dq-card-width": `${pe}px`
               },
-              children: Y.items.map(bt)
+              children: Y.items.map(vt)
             }
           ) }),
-          wt("bottom")
+          yt("bottom")
         ] }),
         /* @__PURE__ */ c("aside", { className: "dq-actions", children: [
-          /* @__PURE__ */ n("strong", { children: gt }),
-          m.actions.map((o, f) => /* @__PURE__ */ c(
+          /* @__PURE__ */ n("strong", { children: wt }),
+          m.actions.map((o, u) => /* @__PURE__ */ c(
             "button",
             {
               type: "button",
-              disabled: j || P || !!ie || !s || !Yt.length,
-              onClick: () => void Xe(o),
+              disabled: j || x || !!ie || !s || !tr.length,
+              onClick: () => void Ye(o),
               children: [
-                Ae(o, f) && /* @__PURE__ */ n("kbd", { children: Ae(o, f) }),
+                Ie(o, u) && /* @__PURE__ */ n("kbd", { children: Ie(o, u) }),
                 /* @__PURE__ */ n("span", { children: o.label }),
                 /* @__PURE__ */ n("small", { children: o.steps.length ? `${o.steps.length} step(s)` : "Skip" })
               ]
@@ -1467,101 +1467,101 @@ function zr({
           !m.actions.length && /* @__PURE__ */ n("p", { children: "This review has no actions." }),
           !s && /* @__PURE__ */ n("p", { children: "Video write permission is required to apply actions." }),
           j && /* @__PURE__ */ c("p", { role: "status", children: [
-            /* @__PURE__ */ n(Ut, { className: "dq-spin" }),
+            /* @__PURE__ */ n(Jt, { className: "dq-spin" }),
             " Applying action to",
             " ",
-            Xt,
+            er,
             "…"
           ] }),
           /* @__PURE__ */ n("p", { className: "dq-shortcuts", children: "←→↑↓ move · space select · enter preview · 1–9 apply · A toggle shown · Esc clear" })
         ] })
       ] })
     ] }) : /* @__PURE__ */ c("div", { className: "dq-empty", children: [
-      /* @__PURE__ */ n(Ct, {}),
+      /* @__PURE__ */ n(Rt, {}),
       /* @__PURE__ */ n("p", { children: t.length ? "Choose a saved review to open its queue." : "No saved reviews are available in this browser." })
     ] }),
-    re && ue && m && /* @__PURE__ */ n(
-      Br,
+    re && ce && m && /* @__PURE__ */ n(
+      tn,
       {
-        video: ue,
+        video: ce,
         review: m,
-        targetLabel: gt,
+        targetLabel: wt,
         pending: j,
-        refreshing: P || !!ie,
-        error: Be,
+        refreshing: x || !!ie,
+        error: Ge,
         canWrite: s,
-        selected: le.has(ue.id),
-        hasPrevious: x.indexOf(ue.id) > 0,
-        hasNext: x.indexOf(ue.id) >= 0 && x.indexOf(ue.id) < x.length - 1,
-        onToggleSelected: () => qe((o) => tt(o, ue.id)),
-        onPrevious: () => We(-1),
-        onNext: () => We(1),
+        selected: se.has(ce.id),
+        hasPrevious: P.indexOf(ce.id) > 0,
+        hasNext: P.indexOf(ce.id) >= 0 && P.indexOf(ce.id) < P.length - 1,
+        onToggleSelected: () => qe((o) => nt(o, ce.id)),
+        onPrevious: () => Xe(-1),
+        onNext: () => Xe(1),
         onClose: () => {
-          we(!1), J(H.current);
+          be(!1), J(G.current);
         },
-        onAction: Xe,
-        onOpen: () => e({ page: "video", id: ue.id })
+        onAction: Ye,
+        onOpen: () => e({ page: "video", id: ce.id })
       }
     ),
-    se && m && /* @__PURE__ */ n(
-      Tt,
+    ae && m && /* @__PURE__ */ n(
+      Lt,
       {
         reviews: t,
         activeReview: { ...m, view: { ...m.view, filter: M } },
         initialEdit: !0,
         temporary: !0,
         onSave: (o) => {
-          const f = o.find((w) => w.id === p);
-          return Ne(f), De(
-            f,
-            ge({ ...f.view.filter, page: M.page })
+          const u = o.find((w) => w.id === p);
+          return Ne(u), Le(
+            u,
+            me({ ...u.view.filter, page: M.page })
           ), !0;
         },
         onChoose: () => {
         },
         onClose: () => {
-          lt(!1), J(H.current, !1);
+          dt(!1), J(G.current, !1);
         }
       }
     ),
     F && /* @__PURE__ */ n(
-      Tt,
+      Lt,
       {
         reviews: t,
-        activeReview: _,
-        initialEdit: ae,
-        onSave: mt,
-        onChoose: Ye,
+        activeReview: z,
+        initialEdit: oe,
+        onSave: bt,
+        onChoose: Ze,
         onClose: () => {
-          L(!1), ae && J(H.current, !1);
+          L(!1), oe && J(G.current, !1);
         }
       }
     )
   ] });
-  async function De(o, f) {
-    const w = H.current, E = Math.max(0, x.indexOf(w ?? -1));
+  async function Le(o, u) {
+    const w = G.current, C = Math.max(0, P.indexOf(w ?? -1));
     try {
-      const I = (await pe(o, f)).items.map((z) => z.id);
-      fe(
-        (z) => new Set([...z].filter((he) => I.includes(he)))
+      const A = (await he(o, u)).items.map((_) => _.id);
+      ue(
+        (_) => new Set([..._].filter((ge) => A.includes(ge)))
       );
-      const G = qt(I, w, E);
-      te(G), ce.current || J(G, !1);
+      const H = It(A, w, C);
+      te(H), le.current || J(H, !1);
     } catch {
     }
   }
-  function tr() {
-    fe(/* @__PURE__ */ new Set()), me.current.clear(), te(null);
+  function ir() {
+    ue(/* @__PURE__ */ new Set()), we.current.clear(), te(null);
   }
-  function wt(o) {
+  function yt(o) {
     return m ? /* @__PURE__ */ n(
       "fieldset",
       {
         className: "dq-pagination-row",
-        disabled: j || P,
+        disabled: j || x,
         "aria-label": `Review queue pagination ${o}`,
         children: /* @__PURE__ */ n(
-          or,
+          lr,
           {
             filter: {
               ...M,
@@ -1571,13 +1571,13 @@ function zr({
             totalCount: Y.totalCount,
             className: "dq-pagination",
             ariaLabel: `Review queue pages ${o}`,
-            onFilterChange: (f) => {
-              j || P || f.page === Number(M.page) || Kr(
-                { ...M, page: f.page },
+            onFilterChange: (u) => {
+              j || x || u.page === Number(M.page) || Yr(
+                { ...M, page: u.page },
                 m,
-                Ee,
-                pe,
-                tr
+                Ce,
+                he,
+                ir
               );
             }
           }
@@ -1585,37 +1585,37 @@ function zr({
       }
     ) : null;
   }
-  function bt(o) {
+  function vt(o) {
     return /* @__PURE__ */ n(
-      Vr,
+      Zr,
       {
         video: o,
-        annotation: Dr(o, m, ke.ids),
-        displayMode: de,
+        annotation: Vr(o, m, ke.ids),
+        displayMode: fe,
         focused: o.id === B,
-        selected: le.has(o.id),
-        setRef: (f) => {
-          f ? He.current.set(o.id, f) : He.current.delete(o.id);
+        selected: se.has(o.id),
+        setRef: (u) => {
+          u ? He.current.set(o.id, u) : He.current.delete(o.id);
         },
         onFocus: () => te(o.id),
-        onToggle: () => qe((f) => tt(f, o.id)),
+        onToggle: () => qe((u) => nt(u, o.id)),
         onPreview: () => {
-          te(o.id), we(!0);
+          te(o.id), be(!0);
         }
       },
       o.id
     );
   }
 }
-function Kr(e, t, r, i, a) {
+function Yr(e, t, r, i, a) {
   r(e), a(), i(t, e).catch(() => {
   });
 }
-function tt(e, t) {
+function nt(e, t) {
   const r = new Set(e);
   return r.has(t) ? r.delete(t) : r.add(t), r;
 }
-function Vr({
+function Zr({
   video: e,
   annotation: t,
   displayMode: r,
@@ -1626,7 +1626,7 @@ function Vr({
   onToggle: b,
   onPreview: S
 }) {
-  const y = e.files[0], s = Ht(e), u = /* @__PURE__ */ c(oe, { children: [
+  const y = e.files[0], s = Xt(e), f = /* @__PURE__ */ c(de, { children: [
     /* @__PURE__ */ n(
       "button",
       {
@@ -1636,7 +1636,7 @@ function Vr({
           g.stopPropagation(), b();
         },
         className: `dq-select ${a ? "selected" : ""}`,
-        children: a && /* @__PURE__ */ n(gr, {})
+        children: a && /* @__PURE__ */ n(Cr, {})
       }
     ),
     /* @__PURE__ */ n(
@@ -1648,12 +1648,12 @@ function Vr({
           g.stopPropagation(), S();
         },
         className: "dq-preview-button",
-        children: /* @__PURE__ */ n(mr, {})
+        children: /* @__PURE__ */ n(Er, {})
       }
     ),
     /* @__PURE__ */ c("div", { className: "dq-badges", children: [
-      y && /* @__PURE__ */ n("span", { children: sr(y.width, y.height) }),
-      y != null && y.duration ? /* @__PURE__ */ n("span", { children: lr(y.duration) }) : null
+      y && /* @__PURE__ */ n("span", { children: dr(y.width, y.height) }),
+      y != null && y.duration ? /* @__PURE__ */ n("span", { children: ur(y.duration) }) : null
     ] })
   ] });
   return /* @__PURE__ */ c(
@@ -1669,12 +1669,12 @@ function Vr({
       },
       className: `dq-card ${r} ${i ? "focused" : ""} ${a ? "selected" : ""}`,
       children: [
-        r === "wall" ? /* @__PURE__ */ c(Qr, { video: e, children: [
-          u,
+        r === "wall" ? /* @__PURE__ */ c(en, { video: e, children: [
+          f,
           /* @__PURE__ */ n("p", { className: "dq-wall-title", children: s })
         ] }) : /* @__PURE__ */ c("div", { className: "dq-poster", children: [
-          /* @__PURE__ */ n("img", { src: Qt(e), alt: "" }),
-          u
+          /* @__PURE__ */ n("img", { src: Ht(e), alt: "" }),
+          f
         ] }),
         (r !== "wall" || t) && /* @__PURE__ */ c("div", { className: "dq-card-copy", children: [
           /* @__PURE__ */ n("strong", { children: s }),
@@ -1687,7 +1687,7 @@ function Vr({
     }
   );
 }
-function Qr({
+function en({
   video: e,
   children: t
 }) {
@@ -1699,15 +1699,15 @@ function Qr({
       d(!0), b(!0);
       return;
     }
-    const u = new IntersectionObserver(
+    const f = new IntersectionObserver(
       ([N]) => d(N.isIntersecting),
       { rootMargin: "320px 0px", threshold: 0 }
     ), g = new IntersectionObserver(
       ([N]) => b(N.isIntersecting && N.intersectionRatio >= 0.6),
       { threshold: [0, 0.6, 1] }
     );
-    return u.observe(s), g.observe(s), () => {
-      u.disconnect(), g.disconnect();
+    return f.observe(s), g.observe(s), () => {
+      f.disconnect(), g.disconnect();
     };
   }, [e.id, e.files.length]), ee(() => {
     if (!a) {
@@ -1715,10 +1715,10 @@ function Qr({
       return;
     }
     const s = new AbortController();
-    return V(Tr(e.id), {
+    return V(Jr(e.id), {
       signal: s.signal
-    }).then((u) => {
-      s.signal.aborted || y(u.available === !0);
+    }).then((f) => {
+      s.signal.aborted || y(f.available === !0);
     }).catch(() => {
       s.signal.aborted || y(!1);
     }), () => s.abort();
@@ -1727,12 +1727,12 @@ function Qr({
     s && (l ? Promise.resolve(s.play()).catch(() => {
     }) : s.pause());
   }, [S, l]), /* @__PURE__ */ c("div", { ref: r, className: "dq-wall-media", children: [
-    /* @__PURE__ */ n("img", { src: Qt(e), alt: "" }),
+    /* @__PURE__ */ n("img", { src: Ht(e), alt: "" }),
     S && /* @__PURE__ */ n(
       "video",
       {
         ref: i,
-        src: xr(e.id),
+        src: Fr(e.id),
         muted: !0,
         loop: !0,
         playsInline: !0,
@@ -1742,7 +1742,7 @@ function Qr({
     t
   ] });
 }
-function Br({
+function tn({
   video: e,
   review: t,
   targetLabel: r,
@@ -1754,13 +1754,13 @@ function Br({
   hasPrevious: S,
   hasNext: y,
   onToggleSelected: s,
-  onPrevious: u,
+  onPrevious: f,
   onNext: g,
   onClose: N,
   onAction: R,
-  onOpen: C
+  onOpen: E
 }) {
-  const O = U(null), $ = U(null), A = e.files[0], h = Ht(e);
+  const O = U(null), $ = U(null), I = e.files[0], h = Xt(e);
   ee(() => {
     var T;
     const p = document.body.style.overflow;
@@ -1769,15 +1769,15 @@ function Br({
     };
   }, []);
   function q(p) {
-    var L, ae, ne;
+    var L, oe, ne;
     if (p.key !== "Tab") return;
     const T = [
       ...((L = O.current) == null ? void 0 : L.querySelectorAll(
         'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       )) ?? []
-    ].filter((se) => se.offsetParent !== null);
+    ].filter((ae) => ae.offsetParent !== null);
     if (!T.length) {
-      p.preventDefault(), (ae = O.current) == null || ae.focus();
+      p.preventDefault(), (oe = O.current) == null || oe.focus();
       return;
     }
     const F = T.indexOf(
@@ -1802,12 +1802,12 @@ function Br({
         (p.key === "ArrowLeft" ? -1 : 1) * (p.shiftKey ? 5 : p.altKey ? 10 : 60)
       );
     else if ((p.key === "," || p.key === ".") && F) {
-      const ae = [A == null ? void 0 : A.duration, L == null ? void 0 : L.duration].find(
-        (se) => se != null && Number.isFinite(se) && se > 0
-      ) ?? 0, ne = e.parentVideoId != null ? (e.clipEndSec ?? ae) - (e.clipStartSec ?? 0) : ae;
+      const oe = [I == null ? void 0 : I.duration, L == null ? void 0 : L.duration].find(
+        (ae) => ae != null && Number.isFinite(ae) && ae > 0
+      ) ?? 0, ne = e.parentVideoId != null ? (e.clipEndSec ?? oe) - (e.clipStartSec ?? 0) : oe;
       Number.isFinite(ne) && ne > 0 && F.seekBy((p.key === "," ? -1 : 1) * ne * 0.1);
     } else if (p.key.toLowerCase() === "n" || p.key.toLowerCase() === "m")
-      !p.repeat && !i && !a && (p.key.toLowerCase() === "n" && S && u(), p.key.toLowerCase() === "m" && y && g());
+      !p.repeat && !i && !a && (p.key.toLowerCase() === "n" && S && f(), p.key.toLowerCase() === "m" && y && g());
     else if (p.key === "ArrowUp" && L)
       L.volume = Math.min(1, L.volume + 0.1);
     else if (p.key === "ArrowDown" && L)
@@ -1837,8 +1837,8 @@ function Br({
               type: "button",
               "aria-label": "Previous review video",
               disabled: !S || i || a,
-              onClick: u,
-              children: /* @__PURE__ */ n(dr, {})
+              onClick: f,
+              children: /* @__PURE__ */ n(br, {})
             }
           ),
           /* @__PURE__ */ n(
@@ -1848,7 +1848,7 @@ function Br({
               "aria-label": "Next review video",
               disabled: !y || i || a,
               onClick: g,
-              children: /* @__PURE__ */ n(ur, {})
+              children: /* @__PURE__ */ n(yr, {})
             }
           ),
           /* @__PURE__ */ c("div", { children: [
@@ -1872,9 +1872,9 @@ function Br({
             "button",
             {
               type: "button",
-              onClick: C,
+              onClick: E,
               "aria-label": "Open video details",
-              children: /* @__PURE__ */ n(fr, {})
+              children: /* @__PURE__ */ n(vr, {})
             }
           ),
           /* @__PURE__ */ n(
@@ -1883,19 +1883,19 @@ function Br({
               type: "button",
               onClick: N,
               "aria-label": "Close review preview",
-              children: /* @__PURE__ */ n(jt, {})
+              children: /* @__PURE__ */ n(zt, {})
             }
           )
         ] }),
-        /* @__PURE__ */ n("div", { className: "dq-player", "data-review-player-controls": !0, tabIndex: 0, children: A ? /* @__PURE__ */ n(
-          ar,
+        /* @__PURE__ */ n("div", { className: "dq-player", "data-review-player-controls": !0, tabIndex: 0, children: I ? /* @__PURE__ */ n(
+          cr,
           {
             autostart: !0,
-            streamUrl: Pr(e.id),
-            posterUrl: Ot(e),
-            format: A.format,
-            audioCodec: A.audioCodec,
-            duration: A.duration ?? 0,
+            streamUrl: jr(e.id),
+            posterUrl: xt(e),
+            format: I.format,
+            audioCodec: I.audioCodec,
+            duration: I.duration ?? 0,
             videoId: e.id,
             showAbLoop: !1,
             extensionSurface: "quick-view",
@@ -1909,7 +1909,7 @@ function Br({
               loop: !1
             } : void 0
           }
-        ) : /* @__PURE__ */ n("img", { src: Ot(e), alt: "" }) }),
+        ) : /* @__PURE__ */ n("img", { src: xt(e), alt: "" }) }),
         d && /* @__PURE__ */ n("p", { role: "alert", className: "dq-alert", children: d }),
         /* @__PURE__ */ n("p", { className: "dq-editor-note", children: "Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m previous/next · Enter/Esc close" }),
         /* @__PURE__ */ n("footer", { "data-review-player-controls": !0, children: t.actions.map((p, T) => /* @__PURE__ */ c(
@@ -1919,7 +1919,7 @@ function Br({
             disabled: i || a || !l,
             onClick: () => void R(p),
             children: [
-              Ae(p, T) && /* @__PURE__ */ n("kbd", { children: Ae(p, T) }),
+              Ie(p, T) && /* @__PURE__ */ n("kbd", { children: Ie(p, T) }),
               p.label
             ]
           },
@@ -1929,7 +1929,7 @@ function Br({
     }
   );
 }
-function Tt({
+function Lt({
   reviews: e,
   activeReview: t,
   initialEdit: r = !1,
@@ -1940,7 +1940,7 @@ function Tt({
 }) {
   const [b, S] = v(
     () => r && t ? structuredClone(t) : null
-  ), [y, s] = v(""), [u, g] = v(!1), N = U(null);
+  ), [y, s] = v(""), [f, g] = v(!1), N = U(null);
   ee(() => {
     var k, p;
     const h = document.activeElement, q = document.body.style.overflow;
@@ -1957,7 +1957,7 @@ function Tt({
       return;
     }
     if (h.key === "Escape") {
-      X(h), u || l();
+      X(h), f || l();
       return;
     }
     if (h.key !== "Tab") {
@@ -1978,7 +1978,7 @@ function Tt({
     );
     h.shiftKey && k <= 0 ? (X(h), (F = q.at(-1)) == null || F.focus()) : !h.shiftKey && k === q.length - 1 ? (X(h), q[0].focus()) : h.stopPropagation();
   }
-  function C(h) {
+  function E(h) {
     S(
       h ? structuredClone(h) : {
         id: crypto.randomUUID(),
@@ -2002,9 +2002,9 @@ function Tt({
     ), s("");
   }
   async function O() {
-    if (u) return;
-    if (!b || nt(b)) {
-      s(b ? nt(b) : "Choose a review.");
+    if (f) return;
+    if (!b || ot(b)) {
+      s(b ? ot(b) : "Choose a review.");
       return;
     }
     const h = { ...b, name: b.name.trim() }, q = e.some((k) => k.id === h.id) ? e.map((k) => k.id === h.id ? h : k) : [...e, h];
@@ -2021,7 +2021,7 @@ function Tt({
     }
   }
   async function $(h) {
-    if (!u) {
+    if (!f) {
       g(!0), s("");
       try {
         if (!await a(h)) throw new Error("Could not save reviews.");
@@ -2034,9 +2034,9 @@ function Tt({
       }
     }
   }
-  async function A(h) {
+  async function I(h) {
     var k;
-    if (u) return;
+    if (f) return;
     const q = (k = h.target.files) == null ? void 0 : k[0];
     if (h.target.value = "", !!q) {
       if (q.size > 2e6) {
@@ -2045,8 +2045,8 @@ function Tt({
       }
       g(!0), s("");
       try {
-        const p = Ie(await q.text());
-        if (!await a(it(e, p)))
+        const p = Ae(await q.text());
+        if (!await a(at(e, p)))
           throw new Error("Could not save reviews.");
       } catch (p) {
         s(
@@ -2078,46 +2078,46 @@ function Tt({
             {
               type: "button",
               "aria-label": "Close review manager",
-              disabled: u,
+              disabled: f,
               onClick: l,
-              children: /* @__PURE__ */ n(jt, {})
+              children: /* @__PURE__ */ n(zt, {})
             }
           )
         ] }),
         y && /* @__PURE__ */ n("p", { role: "alert", className: "dq-alert", children: y }),
-        /* @__PURE__ */ n("fieldset", { disabled: u, className: "dq-manager-content", children: b ? /* @__PURE__ */ n(
-          Hr,
+        /* @__PURE__ */ n("fieldset", { disabled: f, className: "dq-manager-content", children: b ? /* @__PURE__ */ n(
+          rn,
           {
             draft: b,
             temporary: i,
-            saving: u,
+            saving: f,
             setDraft: S,
             onSave: () => void O(),
             onCancel: l
           }
-        ) : /* @__PURE__ */ c(oe, { children: [
+        ) : /* @__PURE__ */ c(de, { children: [
           /* @__PURE__ */ c("div", { className: "dq-manager-tools", children: [
             /* @__PURE__ */ c(
               "button",
               {
                 className: "dq-button",
                 type: "button",
-                onClick: () => C(),
+                onClick: () => E(),
                 children: [
-                  /* @__PURE__ */ n(pr, {}),
+                  /* @__PURE__ */ n(Sr, {}),
                   " New review"
                 ]
               }
             ),
             /* @__PURE__ */ c("label", { className: "dq-button", children: [
-              /* @__PURE__ */ n(hr, {}),
+              /* @__PURE__ */ n(Nr, {}),
               " Import reviews",
               /* @__PURE__ */ n(
                 "input",
                 {
                   type: "file",
                   accept: "application/json,.json",
-                  onChange: A
+                  onChange: I
                 }
               )
             ] })
@@ -2127,15 +2127,15 @@ function Tt({
               /* @__PURE__ */ n("strong", { children: h.name }),
               /* @__PURE__ */ n("p", { children: h.description || "No description" })
             ] }),
-            /* @__PURE__ */ c("button", { type: "button", onClick: () => C(h), children: [
-              /* @__PURE__ */ n(Lt, {}),
+            /* @__PURE__ */ c("button", { type: "button", onClick: () => E(h), children: [
+              /* @__PURE__ */ n(jt, {}),
               " Edit"
             ] }),
             /* @__PURE__ */ n(
               "button",
               {
                 type: "button",
-                onClick: () => C({
+                onClick: () => E({
                   ...structuredClone(h),
                   id: crypto.randomUUID(),
                   name: `${h.name} copy`
@@ -2153,7 +2153,7 @@ function Tt({
                     e.filter((q) => q.id !== h.id)
                   );
                 },
-                children: /* @__PURE__ */ n(Ft, {})
+                children: /* @__PURE__ */ n(_t, {})
               }
             )
           ] }, h.id)) })
@@ -2162,7 +2162,7 @@ function Tt({
     }
   );
 }
-function Hr({
+function rn({
   draft: e,
   temporary: t = !1,
   saving: r = !1,
@@ -2170,23 +2170,23 @@ function Hr({
   onSave: a,
   onCancel: d
 }) {
-  const [l, b] = v("Review"), S = U(/* @__PURE__ */ new WeakMap()), y = (u) => {
-    let g = S.current.get(u);
-    return g || (g = crypto.randomUUID(), S.current.set(u, g)), g;
-  }, s = (u, g) => i({
+  const [l, b] = v("Review"), S = U(/* @__PURE__ */ new WeakMap()), y = (f) => {
+    let g = S.current.get(f);
+    return g || (g = crypto.randomUUID(), S.current.set(f, g)), g;
+  }, s = (f, g) => i({
     ...e,
     actions: e.actions.map(
-      (N, R) => R === u ? g : N
+      (N, R) => R === f ? g : N
     )
   });
   return /* @__PURE__ */ c("div", { className: "dq-editor", children: [
     !t && /* @__PURE__ */ n("div", { className: "dq-editor-nav", children: /* @__PURE__ */ n(
-      cr,
+      fr,
       {
-        tabs: ["Review", "Queue", "Appearance", "Actions"].map((u) => ({
-          key: u,
-          label: u,
-          count: u === "Actions" ? e.actions.length : void 0,
+        tabs: ["Review", "Queue", "Appearance", "Actions"].map((f) => ({
+          key: f,
+          label: f,
+          count: f === "Actions" ? e.actions.length : void 0,
           disabled: r
         })),
         activeTab: l,
@@ -2205,7 +2205,7 @@ function Hr({
               autoFocus: !0,
               "aria-label": "Review name",
               value: e.name,
-              onChange: (u) => i({ ...e, name: u.target.value })
+              onChange: (f) => i({ ...e, name: f.target.value })
             }
           )
         ] }),
@@ -2216,7 +2216,7 @@ function Hr({
             {
               "aria-label": "Description",
               value: e.description,
-              onChange: (u) => i({ ...e, description: u.target.value })
+              onChange: (f) => i({ ...e, description: f.target.value })
             }
           )
         ] })
@@ -2226,7 +2226,7 @@ function Hr({
         {
           hidden: !t && l !== "Queue",
           className: "dq-editor-section",
-          children: /* @__PURE__ */ n(kt, { draft: e, onChange: i, presentation: !1 })
+          children: /* @__PURE__ */ n(Pt, { draft: e, onChange: i, presentation: !1 })
         }
       ),
       !t && /* @__PURE__ */ n(
@@ -2234,7 +2234,7 @@ function Hr({
         {
           hidden: l !== "Appearance",
           className: "dq-editor-section",
-          children: /* @__PURE__ */ n(kt, { draft: e, onChange: i, queue: !1 })
+          children: /* @__PURE__ */ n(Pt, { draft: e, onChange: i, queue: !1 })
         }
       ),
       !t && /* @__PURE__ */ c("section", { hidden: l !== "Actions", className: "dq-editor-section", children: [
@@ -2242,14 +2242,14 @@ function Hr({
         /* @__PURE__ */ n("p", { children: "Steps run in order. No steps means Skip. Earlier steps may remain applied if a later step fails." }),
         /* @__PURE__ */ n("p", { className: "dq-editor-note", children: "Drag the handles to reorder. With a handle focused, use Alt + ↑ or ↓." }),
         /* @__PURE__ */ n(
-          Et,
+          qt,
           {
             items: e.actions,
-            getKey: (u) => u.id,
+            getKey: (f) => f.id,
             disabled: r,
             className: "dq-sortable-list",
-            onReorder: (u) => i({ ...e, actions: u }),
-            renderItem: (u, { index: g, dragHandleProps: N, isOver: R }) => /* @__PURE__ */ c(
+            onReorder: (f) => i({ ...e, actions: f }),
+            renderItem: (f, { index: g, dragHandleProps: N, isOver: R }) => /* @__PURE__ */ c(
               "fieldset",
               {
                 className: R ? "dq-action-card dq-drag-over" : "dq-action-card",
@@ -2267,10 +2267,10 @@ function Hr({
                         disabled: r,
                         className: "dq-drag-handle",
                         "aria-label": `Reorder action ${g + 1}`,
-                        children: /* @__PURE__ */ n(Jt, {})
+                        children: /* @__PURE__ */ n(Kt, {})
                       }
                     ),
-                    /* @__PURE__ */ n("strong", { children: u.label || "New action" }),
+                    /* @__PURE__ */ n("strong", { children: f.label || "New action" }),
                     /* @__PURE__ */ n("div", { className: "dq-row", children: /* @__PURE__ */ n(
                       "button",
                       {
@@ -2280,9 +2280,9 @@ function Hr({
                           actions: [
                             ...e.actions.slice(0, g + 1),
                             {
-                              ...structuredClone(u),
+                              ...structuredClone(f),
                               id: crypto.randomUUID(),
-                              label: u.label + " copy",
+                              label: f.label + " copy",
                               shortcut: ""
                             },
                             ...e.actions.slice(g + 1)
@@ -2298,10 +2298,10 @@ function Hr({
                       /* @__PURE__ */ c(
                         "select",
                         {
-                          value: u.shortcut ?? "auto",
-                          onChange: (C) => s(g, {
-                            ...u,
-                            shortcut: C.target.value === "auto" ? void 0 : C.target.value
+                          value: f.shortcut ?? "auto",
+                          onChange: (E) => s(g, {
+                            ...f,
+                            shortcut: E.target.value === "auto" ? void 0 : E.target.value
                           }),
                           children: [
                             /* @__PURE__ */ c("option", { value: "auto", children: [
@@ -2310,7 +2310,7 @@ function Hr({
                               ")"
                             ] }),
                             /* @__PURE__ */ n("option", { value: "", children: "None" }),
-                            [1, 2, 3, 4, 5, 6, 7, 8, 9].map((C) => /* @__PURE__ */ n("option", { value: C, children: C }, C))
+                            [1, 2, 3, 4, 5, 6, 7, 8, 9].map((E) => /* @__PURE__ */ n("option", { value: E, children: E }, E))
                           ]
                         }
                       )
@@ -2320,42 +2320,42 @@ function Hr({
                       /* @__PURE__ */ n(
                         "input",
                         {
-                          value: u.label,
-                          onChange: (C) => s(g, {
-                            ...u,
-                            label: C.target.value
+                          value: f.label,
+                          onChange: (E) => s(g, {
+                            ...f,
+                            label: E.target.value
                           })
                         }
                       )
                     ] })
                   ] }),
                   /* @__PURE__ */ n(
-                    Et,
+                    qt,
                     {
-                      items: u.steps,
+                      items: f.steps,
                       getKey: y,
                       disabled: r,
                       className: "dq-sortable-list",
-                      onReorder: (C) => s(g, { ...u, steps: C }),
-                      renderItem: (C, { index: O, dragHandleProps: $, isOver: A }) => /* @__PURE__ */ n(
-                        Gr,
+                      onReorder: (E) => s(g, { ...f, steps: E }),
+                      renderItem: (E, { index: O, dragHandleProps: $, isOver: I }) => /* @__PURE__ */ n(
+                        nn,
                         {
                           dragHandleProps: $,
                           saving: r,
-                          isOver: A,
-                          step: C,
+                          isOver: I,
+                          step: E,
                           index: O,
                           onChange: (h) => {
-                            S.current.set(h, y(C)), s(g, {
-                              ...u,
-                              steps: u.steps.map(
+                            S.current.set(h, y(E)), s(g, {
+                              ...f,
+                              steps: f.steps.map(
                                 (q, k) => k === O ? h : q
                               )
                             });
                           },
                           onRemove: () => s(g, {
-                            ...u,
-                            steps: u.steps.filter(
+                            ...f,
+                            steps: f.steps.filter(
                               (h, q) => q !== O
                             )
                           })
@@ -2370,8 +2370,8 @@ function Hr({
                         className: "dq-button",
                         type: "button",
                         onClick: () => s(g, {
-                          ...u,
-                          steps: [...u.steps, { mode: "ADD", tagIds: [] }]
+                          ...f,
+                          steps: [...f.steps, { mode: "ADD", tagIds: [] }]
                         }),
                         children: "Add step"
                       }
@@ -2384,7 +2384,7 @@ function Hr({
                         onClick: () => i({
                           ...e,
                           actions: e.actions.filter(
-                            (C, O) => O !== g
+                            (E, O) => O !== g
                           )
                         }),
                         children: "Remove action"
@@ -2420,12 +2420,12 @@ function Hr({
           className: "dq-button",
           type: "button",
           onClick: () => {
-            const u = URL.createObjectURL(
+            const f = URL.createObjectURL(
               new Blob([JSON.stringify([e], null, 2)], {
                 type: "application/json"
               })
             ), g = document.createElement("a");
-            g.href = u, g.download = "data-quality-review.json", g.click(), URL.revokeObjectURL(u);
+            g.href = f, g.download = "data-quality-review.json", g.click(), URL.revokeObjectURL(f);
           },
           children: "Export draft"
         }
@@ -2435,7 +2435,7 @@ function Hr({
     ] })
   ] });
 }
-function Gr({
+function nn({
   step: e,
   index: t,
   dragHandleProps: r,
@@ -2453,7 +2453,7 @@ function Gr({
         disabled: i,
         className: "dq-drag-handle",
         "aria-label": `Reorder step ${t + 1}`,
-        children: /* @__PURE__ */ n(Jt, {})
+        children: /* @__PURE__ */ n(Kt, {})
       }
     ),
     /* @__PURE__ */ c("span", { children: [
@@ -2474,7 +2474,7 @@ function Gr({
       }
     ),
     /* @__PURE__ */ n(
-      rt,
+      it,
       {
         entityType: "tag",
         values: e.tagIds,
@@ -2483,10 +2483,10 @@ function Gr({
         allowCreate: !1
       }
     ),
-    /* @__PURE__ */ n("button", { type: "button", "aria-label": "Remove step", onClick: l, children: /* @__PURE__ */ n(Ft, {}) })
+    /* @__PURE__ */ n("button", { type: "button", "aria-label": "Remove step", onClick: l, children: /* @__PURE__ */ n(_t, {}) })
   ] });
 }
-async function Wr() {
+async function on() {
   const e = await V("/api/auth/me"), t = String(e.user.id), r = localStorage.getItem("cove-data-quality-v2:" + t);
   let i = r ?? localStorage.getItem("cove-data-quality-reviews-v1:" + t) ?? localStorage.getItem("cove-video-reviews-v1:" + t) ?? "[]";
   if (r)
@@ -2500,24 +2500,24 @@ async function Wr() {
   ), d = document.createElement("a");
   d.href = a, d.download = "data-quality-browser-recovery.json", d.click(), URL.revokeObjectURL(a);
 }
-function Mt({ label: e }) {
+function Dt({ label: e }) {
   return /* @__PURE__ */ c("div", { role: "status", className: "dq-centered", children: [
-    /* @__PURE__ */ n(Ut, { className: "dq-spin" }),
+    /* @__PURE__ */ n(Jt, { className: "dq-spin" }),
     e
   ] });
 }
-function $t({
+function Ut({
   message: e,
   onRetry: t
 }) {
   return /* @__PURE__ */ c("div", { role: "alert", className: "dq-error", children: [
-    /* @__PURE__ */ n(Dt, {}),
+    /* @__PURE__ */ n(Ft, {}),
     /* @__PURE__ */ n("p", { children: e }),
     /* @__PURE__ */ n("button", { className: "dq-button", type: "button", onClick: t, children: "Retry" })
   ] });
 }
-const rn = { components: { DataQualityPage: zr } };
+const un = { components: { DataQualityPage: Xr } };
 export {
-  zr as DataQualityPage,
-  rn as default
+  Xr as DataQualityPage,
+  un as default
 };

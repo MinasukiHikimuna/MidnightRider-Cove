@@ -25,7 +25,10 @@ import {
   ChevronRight,
   ExternalLink,
   Film,
+  Grid3X3,
   GripVertical,
+  LayoutGrid,
+  List,
   Loader2,
   Pencil,
   Play,
@@ -33,6 +36,8 @@ import {
   Trash2,
   Upload,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "@cove/runtime/lucide-react";
 import {
   findVideos,
@@ -80,6 +85,10 @@ import {
 } from "./model";
 
 type ReviewDisplayMode = "grid" | "list" | "wall";
+
+const defaultCardSize = 180;
+const minimumCardSize = 115;
+const maximumCardSize = 380;
 
 function initialDisplayMode(review: VideoReview): ReviewDisplayMode {
   return review.view.displayMode === "wall" ||
@@ -194,7 +203,7 @@ export function DataQualityPage({
   previewOpenRef.current = previewOpen;
   const previewVideoRef = useRef<Video | null>(null);
   const [displayMode, setDisplayMode] = useState<ReviewDisplayMode>("grid");
-  const [cardSize, setCardSize] = useState<number | null>(null);
+  const [cardSize, setCardSize] = useState(defaultCardSize);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [pendingTargetLabel, setPendingTargetLabel] = useState("");
@@ -330,7 +339,9 @@ export function DataQualityPage({
       setFilter(nextFilter);
       setDisplayMode(resume?.displayMode ?? initialDisplayMode(review));
       setCardSize(
-        resume ? resume.cardSize : (review.presentation?.cardSize ?? null),
+        resume
+          ? (resume.cardSize ?? defaultCardSize)
+          : (review.presentation?.cardSize ?? defaultCardSize),
       );
       try {
         const result = await fetchQueue(review, nextFilter);
@@ -707,7 +718,7 @@ export function DataQualityPage({
       if (updated.view.displayMode !== savedReview.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
       if (updated.presentation?.cardSize !== savedReview.presentation?.cardSize)
-        setCardSize(updated.presentation?.cardSize ?? null);
+        setCardSize(updated.presentation?.cardSize ?? defaultCardSize);
       if (queueSignature(updated) !== queueSignature(savedReview)) {
         setTemporaryReview(null);
         void resumeQueue(
@@ -916,45 +927,57 @@ export function DataQualityPage({
               {review.description && <p>{review.description}</p>}
             </div>
             <div
-              className="dq-view-switch"
+              className="dq-view-switch flex min-h-10 items-center gap-0.5 rounded-lg border border-border bg-card/70 px-1.5 py-1 shadow-sm sm:min-h-0"
               role="group"
               aria-label="Review view"
             >
-              {(["grid", "list", "wall"] as const).map((mode) => (
+              {([
+                { mode: "grid", label: "Grid", Icon: LayoutGrid },
+                { mode: "list", label: "List", Icon: List },
+                { mode: "wall", label: "Wall", Icon: Grid3X3 },
+              ] as const).map(({ mode, label, Icon }) => (
                 <button
                   key={mode}
                   type="button"
+                  className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-md border border-transparent p-2 text-secondary hover:bg-card/80 hover:text-foreground focus:border-accent focus:outline-none sm:min-h-0 sm:min-w-0 sm:p-1.5 ${
+                    displayMode === mode
+                      ? "bg-background/60 text-accent shadow-sm"
+                      : ""
+                  }`}
+                  aria-label={label}
+                  title={label}
                   aria-pressed={displayMode === mode}
                   onClick={() => setDisplayMode(mode)}
                 >
-                  {mode}
+                  <Icon className="h-3.5 w-3.5" />
                 </button>
               ))}
             </div>
             {displayMode !== "list" && (
-              <>
-                <label className="dq-card-size">
-                  Card width
-                  <input
-                    aria-label="Review card size"
-                    type="range"
-                    min="115"
-                    max="380"
-                    step="5"
-                    value={cardSize ?? (displayMode === "wall" ? 130 : 180)}
-                    onChange={(event) =>
-                      setCardSize(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <button
-                  className={`dq-button ${cardSize == null ? "active" : ""}`}
-                  type="button"
-                  onClick={() => setCardSize(null)}
-                >
-                  Auto fit
-                </button>
-              </>
+              <div className="hidden items-center gap-1 pl-1 md:flex">
+                <ZoomOut className="h-3 w-3 text-muted" />
+                <input
+                  aria-label={`Card size: ${cardSize}px`}
+                  title={`Card size: ${cardSize}px`}
+                  type="range"
+                  min={minimumCardSize}
+                  max={maximumCardSize}
+                  step="5"
+                  className="themed-range-input h-1 w-16 cursor-pointer sm:w-20"
+                  value={cardSize}
+                  style={
+                    {
+                      "--range-fill": `${
+                        ((cardSize - minimumCardSize) /
+                          (maximumCardSize - minimumCardSize)) *
+                        100
+                      }%`,
+                    } as React.CSSProperties
+                  }
+                  onChange={(event) => setCardSize(Number(event.target.value))}
+                />
+                <ZoomIn className="h-3 w-3 text-muted" />
+              </div>
             )}
           </>
         )}
@@ -1026,12 +1049,7 @@ export function DataQualityPage({
                       className="dq-grid"
                       style={
                         {
-                          "--dq-card-width":
-                            cardSize == null
-                              ? displayMode === "wall"
-                                ? "clamp(115px, 10vw, 150px)"
-                                : "clamp(145px, 14vw, 180px)"
-                              : `${cardSize}px`,
+                          "--dq-card-width": `${cardSize}px`,
                         } as React.CSSProperties
                       }
                     >
