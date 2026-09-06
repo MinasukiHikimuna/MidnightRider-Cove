@@ -189,21 +189,21 @@ function qr() {
 }
 async function Rr() {
   var g;
-  const e = await V("/api/auth/me"), t = String(e.user.id), r = `cove-data-quality-v2:${t}`, i = et(e.permissions, "savedfilters.read"), a = i && et(e.permissions, "savedfilters.write"), d = i ? (await Je(_t)).filter((N) => N.name === "Data Quality configuration").sort((N, A) => N.id - A.id) : [];
+  const e = await V("/api/auth/me"), t = String(e.user.id), r = `cove-data-quality-v2:${t}`, i = et(e.permissions, "savedfilters.read"), a = i && et(e.permissions, "savedfilters.write"), d = i ? (await Je(_t)).filter((N) => N.name === "Data Quality configuration").sort((N, R) => N.id - R.id) : [];
   if (d.length > 1) {
-    const N = (A) => {
-      const { revision: C, ...O } = Se(A.uiOptions);
+    const N = (R) => {
+      const { revision: C, ...O } = Se(R.uiOptions);
       return JSON.stringify(O);
     };
-    if (d.some((A) => N(A) !== N(d[0])))
+    if (d.some((R) => N(R) !== N(d[0])))
       throw new Error(
         "Conflicting Data Quality configurations were found. Existing data has been kept; resolve the duplicate account records before saving."
       );
     if (a)
-      for (const A of d.slice(1))
-        await V(`/api/savedfilters/${A.id}`, {
+      for (const R of d.slice(1))
+        await V(`/api/savedfilters/${R.id}`, {
           method: "PUT",
-          body: JSON.stringify({ name: `Data Quality recovery ${A.id}` })
+          body: JSON.stringify({ name: `Data Quality recovery ${R.id}` })
         });
     d.splice(1);
   }
@@ -220,49 +220,49 @@ async function Rr() {
       throw new Error(
         "Browser-only reviews conflict with account edits. Neither version was overwritten. Export the browser reviews before reconciling them with the account configuration."
       );
-    const A = [
+    const R = [
       .../* @__PURE__ */ new Set([...l.deletedIds, ...N.deletedIds])
     ];
     l = {
       ...l,
       reviews: it(l.reviews, N.reviews).filter(
-        (C) => !A.includes(C.id)
+        (C) => !R.includes(C.id)
       ),
-      deletedIds: A,
+      deletedIds: R,
       importedIds: [
         .../* @__PURE__ */ new Set([...l.importedIds, ...N.importedIds])
       ]
     }, s = !0;
   }
   if (!b) {
-    const N = JSON.stringify(l), A = Cr(t);
-    if (d.length && A.reviews.some((R) => {
-      const h = l.reviews.find((q) => q.id === R.id);
-      return h && JSON.stringify(h) !== JSON.stringify(R);
+    const N = JSON.stringify(l), R = Cr(t);
+    if (d.length && R.reviews.some((A) => {
+      const h = l.reviews.find((q) => q.id === A.id);
+      return h && JSON.stringify(h) !== JSON.stringify(A);
     }))
       throw new Error(
         "Unmigrated browser reviews conflict with account edits. Neither version was overwritten. Export the browser reviews for recovery, then use a fresh browser to review the account configuration."
       );
     const C = i ? (await Je(Nr)).flatMap(
-      (R) => Ie(R.uiOptions ?? "[]")
-    ) : [], O = A.known.filter(
-      (R) => !A.reviews.some((h) => h.id === R)
+      (A) => Ie(A.uiOptions ?? "[]")
+    ) : [], O = R.known.filter(
+      (A) => !R.reviews.some((h) => h.id === A)
     ), $ = /* @__PURE__ */ new Set([...l.deletedIds, ...O]);
     l = {
       ...l,
       reviews: it(
-        A.reviews,
+        R.reviews,
         l.reviews,
         C.filter(
-          (R) => !A.known.includes(R.id) && !l.importedIds.includes(R.id)
+          (A) => !R.known.includes(A.id) && !l.importedIds.includes(A.id)
         )
-      ).filter((R) => !$.has(R.id)),
+      ).filter((A) => !$.has(A.id)),
       deletedIds: [...$],
       importedIds: [
         .../* @__PURE__ */ new Set([
           ...l.importedIds,
-          ...A.known,
-          ...C.map((R) => R.id)
+          ...R.known,
+          ...C.map((A) => A.id)
         ])
       ]
     }, s || (s = JSON.stringify(l) !== N);
@@ -290,7 +290,7 @@ async function Rr() {
     storageKey: r,
     canWrite: et(e.permissions, "videos.write"),
     canConfigure: !i || a,
-    storageNotice: i ? a ? "Reviews and progress are saved to your account." : "Account reviews are read-only. Saved filter write permission is required to save configuration and progress." : "Reviews and progress are saved only in this browser. Saved filter read and write permissions enable account storage."
+    storageNotice: i ? a ? "" : "Account reviews are read-only. Saved filter write permission is required to save configuration and progress." : "Reviews and progress are saved only in this browser. Saved filter read and write permissions enable account storage."
   };
 }
 async function Vt(e, t) {
@@ -858,7 +858,7 @@ function zr({
     } catch {
       return !1;
     }
-  }), [a, d] = v(""), [l, b] = v(!0), [S, y] = v(""), [s, u] = v(!1), [g, N] = v(!0), [A, C] = v(""), [O, $] = v(""), [R, h] = v(!1), [q, k] = v(!1), [p, T] = v(Fr), [F, L] = v(!1), [ae, ne] = v(!1), [se, lt] = v(!1), [Q, Ne] = v(
+  }), [a, d] = v(""), [l, b] = v(!0), [S, y] = v(""), [s, u] = v(!1), [g, N] = v(!0), [R, C] = v(""), [O, $] = v(""), [A, h] = v(!1), [q, k] = v(!1), [p, T] = v(Fr), [F, L] = v(!1), [ae, ne] = v(!1), [se, lt] = v(!1), [Q, Ne] = v(
     null
   ), _ = t.find((o) => o.id === p) ?? null, m = St(
     () => (Q == null ? void 0 : Q.id) === p && _ ? { ..._, view: Q.view } : _,
@@ -969,7 +969,7 @@ function zr({
     [Y.items]
   );
   ee(() => {
-    if (!q || !m || !a || P || ie || j || (Q == null ? void 0 : Q.id) === m.id || R)
+    if (!q || !m || !a || P || ie || j || (Q == null ? void 0 : Q.id) === m.id || A)
       return;
     const o = {
       version: 1,
@@ -1014,7 +1014,7 @@ function zr({
     be,
     Q,
     O,
-    R
+    A
   ]);
   const Ge = Y.items.find((o) => o.id === B) ?? null;
   re && Ge && (ut.current = Ge);
@@ -1231,7 +1231,7 @@ function zr({
         }
       )
     ] }),
-    /* @__PURE__ */ n("p", { className: "dq-status", children: A }),
+    R && /* @__PURE__ */ n("p", { className: "dq-status", children: R }),
     i && /* @__PURE__ */ c("details", { children: [
       /* @__PURE__ */ n("summary", { children: "Unassigned legacy browser reviews" }),
       /* @__PURE__ */ n("p", { children: "These old reviews have no account owner. They have not been copied into this account. Export them for recovery, then import the reviews only into the intended account. The original data and deletion history stay in this browser." }),
@@ -1260,7 +1260,7 @@ function zr({
           onClick: () => {
             $(""), h(!1);
           },
-          children: R ? "Start fresh progress" : "Retry progress sync"
+          children: A ? "Start fresh progress" : "Retry progress sync"
         }
       )
     ] }),
@@ -1757,10 +1757,10 @@ function Br({
   onPrevious: u,
   onNext: g,
   onClose: N,
-  onAction: A,
+  onAction: R,
   onOpen: C
 }) {
-  const O = U(null), $ = U(null), R = e.files[0], h = Ht(e);
+  const O = U(null), $ = U(null), A = e.files[0], h = Ht(e);
   ee(() => {
     var T;
     const p = document.body.style.overflow;
@@ -1802,7 +1802,7 @@ function Br({
         (p.key === "ArrowLeft" ? -1 : 1) * (p.shiftKey ? 5 : p.altKey ? 10 : 60)
       );
     else if ((p.key === "," || p.key === ".") && F) {
-      const ae = [R == null ? void 0 : R.duration, L == null ? void 0 : L.duration].find(
+      const ae = [A == null ? void 0 : A.duration, L == null ? void 0 : L.duration].find(
         (se) => se != null && Number.isFinite(se) && se > 0
       ) ?? 0, ne = e.parentVideoId != null ? (e.clipEndSec ?? ae) - (e.clipStartSec ?? 0) : ae;
       Number.isFinite(ne) && ne > 0 && F.seekBy((p.key === "," ? -1 : 1) * ne * 0.1);
@@ -1887,15 +1887,15 @@ function Br({
             }
           )
         ] }),
-        /* @__PURE__ */ n("div", { className: "dq-player", "data-review-player-controls": !0, tabIndex: 0, children: R ? /* @__PURE__ */ n(
+        /* @__PURE__ */ n("div", { className: "dq-player", "data-review-player-controls": !0, tabIndex: 0, children: A ? /* @__PURE__ */ n(
           ar,
           {
             autostart: !0,
             streamUrl: Pr(e.id),
             posterUrl: Ot(e),
-            format: R.format,
-            audioCodec: R.audioCodec,
-            duration: R.duration ?? 0,
+            format: A.format,
+            audioCodec: A.audioCodec,
+            duration: A.duration ?? 0,
             videoId: e.id,
             showAbLoop: !1,
             extensionSurface: "quick-view",
@@ -1917,7 +1917,7 @@ function Br({
           {
             type: "button",
             disabled: i || a || !l,
-            onClick: () => void A(p),
+            onClick: () => void R(p),
             children: [
               Ae(p, T) && /* @__PURE__ */ n("kbd", { children: Ae(p, T) }),
               p.label
@@ -1950,7 +1950,7 @@ function Tt({
       document.body.style.overflow = q, h == null || h.focus({ preventScroll: !0 });
     };
   }, []);
-  function A(h) {
+  function R(h) {
     var p, T, F;
     if (h.defaultPrevented) {
       h.stopPropagation();
@@ -2034,7 +2034,7 @@ function Tt({
       }
     }
   }
-  async function R(h) {
+  async function A(h) {
     var k;
     if (u) return;
     const q = (k = h.target.files) == null ? void 0 : k[0];
@@ -2066,7 +2066,7 @@ function Tt({
       role: "dialog",
       "aria-modal": "true",
       "aria-label": "Manage Data Quality reviews",
-      onKeyDown: A,
+      onKeyDown: R,
       children: /* @__PURE__ */ c("div", { className: "dq-manager", children: [
         /* @__PURE__ */ c("header", { children: [
           /* @__PURE__ */ c("div", { children: [
@@ -2117,7 +2117,7 @@ function Tt({
                 {
                   type: "file",
                   accept: "application/json,.json",
-                  onChange: R
+                  onChange: A
                 }
               )
             ] })
@@ -2176,7 +2176,7 @@ function Hr({
   }, s = (u, g) => i({
     ...e,
     actions: e.actions.map(
-      (N, A) => A === u ? g : N
+      (N, R) => R === u ? g : N
     )
   });
   return /* @__PURE__ */ c("div", { className: "dq-editor", children: [
@@ -2249,10 +2249,10 @@ function Hr({
             disabled: r,
             className: "dq-sortable-list",
             onReorder: (u) => i({ ...e, actions: u }),
-            renderItem: (u, { index: g, dragHandleProps: N, isOver: A }) => /* @__PURE__ */ c(
+            renderItem: (u, { index: g, dragHandleProps: N, isOver: R }) => /* @__PURE__ */ c(
               "fieldset",
               {
-                className: A ? "dq-action-card dq-drag-over" : "dq-action-card",
+                className: R ? "dq-action-card dq-drag-over" : "dq-action-card",
                 children: [
                   /* @__PURE__ */ c("legend", { children: [
                     "Action ",
@@ -2337,12 +2337,12 @@ function Hr({
                       disabled: r,
                       className: "dq-sortable-list",
                       onReorder: (C) => s(g, { ...u, steps: C }),
-                      renderItem: (C, { index: O, dragHandleProps: $, isOver: R }) => /* @__PURE__ */ n(
+                      renderItem: (C, { index: O, dragHandleProps: $, isOver: A }) => /* @__PURE__ */ n(
                         Gr,
                         {
                           dragHandleProps: $,
                           saving: r,
-                          isOver: R,
+                          isOver: A,
                           step: C,
                           index: O,
                           onChange: (h) => {

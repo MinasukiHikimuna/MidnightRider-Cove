@@ -767,7 +767,7 @@ export function DataQualityPage({
         </button>
       </header>
 
-      <p className="dq-status">{storageNotice}</p>
+      {storageNotice && <p className="dq-status">{storageNotice}</p>}
       {unassignedLegacy && (
         <details>
           <summary>Unassigned legacy browser reviews</summary>

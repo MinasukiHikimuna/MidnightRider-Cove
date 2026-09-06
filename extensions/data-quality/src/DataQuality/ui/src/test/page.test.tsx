@@ -126,6 +126,31 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("does not reserve a notice row for healthy account storage", async () => {
+    const { container } = render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 1" });
+    expect(
+      container.querySelector(".data-quality-page > .dq-status"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps actionable storage notices visible", async () => {
+    api.loadReviews.mockResolvedValue({
+      reviews: [review],
+      storageKey: "reviews",
+      canWrite: true,
+      storageNotice: "Reviews and progress are saved only in this browser.",
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    expect(
+      await screen.findByText(
+        "Reviews and progress are saved only in this browser.",
+      ),
+    ).toHaveClass("dq-status");
+  });
+
   it("starts the toolbar with the review selector without repeating the review name", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 

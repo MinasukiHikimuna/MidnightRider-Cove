@@ -66,6 +66,7 @@ it("migrates edited reviews to the account and reads them from a clean browser",
   );
   const loaded = await loadReviews();
   expect(loaded.reviews).toEqual([review]);
+  expect(loaded.storageNotice).toBe("");
   await saveReviews(loaded.storageKey, [{ ...review, name: "Durable" }]);
   localStorage.clear();
   const otherBrowser = await loadReviews();

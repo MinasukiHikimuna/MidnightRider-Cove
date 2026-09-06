@@ -265,7 +265,7 @@ async function loadAccountReviews() {
       ? "Reviews and progress are saved only in this browser. Saved filter read and write permissions enable account storage."
       : !writable
         ? "Account reviews are read-only. Saved filter write permission is required to save configuration and progress."
-        : "Reviews and progress are saved to your account.",
+        : "",
   };
 }
 
