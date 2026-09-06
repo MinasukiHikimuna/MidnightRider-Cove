@@ -736,21 +736,6 @@ export function DataQualityPage({
             actions.
           </p>
         </div>
-        <label>
-          Review
-          <select
-            value={review?.id ?? ""}
-            disabled={pending}
-            onChange={(event) => chooseReview(event.target.value)}
-          >
-            <option value="">Choose a review…</option>
-            {reviews.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           className="dq-button"
           type="button"
@@ -809,18 +794,24 @@ export function DataQualityPage({
           </button>
         </p>
       )}
-      {!review ? (
-        <div className="dq-empty">
-          <Film />
-          <p>
-            {reviews.length
-              ? "Choose a saved review to open its queue."
-              : "No saved reviews are available in this browser."}
-          </p>
-        </div>
-      ) : (
-        <>
-          <section className="dq-toolbar">
+      <section className="dq-toolbar">
+        <label className="dq-review-select">
+          Review
+          <select
+            value={review?.id ?? ""}
+            disabled={pending}
+            onChange={(event) => chooseReview(event.target.value)}
+          >
+            <option value="">Choose a review…</option>
+            {reviews.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {review && (
+          <>
             <button
               type="button"
               className="dq-button"
@@ -898,8 +889,7 @@ export function DataQualityPage({
                 </button>
               </>
             )}
-            <div className="dq-review-title">
-              <h2>{review.name}</h2>
+            <div className="dq-review-description">
               {review.description && <p>{review.description}</p>}
             </div>
             <div
@@ -944,7 +934,20 @@ export function DataQualityPage({
               </>
             )}
             <span>{queue.totalCount.toLocaleString()} matching</span>
-          </section>
+          </>
+        )}
+      </section>
+      {!review ? (
+        <div className="dq-empty">
+          <Film />
+          <p>
+            {reviews.length
+              ? "Choose a saved review to open its queue."
+              : "No saved reviews are available in this browser."}
+          </p>
+        </div>
+      ) : (
+        <>
           {presentationTags.error && (
             <p role="alert">{presentationTags.error}</p>
           )}

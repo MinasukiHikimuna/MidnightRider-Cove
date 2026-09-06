@@ -126,6 +126,21 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("starts the toolbar with the review selector without repeating the review name", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 1" });
+    const select = screen.getByLabelText("Review");
+    const toolbar = select.closest(".dq-toolbar");
+
+    expect(toolbar).not.toBeNull();
+    expect(toolbar?.firstElementChild).toContainElement(select);
+    expect(
+      screen.queryByRole("heading", { name: review.name }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(review.description)).toBeInTheDocument();
+  });
+
   it("navigates, previews, applies, advances, and restores focus", async () => {
     let changed = false;
     api.findVideos.mockImplementation(async () =>
@@ -520,6 +535,7 @@ it("clears loading when a pending review is deselected", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   const select = await screen.findByLabelText("Review");
   fireEvent.change(select, { target: { value: "" } });
+  expect(select.closest(".dq-toolbar")).not.toBeNull();
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Manage reviews" }),

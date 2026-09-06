@@ -1,4 +1,4 @@
-import { jsxs as l, jsx as n, Fragment as ue } from "react/jsx-runtime";
+import { jsxs as l, jsx as n, Fragment as oe } from "react/jsx-runtime";
 import { useState as v, useEffect as ee, useMemo as St, useRef as U, useCallback as ve } from "react";
 import { VIDEO_SORT_OPTIONS as Nt, FilterDialog as tr, VIDEO_CRITERIA as rr, EntityReferenceMultiSelector as rt, DetailListPagination as nr, VideoPlayer as ir, getResolutionLabel as or, formatDuration as ar, EntityDetailTabs as sr, SortableList as Ct } from "@cove/runtime/components";
 import { Pencil as Dt, Film as Et, AlertTriangle as Lt, Loader2 as Ut, ChevronLeft as lr, ChevronRight as cr, ExternalLink as dr, X as jt, Plus as ur, Upload as fr, Trash2 as Ft, Check as pr, Play as hr, GripVertical as Jt } from "@cove/runtime/lucide-react";
@@ -641,7 +641,7 @@ function kt({
     ...e,
     view: { ...e.view, filter: { ...c, ...s } }
   }), S = e.presentation ?? {}, y = (s) => t({ ...e, presentation: { ...S, ...s } });
-  return /* @__PURE__ */ l(ue, { children: [
+  return /* @__PURE__ */ l(oe, { children: [
     i && /* @__PURE__ */ l("fieldset", { className: "dq-queue-fields", children: [
       /* @__PURE__ */ n("legend", { children: "Queue" }),
       /* @__PURE__ */ l("label", { children: [
@@ -732,7 +732,7 @@ function kt({
         }
       ) })
     ] }),
-    r && /* @__PURE__ */ l(ue, { children: [
+    r && /* @__PURE__ */ l(oe, { children: [
       /* @__PURE__ */ n("h3", { children: "Appearance" }),
       /* @__PURE__ */ n("p", { className: "dq-editor-note", children: "Choose how videos and tags appear while reviewing." }),
       /* @__PURE__ */ l("div", { className: "dq-field-grid", children: [
@@ -853,7 +853,7 @@ function Fr({
     } catch {
       return !1;
     }
-  }), [a, d] = v(""), [c, b] = v(!0), [S, y] = v(""), [s, u] = v(!1), [g, N] = v(!0), [A, E] = v(""), [O, $] = v(""), [R, h] = v(!1), [q, k] = v(!1), [p, T] = v(Ur), [F, D] = v(!1), [oe, ne] = v(!1), [ae, lt] = v(!1), [Q, Ne] = v(
+  }), [a, d] = v(""), [c, b] = v(!0), [S, y] = v(""), [s, u] = v(!1), [g, N] = v(!0), [A, E] = v(""), [O, $] = v(""), [R, h] = v(!1), [q, k] = v(!1), [p, T] = v(Ur), [F, D] = v(!1), [ae, ne] = v(!1), [se, lt] = v(!1), [Q, Ne] = v(
     null
   ), _ = t.find((o) => o.id === p) ?? null, m = St(
     () => (Q == null ? void 0 : Q.id) === p && _ ? { ..._, view: Q.view } : _,
@@ -863,13 +863,13 @@ function Fr({
     perPage: 40,
     sort: "date",
     direction: "desc"
-  }), [Y, ct] = v({ items: [], totalCount: 0 }), [x, xe] = v(!1), [ie, dt] = v(""), [se, fe] = v(() => /* @__PURE__ */ new Set()), ze = U(se);
-  ze.current = se;
+  }), [Y, ct] = v({ items: [], totalCount: 0 }), [x, xe] = v(!1), [ie, dt] = v(""), [le, fe] = v(() => /* @__PURE__ */ new Set()), ze = U(le);
+  ze.current = le;
   const me = U(/* @__PURE__ */ new Map()), [B, te] = v(null), H = U(B);
   H.current = B;
-  const [re, we] = v(!1), le = U(re);
-  le.current = re;
-  const ut = U(null), [ce, Ke] = v("grid"), [be, Pe] = v(null), [j, Ve] = v(!1), Te = U(!1), [Gt, Qe] = v(""), [ft, Me] = v(""), [Be, Ee] = v(""), He = U(/* @__PURE__ */ new Map()), pt = U(null), ye = U(0), $e = U(0), De = U(null), ht = ve(async () => {
+  const [re, we] = v(!1), ce = U(re);
+  ce.current = re;
+  const ut = U(null), [de, Ke] = v("grid"), [be, Pe] = v(null), [j, Ve] = v(!1), Te = U(!1), [Gt, Qe] = v(""), [ft, Me] = v(""), [Be, Ee] = v(""), He = U(/* @__PURE__ */ new Map()), pt = U(null), ye = U(0), $e = U(0), De = U(null), ht = ve(async () => {
     b(!0), y("");
     try {
       const o = await Cr();
@@ -969,7 +969,7 @@ function Fr({
       filter: M,
       focusedId: B,
       index: Math.max(0, P.indexOf(B ?? -1)),
-      displayMode: ce,
+      displayMode: de,
       cardSize: be,
       updatedAt: Date.now()
     };
@@ -1002,7 +1002,7 @@ function Fr({
     M,
     B,
     P,
-    ce,
+    de,
     be,
     Q,
     O,
@@ -1010,16 +1010,16 @@ function Fr({
   ]);
   const Ge = Y.items.find((o) => o.id === B) ?? null;
   re && Ge && (ut.current = Ge);
-  const de = Ge ?? (re ? ut.current : null), Wt = Rt(se, B), gt = se.size > 0 ? `${se.size} selected video${se.size === 1 ? "" : "s"}` : B == null ? "no video" : "focused video", J = ve((o, f = !0) => {
+  const ue = Ge ?? (re ? ut.current : null), Wt = Rt(le, B), gt = le.size > 0 ? `${le.size} selected video${le.size === 1 ? "" : "s"}` : B == null ? "no video" : "focused video", J = ve((o, f = !0) => {
     o != null && window.requestAnimationFrame(() => {
       const w = He.current.get(o);
       w == null || w.focus({ preventScroll: !0 }), f && (w == null || w.scrollIntoView({ block: "nearest", inline: "nearest" }));
     });
   }, []);
   ee(() => {
-    q && !le.current && J(H.current);
+    q && !ce.current && J(H.current);
   }, [q, J]), ee(() => {
-    x || !P.length || (H.current == null || !P.includes(H.current)) && (te(P[0]), le.current || J(P[0]));
+    x || !P.length || (H.current == null || !P.includes(H.current)) && (te(P[0]), ce.current || J(P[0]));
   }, [J, P, x]);
   const qe = ve(
     (o) => {
@@ -1041,7 +1041,7 @@ function Fr({
         0,
         P.indexOf(H.current ?? P[0])
       ), w = P[Math.max(0, Math.min(P.length - 1, f + o))];
-      te(w), le.current || J(w);
+      te(w), ce.current || J(w);
     },
     [J, P]
   ), Xe = ve(
@@ -1086,7 +1086,7 @@ function Fr({
             (Ze) => new Set([...Ze].filter((er) => W.includes(er)))
           );
           const vt = W.at(-1) ?? null;
-          te(vt), le.current || J(vt);
+          te(vt), ce.current || J(vt);
         } else {
           fe(
             (Ue) => new Set([...Ue].filter((yt) => W.includes(yt)))
@@ -1097,7 +1097,7 @@ function Fr({
             I,
             he && f.includes(I ?? -1)
           );
-          te(Z), le.current && Z == null && we(!1), le.current || J(Z);
+          te(Z), ce.current && Z == null && we(!1), ce.current || J(Z);
         }
       } catch (K) {
         z() && Ee(
@@ -1124,7 +1124,7 @@ function Fr({
     return Math.max(1, f.split(" ").filter(Boolean).length);
   }
   function Yt(o) {
-    if (o.defaultPrevented || o.repeat || o.ctrlKey || o.altKey || o.metaKey || F || ae) return;
+    if (o.defaultPrevented || o.repeat || o.ctrlKey || o.altKey || o.metaKey || F || se) return;
     if (re && o.key === "Escape") {
       X(o), we(!1), J(H.current);
       return;
@@ -1180,7 +1180,7 @@ function Fr({
   if (c)
     return /* @__PURE__ */ n(Mt, { label: "Loading Data Quality reviews…" });
   if (S)
-    return /* @__PURE__ */ l(ue, { children: [
+    return /* @__PURE__ */ l(oe, { children: [
       /* @__PURE__ */ n(
         "button",
         {
@@ -1206,21 +1206,6 @@ function Fr({
       /* @__PURE__ */ l("div", { children: [
         /* @__PURE__ */ n("h1", { children: "Data Quality" }),
         /* @__PURE__ */ n("p", { children: "A focused queue for previewing videos and applying saved review actions." })
-      ] }),
-      /* @__PURE__ */ l("label", { children: [
-        "Review",
-        /* @__PURE__ */ l(
-          "select",
-          {
-            value: (m == null ? void 0 : m.id) ?? "",
-            disabled: j,
-            onChange: (o) => Ye(o.target.value),
-            children: [
-              /* @__PURE__ */ n("option", { value: "", children: "Choose a review…" }),
-              t.map((o) => /* @__PURE__ */ n("option", { value: o.id, children: o.name }, o.id))
-            ]
-          }
-        )
       ] }),
       /* @__PURE__ */ l(
         "button",
@@ -1271,8 +1256,23 @@ function Fr({
         }
       )
     ] }),
-    m ? /* @__PURE__ */ l(ue, { children: [
-      /* @__PURE__ */ l("section", { className: "dq-toolbar", children: [
+    /* @__PURE__ */ l("section", { className: "dq-toolbar", children: [
+      /* @__PURE__ */ l("label", { className: "dq-review-select", children: [
+        "Review",
+        /* @__PURE__ */ l(
+          "select",
+          {
+            value: (m == null ? void 0 : m.id) ?? "",
+            disabled: j,
+            onChange: (o) => Ye(o.target.value),
+            children: [
+              /* @__PURE__ */ n("option", { value: "", children: "Choose a review…" }),
+              t.map((o) => /* @__PURE__ */ n("option", { value: o.id, children: o.name }, o.id))
+            ]
+          }
+        )
+      ] }),
+      m && /* @__PURE__ */ l(oe, { children: [
         /* @__PURE__ */ n(
           "button",
           {
@@ -1295,7 +1295,7 @@ function Fr({
             children: "Adjust queue"
           }
         ),
-        (Q == null ? void 0 : Q.id) === p && /* @__PURE__ */ l(ue, { children: [
+        (Q == null ? void 0 : Q.id) === p && /* @__PURE__ */ l(oe, { children: [
           /* @__PURE__ */ n("span", { children: "Temporary queue" }),
           /* @__PURE__ */ n(
             "button",
@@ -1344,10 +1344,7 @@ function Fr({
             }
           )
         ] }),
-        /* @__PURE__ */ l("div", { className: "dq-review-title", children: [
-          /* @__PURE__ */ n("h2", { children: m.name }),
-          m.description && /* @__PURE__ */ n("p", { children: m.description })
-        ] }),
+        /* @__PURE__ */ n("div", { className: "dq-review-description", children: m.description && /* @__PURE__ */ n("p", { children: m.description }) }),
         /* @__PURE__ */ n(
           "div",
           {
@@ -1358,7 +1355,7 @@ function Fr({
               "button",
               {
                 type: "button",
-                "aria-pressed": ce === o,
+                "aria-pressed": de === o,
                 onClick: () => Ke(o),
                 children: o
               },
@@ -1366,7 +1363,7 @@ function Fr({
             ))
           }
         ),
-        ce !== "list" && /* @__PURE__ */ l(ue, { children: [
+        de !== "list" && /* @__PURE__ */ l(oe, { children: [
           /* @__PURE__ */ l("label", { className: "dq-card-size", children: [
             "Card width",
             /* @__PURE__ */ n(
@@ -1377,7 +1374,7 @@ function Fr({
                 min: "115",
                 max: "380",
                 step: "5",
-                value: be ?? (ce === "wall" ? 130 : 180),
+                value: be ?? (de === "wall" ? 130 : 180),
                 onChange: (o) => Pe(Number(o.target.value))
               }
             )
@@ -1396,7 +1393,9 @@ function Fr({
           Y.totalCount.toLocaleString(),
           " matching"
         ] })
-      ] }),
+      ] })
+    ] }),
+    m ? /* @__PURE__ */ l(oe, { children: [
       ke.error && /* @__PURE__ */ n("p", { role: "alert", children: ke.error }),
       /* @__PURE__ */ n(
         Dr,
@@ -1432,12 +1431,12 @@ function Fr({
             /* @__PURE__ */ n(Et, {}),
             /* @__PURE__ */ n("p", { children: "No videos match this review." })
           ] }),
-          !!Y.items.length && /* @__PURE__ */ n("div", { ref: pt, children: ce === "list" ? /* @__PURE__ */ n("div", { className: "dq-list", "data-review-layout": "list", children: Y.items.map(bt) }) : /* @__PURE__ */ n(
+          !!Y.items.length && /* @__PURE__ */ n("div", { ref: pt, children: de === "list" ? /* @__PURE__ */ n("div", { className: "dq-list", "data-review-layout": "list", children: Y.items.map(bt) }) : /* @__PURE__ */ n(
             "div",
             {
               className: "dq-grid",
               style: {
-                "--dq-card-width": be == null ? ce === "wall" ? "clamp(115px, 10vw, 150px)" : "clamp(145px, 14vw, 180px)" : `${be}px`
+                "--dq-card-width": be == null ? de === "wall" ? "clamp(115px, 10vw, 150px)" : "clamp(145px, 14vw, 180px)" : `${be}px`
               },
               children: Y.items.map(bt)
             }
@@ -1476,30 +1475,30 @@ function Fr({
       /* @__PURE__ */ n(Et, {}),
       /* @__PURE__ */ n("p", { children: t.length ? "Choose a saved review to open its queue." : "No saved reviews are available in this browser." })
     ] }),
-    re && de && m && /* @__PURE__ */ n(
+    re && ue && m && /* @__PURE__ */ n(
       Kr,
       {
-        video: de,
+        video: ue,
         review: m,
         targetLabel: gt,
         pending: j,
         refreshing: x || !!ie,
         error: Be,
         canWrite: s,
-        selected: se.has(de.id),
-        hasPrevious: P.indexOf(de.id) > 0,
-        hasNext: P.indexOf(de.id) >= 0 && P.indexOf(de.id) < P.length - 1,
-        onToggleSelected: () => qe((o) => tt(o, de.id)),
+        selected: le.has(ue.id),
+        hasPrevious: P.indexOf(ue.id) > 0,
+        hasNext: P.indexOf(ue.id) >= 0 && P.indexOf(ue.id) < P.length - 1,
+        onToggleSelected: () => qe((o) => tt(o, ue.id)),
         onPrevious: () => We(-1),
         onNext: () => We(1),
         onClose: () => {
           we(!1), J(H.current);
         },
         onAction: Xe,
-        onOpen: () => e({ page: "video", id: de.id })
+        onOpen: () => e({ page: "video", id: ue.id })
       }
     ),
-    ae && m && /* @__PURE__ */ n(
+    se && m && /* @__PURE__ */ n(
       Tt,
       {
         reviews: t,
@@ -1525,11 +1524,11 @@ function Fr({
       {
         reviews: t,
         activeReview: _,
-        initialEdit: oe,
+        initialEdit: ae,
         onSave: mt,
         onChoose: Ye,
         onClose: () => {
-          D(!1), oe && J(H.current, !1);
+          D(!1), ae && J(H.current, !1);
         }
       }
     )
@@ -1542,7 +1541,7 @@ function Fr({
         (z) => new Set([...z].filter((he) => I.includes(he)))
       );
       const G = qt(I, w, C);
-      te(G), le.current || J(G, !1);
+      te(G), ce.current || J(G, !1);
     } catch {
     }
   }
@@ -1587,9 +1586,9 @@ function Fr({
       {
         video: o,
         annotation: $r(o, m, ke.ids),
-        displayMode: ce,
+        displayMode: de,
         focused: o.id === B,
-        selected: se.has(o.id),
+        selected: le.has(o.id),
         setRef: (f) => {
           f ? He.current.set(o.id, f) : He.current.delete(o.id);
         },
@@ -1622,7 +1621,7 @@ function _r({
   onToggle: b,
   onPreview: S
 }) {
-  const y = e.files[0], s = Ht(e), u = /* @__PURE__ */ l(ue, { children: [
+  const y = e.files[0], s = Ht(e), u = /* @__PURE__ */ l(oe, { children: [
     /* @__PURE__ */ n(
       "button",
       {
@@ -1765,15 +1764,15 @@ function Kr({
     };
   }, []);
   function q(p) {
-    var D, oe, ne;
+    var D, ae, ne;
     if (p.key !== "Tab") return;
     const T = [
       ...((D = O.current) == null ? void 0 : D.querySelectorAll(
         'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       )) ?? []
-    ].filter((ae) => ae.offsetParent !== null);
+    ].filter((se) => se.offsetParent !== null);
     if (!T.length) {
-      p.preventDefault(), (oe = O.current) == null || oe.focus();
+      p.preventDefault(), (ae = O.current) == null || ae.focus();
       return;
     }
     const F = T.indexOf(
@@ -1798,9 +1797,9 @@ function Kr({
         (p.key === "ArrowLeft" ? -1 : 1) * (p.shiftKey ? 5 : p.altKey ? 10 : 60)
       );
     else if ((p.key === "," || p.key === ".") && F) {
-      const oe = [R == null ? void 0 : R.duration, D == null ? void 0 : D.duration].find(
-        (ae) => ae != null && Number.isFinite(ae) && ae > 0
-      ) ?? 0, ne = e.parentVideoId != null ? (e.clipEndSec ?? oe) - (e.clipStartSec ?? 0) : oe;
+      const ae = [R == null ? void 0 : R.duration, D == null ? void 0 : D.duration].find(
+        (se) => se != null && Number.isFinite(se) && se > 0
+      ) ?? 0, ne = e.parentVideoId != null ? (e.clipEndSec ?? ae) - (e.clipStartSec ?? 0) : ae;
       Number.isFinite(ne) && ne > 0 && F.seekBy((p.key === "," ? -1 : 1) * ne * 0.1);
     } else if (p.key.toLowerCase() === "n" || p.key.toLowerCase() === "m")
       !p.repeat && !i && !a && (p.key.toLowerCase() === "n" && S && u(), p.key.toLowerCase() === "m" && y && g());
@@ -2091,7 +2090,7 @@ function Tt({
             onSave: () => void O(),
             onCancel: c
           }
-        ) : /* @__PURE__ */ l(ue, { children: [
+        ) : /* @__PURE__ */ l(oe, { children: [
           /* @__PURE__ */ l("div", { className: "dq-manager-tools", children: [
             /* @__PURE__ */ l(
               "button",
