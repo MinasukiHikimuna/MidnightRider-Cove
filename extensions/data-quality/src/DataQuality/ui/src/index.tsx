@@ -323,14 +323,6 @@ export function DataQualityPage({
         );
         setFocusedId(nextFocus);
         focusCard(nextFocus);
-        if (progress && !resume)
-          setMessage(
-            "The saved queue changed. Review resumed at its first page.",
-          );
-        else if (resume)
-          setMessage(
-            "Review resumed. If results changed, focus uses the saved video on this page or the nearest position. Selection starts empty.",
-          );
       } catch {
         /* The queue exposes its retry state. */
       }
