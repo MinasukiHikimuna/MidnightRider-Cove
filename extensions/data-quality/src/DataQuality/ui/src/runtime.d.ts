@@ -34,6 +34,28 @@ declare module "@cove/runtime/components" {
       [key: string]: unknown;
     }): void;
   }>;
+  export const DetailListToolbar: ComponentType<{
+    filter: { page?: number; perPage?: number; [key: string]: unknown };
+    onFilterChange(filter: {
+      page?: number;
+      perPage?: number;
+      [key: string]: unknown;
+    }): void;
+    totalCount: number;
+    sortOptions: Array<{ value: string; label: string }>;
+    showSearch?: boolean;
+    showSort?: boolean;
+    displayMode?: "grid" | "list" | "wall";
+    onDisplayModeChange?(mode: "grid" | "list" | "wall"): void;
+    availableDisplayModes?: Array<"grid" | "list" | "wall">;
+    zoomLevel?: number;
+    onZoomChange?(level: number): void;
+    cardSizeEntityType?: string;
+    criteriaDefinitions?: typeof VIDEO_CRITERIA;
+    objectFilter?: Record<string, unknown>;
+    onObjectFilterChange?(filter: Record<string, unknown>): void;
+    showPagingControls?: boolean;
+  }>;
   export const EntityDetailTabs: ComponentType<{
     tabs: Array<{
       key: string;

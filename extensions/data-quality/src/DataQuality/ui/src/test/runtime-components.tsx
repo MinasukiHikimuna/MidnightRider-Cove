@@ -207,6 +207,153 @@ export function FilterDialog({
   );
 }
 
+export function DetailListToolbar({
+  filter,
+  onFilterChange,
+  totalCount,
+  sortOptions,
+  showSearch,
+  showSort = true,
+  displayMode,
+  onDisplayModeChange,
+  availableDisplayModes = [],
+  zoomLevel,
+  onZoomChange,
+  objectFilter = {},
+  onObjectFilterChange,
+}: {
+  filter: Record<string, unknown>;
+  onFilterChange(filter: Record<string, unknown>): void;
+  totalCount: number;
+  sortOptions: Array<{ value: string; label: string }>;
+  showSearch?: boolean;
+  showSort?: boolean;
+  displayMode?: "grid" | "list" | "wall";
+  onDisplayModeChange?(mode: "grid" | "list" | "wall"): void;
+  availableDisplayModes?: Array<"grid" | "list" | "wall">;
+  zoomLevel?: number;
+  onZoomChange?(level: number): void;
+  objectFilter?: Record<string, unknown>;
+  onObjectFilterChange?(filter: Record<string, unknown>): void;
+}) {
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const activeCount = Object.keys(objectFilter).length;
+  const perPage = Number(filter.perPage) || 24;
+  const page = Number(filter.page) || 1;
+  const start = totalCount ? (page - 1) * perPage + 1 : 0;
+  const end = Math.min(page * perPage, totalCount);
+  return (
+    <>
+      <div role="toolbar" aria-label="Video list controls">
+        <span>{totalCount ? `${start}–${end} of ${totalCount}` : "0 items"}</span>
+        {showSearch && (
+          <input
+            aria-label="Search list"
+            value={String(filter.q ?? "")}
+            onChange={(event) =>
+              onFilterChange({ ...filter, q: event.target.value, page: 1 })
+            }
+          />
+        )}
+        {showSort && (
+          <>
+            <select
+              value={String(filter.sort ?? sortOptions[0]?.value ?? "")}
+              onChange={(event) =>
+                onFilterChange({ ...filter, sort: event.target.value, page: 1 })
+              }
+            >
+              {sortOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              aria-label={filter.direction === "asc" ? "Ascending" : "Descending"}
+              onClick={() =>
+                onFilterChange({
+                  ...filter,
+                  direction: filter.direction === "asc" ? "desc" : "asc",
+                  page: 1,
+                })
+              }
+            />
+          </>
+        )}
+        <button
+          type="button"
+          aria-label={activeCount ? `Filters, ${activeCount} active` : "Filters"}
+          onClick={() => setFiltersOpen(true)}
+        >
+          Filters
+        </button>
+        {displayMode && onDisplayModeChange && (
+          <div role="group" aria-label="Review view">
+            {availableDisplayModes.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-label={mode === "grid" ? "Grid" : "Wall"}
+                aria-pressed={displayMode === mode}
+                onClick={() => onDisplayModeChange(mode)}
+              />
+            ))}
+          </div>
+        )}
+        <select
+          aria-label="Items per page"
+          value={Number(filter.perPage) || 40}
+          onChange={(event) =>
+            onFilterChange({
+              ...filter,
+              perPage: Number(event.target.value),
+              page: 1,
+            })
+          }
+        >
+          {[20, 24, 40, 60, 120, 250, 500, 1000].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+        {zoomLevel !== undefined && onZoomChange && (
+          <input
+            type="range"
+            min="0"
+            max="8"
+            step="0.25"
+            value={zoomLevel}
+            aria-label={`Card size: ${Math.round(225 + zoomLevel * 50)}px`}
+            onChange={(event) => onZoomChange(Number(event.target.value))}
+          />
+        )}
+      </div>
+      {activeCount > 0 && (
+        <div role="region" aria-label="Applied filters">
+          {Object.keys(objectFilter).map((key) => (
+            <button key={key} type="button" onClick={() => setFiltersOpen(true)}>
+              {key}
+            </button>
+          ))}
+        </div>
+      )}
+      {filtersOpen && (
+        <FilterDialog
+          onClose={() => setFiltersOpen(false)}
+          onApply={(nextFilter) => {
+            onObjectFilterChange?.(nextFilter);
+            onFilterChange({ ...filter, page: 1 });
+            setFiltersOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 // Runtime contract stub; pointer and keyboard behavior is verified in Cove and the live UI.
 export function SortableList<T>({
   items,

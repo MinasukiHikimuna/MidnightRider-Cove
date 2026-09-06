@@ -58,7 +58,7 @@ describe("review editing and resumption", () => {
   it("bounds large and malformed page requests", () => {
     expect(boundedFilter({ page: -5, perPage: 100000 })).toMatchObject({
       page: 1,
-      perPage: 100,
+      perPage: 1000,
     });
     expect(boundedFilter({ page: "invalid", perPage: 0 })).toMatchObject({
       page: 1,

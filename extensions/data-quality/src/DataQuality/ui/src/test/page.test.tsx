@@ -283,12 +283,13 @@ describe("Data Quality extension page", () => {
     });
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
-    const count = await screen.findByText("Showing 1-24 of 182");
+    const count = await screen.findByText("1–24 of 182");
     expect(count).toBeInTheDocument();
-    expect(count).toHaveClass("dq-range-count");
     expect(screen.queryByText("182 matching")).not.toBeInTheDocument();
     expect(
-      screen.getByLabelText("Review").parentElement?.nextElementSibling,
+      within(screen.getByRole("toolbar", { name: "Video list controls" })).getByText(
+        "1–24 of 182",
+      ),
     ).toBe(count);
   });
 
@@ -296,7 +297,7 @@ describe("Data Quality extension page", () => {
     api.findVideos.mockResolvedValue({ items: [], totalCount: 0 });
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
-    expect(await screen.findByText("Showing 0 of 0")).toBeInTheDocument();
+    expect(await screen.findByText("0 items")).toBeInTheDocument();
   });
 
   it("opens video details in a new tab directly from cards and previews", async () => {
@@ -451,19 +452,18 @@ describe("Data Quality extension page", () => {
       getComputedStyle(gridCard.querySelector(".card-popovers")!).display,
     ).toBe("none");
     const viewGroup = screen.getByRole("group", { name: "Review view" });
-    for (const mode of ["Grid", "Wall"]) {
-      expect(screen.getByRole("button", { name: mode })).toContainHTML("svg");
-    }
+    for (const mode of ["Grid", "Wall"])
+      expect(screen.getByRole("button", { name: mode })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "List" }),
     ).not.toBeInTheDocument();
-    expect(viewGroup).toHaveClass("dq-view-switch");
+    expect(viewGroup).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Auto fit" }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("slider", { name: "Card size: 180px" }),
-    ).toHaveClass("themed-range-input");
+    ).toBeInTheDocument();
     expect(document.querySelector(".dq-grid")).toHaveStyle({
       "--dq-card-width": "180px",
     });
@@ -834,84 +834,50 @@ it("saves and cancels edits on the focused card without losing explicit selectio
     screen.getByRole("article", { name: "Video 2, selected" }),
   ).toHaveFocus();
 });
-it("applies native filters temporarily and restores the saved query", async () => {
-  render(<DataQualityPage onNavigate={vi.fn()} />);
-  await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Adjust queue" }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Apply temporary queue" }),
-  );
-  await waitFor(() =>
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-  );
-  expect(api.findVideos).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      view: expect.objectContaining({ objectFilter: { organized: true } }),
-    }),
-    expect.anything(),
-    expect.anything(),
-  );
-  expect(api.saveReviews).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Reset to saved queue" }));
-  await waitFor(() =>
-    expect(api.findVideos).toHaveBeenLastCalledWith(
-      review,
-      expect.anything(),
-      expect.anything(),
-    ),
-  );
-});
-
-it("shows saved filters in a collapsed panel and adjusts them temporarily", async () => {
-  api.loadReviews.mockResolvedValueOnce({
-    reviews: [
-      {
-        ...review,
-        view: {
-          ...review.view,
-          objectFilter: {
-            titleCriterion: { value: "review default", modifier: "INCLUDES" },
-          },
-        },
+it("uses the native video toolbar and resets all queue values to review defaults", async () => {
+  const configuredReview = {
+    ...review,
+    view: {
+      ...review.view,
+      filter: { page: 1, perPage: 24, sort: "date", direction: "desc" },
+      objectFilter: {
+        titleCriterion: { value: "review default", modifier: "INCLUDES" },
       },
-    ],
+    },
+  };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [configuredReview],
     storageKey: "reviews",
     canWrite: true,
   });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
 
-  const filterArea = screen.getByRole("region", {
-    name: "Queue filters and settings",
+  const nativeToolbar = screen.getByRole("toolbar", {
+    name: "Video list controls",
   });
-  expect(
-    within(
-      screen.getByRole("region", { name: "Queue filters and settings" }),
-    ).getByRole("button", { name: "Adjust queue" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Filters, 1 active" }),
-  ).toBeInTheDocument();
-  const disclosure = within(filterArea).getByRole("button", {
-    name: "Current filters",
-  });
-  expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  fireEvent.click(disclosure);
-  expect(
-    screen.getByRole("region", { name: "Current queue filters" }),
-  ).toHaveTextContent("Title");
+  expect(nativeToolbar).toBeInTheDocument();
+  expect(screen.getByLabelText("Search list")).toHaveValue("");
+  expect(within(nativeToolbar).getAllByRole("combobox")[0]).toHaveValue("date");
+  expect(screen.getByLabelText("Items per page")).toHaveValue("24");
+  expect(screen.getByRole("button", { name: "Filters, 1 active" })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Applied filters" })).toHaveTextContent(
+    "titleCriterion",
+  );
 
-  fireEvent.click(screen.getByRole("button", { name: "Adjust queue" }));
-  fireEvent.change(screen.getByLabelText("Search"), {
+  fireEvent.change(screen.getByLabelText("Search list"), {
     target: { value: "session search" },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Apply temporary queue" }),
-  );
   await waitFor(() =>
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({
+          objectFilter: configuredReview.view.objectFilter,
+        }),
+      }),
+      expect.objectContaining({ page: 1, q: "session search" }),
+      expect.anything(),
+    ),
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Filters, 1 active" }));
@@ -927,364 +893,67 @@ it("shows saved filters in a collapsed panel and adjusts them temporarily", asyn
   );
   expect(api.saveReviews).not.toHaveBeenCalled();
   expect(
-    screen.getByRole("button", { name: "Reset filters to review defaults" }),
+    screen.getByRole("button", { name: "Reset to review defaults" }),
   ).toBeInTheDocument();
 
-  fireEvent.click(
-    screen.getByRole("button", { name: "Reset filters to review defaults" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
   await waitFor(() =>
     expect(api.findVideos).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        view: expect.objectContaining({
-          objectFilter: {
-            titleCriterion: { value: "review default", modifier: "INCLUDES" },
-          },
-        }),
-      }),
-      expect.objectContaining({ q: "session search" }),
+      configuredReview,
+      configuredReview.view.filter,
       expect.anything(),
     ),
   );
+  expect(screen.getByLabelText("Search list")).toHaveValue("");
   expect(screen.getByRole("status")).toHaveTextContent(
-    "Review filter defaults restored.",
+    "Review queue defaults restored.",
   );
-  expect(screen.getByText("Temporary queue")).toBeInTheDocument();
+  expect(screen.queryByText("Temporary queue")).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "Reset filters to review defaults" }),
+    screen.queryByRole("button", { name: "Reset to review defaults" }),
   ).not.toBeInTheDocument();
 });
 
-it("summarizes expression leaves, related criteria, and resolved entity names", async () => {
-  api.loadReviews.mockResolvedValueOnce({
-    reviews: [
-      {
-        ...review,
-        view: {
-          ...review.view,
-          objectFilter: {
-            _filterExpression: {
-              operator: "OR",
-              children: [
-                {
-                  filter: {
-                    tagsCriterion: {
-                      value: [10],
-                      excludes: [11],
-                      modifier: "INCLUDES_ALL",
-                    },
-                  },
-                },
-                {
-                  filter: {
-                    performerFilterCriterion: {
-                      mode: "none",
-                      conditionOperator: "or",
-                      findFilter: { q: "guest" },
-                      objectFilter: {
-                        tagsCriterion: {
-                          value: [12],
-                          modifier: "INCLUDES",
-                        },
-                      },
-                    },
-                  },
-                },
-                {
-                  filter: {
-                    remoteIdValueCriterion: {
-                      value: "remote-123",
-                      modifier: "EQUALS",
-                    },
-                    remoteIdCriterion: {
-                      value: "metadata.example",
-                      modifier: "EQUALS",
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
-      },
-    ],
-    storageKey: "reviews",
-    canWrite: true,
-  });
-  api.request.mockImplementation(async (path: string) => {
-    const id = Number(path.split("/").at(-1));
-    if (path.startsWith("/api/tags/") && Number.isFinite(id)) {
-      return { id, name: { 10: "Alpha", 11: "Beta", 12: "Gamma" }[id] };
-    }
-    return { available: true };
-  });
-
+it("changes sort and page size directly from the native toolbar", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  expect(
-    screen.getByRole("button", { name: "Filters, 3 active" }),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
 
-  const summaries = screen.getByRole("region", {
-    name: "Current queue filters",
+  fireEvent.click(screen.getByRole("button", { name: "Descending" }));
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ direction: "asc", page: 1 }),
+      expect.anything(),
+    ),
+  );
+  fireEvent.change(screen.getByLabelText("Items per page"), {
+    target: { value: "1000" },
   });
   await waitFor(() =>
-    expect(summaries).toHaveTextContent("Alpha but not Beta"),
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ perPage: 1000, page: 1 }),
+      expect.anything(),
+    ),
   );
-  expect(summaries).toHaveTextContent(
-    "Any · Related Performers: No matches · Any condition · search “guest” · Tags: Gamma",
+  fireEvent.click(screen.getByRole("button", { name: "Save queue to review" }));
+  await waitFor(() =>
+    expect(api.saveReviews).toHaveBeenCalledWith(
+      "reviews",
+      expect.arrayContaining([
+        expect.objectContaining({
+          view: expect.objectContaining({
+            filter: expect.objectContaining({
+              direction: "asc",
+              perPage: 1000,
+              page: 1,
+            }),
+          }),
+        }),
+      ]),
+    ),
   );
-  expect(summaries).toHaveTextContent(
-    "Any · Remote ID: metadata.example · is remote-123",
-  );
-});
-
-it("preserves nested expression operators and multi-value semantics", async () => {
-  const namedTags = { "10": "Alpha", "11": "Beta" };
-  api.loadReviews.mockResolvedValueOnce({
-    reviews: [
-      {
-        ...review,
-        view: {
-          ...review.view,
-          objectFilter: {
-            _filterExpression: {
-              operator: "NONE",
-              children: [
-                {
-                  group: {
-                    operator: "JUST_ONE",
-                    children: [
-                      {
-                        filter: {
-                          tagsCriterion: {
-                            value: [10, 11],
-                            modifier: "INCLUDES",
-                            _names: namedTags,
-                          },
-                        },
-                      },
-                      {
-                        filter: {
-                          tagsCriterion: {
-                            value: [10, 11],
-                            modifier: "INCLUDES_ALL",
-                            depth: -1,
-                            _names: namedTags,
-                          },
-                        },
-                      },
-                    ],
-                  },
-                },
-                {
-                  group: {
-                    operator: "NOT",
-                    children: [
-                      {
-                        filter: {
-                          tagsCriterion: {
-                            value: [10, 11],
-                            modifier: "EXCLUDES",
-                            _names: namedTags,
-                          },
-                        },
-                      },
-                    ],
-                  },
-                },
-                {
-                  filter: {
-                    remoteIdCriterion: {
-                      value: "metadata.example",
-                      modifier: "NOT_NULL",
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
-      },
-    ],
-    storageKey: "reviews",
-    canWrite: true,
-  });
-
-  render(<DataQualityPage onNavigate={vi.fn()} />);
-  await screen.findByRole("article", { name: "Video 1" });
-  expect(
-    screen.getByRole("button", { name: "Filters, 4 active" }),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
-  const summaries = screen.getByRole("region", {
-    name: "Current queue filters",
-  });
-  expect(summaries).toHaveTextContent("None › Just One · Tags: Alpha or Beta");
-  expect(summaries).toHaveTextContent(
-    "None › Just One · Tags: Alpha and Beta with sub-tags",
-  );
-  expect(summaries).toHaveTextContent(
-    "None › Exclude · Tags: neither Alpha nor Beta",
-  );
-  expect(summaries).toHaveTextContent(
-    "None · Remote ID: metadata.example · is set",
-  );
-});
-
-it("shows explicit and legacy related-expression match scopes", async () => {
-  const relatedLeaf = {
-    filter: {
-      performerFilterCriterion: { mode: "atLeastOne", _matchAll: true },
-    },
-  };
-  api.loadReviews.mockResolvedValueOnce({
-    reviews: [
-      {
-        ...review,
-        view: {
-          ...review.view,
-          objectFilter: {
-            _filterExpression: {
-              operator: "AND",
-              children: [
-                {
-                  group: {
-                    operator: "AND",
-                    relatedScope: {
-                      filterKey: "performerFilterCriterion",
-                      matchMode: "distinct",
-                    },
-                    children: [relatedLeaf, relatedLeaf],
-                  },
-                },
-                {
-                  group: {
-                    operator: "AND",
-                    distinctRelatedMatches: false,
-                    children: [
-                      relatedLeaf,
-                      relatedLeaf,
-                      {
-                        filter: {
-                          performerFilterCriterion: { mode: "every" },
-                        },
-                      },
-                      {
-                        filter: {
-                          titleCriterion: {
-                            value: "outside scope",
-                            modifier: "EQUALS",
-                          },
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        },
-      },
-    ],
-    storageKey: "reviews",
-    canWrite: true,
-  });
-
-  render(<DataQualityPage onNavigate={vi.fn()} />);
-  await screen.findByRole("article", { name: "Video 1" });
-  expect(
-    screen.getByRole("button", { name: "Filters, 6 active" }),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
-  const summaries = screen.getByRole("region", {
-    name: "Current queue filters",
-  });
-  expect(summaries).toHaveTextContent(
-    "All › Related Performers · All · Separate matches · Related Performers",
-  );
-  expect(summaries).toHaveTextContent(
-    "All › Related Performers · All · Matches may overlap · Related Performers",
-  );
-  expect(summaries).toHaveTextContent(
-    "All › All · Related Performers: Every match",
-  );
-  expect(summaries).toHaveTextContent("All › All · Title: is outside scope");
-});
-
-it("shows tag-duration units and ranges", async () => {
-  api.loadReviews.mockResolvedValueOnce({
-    reviews: [
-      {
-        ...review,
-        view: {
-          ...review.view,
-          objectFilter: {
-            tagDurationCriterion: {
-              clauses: [
-                {
-                  tagId: 10,
-                  modifier: "BETWEEN",
-                  value: 20,
-                  value2: 40,
-                  unit: "percent",
-                },
-                {
-                  tagId: 11,
-                  modifier: "GREATER_THAN",
-                  value: 30,
-                  unit: "seconds",
-                },
-              ],
-              _names: { "10": "Alpha", "11": "Beta" },
-            },
-          },
-        },
-      },
-    ],
-    storageKey: "reviews",
-    canWrite: true,
-  });
-
-  render(<DataQualityPage onNavigate={vi.fn()} />);
-  await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
-  const summaries = screen.getByRole("region", {
-    name: "Current queue filters",
-  });
-  expect(summaries).toHaveTextContent(
-    "Tag Duration: Alpha between 20% and 40% · Beta greater than 30 seconds",
-  );
-});
-
-it("shows the selected hash algorithm", async () => {
-  api.loadReviews.mockResolvedValueOnce({
-    reviews: [
-      {
-        ...review,
-        view: {
-          ...review.view,
-          objectFilter: {
-            fingerprintCriterion: {
-              type: "phash",
-              value: "abc123",
-              modifier: "EQUALS",
-            },
-          },
-        },
-      },
-    ],
-    storageKey: "reviews",
-    canWrite: true,
-  });
-
-  render(<DataQualityPage onNavigate={vi.fn()} />);
-  await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
-  expect(
-    screen.getByRole("region", { name: "Current queue filters" }),
-  ).toHaveTextContent("Hash: pHash is abc123");
+  expect(screen.queryByText("Adjust queue")).not.toBeInTheDocument();
 });
 
 it("does not retain a temporary queue for reordered equivalent filters", async () => {
@@ -1303,17 +972,16 @@ it("does not retain a temporary queue for reordered equivalent filters", async (
   };
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
   fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await waitFor(() =>
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Review filter defaults restored.",
+      "Review queue defaults restored.",
     ),
   );
   expect(screen.queryByText("Temporary queue")).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "Reset filters to review defaults" }),
+    screen.queryByRole("button", { name: "Reset to review defaults" }),
   ).not.toBeInTheDocument();
 });
 
@@ -1333,7 +1001,6 @@ it("keeps filter controls inert while the queue is loading", async () => {
   });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
 
   let resolveQueue!: (value: {
     items: ReturnType<typeof video>[];
@@ -1346,18 +1013,12 @@ it("keeps filter controls inert while the queue is loading", async () => {
       }),
   );
   fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
-  expect(
-    screen.getByRole("button", { name: "Filters, 1 active" }),
-  ).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Adjust queue" })).toBeDisabled();
-  const filterChip = screen.getByRole("button", {
-    name: "Edit filter: Organized",
+  const toolbarRegion = screen.getByRole("region", {
+    name: "Video queue toolbar",
   });
-  expect(filterChip.closest("[aria-disabled='true']")).not.toBeNull();
-  fireEvent.click(filterChip);
-  expect(
-    screen.queryByRole("dialog", { name: "Video filters" }),
-  ).not.toBeInTheDocument();
+  expect(toolbarRegion.querySelector("[aria-disabled='true']")).toHaveAttribute(
+    "inert",
+  );
 
   await act(async () => resolveQueue({ items: [video(3)], totalCount: 48 }));
   await screen.findByRole("article", { name: "Video 3" });
@@ -1393,7 +1054,7 @@ it("resumes a changed page at a surviving identity and never restores selection"
     expect.objectContaining({ page: 2 }),
     expect.anything(),
   );
-  expect(screen.getByText("Showing 25-48 of 48")).toBeInTheDocument();
+  expect(screen.getByText("25–48 of 48")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Grid" }));
   expect(
     screen.getByRole("slider", { name: "Card size: 260px" }),
@@ -1420,10 +1081,10 @@ it("clamps a deleted last page in a large queue and keeps the renderer bounded",
   );
   expect(api.findVideos).toHaveBeenLastCalledWith(
     review,
-    expect.objectContaining({ page: 2, perPage: 100 }),
+    expect.objectContaining({ page: 1, perPage: 1000 }),
     expect.anything(),
   );
-  expect(screen.getByText("Showing 101-103 of 103")).toBeInTheDocument();
+  expect(screen.getByText("1–103 of 103")).toBeInTheDocument();
   expect(screen.getAllByRole("article")).toHaveLength(3);
   expect(
     screen.getByRole("slider", { name: "Card size: 180px" }),
@@ -1441,7 +1102,9 @@ it("does not save or enable video actions for a read-only account", async () => 
   fireEvent.keyDown(card, { key: "1" });
   expect(api.runReviewAction).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Edit review" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Adjust queue" })).toBeEnabled();
+  expect(
+    screen.getByRole("toolbar", { name: "Video list controls" }),
+  ).toBeInTheDocument();
 });
 it("blocks actions on a stale queue after refresh failure and can retry the query", async () => {
   api.findVideos
@@ -1832,12 +1495,12 @@ it("keeps the visible range on the last successfully loaded page", async () => {
     .mockResolvedValueOnce({ items: [video(1), video(2)], totalCount: 48 })
     .mockRejectedValueOnce(new Error("Network unavailable"));
   render(<DataQualityPage onNavigate={vi.fn()} />);
-  await screen.findByText("Showing 1-24 of 48");
+  await screen.findByText("1–24 of 48");
 
   fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
 
   await screen.findByText("Network unavailable");
   expect(screen.getByRole("article", { name: "Video 1" })).toBeInTheDocument();
-  expect(screen.getByText("Showing 1-24 of 48")).toBeInTheDocument();
-  expect(screen.queryByText("Showing 25-48 of 48")).not.toBeInTheDocument();
+  expect(screen.getByText("1–24 of 48")).toBeInTheDocument();
+  expect(screen.queryByText("25–48 of 48")).not.toBeInTheDocument();
 });

@@ -12,7 +12,10 @@ import {
   EntityReferenceMultiSelector,
   EntityDetailTabs,
   DetailListPagination,
+  DetailListToolbar,
   SortableList,
+  VIDEO_CRITERIA,
+  VIDEO_SORT_OPTIONS,
   type DragHandleProps,
   VideoCard,
   VideoPlayer,
@@ -23,9 +26,7 @@ import {
   ChevronRight,
   ExternalLink,
   Film,
-  Grid3X3,
   GripVertical,
-  LayoutGrid,
   Loader2,
   Pencil,
   Play,
@@ -33,8 +34,6 @@ import {
   Trash2,
   Upload,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "@cove/runtime/lucide-react";
 import {
   createConfirmedAbsentTagsField,
@@ -75,7 +74,7 @@ import {
   TagBins,
   withTagBin,
 } from "./TagPresentation";
-import { QueueEditor, QueueFilterPanel } from "./QueueEditor";
+import { QueueEditor } from "./QueueEditor";
 import {
   actionShortcut,
   reviewValidation,
@@ -87,8 +86,6 @@ import {
 type ReviewDisplayMode = "grid" | "wall";
 
 const defaultCardSize = 180;
-const minimumCardSize = 115;
-const maximumCardSize = 380;
 
 function initialDisplayMode(review: VideoReview): ReviewDisplayMode {
   return review.view.displayMode === "wall" ? "wall" : "grid";
@@ -129,13 +126,12 @@ export function objectFiltersEqual(left: unknown, right: unknown): boolean {
     );
   }
   if (
+    !left ||
+    !right ||
     typeof left !== "object" ||
-    left === null ||
-    typeof right !== "object" ||
-    right === null
-  ) {
+    typeof right !== "object"
+  )
     return false;
-  }
   const leftRecord = left as Record<string, unknown>;
   const rightRecord = right as Record<string, unknown>;
   const leftKeys = Object.keys(leftRecord).sort();
@@ -148,16 +144,6 @@ export function objectFiltersEqual(left: unknown, right: unknown): boolean {
         objectFiltersEqual(leftRecord[key], rightRecord[key]),
     )
   );
-}
-
-function queueRangeLabel(filter: Record<string, unknown>, totalCount: number) {
-  if (totalCount === 0) return "Showing 0 of 0";
-  const perPage = Number(filter.perPage) || 40;
-  const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
-  const page = Math.min(Math.max(1, Number(filter.page) || 1), totalPages);
-  const start = (page - 1) * perPage + 1;
-  const end = Math.min(page * perPage, totalCount);
-  return `Showing ${start.toLocaleString()}-${end.toLocaleString()} of ${totalCount.toLocaleString()}`;
 }
 
 function videoTitle(video: Video) {
@@ -195,7 +181,6 @@ export function DataQualityPage({
   const [activeId, setActiveId] = useState(selectedReviewId);
   const [managerOpen, setManagerOpen] = useState(false);
   const [editCurrent, setEditCurrent] = useState(false);
-  const [temporaryEditor, setTemporaryEditor] = useState(false);
   const [temporaryReview, setTemporaryReview] = useState<VideoReview | null>(
     null,
   );
@@ -207,13 +192,8 @@ export function DataQualityPage({
         : savedReview,
     [temporaryReview, activeId, savedReview],
   );
-  const filtersOverridden = Boolean(
-    review &&
-    savedReview &&
-    !objectFiltersEqual(
-      review.view.objectFilter,
-      savedReview.view.objectFilter,
-    ),
+  const pendingToolbarObjectFilter = useRef<Record<string, unknown> | null>(
+    null,
   );
   const presentationTags = usePresentationTags(review);
   const [filter, setFilter] = useState<Record<string, unknown>>({
@@ -698,7 +678,7 @@ export function DataQualityPage({
       event.metaKey
     )
       return;
-    if (managerOpen || temporaryEditor) return;
+    if (managerOpen) return;
     if (previewOpen && event.key === "Escape") {
       consumeShortcut(event);
       setPreviewOpen(false);
@@ -946,11 +926,6 @@ export function DataQualityPage({
           </select>
         </label>
         {review && (
-          <span className="dq-range-count">
-            {queueRangeLabel(loadedFilter, queue.totalCount)}
-          </span>
-        )}
-        {review && (
           <>
             <button
               type="button"
@@ -1001,93 +976,62 @@ export function DataQualityPage({
                 >
                   Save queue to review
                 </button>
-                <button
-                  type="button"
-                  className="dq-button"
-                  disabled={pending || queueLoading}
-                  onClick={() => {
-                    setTemporaryReview(null);
-                    if (savedReview)
-                      void resumeQueue(
-                        savedReview,
-                        boundedFilter({
-                          ...savedReview.view.filter,
-                          page: filter.page,
-                        }),
-                      );
-                  }}
-                >
-                  Reset to saved queue
-                </button>
               </>
             )}
             <div className="dq-review-description">
               {review.description && <p>{review.description}</p>}
             </div>
-            <div
-              className="dq-view-switch flex min-h-10 items-center gap-0.5 rounded-lg border border-border bg-card/70 px-1.5 py-1 shadow-sm sm:min-h-0"
-              role="group"
-              aria-label="Review view"
-            >
-              {(
-                [
-                  { mode: "grid", label: "Grid", Icon: LayoutGrid },
-                  { mode: "wall", label: "Wall", Icon: Grid3X3 },
-                ] as const
-              ).map(({ mode, label, Icon }) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-md border border-transparent p-2 text-secondary hover:bg-card/80 hover:text-foreground focus:border-accent focus:outline-none sm:min-h-0 sm:min-w-0 sm:p-1.5 ${
-                    displayMode === mode
-                      ? "bg-background/60 text-accent shadow-sm"
-                      : ""
-                  }`}
-                  aria-label={label}
-                  title={label}
-                  aria-pressed={displayMode === mode}
-                  onClick={() => setDisplayMode(mode)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              ))}
-            </div>
-            <div className="hidden items-center gap-1 pl-1 md:flex">
-              <ZoomOut className="h-3 w-3 text-muted" />
-              <input
-                aria-label={`Card size: ${cardSize}px`}
-                title={`Card size: ${cardSize}px`}
-                type="range"
-                min={minimumCardSize}
-                max={maximumCardSize}
-                step="5"
-                className="themed-range-input h-1 w-16 cursor-pointer sm:w-20"
-                value={cardSize}
-                style={
-                  {
-                    "--range-fill": `${
-                      ((cardSize - minimumCardSize) /
-                        (maximumCardSize - minimumCardSize)) *
-                      100
-                    }%`,
-                  } as React.CSSProperties
-                }
-                onChange={(event) => setCardSize(Number(event.target.value))}
-              />
-              <ZoomIn className="h-3 w-3 text-muted" />
-            </div>
           </>
         )}
       </section>
       {review && savedReview && (
-        <QueueFilterPanel
-          objectFilter={review.view.objectFilter}
-          overridden={filtersOverridden}
-          disabled={pending || queueLoading}
-          onAdjustQueue={() => setTemporaryEditor(true)}
-          onApply={applyQueueFilters}
-          onReset={() => applyQueueFilters(savedReview.view.objectFilter)}
-        />
+        <section aria-label="Video queue toolbar">
+          <div
+            className={
+              pending || queueLoading ? "dq-native-toolbar-disabled" : undefined
+            }
+            aria-disabled={pending || queueLoading || undefined}
+            inert={pending || queueLoading ? true : undefined}
+          >
+            <DetailListToolbar
+              filter={queueError ? loadedFilter : filter}
+              onFilterChange={applyQueueToolbarFilter}
+              totalCount={queue.totalCount}
+              sortOptions={VIDEO_SORT_OPTIONS}
+              showSearch
+              showSort
+              displayMode={displayMode}
+              onDisplayModeChange={(mode) =>
+                setDisplayMode(supportedDisplayMode(mode))
+              }
+              availableDisplayModes={["grid", "wall"]}
+              zoomLevel={(cardSize - 225) / 50}
+              onZoomChange={(level) =>
+                setCardSize(Math.round(225 + level * 50))
+              }
+              cardSizeEntityType="videos"
+              criteriaDefinitions={VIDEO_CRITERIA}
+              objectFilter={review.view.objectFilter}
+              onObjectFilterChange={(objectFilter) => {
+                if (!pending && !queueLoading)
+                  pendingToolbarObjectFilter.current = objectFilter;
+              }}
+              showPagingControls={false}
+            />
+          </div>
+          {temporaryReview?.id === activeId && (
+            <div className="dq-review-defaults">
+              <button
+                type="button"
+                className="dq-button"
+                disabled={pending || queueLoading}
+                onClick={resetQueueToReviewDefaults}
+              >
+                Reset to review defaults
+              </button>
+            </div>
+          )}
+        </section>
       )}
       {!review ? (
         <div className="dq-empty">
@@ -1236,28 +1180,6 @@ export function DataQualityPage({
           onAction={execute}
         />
       )}
-      {temporaryEditor && review && (
-        <ReviewManager
-          reviews={reviews}
-          activeReview={{ ...review, view: { ...review.view, filter } }}
-          initialEdit
-          temporary
-          onSave={(next) => {
-            const adjusted = next.find((item) => item.id === activeId)!;
-            setTemporaryReview(adjusted);
-            void resumeQueue(
-              adjusted,
-              boundedFilter({ ...adjusted.view.filter, page: filter.page }),
-            );
-            return true;
-          }}
-          onChoose={() => undefined}
-          onClose={() => {
-            setTemporaryEditor(false);
-            focusCard(focusedRef.current, false);
-          }}
-        />
-      )}
       {managerOpen && (
         <ReviewManager
           reviews={reviews}
@@ -1294,19 +1216,25 @@ export function DataQualityPage({
     }
   }
 
-  function applyQueueFilters(objectFilter: Record<string, unknown>) {
+  function applyQueueToolbarFilter(nextFilter: Record<string, unknown>) {
+    const toolbarObjectFilter = pendingToolbarObjectFilter.current;
+    pendingToolbarObjectFilter.current = null;
     if (pending || queueLoading || !review || !savedReview) return;
-    const filtersMatchSaved = objectFiltersEqual(
-      objectFilter,
+    const requestedObjectFilter =
+      toolbarObjectFilter ?? review.view.objectFilter;
+    const objectFilter = objectFiltersEqual(
+      requestedObjectFilter,
       savedReview.view.objectFilter,
-    );
+    )
+      ? savedReview.view.objectFilter
+      : requestedObjectFilter;
+    const targetFilter = boundedFilter({ ...nextFilter, page: 1 });
     const adjusted = {
       ...review,
       view: {
         ...review.view,
-        objectFilter: filtersMatchSaved
-          ? savedReview.view.objectFilter
-          : objectFilter,
+        filter: targetFilter,
+        objectFilter,
       },
     };
     const keepsTemporaryQueue =
@@ -1314,11 +1242,23 @@ export function DataQualityPage({
     const target = keepsTemporaryQueue ? adjusted : savedReview;
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
     setMessage(
-      filtersMatchSaved
-        ? "Review filter defaults restored."
-        : "Queue filters adjusted for this session.",
+      keepsTemporaryQueue
+        ? "Queue adjusted for this session."
+        : "Review queue defaults restored.",
     );
-    void resumeQueue(target, { ...filter, page: 1 });
+    void resumeQueue(target, targetFilter);
+  }
+
+  function resetQueueToReviewDefaults() {
+    if (pending || queueLoading || !savedReview) return;
+    pendingToolbarObjectFilter.current = null;
+    const targetFilter = boundedFilter({
+      ...savedReview.view.filter,
+      page: 1,
+    });
+    setTemporaryReview(null);
+    setMessage("Review queue defaults restored.");
+    void resumeQueue(savedReview, targetFilter);
   }
 
   function clearPageState() {
@@ -1350,7 +1290,6 @@ export function DataQualityPage({
             setFilterAndLoad(
               { ...filter, page: next.page },
               review,
-              setFilter,
               fetchQueue,
               clearPageState,
             );
@@ -1389,14 +1328,12 @@ export function DataQualityPage({
 function setFilterAndLoad(
   next: Record<string, unknown>,
   review: VideoReview,
-  setFilter: (value: Record<string, unknown>) => void,
   fetchQueue: (
     review: VideoReview,
     filter: Record<string, unknown>,
   ) => Promise<VideoPage>,
   clear: () => void,
 ) {
-  setFilter(next);
   clear();
   void fetchQueue(review, next).catch(() => undefined);
 }
@@ -1836,7 +1773,6 @@ function ReviewManager({
   reviews,
   activeReview,
   initialEdit = false,
-  temporary = false,
   onSave,
   onChoose,
   onClose,
@@ -1844,7 +1780,6 @@ function ReviewManager({
   reviews: VideoReview[];
   activeReview: VideoReview | null;
   initialEdit?: boolean;
-  temporary?: boolean;
   onSave: (reviews: VideoReview[]) => boolean | Promise<boolean>;
   onChoose: (id: string) => void;
   onClose: () => void;
@@ -2008,19 +1943,13 @@ function ReviewManager({
         <header>
           <div>
             <h2>
-              {temporary
-                ? "Adjust queue temporarily"
-                : draft
-                  ? reviews.some((item) => item.id === draft.id)
-                    ? "Edit review"
-                    : "New review"
-                  : "Manage reviews"}
+              {draft
+                ? reviews.some((item) => item.id === draft.id)
+                  ? "Edit review"
+                  : "New review"
+                : "Manage reviews"}
             </h2>
-            <p>
-              {temporary
-                ? "Apply changes for this session. Saved review settings stay available through Reset to saved queue."
-                : "Edit your review, then save or cancel to resume your position."}
-            </p>
+            <p>Edit your review, then save or cancel to resume your position.</p>
           </div>
           <button
             type="button"
@@ -2040,7 +1969,6 @@ function ReviewManager({
           {draft ? (
             <ReviewEditor
               draft={draft}
-              temporary={temporary}
               saving={saving}
               setDraft={setDraft}
               onSave={() => void persistDraft()}
@@ -2112,14 +2040,12 @@ function ReviewManager({
 
 function ReviewEditor({
   draft,
-  temporary = false,
   saving = false,
   setDraft,
   onSave,
   onCancel,
 }: {
   draft: VideoReview;
-  temporary?: boolean;
   saving?: boolean;
   setDraft: (review: VideoReview) => void;
   onSave: () => void;
@@ -2144,23 +2070,20 @@ function ReviewEditor({
     });
   return (
     <div className="dq-editor">
-      {!temporary && (
-        <div className="dq-editor-nav">
-          <EntityDetailTabs
-            tabs={["Review", "Queue", "Appearance", "Actions"].map((name) => ({
-              key: name,
-              label: name,
-              count: name === "Actions" ? draft.actions.length : undefined,
-              disabled: saving,
-            }))}
-            activeTab={section}
-            onTabChange={setSection}
-          />
-        </div>
-      )}
+      <div className="dq-editor-nav">
+        <EntityDetailTabs
+          tabs={["Review", "Queue", "Appearance", "Actions"].map((name) => ({
+            key: name,
+            label: name,
+            count: name === "Actions" ? draft.actions.length : undefined,
+            disabled: saving,
+          }))}
+          activeTab={section}
+          onTabChange={setSection}
+        />
+      </div>
       <div className="dq-editor-body">
-        {!temporary && (
-          <section hidden={section !== "Review"} className="dq-editor-section">
+        <section hidden={section !== "Review"} className="dq-editor-section">
             <h3>Review details</h3>
             <p className="dq-editor-note">
               Give this review a name and describe what you want to check.
@@ -2186,24 +2109,14 @@ function ReviewEditor({
                 }
               />
             </label>
-          </section>
-        )}
-        <section
-          hidden={!temporary && section !== "Queue"}
-          className="dq-editor-section"
-        >
+        </section>
+        <section hidden={section !== "Queue"} className="dq-editor-section">
           <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
         </section>
-        {!temporary && (
-          <section
-            hidden={section !== "Appearance"}
-            className="dq-editor-section"
-          >
+        <section hidden={section !== "Appearance"} className="dq-editor-section">
             <QueueEditor draft={draft} onChange={setDraft} queue={false} />
-          </section>
-        )}
-        {!temporary && (
-          <section hidden={section !== "Actions"} className="dq-editor-section">
+        </section>
+        <section hidden={section !== "Actions"} className="dq-editor-section">
             <h3>Actions</h3>
             <p>
               Steps run in order. No steps means Skip. Earlier steps may remain
@@ -2383,8 +2296,7 @@ function ReviewEditor({
             >
               Add action
             </button>
-          </section>
-        )}
+        </section>
       </div>
       <div className="dq-editor-footer">
         <button
@@ -2409,7 +2321,7 @@ function ReviewEditor({
           Cancel
         </button>
         <button className="dq-button primary" type="button" onClick={onSave}>
-          {temporary ? "Apply temporary queue" : "Save review"}
+          Save review
         </button>
       </div>
     </div>

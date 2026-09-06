@@ -90,7 +90,7 @@ export function boundedFilter(
   return {
     ...filter,
     page: Math.max(1, positive(filter.page, 1)),
-    perPage: Math.max(1, Math.min(100, positive(filter.perPage, 40))),
+    perPage: Math.max(1, Math.min(1000, positive(filter.perPage, 40))),
   };
 }
 
