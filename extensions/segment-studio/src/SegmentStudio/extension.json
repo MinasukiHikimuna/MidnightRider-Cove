@@ -1,5 +1,5 @@
 {
-  "id": "segment-studio",
+  "id": "com.midnightrider.segment-studio",
   "name": "Segment Studio",
   "version": "0.1.1",
   "description": "Provides focused, direct review and timing edits for canonical Cove video segments.",

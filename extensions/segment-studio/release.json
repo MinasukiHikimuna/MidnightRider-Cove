@@ -1,7 +1,7 @@
 {
-  "id": "segment-studio",
+  "id": "com.midnightrider.segment-studio",
   "name": "SegmentStudio",
-  "tagPrefix": "segment-studio/",
+  "tagPrefix": "com.midnightrider.segment-studio/",
   "solution": "SegmentStudio.slnx",
   "project": "src/SegmentStudio/SegmentStudio.csproj",
   "manifest": "src/SegmentStudio/extension.json",

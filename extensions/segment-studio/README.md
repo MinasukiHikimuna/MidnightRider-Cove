@@ -5,8 +5,8 @@ performer-slot assignment, provenance, and derivation lineage. It supports a
 streamlined basic workflow for canonical Cove segments and a full workflow for
 extension-owned drafts and derived segments.
 
-Its extension ID intentionally remains `segment-studio` so pre-release installs,
-API routes, and migration receipts retain one continuous identity.
+Its extension ID is `com.midnightrider.segment-studio`. The shorter
+`segment-studio` name remains in user-facing routes and internal data namespaces.
 
 Version 0.1.1 requires Cove 1.4.0-rc.1 or later.
 
