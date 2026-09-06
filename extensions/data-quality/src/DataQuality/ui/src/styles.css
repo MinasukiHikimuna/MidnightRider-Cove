@@ -42,6 +42,12 @@
   background: var(--color-input);
   color: var(--color-foreground);
 }
+.dq-range-count {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  white-space: nowrap;
+}
 .dq-button,
 .dq-actions button,
 .dq-preview button,

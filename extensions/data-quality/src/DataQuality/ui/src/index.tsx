@@ -108,6 +108,19 @@ function pageFilter(value: Record<string, unknown>) {
   return boundedFilter({ ...value, page: 1 });
 }
 
+function queueRangeLabel(
+  filter: Record<string, unknown>,
+  totalCount: number,
+) {
+  if (totalCount === 0) return "Showing 0 of 0";
+  const perPage = Number(filter.perPage) || 40;
+  const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+  const page = Math.min(Math.max(1, Number(filter.page) || 1), totalPages);
+  const start = (page - 1) * perPage + 1;
+  const end = Math.min(page * perPage, totalCount);
+  return `Showing ${start.toLocaleString()}-${end.toLocaleString()} of ${totalCount.toLocaleString()}`;
+}
+
 function videoTitle(video: Video) {
   return video.title || video.files[0]?.basename || `Video ${video.id}`;
 }
@@ -161,6 +174,10 @@ export function DataQualityPage({
     perPage: 40,
     sort: "date",
     direction: "desc",
+  });
+  const [loadedFilter, setLoadedFilter] = useState<Record<string, unknown>>({
+    page: 1,
+    perPage: 40,
   });
   const [queue, setQueue] = useState<VideoPage>({ items: [], totalCount: 0 });
   const [queueLoading, setQueueLoading] = useState(false);
@@ -250,6 +267,7 @@ export function DataQualityPage({
         if (generation === loadGeneration.current) {
           setQueue(result);
           setFilter(targetFilter);
+          setLoadedFilter(targetFilter);
         }
         return result;
       } catch (error) {
@@ -811,6 +829,11 @@ export function DataQualityPage({
           </select>
         </label>
         {review && (
+          <span className="dq-range-count">
+            {queueRangeLabel(loadedFilter, queue.totalCount)}
+          </span>
+        )}
+        {review && (
           <>
             <button
               type="button"
@@ -933,7 +956,6 @@ export function DataQualityPage({
                 </button>
               </>
             )}
-            <span>{queue.totalCount.toLocaleString()} matching</span>
           </>
         )}
       </section>

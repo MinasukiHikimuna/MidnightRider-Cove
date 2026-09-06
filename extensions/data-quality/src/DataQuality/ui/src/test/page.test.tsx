@@ -141,6 +141,29 @@ describe("Data Quality extension page", () => {
     expect(screen.getByText(review.description)).toBeInTheDocument();
   });
 
+  it("shows the visible video range and total in the toolbar", async () => {
+    api.findVideos.mockResolvedValue({
+      items: [video(1), video(2)],
+      totalCount: 182,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const count = await screen.findByText("Showing 1-24 of 182");
+    expect(count).toBeInTheDocument();
+    expect(count).toHaveClass("dq-range-count");
+    expect(screen.queryByText("182 matching")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Review").parentElement?.nextElementSibling).toBe(
+      count,
+    );
+  });
+
+  it("shows an empty range for a review without videos", async () => {
+    api.findVideos.mockResolvedValue({ items: [], totalCount: 0 });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    expect(await screen.findByText("Showing 0 of 0")).toBeInTheDocument();
+  });
+
   it("navigates, previews, applies, advances, and restores focus", async () => {
     let changed = false;
     api.findVideos.mockImplementation(async () =>
@@ -450,6 +473,7 @@ it("resumes a changed page at a surviving identity and never restores selection"
     expect.objectContaining({ page: 2 }),
     expect.anything(),
   );
+  expect(screen.getByText("Showing 25-48 of 48")).toBeInTheDocument();
 });
 it("clamps a deleted last page in a large queue and keeps the renderer bounded", async () => {
   api.loadProgress.mockResolvedValue({
@@ -475,6 +499,7 @@ it("clamps a deleted last page in a large queue and keeps the renderer bounded",
     expect.objectContaining({ page: 2, perPage: 100 }),
     expect.anything(),
   );
+  expect(screen.getByText("Showing 101-103 of 103")).toBeInTheDocument();
   expect(screen.getAllByRole("article")).toHaveLength(3);
 });
 it("does not save or enable video actions for a read-only account", async () => {
@@ -763,4 +788,19 @@ it("uses shared pagination while clearing selection and blocking navigation duri
   await waitFor(() => expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeEnabled());
   fireEvent.click(screen.getAllByRole("button", { name: "First page" })[0]);
   await waitFor(() => expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 1 }), expect.anything()));
+});
+
+it("keeps the visible range on the last successfully loaded page", async () => {
+  api.findVideos
+    .mockResolvedValueOnce({ items: [video(1), video(2)], totalCount: 48 })
+    .mockRejectedValueOnce(new Error("Network unavailable"));
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByText("Showing 1-24 of 48");
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
+
+  await screen.findByText("Network unavailable");
+  expect(screen.getByRole("article", { name: "Video 1" })).toBeInTheDocument();
+  expect(screen.getByText("Showing 1-24 of 48")).toBeInTheDocument();
+  expect(screen.queryByText("Showing 25-48 of 48")).not.toBeInTheDocument();
 });
