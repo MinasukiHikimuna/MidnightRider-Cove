@@ -893,6 +893,32 @@ describe("Data Quality extension page", () => {
     );
   });
 
+  it("removes a submitted video immediately and restores it on failure", async () => {
+    let fail!: (error: Error) => void;
+    api.runReviewAction.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject;
+        }),
+    );
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Video 1" });
+
+    fireEvent.keyDown(first, { key: "1" });
+    expect(
+      screen.queryByRole("article", { name: "Video 1" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByText("1–2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Video 2" })).toHaveFocus();
+
+    await act(async () => fail(new Error("Action failed")));
+    expect(
+      await screen.findByRole("article", { name: "Video 1" }),
+    ).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveTextContent("Action failed");
+  });
+
   it("drops selected targets that leave the queue after a partial failure", async () => {
     let changed = false;
     api.findVideos.mockImplementation(async () =>
@@ -1459,6 +1485,9 @@ it("keeps new selections made during an action and clamps keyboard movement", as
   fireEvent.keyDown(first, { key: "ArrowLeft" });
   expect(first).toHaveAttribute("aria-current", "true");
   fireEvent.keyDown(first, { key: "1" });
+  expect(
+    screen.queryByRole("article", { name: "Video 1" }),
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
   finish();
   await waitFor(() =>

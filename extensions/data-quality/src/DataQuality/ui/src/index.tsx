@@ -701,7 +701,9 @@ export function DataQualityPage({
       const generation = ++actionGeneration.current;
       const reviewId = review.id;
       const previousIds = [...itemIds];
+      const previousQueue = queue;
       const previousFocus = focusedRef.current;
+      const previousSelection = new Set(selectedRef.current);
       const versions = new Map(
         actionTargets.map((id) => [id, selectionVersions.current.get(id) ?? 0]),
       );
@@ -716,6 +718,27 @@ export function DataQualityPage({
       );
       setMessage("");
       setActionError("");
+      const optimisticItems = previousQueue.items.filter(
+        (item) => !actionTargets.includes(item.id),
+      );
+      const optimisticIds = optimisticItems.map((item) => item.id);
+      const optimisticFocus = getNextReviewFocus(
+        previousIds,
+        optimisticIds,
+        previousFocus,
+        actionTargets.includes(previousFocus ?? -1),
+      );
+      setQueue({
+        items: optimisticItems,
+        totalCount: previousQueue.totalCount,
+      });
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        for (const id of actionTargets) next.delete(id);
+        return next;
+      });
+      setFocusedId(optimisticFocus);
+      if (!previewOpenRef.current) focusCard(optimisticFocus);
       let succeeded = false;
       try {
         await runReviewAction(action, actionTargets);
@@ -733,6 +756,19 @@ export function DataQualityPage({
         );
       } catch (error) {
         if (!isCurrent()) return;
+        setQueue(previousQueue);
+        setSelectedIds((current) => {
+          const next = new Set(current);
+          for (const id of actionTargets)
+            if (
+              previousSelection.has(id) &&
+              (selectionVersions.current.get(id) ?? 0) === versions.get(id)
+            )
+              next.add(id);
+          return next;
+        });
+        setFocusedId(previousFocus);
+        if (!previewOpenRef.current) focusCard(previousFocus);
         setActionError(
           error instanceof Error ? error.message : "Action failed.",
         );
@@ -798,6 +834,7 @@ export function DataQualityPage({
       filter,
       focusCard,
       itemIds,
+      queue,
       queueLoading,
       queueError,
       review,
@@ -1353,12 +1390,15 @@ export function DataQualityPage({
                   }
                 />
               )}
-              {!queueLoading && !queueError && !queue.items.length && (
-                <div className="dq-empty">
-                  <Film />
-                  <p>No videos match this review.</p>
-                </div>
-              )}
+              {!pending &&
+                !queueLoading &&
+                !queueError &&
+                !queue.items.length && (
+                  <div className="dq-empty">
+                    <Film />
+                    <p>No videos match this review.</p>
+                  </div>
+                )}
               {!!queue.items.length && (
                 <div ref={gridRef}>
                   <div
