@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -70,7 +71,7 @@ import {
 import "./styles.css";
 import {
   usePresentationTags,
-  annotations,
+  presentedVideo,
   TagBins,
   withTagBin,
 } from "./TagPresentation";
@@ -363,7 +364,7 @@ export function DataQualityPage({
       setCardSize(
         resume
           ? (resume.cardSize ?? defaultCardSize)
-          : (review.presentation?.cardSize ?? defaultCardSize),
+          : defaultCardSize,
       );
       try {
         const result = await fetchQueue(review, nextFilter);
@@ -725,15 +726,16 @@ export function DataQualityPage({
 
   async function updateReviews(next: VideoReview[]): Promise<boolean> {
     if (!storageKey) return false;
+    const normalized = next.map(withoutPreferredCardSize);
     try {
-      await saveReviews(storageKey, next);
+      await saveReviews(storageKey, normalized);
     } catch (error) {
       throw error;
     }
-    setReviews(next);
-    if (activeId && !next.some((item) => item.id === activeId))
+    setReviews(normalized);
+    if (activeId && !normalized.some((item) => item.id === activeId))
       chooseReview("");
-    const updated = next.find((item) => item.id === activeId);
+    const updated = normalized.find((item) => item.id === activeId);
     if (
       updated &&
       savedReview &&
@@ -741,8 +743,6 @@ export function DataQualityPage({
     ) {
       if (updated.view.displayMode !== savedReview.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
-      if (updated.presentation?.cardSize !== savedReview.presentation?.cardSize)
-        setCardSize(updated.presentation?.cardSize ?? defaultCardSize);
       if (queueSignature(updated) !== queueSignature(savedReview)) {
         setTemporaryReview(null);
         void resumeQueue(
@@ -1297,8 +1297,7 @@ export function DataQualityPage({
     return (
       <ReviewCard
         key={video.id}
-        video={video}
-        annotation={annotations(video, review, presentationTags.ids)}
+        video={presentedVideo(video, review, presentationTags.ids)}
         displayMode={displayMode}
         focused={video.id === focusedId}
         selected={selectedIds.has(video.id)}
@@ -1342,9 +1341,15 @@ function toggleOne(current: Set<number>, id: number) {
   return next;
 }
 
+function withoutPreferredCardSize(review: VideoReview): VideoReview {
+  if (review.presentation?.cardSize === undefined) return review;
+  const presentation = { ...review.presentation };
+  delete presentation.cardSize;
+  return { ...review, presentation };
+}
+
 function ReviewCard({
   video,
-  annotation,
   displayMode,
   focused,
   selected,
@@ -1355,7 +1360,6 @@ function ReviewCard({
   onNavigate,
 }: {
   video: Video;
-  annotation: string;
   displayMode: ReviewDisplayMode;
   focused: boolean;
   selected: boolean;
@@ -1376,16 +1380,26 @@ function ReviewCard({
     galleries: video.galleries ?? [],
     createdAt: video.createdAt ?? video.updatedAt,
   };
-  useEffect(() => {
+  const hasCardMetadata = Boolean(nativeVideo.date || nativeVideo.studioName);
+  const hasCardFooter = Boolean(
+    nativeVideo.performers.length || nativeVideo.tags.length,
+  );
+  useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
     const link = element.querySelector<HTMLAnchorElement>(
       `a[href="/video/${video.id}"]`,
     );
+    const cardTitle = element.querySelector<HTMLElement>(".card-title");
+    const cardTitleId = `dq-card-title-${video.id}`;
+    if (cardTitle) {
+      cardTitle.id = cardTitleId;
+    }
     if (link) {
       link.target = "_blank";
       link.rel = "noreferrer";
-      link.setAttribute("aria-label", `Open ${title} details in new tab`);
+      link.removeAttribute("aria-label");
+      link.setAttribute("aria-labelledby", cardTitleId);
       link.classList.add("dq-card-link");
     }
     const selection = element.querySelector<HTMLButtonElement>(
@@ -1400,7 +1414,7 @@ function ReviewCard({
       'button[title="Quick View"]',
     );
     if (quickView) quickView.setAttribute("aria-label", `Preview ${title}`);
-  }, [selected, title, video.id]);
+  });
   return (
     <article
       ref={(node) => {
@@ -1415,7 +1429,7 @@ function ReviewCard({
         onFocus();
         event.currentTarget.focus({ preventScroll: true });
       }}
-      className={`dq-review-card relative h-full ${displayMode} ${focused ? "focused" : ""} ${selected ? "selected" : ""}`}
+      className={`dq-review-card relative h-full ${displayMode} ${hasCardMetadata ? "has-card-metadata" : "no-card-metadata"} ${hasCardFooter ? "has-card-footer" : "no-card-footer"} ${focused ? "focused" : ""} ${selected ? "selected" : ""}`}
     >
       <VideoCard
         video={nativeVideo}
@@ -1428,12 +1442,6 @@ function ReviewCard({
         }}
       />
       {displayMode === "wall" && <WallPreview video={video} />}
-      {annotation && (
-        <div className="dq-card-annotation" title={annotation}>
-          <span>Review</span>
-          <p>{annotation}</p>
-        </div>
-      )}
     </article>
   );
 }

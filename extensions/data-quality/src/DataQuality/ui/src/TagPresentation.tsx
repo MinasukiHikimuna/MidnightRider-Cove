@@ -41,33 +41,33 @@ export function usePresentationTags(review: VideoReview | null) {
   return { ids, error };
 }
 
-export function annotations(
+export function presentedVideo(
   video: Video,
   review: VideoReview | null,
   trees: Record<number, number[]>,
-): string {
+): Video {
   const settings = review?.presentation;
   const fields = settings?.annotations ?? [];
   const parents = settings?.annotationParents ?? [];
-  return [
-    fields.includes("date") && video.date,
-    fields.includes("studio") && video.studioName,
-    fields.includes("performers") &&
-      video.performers.map((p) => p.name).join(", "),
-    fields.includes("tags") &&
-      parents.length > 0 &&
-      (video.tags ?? [])
-        .filter(
-          (tag) =>
+  return {
+    ...video,
+    details: undefined,
+    organized: false,
+    groups: [],
+    galleries: [],
+    date: fields.includes("date") ? video.date : undefined,
+    studioId: fields.includes("studio") ? video.studioId : undefined,
+    studioName: fields.includes("studio") ? video.studioName : undefined,
+    performers: fields.includes("performers") ? video.performers : [],
+    tags:
+      fields.includes("tags") && parents.length > 0
+        ? (video.tags ?? []).filter((tag) =>
             parents.some(
               (parent) => parent !== tag.id && trees[parent]?.includes(tag.id),
             ),
-        )
-        .map((tag) => tag.name)
-        .join(", "),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+          )
+        : [],
+  };
 }
 
 export function TagBins({

@@ -109,6 +109,13 @@ export function VideoCard({
         {video.tags.length ? (
           <button title="Tags">{video.tags.length}</button>
         ) : null}
+        {video.groups.length ? (
+          <button title="Groups">{video.groups.length}</button>
+        ) : null}
+        {video.galleries.length ? (
+          <button title="Galleries">{video.galleries.length}</button>
+        ) : null}
+        {video.organized ? <span title="Organized" /> : null}
       </div>
     </div>
   );

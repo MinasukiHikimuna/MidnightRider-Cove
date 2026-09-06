@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DataQualityPage } from "../index";
-import { annotations } from "../TagPresentation";
+import { presentedVideo } from "../TagPresentation";
 import { testVideoControls } from "@cove/runtime/components";
 
 const { api, review } = vi.hoisted(() => ({
@@ -287,13 +287,18 @@ describe("Data Quality extension page", () => {
 
     const card = await screen.findByRole("article", { name: "Video 1" });
     const cardLink = within(card).getByRole("link", {
-      name: "Open Video 1 details in new tab",
+      name: "Video 1",
     });
     expect(cardLink).toHaveAttribute("href", "/video/1");
     expect(cardLink).toHaveAttribute("target", "_blank");
     expect(cardLink).toHaveAttribute("rel", "noreferrer");
     expect(cardLink).toHaveClass("dq-card-link", "absolute", "inset-0");
     expect(cardLink.closest(".video-card")).toBe(card.querySelector(".video-card"));
+    expect(cardLink).toHaveAttribute("aria-labelledby", "dq-card-title-1");
+    expect(card.querySelector(".card-title")).toHaveAttribute(
+      "id",
+      "dq-card-title-1",
+    );
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     fireEvent.click(cardLink);
     expect(open).toHaveBeenCalledWith(
@@ -402,11 +407,29 @@ describe("Data Quality extension page", () => {
       "line-clamp-2",
     );
     expect(
-      within(gridCard).getByRole("link", { name: "Performer 1" }),
-    ).toHaveAttribute("href", "/performer/10");
-    expect(within(gridCard).getByTitle("Tags")).toHaveTextContent("1");
-    expect(gridCard.querySelector(".card-body")).toHaveTextContent("Details 1");
-    expect(gridCard.querySelector(".dq-card-annotation")).toBeNull();
+      within(gridCard).queryByRole("link", { name: "Performer 1" }),
+    ).not.toBeInTheDocument();
+    expect(within(gridCard).queryByTitle("Tags")).not.toBeInTheDocument();
+    expect(gridCard.querySelector(".card-body")).not.toHaveTextContent(
+      "Details 1",
+    );
+    expect(gridCard.querySelector(".card-body")).not.toHaveTextContent(
+      "2026-01-01",
+    );
+    expect(gridCard.querySelector(".card-body")).not.toHaveTextContent(
+      "Studio 1",
+    );
+    expect(gridCard).toHaveClass("no-card-metadata", "no-card-footer");
+    expect(
+      getComputedStyle(
+        gridCard.querySelector(
+          ".card-body > div:first-child > div, .card-body > .card-title + div",
+        )!,
+      ).display,
+    ).toBe("none");
+    expect(
+      getComputedStyle(gridCard.querySelector(".card-popovers")!).display,
+    ).toBe("none");
     const viewGroup = screen.getByRole("group", { name: "Review view" });
     for (const mode of ["Grid", "Wall"]) {
       expect(screen.getByRole("button", { name: mode })).toContainHTML("svg");
@@ -480,8 +503,18 @@ describe("Data Quality extension page", () => {
     expect(manage).toHaveFocus();
   });
 
-  it("keeps native details separate from configured descendant-tag annotations", async () => {
+  it("shows configured descendant tags through the native card", async () => {
     api.resolveTagTree.mockResolvedValueOnce([100, 30]);
+    api.findVideos.mockResolvedValueOnce({
+      items: [
+        {
+          ...video(1),
+          groups: [{ id: 40, name: "Group 1" }],
+          galleries: [{ id: 50, title: "Gallery 1" }],
+        },
+      ],
+      totalCount: 1,
+    });
     api.loadReviews.mockResolvedValueOnce({
       reviews: [
         {
@@ -498,13 +531,14 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     const card = await screen.findByRole("article", { name: "Video 1" });
-    expect(card.querySelector(".card-body")).toHaveTextContent("Details 1");
-    expect(card.querySelector(".dq-card-annotation")).toHaveTextContent(
-      "ReviewTag 1",
-    );
-    expect(card.querySelector(".dq-card-annotation")).not.toHaveTextContent(
-      "Studio 1",
-    );
+    expect(card.querySelector(".card-body")).not.toHaveTextContent("Details 1");
+    expect(within(card).getByTitle("Tags")).toHaveTextContent("1");
+    expect(within(card).queryByTitle("Performers")).not.toBeInTheDocument();
+    expect(within(card).queryByTitle("Groups")).not.toBeInTheDocument();
+    expect(within(card).queryByTitle("Galleries")).not.toBeInTheDocument();
+    expect(within(card).queryByTitle("Organized")).not.toBeInTheDocument();
+    expect(card.querySelector(".card-body")).not.toHaveTextContent("Studio 1");
+    expect(card).toHaveClass("no-card-metadata", "has-card-footer");
   });
 
   it("does not show configured tag annotations without a parent", async () => {
@@ -521,12 +555,12 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     const card = await screen.findByRole("article", { name: "Video 1" });
-    expect(card.querySelector(".dq-card-annotation")).toBeNull();
+    expect(within(card).queryByTitle("Tags")).not.toBeInTheDocument();
   });
 
   it("excludes a configured annotation parent while showing its descendants", () => {
     expect(
-      annotations(
+      presentedVideo(
         {
           ...video(1),
           tags: [
@@ -543,7 +577,7 @@ describe("Data Quality extension page", () => {
         },
         { 100: [100, 30] },
       ),
-    ).toBe("Child");
+    ).toMatchObject({ tags: [{ id: 30, name: "Child" }] });
   });
 
   it("shows performer annotations only when explicitly configured", async () => {
@@ -560,15 +594,36 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     const card = await screen.findByRole("article", { name: "Video 1" });
-    expect(card.querySelector(".dq-card-annotation")).toHaveTextContent(
-      "Performer 1",
-    );
-    expect(card.querySelector(".dq-card-annotation")).not.toHaveTextContent(
+    expect(
+      within(card).getByRole("link", { name: "Performer 1" }),
+    ).toHaveAttribute("href", "/performer/10");
+    expect(card.querySelector(".card-body")).not.toHaveTextContent(
       "2026-01-01",
     );
+    expect(within(card).queryByTitle("Tags")).not.toBeInTheDocument();
   });
 
-  it("omits the review annotation strip when every annotation is disabled", async () => {
+  it("shows date and studio only when explicitly configured", async () => {
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          presentation: { annotations: ["date", "studio"] },
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    expect(card.querySelector(".card-body")).toHaveTextContent("2026-01-01");
+    expect(card.querySelector(".card-body")).toHaveTextContent("Studio 1");
+    expect(within(card).queryByTitle("Performers")).not.toBeInTheDocument();
+    expect(within(card).queryByTitle("Tags")).not.toBeInTheDocument();
+  });
+
+  it("omits native metadata when every annotation is disabled", async () => {
     api.loadReviews.mockResolvedValueOnce({
       reviews: [
         {
@@ -582,8 +637,10 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     const card = await screen.findByRole("article", { name: "Video 1" });
-    expect(card.querySelector(".card-body")).toHaveTextContent("Details 1");
-    expect(card.querySelector(".dq-card-annotation")).toBeNull();
+    expect(card.querySelector(".card-body")).not.toHaveTextContent("Details 1");
+    expect(within(card).queryByTitle("Performers")).not.toBeInTheDocument();
+    expect(within(card).queryByTitle("Tags")).not.toBeInTheDocument();
+    expect(card).toHaveClass("no-card-metadata", "no-card-footer");
   });
 
   it("keeps the preview and retry context after an action failure", async () => {
@@ -1130,7 +1187,9 @@ it("keeps edits across review sections and saves the combined draft", async () =
   expect(
     screen.getByPlaceholderText("Search annotation parent tags..."),
   ).toBeInTheDocument();
-  expect(screen.getByLabelText("Preferred card width")).toHaveValue("180");
+  expect(
+    screen.queryByLabelText("Preferred card width"),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("option", { name: "Auto fit" }),
   ).not.toBeInTheDocument();
@@ -1152,6 +1211,31 @@ it("keeps edits across review sections and saves the combined draft", async () =
     view: { objectFilter: { organized: true }, displayMode: "wall" },
     presentation: { annotations: ["tags"] },
   });
+});
+
+it("ignores legacy per-review card width preferences", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        presentation: { cardSize: 380, annotations: [] },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(
+    screen.getByRole("slider", { name: "Card size: 180px" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
+  expect(api.saveReviews.mock.calls[0][1][0].presentation).not.toHaveProperty(
+    "cardSize",
+  );
 });
 
 it("uses shared pagination while clearing selection and blocking navigation during loading", async () => {

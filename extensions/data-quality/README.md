@@ -2,7 +2,7 @@
 
 Data Quality is a self-contained Cove extension for running saved video review queues. Installing and enabling it adds a top-level page to **Settings → My → Interface → Navigation**, where it can be shown, hidden, and reordered with other extension pages.
 
-The extension owns its page, interaction model, review storage bridge, editor, styles, and tests. Grid and Wall modes share the same card presentation, keyboard focus, explicit selection, preview, action targeting, and deterministic advancement. Grid uses cover images, while Wall substitutes muted viewport-aware previews when available. Every card and the large preview link directly to video details in a new tab, and the large preview reuses Cove's public `VideoPlayer` runtime component.
+The extension owns its page, interaction model, review storage bridge, editor, styles, and tests. Grid and Wall modes share the same card presentation, keyboard focus, explicit selection, preview, action targeting, and deterministic advancement. Grid uses cover images, while Wall substitutes muted viewport-aware previews when available. Video titles and the large preview link directly to video details in a new tab, and the large preview reuses Cove's public `VideoPlayer` runtime component.
 
 Reviews, ordered actions, native filters, annotations, tag bins, and preferred presentation are editable in the review route. Save or cancel returns to the current position. **Adjust queue** changes only the current session; **Save queue to review** explicitly replaces the saved queue.
 

@@ -150,23 +150,6 @@ export function QueueEditor({
                 ))}
               </select>
             </label>
-            <label>
-              Preferred card width
-              <select
-                value={settings.cardSize ?? 180}
-                onChange={(e) =>
-                  updatePresentation({
-                    cardSize: Number(e.target.value),
-                  })
-                }
-              >
-                {[130, 180, 260, 380].map((size) => (
-                  <option key={size} value={size}>
-                    {size} px
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
           <h4>Card annotations</h4>
           <div className="dq-annotation-options">
@@ -193,8 +176,8 @@ export function QueueEditor({
           {(settings.annotations ?? []).includes("tags") && (
             <>
               <p>
-                Choose parent tags. Only their descendant tags appear in the
-                Review row; no tags appear until a parent is selected.
+                Choose parent tags. Only their descendant tags appear on the
+                card; no tags appear until a parent is selected.
               </p>
               <EntityReferenceMultiSelector
                 entityType="tag"
