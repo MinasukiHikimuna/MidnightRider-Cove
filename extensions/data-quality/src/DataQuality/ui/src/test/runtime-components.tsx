@@ -85,3 +85,17 @@ export function SortableList<T>({
 export function EntityDetailTabs({ tabs, activeTab, onTabChange }: React.ComponentProps<typeof import("@cove/runtime/components").EntityDetailTabs>) {
   return <div role="tablist" aria-label="Detail tabs">{tabs.map(tab => <button key={tab.key} role="tab" aria-selected={tab.key === activeTab} disabled={tab.disabled} onClick={() => onTabChange(tab.key)}>{tab.label}</button>)}</div>;
 }
+
+export function DetailListPagination({ filter, totalCount, onFilterChange }: React.ComponentProps<typeof import("@cove/runtime/components").DetailListPagination>) {
+  const page = filter.page ?? 1;
+  const totalPages = Math.max(1, Math.ceil(totalCount / (filter.perPage ?? 24)));
+  const goTo = (page: number) => onFilterChange({ ...filter, page });
+  if (totalPages <= 1) return null;
+  return <>
+    <button disabled={page <= 1} onClick={() => goTo(1)}>First page</button>
+    <button disabled={page <= 1} onClick={() => goTo(page - 1)}>Previous page</button>
+    <span aria-current="page">{page}</span>
+    <button disabled={page >= totalPages} onClick={() => goTo(page + 1)}>Next page</button>
+    <button disabled={page >= totalPages} onClick={() => goTo(totalPages)}>Last page</button>
+  </>;
+}

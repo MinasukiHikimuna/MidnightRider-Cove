@@ -23,6 +23,13 @@ declare module "@cove/runtime/components" {
       },
     ): ReactNode;
   }): ReactNode;
+  export const DetailListPagination: ComponentType<{
+    filter: { page?: number; perPage?: number; [key: string]: unknown };
+    totalCount: number;
+    className?: string;
+    ariaLabel?: string;
+    onFilterChange(filter: { page?: number; perPage?: number; [key: string]: unknown }): void;
+  }>;
   export const EntityDetailTabs: ComponentType<{
     tabs: Array<{ key: string; label: string; count?: number; disabled?: boolean }>;
     activeTab: string;

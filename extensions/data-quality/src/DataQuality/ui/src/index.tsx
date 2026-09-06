@@ -11,6 +11,7 @@ import React, {
 import {
   EntityReferenceMultiSelector,
   EntityDetailTabs,
+  DetailListPagination,
   SortableList,
   type DragHandleProps,
   VideoPlayer,
@@ -402,10 +403,6 @@ export function DataQualityPage({
     progressLoadBlocked,
   ]);
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(queue.totalCount / Math.max(1, Number(filter.perPage) || 40)),
-  );
   const focusedVideo =
     queue.items.find((item) => item.id === focusedId) ?? null;
   if (previewOpen && focusedVideo) previewVideoRef.current = focusedVideo;
@@ -947,43 +944,6 @@ export function DataQualityPage({
               </>
             )}
             <span>{queue.totalCount.toLocaleString()} matching</span>
-            <button
-              className="dq-button"
-              type="button"
-              disabled={Number(filter.page) <= 1 || pending || queueLoading}
-              onClick={() =>
-                setFilterAndLoad(
-                  { ...filter, page: Number(filter.page) - 1 },
-                  review,
-                  setFilter,
-                  fetchQueue,
-                  clearPageState,
-                )
-              }
-            >
-              Prev
-            </button>
-            <span>
-              {Number(filter.page) || 1} / {totalPages}
-            </span>
-            <button
-              className="dq-button"
-              type="button"
-              disabled={
-                Number(filter.page) >= totalPages || pending || queueLoading
-              }
-              onClick={() =>
-                setFilterAndLoad(
-                  { ...filter, page: Number(filter.page) + 1 },
-                  review,
-                  setFilter,
-                  fetchQueue,
-                  clearPageState,
-                )
-              }
-            >
-              Next
-            </button>
           </section>
           {presentationTags.error && (
             <p role="alert">{presentationTags.error}</p>
@@ -1012,6 +972,7 @@ export function DataQualityPage({
           )}
           <div className="dq-workspace">
             <main>
+              {renderPagination("top")}
               {queueLoading && !queue.items.length && (
                 <CenteredStatus label="Loading review queue…" />
               )}
@@ -1054,6 +1015,7 @@ export function DataQualityPage({
                   )}
                 </div>
               )}
+              {renderPagination("bottom")}
             </main>
             <aside className="dq-actions">
               <strong>{targetLabel}</strong>
@@ -1190,6 +1152,42 @@ export function DataQualityPage({
     setSelectedIds(new Set());
     selectionVersions.current.clear();
     setFocusedId(null);
+  }
+
+  function renderPagination(position: "top" | "bottom") {
+    if (!review) return null;
+    return (
+      <fieldset
+        className="dq-pagination-row"
+        disabled={pending || queueLoading}
+        aria-label={`Review queue pagination ${position}`}
+      >
+        <DetailListPagination
+          filter={{
+            ...filter,
+            page: Number(filter.page) || 1,
+            perPage: Number(filter.perPage) || 40,
+          }}
+          totalCount={queue.totalCount}
+          className="dq-pagination"
+          ariaLabel={`Review queue pages ${position}`}
+          onFilterChange={(next) => {
+            if (
+              pending ||
+              queueLoading ||
+              next.page === Number(filter.page)
+            ) return;
+            setFilterAndLoad(
+              { ...filter, page: next.page },
+              review,
+              setFilter,
+              fetchQueue,
+              clearPageState,
+            );
+          }}
+        />
+      </fieldset>
+    );
   }
 
   function renderCard(video: Video) {

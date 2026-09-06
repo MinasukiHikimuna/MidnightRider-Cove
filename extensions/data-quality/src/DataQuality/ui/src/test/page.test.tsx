@@ -721,3 +721,30 @@ it("keeps edits across review sections and saves the combined draft", async () =
     view: { objectFilter: { organized: true }, displayMode: "wall" },
   });
 });
+
+it("uses shared pagination while clearing selection and blocking navigation during loading", async () => {
+  api.findVideos.mockResolvedValue({ items: [video(1), video(2)], totalCount: 240 });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(screen.getAllByRole("button", { name: "Last page" })[0]).toBeEnabled());
+  expect(screen.getAllByRole("button", { name: "First page" })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 1" }));
+  expect(screen.getByText("1 selected video")).toBeInTheDocument();
+  let resolveQueue!: (value: { items: ReturnType<typeof video>[]; totalCount: number }) => void;
+  api.findVideos.mockImplementationOnce(() => new Promise((resolve) => { resolveQueue = resolve; }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Last page" })[0]);
+  expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 10 }), expect.anything());
+  expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeDisabled();
+  expect(screen.getAllByRole("button", { name: "Next page" })[0]).toBeDisabled();
+  await act(async () => resolveQueue({ items: [video(3)], totalCount: 240 }));
+  await screen.findByRole("article", { name: "Video 3" });
+  expect(screen.queryByText("1 selected video")).not.toBeInTheDocument();
+  expect(screen.getByText("focused video")).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Last page" })[0]).toBeDisabled();
+  fireEvent.click(screen.getAllByRole("button", { name: "Previous page" })[1]);
+  await waitFor(() => expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 9 }), expect.anything()));
+  await waitFor(() => expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeEnabled());
+  fireEvent.click(screen.getAllByRole("button", { name: "First page" })[0]);
+  await waitFor(() => expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 1 }), expect.anything()));
+});
