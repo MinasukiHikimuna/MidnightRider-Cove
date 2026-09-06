@@ -7,9 +7,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DataQualityPage } from "../index";
+import { DataQualityPage, objectFiltersEqual } from "../index";
 import { presentedVideo } from "../TagPresentation";
-import { testVideoControls } from "@cove/runtime/components";
+import {
+  testFilterControls,
+  testVideoControls,
+} from "@cove/runtime/components";
 
 const { api, review } = vi.hoisted(() => ({
   api: {
@@ -44,6 +47,22 @@ const { api, review } = vi.hoisted(() => ({
     ],
   },
 }));
+
+it("compares equivalent object filters independently of key order", () => {
+  expect(
+    objectFiltersEqual(
+      {
+        titleCriterion: { modifier: "INCLUDES", value: "review default" },
+        tagCriterion: { excluded: [3, 4], included: [1, 2] },
+      },
+      {
+        tagCriterion: { included: [1, 2], excluded: [3, 4] },
+        titleCriterion: { value: "review default", modifier: "INCLUDES" },
+      },
+    ),
+  ).toBe(true);
+  expect(objectFiltersEqual({ tags: [1, 2] }, { tags: [2, 1] })).toBe(false);
+});
 
 vi.mock("../api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api")>()),
@@ -101,6 +120,7 @@ beforeEach(() => {
   });
   api.createConfirmedAbsentTagsField.mockReset().mockResolvedValue(undefined);
   api.request.mockReset().mockResolvedValue({ available: true });
+  testFilterControls.result = { organized: true };
   testVideoControls.toggle.mockReset();
   testVideoControls.seekBy.mockReset();
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
@@ -293,7 +313,9 @@ describe("Data Quality extension page", () => {
     expect(cardLink).toHaveAttribute("target", "_blank");
     expect(cardLink).toHaveAttribute("rel", "noreferrer");
     expect(cardLink).toHaveClass("dq-card-link", "absolute", "inset-0");
-    expect(cardLink.closest(".video-card")).toBe(card.querySelector(".video-card"));
+    expect(cardLink.closest(".video-card")).toBe(
+      card.querySelector(".video-card"),
+    );
     expect(cardLink).toHaveAttribute("aria-labelledby", "dq-card-title-1");
     expect(card.querySelector(".card-title")).toHaveAttribute(
       "id",
@@ -842,6 +864,157 @@ it("applies native filters temporarily and restores the saved query", async () =
       expect.anything(),
     ),
   );
+});
+
+it("shows saved filters in a collapsed panel and adjusts them temporarily", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        view: {
+          ...review.view,
+          objectFilter: {
+            titleCriterion: { value: "review default", modifier: "INCLUDES" },
+          },
+        },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+
+  const summary = screen.getByText("Queue filters").closest("summary")!;
+  expect(summary.parentElement).not.toHaveAttribute("open");
+  expect(summary).toHaveTextContent("1 active");
+  fireEvent.click(summary);
+  expect(
+    screen.getByRole("region", { name: "Current queue filters" }),
+  ).toHaveTextContent("titleCriterion");
+
+  fireEvent.click(screen.getByRole("button", { name: "Adjust queue" }));
+  fireEvent.change(screen.getByLabelText("Search"), {
+    target: { value: "session search" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Apply temporary queue" }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Adjust filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({ objectFilter: { organized: true } }),
+      }),
+      expect.objectContaining({ page: 1, q: "session search" }),
+      expect.anything(),
+    ),
+  );
+  expect(api.saveReviews).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Reset filters to review defaults" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Reset filters to review defaults" }),
+  );
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: expect.objectContaining({
+          objectFilter: {
+            titleCriterion: { value: "review default", modifier: "INCLUDES" },
+          },
+        }),
+      }),
+      expect.objectContaining({ q: "session search" }),
+      expect.anything(),
+    ),
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Review filter defaults restored.",
+  );
+  expect(screen.getByText("Temporary queue")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Reset filters to review defaults" }),
+  ).not.toBeInTheDocument();
+});
+
+it("does not retain a temporary queue for reordered equivalent filters", async () => {
+  const objectFilter = {
+    organized: true,
+    titleCriterion: { value: "review default", modifier: "INCLUDES" },
+  };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [{ ...review, view: { ...review.view, objectFilter } }],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  testFilterControls.result = {
+    titleCriterion: { modifier: "INCLUDES", value: "review default" },
+    organized: true,
+  };
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByText("Queue filters").closest("summary")!);
+  fireEvent.click(screen.getByRole("button", { name: "Adjust filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Review filter defaults restored.",
+    ),
+  );
+  expect(screen.queryByText("Temporary queue")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Reset filters to review defaults" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps filter controls inert while the queue is loading", async () => {
+  const configuredReview = {
+    ...review,
+    view: { ...review.view, objectFilter: { organized: true } },
+  };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [configuredReview],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  api.findVideos.mockResolvedValueOnce({
+    items: [video(1), video(2)],
+    totalCount: 48,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByText("Queue filters").closest("summary")!);
+
+  let resolveQueue!: (value: {
+    items: ReturnType<typeof video>[];
+    totalCount: number;
+  }) => void;
+  api.findVideos.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+  );
+  fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
+  const filterChip = screen.getByRole("button", {
+    name: "Edit filter organized",
+  });
+  expect(filterChip.closest("[aria-disabled='true']")).not.toBeNull();
+  fireEvent.click(filterChip);
+  expect(
+    screen.queryByRole("dialog", { name: "Video filters" }),
+  ).not.toBeInTheDocument();
+
+  await act(async () => resolveQueue({ items: [video(3)], totalCount: 48 }));
+  await screen.findByRole("article", { name: "Video 3" });
 });
 
 it("resumes a changed page at a surviving identity and never restores selection", async () => {

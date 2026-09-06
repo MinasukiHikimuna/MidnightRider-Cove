@@ -75,7 +75,7 @@ import {
   TagBins,
   withTagBin,
 } from "./TagPresentation";
-import { QueueEditor } from "./QueueEditor";
+import { QueueEditor, QueueFilterPanel } from "./QueueEditor";
 import {
   actionShortcut,
   reviewValidation,
@@ -116,6 +116,38 @@ function writeSelectedReviewId(reviewId: string) {
 
 function pageFilter(value: Record<string, unknown>) {
   return boundedFilter({ ...value, page: 1 });
+}
+
+export function objectFiltersEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => objectFiltersEqual(value, right[index]))
+    );
+  }
+  if (
+    typeof left !== "object" ||
+    left === null ||
+    typeof right !== "object" ||
+    right === null
+  ) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        objectFiltersEqual(leftRecord[key], rightRecord[key]),
+    )
+  );
 }
 
 function queueRangeLabel(filter: Record<string, unknown>, totalCount: number) {
@@ -174,6 +206,14 @@ export function DataQualityPage({
         ? { ...savedReview, view: temporaryReview.view }
         : savedReview,
     [temporaryReview, activeId, savedReview],
+  );
+  const filtersOverridden = Boolean(
+    review &&
+    savedReview &&
+    !objectFiltersEqual(
+      review.view.objectFilter,
+      savedReview.view.objectFilter,
+    ),
   );
   const presentationTags = usePresentationTags(review);
   const [filter, setFilter] = useState<Record<string, unknown>>({
@@ -362,9 +402,7 @@ export function DataQualityPage({
           : initialDisplayMode(review),
       );
       setCardSize(
-        resume
-          ? (resume.cardSize ?? defaultCardSize)
-          : defaultCardSize,
+        resume ? (resume.cardSize ?? defaultCardSize) : defaultCardSize,
       );
       try {
         const result = await fetchQueue(review, nextFilter);
@@ -1049,6 +1087,15 @@ export function DataQualityPage({
           </>
         )}
       </section>
+      {review && savedReview && (
+        <QueueFilterPanel
+          objectFilter={review.view.objectFilter}
+          overridden={filtersOverridden}
+          disabled={pending || queueLoading}
+          onApply={applyQueueFilters}
+          onReset={() => applyQueueFilters(savedReview.view.objectFilter)}
+        />
+      )}
       {!review ? (
         <div className="dq-empty">
           <Film />
@@ -1252,6 +1299,33 @@ export function DataQualityPage({
     } catch {
       /* The query error keeps the retry control and old queue visible. */
     }
+  }
+
+  function applyQueueFilters(objectFilter: Record<string, unknown>) {
+    if (pending || queueLoading || !review || !savedReview) return;
+    const filtersMatchSaved = objectFiltersEqual(
+      objectFilter,
+      savedReview.view.objectFilter,
+    );
+    const adjusted = {
+      ...review,
+      view: {
+        ...review.view,
+        objectFilter: filtersMatchSaved
+          ? savedReview.view.objectFilter
+          : objectFilter,
+      },
+    };
+    const keepsTemporaryQueue =
+      queueSignature(adjusted) !== queueSignature(savedReview);
+    const target = keepsTemporaryQueue ? adjusted : savedReview;
+    setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
+    setMessage(
+      filtersMatchSaved
+        ? "Review filter defaults restored."
+        : "Queue filters adjusted for this session.",
+    );
+    void resumeQueue(target, { ...filter, page: 1 });
   }
 
   function clearPageState() {

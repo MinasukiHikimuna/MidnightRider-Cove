@@ -1,11 +1,101 @@
 import { useState } from "react";
 import {
+  ActiveObjectFilterChips,
+  countActiveObjectFilters,
   FilterDialog,
   VIDEO_CRITERIA,
   VIDEO_SORT_OPTIONS,
   EntityReferenceMultiSelector,
 } from "@cove/runtime/components";
 import type { VideoReview } from "./model";
+
+export function QueueFilterPanel({
+  objectFilter,
+  overridden,
+  disabled,
+  onApply,
+  onReset,
+}: {
+  objectFilter: Record<string, unknown>;
+  overridden: boolean;
+  disabled: boolean;
+  onApply(objectFilter: Record<string, unknown>): void;
+  onReset(): void;
+}) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeCount = countActiveObjectFilters(VIDEO_CRITERIA, objectFilter);
+  return (
+    <section className="dq-filter-panel">
+      <details>
+        <summary>
+          <span>Queue filters</span>
+          <span className="dq-filter-count">
+            {activeCount} active{overridden ? " · adjusted" : ""}
+          </span>
+        </summary>
+        <div className="dq-filter-panel-body">
+          {activeCount ? (
+            <div
+              className={disabled ? "dq-filter-chips-disabled" : undefined}
+              aria-disabled={disabled || undefined}
+              inert={disabled ? true : undefined}
+            >
+              <ActiveObjectFilterChips
+                criteriaDefinitions={VIDEO_CRITERIA}
+                objectFilter={objectFilter}
+                onRemove={() => undefined}
+                onEdit={() => {
+                  if (!disabled) setFiltersOpen(true);
+                }}
+                ariaLabel="Current queue filters"
+                removable={false}
+              />
+            </div>
+          ) : (
+            <p>No video filters. All videos can enter the queue.</p>
+          )}
+          <div className="dq-filter-panel-actions">
+            <button
+              type="button"
+              className="dq-button"
+              disabled={disabled}
+              onClick={() => setFiltersOpen(true)}
+            >
+              Adjust filters
+            </button>
+            {overridden && (
+              <button
+                type="button"
+                className="dq-button"
+                disabled={disabled}
+                onClick={onReset}
+              >
+                Reset filters to review defaults
+              </button>
+            )}
+          </div>
+        </div>
+      </details>
+      {filtersOpen && (
+        <div onKeyDown={(event) => event.stopPropagation()}>
+          <FilterDialog
+            open
+            onClose={() => setFiltersOpen(false)}
+            criteria={VIDEO_CRITERIA}
+            activeFilter={objectFilter}
+            supportsFilterExpressions
+            subjectLabel="videos"
+            onApply={(nextFilter) => {
+              if (disabled) return;
+              onApply(nextFilter);
+              setFiltersOpen(false);
+            }}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function QueueEditor({
   draft,

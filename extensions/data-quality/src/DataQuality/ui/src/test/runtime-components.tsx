@@ -123,6 +123,38 @@ export function VideoCard({
 
 export const VIDEO_CRITERIA = [];
 export const VIDEO_SORT_OPTIONS = [{ value: "date", label: "Date" }];
+export function countActiveObjectFilters(
+  _criteria: unknown[],
+  objectFilter: Record<string, unknown>,
+) {
+  return Object.keys(objectFilter).length;
+}
+export function ActiveObjectFilterChips({
+  objectFilter,
+  ariaLabel,
+  onEdit,
+}: {
+  objectFilter: Record<string, unknown>;
+  ariaLabel?: string;
+  onEdit(target: unknown): void;
+}) {
+  return (
+    <div role="region" aria-label={ariaLabel}>
+      {Object.keys(objectFilter).map((key) => (
+        <button
+          key={key}
+          aria-label={`Edit filter ${key}`}
+          onClick={() => onEdit(key)}
+        >
+          {key}
+        </button>
+      ))}
+    </div>
+  );
+}
+export const testFilterControls = {
+  result: { organized: true } as Record<string, unknown>,
+};
 export function FilterDialog({
   onApply,
   onClose,
@@ -132,7 +164,7 @@ export function FilterDialog({
 }) {
   return (
     <div role="dialog" aria-label="Video filters">
-      <button onClick={() => onApply({ organized: true })}>
+      <button onClick={() => onApply(testFilterControls.result)}>
         Apply filters
       </button>
       <button onClick={onClose}>Cancel filters</button>
