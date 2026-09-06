@@ -55,6 +55,7 @@
 .dq-button,
 .dq-actions button,
 .dq-preview button,
+.dq-preview .dq-details-link,
 .dq-manager button:not([role="tab"]) {
   display: inline-flex;
   align-items: center;
@@ -70,6 +71,7 @@
 .dq-button:hover,
 .dq-actions button:hover:not(:disabled),
 .dq-preview button:hover:not(:disabled),
+.dq-preview .dq-details-link:hover,
 .dq-manager button:not([role="tab"]):hover:not(:disabled) {
   border-color: var(--color-accent);
 }
@@ -164,146 +166,67 @@
   );
   gap: 0.65rem;
 }
-.dq-list {
-  display: grid;
-  gap: 0.5rem;
-}
-.dq-card {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 0.6rem;
-  background: var(--color-card);
-  outline: none;
-  transition:
-    border-color 0.12s,
-    box-shadow 0.12s;
-}
-.dq-card.focused {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 70%, transparent);
-}
-.dq-card.selected {
-  box-shadow: inset 0 0 0 2px var(--color-accent);
-}
-.dq-card.list {
+.dq-review-card {
   display: flex;
-  min-height: 7rem;
+  flex-direction: column;
 }
-.dq-poster,
-.dq-wall-media {
-  position: relative;
+.dq-review-card > .video-card {
+  height: auto;
+  flex: 1 1 auto;
+}
+.data-quality-page .dq-review-card.focused > .video-card {
+  outline-width: 2px;
+  outline-style: solid;
+  outline-color: var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-review-card:has(.dq-card-annotation) > .video-card {
+  border-radius: 0.375rem 0.375rem 0 0;
+}
+.dq-card-annotation {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: -1px;
+  padding: 0.3rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0 0 0.375rem 0.375rem;
+  background: var(--color-card);
+  color: var(--color-muted);
+  font-size: 0.68rem;
+}
+.dq-card-annotation span {
+  flex: none;
+  color: var(--color-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dq-card-annotation p {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-wall-autoplay {
+  position: absolute;
+  z-index: 4;
+  top: 1px;
+  right: 1px;
+  left: 1px;
   overflow: hidden;
   aspect-ratio: 16 / 9;
-  background: black;
+  border-radius: 0.3rem 0.3rem 0 0;
+  pointer-events: none;
 }
-.dq-card.list .dq-poster {
-  width: 12rem;
-  flex: none;
-}
-.dq-poster img,
-.dq-wall-media > img,
-.dq-wall-media > video {
+.dq-wall-preview-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.dq-wall-media > video {
-  position: absolute;
-  inset: 0;
-}
-.dq-select,
-.dq-preview-button {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  background: rgb(0 0 0 / 65%);
-}
-.dq-select {
-  top: 0.4rem;
-  left: 0.4rem;
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid rgb(255 255 255 / 50%);
-  border-radius: 0.3rem;
-}
-.dq-select.selected {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
-}
-.dq-select svg,
-.dq-preview-button svg {
-  width: 1rem;
-  height: 1rem;
-}
-.dq-preview-button {
-  bottom: 0.4rem;
-  left: 0.4rem;
-  width: 1.9rem;
-  height: 1.9rem;
-  border-radius: 999px;
-  opacity: 0;
-}
-.dq-card:hover .dq-preview-button,
-.dq-card:focus .dq-preview-button {
-  opacity: 1;
-}
-.dq-badges {
-  position: absolute;
-  z-index: 2;
-  right: 0.3rem;
-  bottom: 0.3rem;
-  display: flex;
-  gap: 0.2rem;
-  color: white;
-  font-size: 0.65rem;
-}
-.dq-badges span {
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.2rem;
-  background: rgb(0 0 0 / 72%);
-}
-.dq-card-copy {
-  display: grid;
-  min-width: 0;
-  gap: 0.2rem;
-  padding: 0.6rem;
-  align-content: center;
-}
-.dq-card-copy strong {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  font-size: 0.875rem;
-}
-.dq-card-copy small {
-  overflow: hidden;
-  color: var(--color-muted);
-  font-size: 0.7rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dq-wall-title {
-  position: absolute;
-  z-index: 2;
-  right: 3.2rem;
-  bottom: 0.45rem;
-  left: 2.8rem;
-  overflow: hidden;
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 600;
-  opacity: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dq-card:hover .dq-wall-title,
-.dq-card:focus .dq-wall-title {
-  opacity: 1;
+.dq-review-card.wall .video-card-preview-video {
+  display: none;
 }
 .dq-empty,
 .dq-centered,

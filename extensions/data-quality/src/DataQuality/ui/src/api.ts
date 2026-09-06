@@ -31,7 +31,9 @@ export interface VideoFile {
 export interface Video {
   id: number;
   title?: string;
+  details?: string;
   date?: string;
+  studioId?: number;
   studioName?: string;
   tags?: Array<{
     id: number;
@@ -40,8 +42,17 @@ export interface Video {
     canRemove?: boolean;
   }>;
   customFields?: Record<string, unknown> | null;
-  performers: Array<{ id: number; name: string }>;
+  performers: Array<{
+    id: number;
+    name: string;
+    imagePath?: string | null;
+  }>;
+  groups?: Array<{ id: number; name: string }>;
+  galleries?: Array<{ id: number; title?: string }>;
+  organized?: boolean;
+  urls?: string[];
   files: VideoFile[];
+  createdAt?: string;
   updatedAt: string;
   parentVideoId?: number | null;
   clipStartSec?: number | null;
@@ -157,7 +168,7 @@ export async function findVideos(
 }
 
 export function videoCoverUrl(video: Video): string {
-  return `/api/videos/${video.id}/image?max=640&v=${encodeURIComponent(video.updatedAt)}`;
+  return `/api/videos/${video.id}/image?max=1280&v=${encodeURIComponent(video.updatedAt)}`;
 }
 
 export function videoStreamUrl(videoId: number): string {
@@ -233,9 +244,8 @@ function definitionProblem(definition: CustomFieldDefinition): string {
 }
 
 export async function getConfirmedAbsentTagsFieldStatus(): Promise<ConfirmedAbsentTagsFieldStatus> {
-  const definitions = await request<CustomFieldDefinition[]>(
-    "/api/custom-fields",
-  );
+  const definitions =
+    await request<CustomFieldDefinition[]>("/api/custom-fields");
   const definition = definitions.find(
     (item) =>
       item.key.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY.toLowerCase(),

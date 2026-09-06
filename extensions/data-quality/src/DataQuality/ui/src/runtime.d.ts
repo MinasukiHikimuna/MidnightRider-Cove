@@ -28,13 +28,59 @@ declare module "@cove/runtime/components" {
     totalCount: number;
     className?: string;
     ariaLabel?: string;
-    onFilterChange(filter: { page?: number; perPage?: number; [key: string]: unknown }): void;
+    onFilterChange(filter: {
+      page?: number;
+      perPage?: number;
+      [key: string]: unknown;
+    }): void;
   }>;
   export const EntityDetailTabs: ComponentType<{
-    tabs: Array<{ key: string; label: string; count?: number; disabled?: boolean }>;
+    tabs: Array<{
+      key: string;
+      label: string;
+      count?: number;
+      disabled?: boolean;
+    }>;
     activeTab: string;
     onTabChange(key: string): void;
     className?: string;
+  }>;
+  export const VideoCard: ComponentType<{
+    video: {
+      id: number;
+      title?: string;
+      details?: string;
+      date?: string;
+      studioId?: number;
+      studioName?: string;
+      organized: boolean;
+      urls: string[];
+      tags: Array<{ id: number; name: string }>;
+      performers: Array<{
+        id: number;
+        name: string;
+        imagePath?: string | null;
+      }>;
+      groups: Array<{ id: number; name: string }>;
+      galleries: Array<{ id: number; title?: string }>;
+      files: Array<{
+        id: number;
+        basename: string;
+        width?: number;
+        height?: number;
+        duration?: number;
+      }>;
+      createdAt: string;
+      updatedAt: string;
+      parentVideoId?: number | null;
+      clipStartSec?: number | null;
+      clipEndSec?: number | null;
+    };
+    onClick(): void;
+    selected?: boolean;
+    onSelect?(): void;
+    onNavigate?(route: { page: string; id?: number }): void;
+    onQuickView?(): void;
   }>;
   export const VIDEO_CRITERIA: Array<{
     id: string;

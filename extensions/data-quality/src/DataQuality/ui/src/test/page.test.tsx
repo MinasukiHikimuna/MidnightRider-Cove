@@ -3,10 +3,12 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DataQualityPage } from "../index";
+import { annotations } from "../TagPresentation";
 import { testVideoControls } from "@cove/runtime/components";
 
 const { api, review } = vi.hoisted(() => ({
@@ -20,6 +22,7 @@ const { api, review } = vi.hoisted(() => ({
     getConfirmedAbsentTagsFieldStatus: vi.fn(),
     createConfirmedAbsentTagsField: vi.fn(),
     saveReviews: vi.fn(),
+    resolveTagTree: vi.fn(),
     request: vi.fn(),
   },
   review: {
@@ -56,10 +59,22 @@ function video(id: number) {
   return {
     id,
     title: `Video ${id}`,
-    performers: [],
+    details: `Details ${id}`,
+    date: "2026-01-01",
+    studioId: 20,
+    studioName: "Studio 1",
+    organized: true,
+    urls: [],
+    tags: [{ id: 30, name: "Tag 1" }],
+    performers: [
+      { id: 10, name: "Performer 1", imagePath: "/performer-1.jpg" },
+    ],
+    groups: [],
+    galleries: [],
     files: [
       { id, basename: `${id}.mp4`, duration: 60, width: 1920, height: 1080 },
     ],
+    createdAt: "2026-01-01",
     updatedAt: "2026-01-01",
   };
 }
@@ -78,6 +93,7 @@ beforeEach(() => {
   api.loadProgress.mockReset().mockResolvedValue(null);
   api.saveProgress.mockReset().mockResolvedValue(undefined);
   api.saveReviews.mockReset().mockResolvedValue(undefined);
+  api.resolveTagTree.mockReset().mockResolvedValue([]);
   api.getConfirmedAbsentTagsFieldStatus.mockReset().mockResolvedValue({
     kind: "ready",
     definition: {},
@@ -164,7 +180,9 @@ describe("Data Quality extension page", () => {
     );
     fireEvent.click(retry);
 
-    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+    );
     expect(api.getConfirmedAbsentTagsFieldStatus).toHaveBeenCalledTimes(2);
   });
 
@@ -251,9 +269,9 @@ describe("Data Quality extension page", () => {
     expect(count).toBeInTheDocument();
     expect(count).toHaveClass("dq-range-count");
     expect(screen.queryByText("182 matching")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Review").parentElement?.nextElementSibling).toBe(
-      count,
-    );
+    expect(
+      screen.getByLabelText("Review").parentElement?.nextElementSibling,
+    ).toBe(count);
   });
 
   it("shows an empty range for a review without videos", async () => {
@@ -261,6 +279,53 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     expect(await screen.findByText("Showing 0 of 0")).toBeInTheDocument();
+  });
+
+  it("opens video details in a new tab directly from cards and previews", async () => {
+    const onNavigate = vi.fn();
+    render(<DataQualityPage onNavigate={onNavigate} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    const cardLink = within(card).getByRole("link", {
+      name: "Open Video 1 details in new tab",
+    });
+    expect(cardLink).toHaveAttribute("href", "/video/1");
+    expect(cardLink).toHaveAttribute("target", "_blank");
+    expect(cardLink).toHaveAttribute("rel", "noreferrer");
+    expect(cardLink).toHaveClass("dq-card-link", "absolute", "inset-0");
+    expect(cardLink.closest(".video-card")).toBe(card.querySelector(".video-card"));
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    fireEvent.click(cardLink);
+    expect(open).toHaveBeenCalledWith(
+      "/video/1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    fireEvent.keyDown(card, { key: "Enter" });
+    const preview = await screen.findByRole("dialog", {
+      name: "Review preview: Video 1",
+    });
+    const previewLink = within(preview).getByRole("link", {
+      name: "Open Video 1 details in new tab",
+    });
+    expect(previewLink).toHaveAttribute("href", "/video/1");
+    expect(previewLink).toHaveAttribute("target", "_blank");
+    expect(previewLink).toHaveAttribute("rel", "noreferrer");
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("loads card covers lazily and replaces failed covers", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    const cover = card.querySelector<HTMLImageElement>(
+      ".video-card-preview-image",
+    );
+    expect(cover).toHaveAttribute("loading", "lazy");
+    fireEvent.error(cover!);
+    expect(card.querySelector(".video-card-preview-image")).toBeNull();
+    expect(card.querySelector(".video-card-cover-fallback")).not.toBeNull();
   });
 
   it("navigates, previews, applies, advances, and restores focus", async () => {
@@ -311,18 +376,51 @@ describe("Data Quality extension page", () => {
 
   it("switches to wall previews and keeps the review editor on the extension page", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
-    await screen.findByRole("article", { name: "Video 1" });
+    const gridCard = await screen.findByRole("article", { name: "Video 1" });
+    expect(gridCard.querySelector(".video-card")).toHaveClass(
+      "video-card",
+      "rounded",
+      "border",
+      "bg-card",
+    );
+    expect(gridCard.querySelector(".video-card-preview")).toHaveClass(
+      "video-card-preview",
+      "card-media",
+      "relative",
+      "aspect-video",
+      "overflow-hidden",
+      "bg-black",
+    );
+    expect(gridCard.querySelector(".card-body")).toHaveClass(
+      "card-body",
+      "border-t",
+      "border-border/50",
+    );
+    expect(gridCard.querySelector(".card-title")).toHaveClass(
+      "card-title",
+      "font-semibold",
+      "line-clamp-2",
+    );
+    expect(
+      within(gridCard).getByRole("link", { name: "Performer 1" }),
+    ).toHaveAttribute("href", "/performer/10");
+    expect(within(gridCard).getByTitle("Tags")).toHaveTextContent("1");
+    expect(gridCard.querySelector(".card-body")).toHaveTextContent("Details 1");
+    expect(gridCard.querySelector(".dq-card-annotation")).toBeNull();
     const viewGroup = screen.getByRole("group", { name: "Review view" });
-    for (const mode of ["Grid", "List", "Wall"]) {
+    for (const mode of ["Grid", "Wall"]) {
       expect(screen.getByRole("button", { name: mode })).toContainHTML("svg");
     }
+    expect(
+      screen.queryByRole("button", { name: "List" }),
+    ).not.toBeInTheDocument();
     expect(viewGroup).toHaveClass("dq-view-switch");
     expect(
       screen.queryByRole("button", { name: "Auto fit" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: "Card size: 180px" })).toHaveClass(
-      "themed-range-input",
-    );
+    expect(
+      screen.getByRole("slider", { name: "Card size: 180px" }),
+    ).toHaveClass("themed-range-input");
     expect(document.querySelector(".dq-grid")).toHaveStyle({
       "--dq-card-width": "180px",
     });
@@ -334,6 +432,20 @@ describe("Data Quality extension page", () => {
     await waitFor(() =>
       expect(document.querySelectorAll("video")).toHaveLength(2),
     );
+    await waitFor(() =>
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2),
+    );
+    for (const card of screen.getAllByRole("article")) {
+      expect(card.querySelector(".dq-wall-autoplay")).not.toBeNull();
+      expect(card.querySelector(".dq-wall-autoplay video")).toHaveClass(
+        "dq-wall-preview-video",
+      );
+      expect(
+        getComputedStyle(card.querySelector(".dq-wall-autoplay video")!)
+          .opacity,
+      ).toBe("1");
+      expect(card.querySelector(".card-body .card-title")).not.toBeNull();
+    }
     const manage = screen.getByRole("button", { name: /Manage reviews/ });
     manage.focus();
     fireEvent.click(manage);
@@ -366,6 +478,112 @@ describe("Data Quality extension page", () => {
       screen.queryByRole("dialog", { name: "Manage Data Quality reviews" }),
     ).not.toBeInTheDocument();
     expect(manage).toHaveFocus();
+  });
+
+  it("keeps native details separate from configured descendant-tag annotations", async () => {
+    api.resolveTagTree.mockResolvedValueOnce([100, 30]);
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          presentation: {
+            annotations: ["tags"],
+            annotationParents: [100],
+          },
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    expect(card.querySelector(".card-body")).toHaveTextContent("Details 1");
+    expect(card.querySelector(".dq-card-annotation")).toHaveTextContent(
+      "ReviewTag 1",
+    );
+    expect(card.querySelector(".dq-card-annotation")).not.toHaveTextContent(
+      "Studio 1",
+    );
+  });
+
+  it("does not show configured tag annotations without a parent", async () => {
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          presentation: { annotations: ["tags"] },
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    expect(card.querySelector(".dq-card-annotation")).toBeNull();
+  });
+
+  it("excludes a configured annotation parent while showing its descendants", () => {
+    expect(
+      annotations(
+        {
+          ...video(1),
+          tags: [
+            { id: 100, name: "Parent" },
+            { id: 30, name: "Child" },
+          ],
+        },
+        {
+          ...review,
+          presentation: {
+            annotations: ["tags"],
+            annotationParents: [100],
+          },
+        },
+        { 100: [100, 30] },
+      ),
+    ).toBe("Child");
+  });
+
+  it("shows performer annotations only when explicitly configured", async () => {
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          presentation: { annotations: ["performers"] },
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    expect(card.querySelector(".dq-card-annotation")).toHaveTextContent(
+      "Performer 1",
+    );
+    expect(card.querySelector(".dq-card-annotation")).not.toHaveTextContent(
+      "2026-01-01",
+    );
+  });
+
+  it("omits the review annotation strip when every annotation is disabled", async () => {
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          presentation: { annotations: [] },
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole("article", { name: "Video 1" });
+    expect(card.querySelector(".card-body")).toHaveTextContent("Details 1");
+    expect(card.querySelector(".dq-card-annotation")).toBeNull();
   });
 
   it("keeps the preview and retry context after an action failure", async () => {
@@ -519,6 +737,16 @@ it("saves and cancels edits on the focused card without losing explicit selectio
   expect(
     screen.getByRole("article", { name: "Video 2, selected" }),
   ).toHaveFocus();
+  expect(
+    screen.getByRole("article", { name: "Video 2, selected" }),
+  ).toHaveClass("focused", "selected");
+  expect(
+    getComputedStyle(
+      screen
+        .getByRole("article", { name: "Video 2, selected" })
+        .querySelector(".video-card")!,
+    ).outlineStyle,
+  ).toBe("solid");
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.change(screen.getByLabelText("Description"), {
     target: { value: "Discard" },
@@ -576,10 +804,13 @@ it("resumes a changed page at a surviving identity and never restores selection"
   await waitFor(() =>
     expect(screen.getByRole("article", { name: "Video 2" })).toHaveFocus(),
   );
-  expect(screen.getByRole("button", { name: "List" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "Grid" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
+  expect(
+    screen.queryByRole("button", { name: "List" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByText(/selected video/)).not.toBeInTheDocument();
   expect(api.findVideos).toHaveBeenCalledWith(
     review,
@@ -690,7 +921,7 @@ it("clears loading when a pending review is deselected", async () => {
 it("preserves manually selected presentation when only the description changes", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "List" }));
+  fireEvent.click(screen.getByRole("button", { name: "Wall" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.change(screen.getByLabelText("Description"), {
     target: { value: "New description" },
@@ -699,7 +930,7 @@ it("preserves manually selected presentation when only the description changes",
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
-  expect(screen.getByRole("button", { name: "List" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "Wall" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -887,11 +1118,29 @@ it("keeps edits across review sections and saves the combined draft", async () =
   fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+  for (const annotation of ["date", "studio", "performers", "tags"])
+    expect(screen.getByLabelText(annotation)).not.toBeChecked();
+  expect(
+    screen.queryByPlaceholderText("Search annotation parent tags..."),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Search tag-bin parent tags..."),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText("tags"));
+  expect(
+    screen.getByPlaceholderText("Search annotation parent tags..."),
+  ).toBeInTheDocument();
   expect(screen.getByLabelText("Preferred card width")).toHaveValue("180");
   expect(
     screen.queryByRole("option", { name: "Auto fit" }),
   ).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Preferred view"), {
+  const preferredView = screen.getByLabelText("Preferred view");
+  expect(
+    within(preferredView)
+      .getAllByRole("option")
+      .map((option) => option.textContent),
+  ).toEqual(["grid", "wall"]);
+  fireEvent.change(preferredView, {
     target: { value: "wall" },
   });
   fireEvent.click(screen.getByRole("tab", { name: "Review" }));
@@ -901,34 +1150,78 @@ it("keeps edits across review sections and saves the combined draft", async () =
   expect(api.saveReviews.mock.calls[0][1][0]).toMatchObject({
     description: "Check metadata",
     view: { objectFilter: { organized: true }, displayMode: "wall" },
+    presentation: { annotations: ["tags"] },
   });
 });
 
 it("uses shared pagination while clearing selection and blocking navigation during loading", async () => {
-  api.findVideos.mockResolvedValue({ items: [video(1), video(2)], totalCount: 240 });
+  api.findVideos.mockResolvedValue({
+    items: [video(1), video(2)],
+    totalCount: 240,
+  });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  await waitFor(() => expect(screen.getAllByRole("button", { name: "Last page" })[0]).toBeEnabled());
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole("button", { name: "Last page" })[0],
+    ).toBeEnabled(),
+  );
   expect(screen.getAllByRole("button", { name: "First page" })).toHaveLength(2);
-  expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeDisabled();
+  expect(
+    screen.getAllByRole("button", { name: "First page" })[0],
+  ).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Select Video 1" }));
   expect(screen.getByText("1 selected video")).toBeInTheDocument();
-  let resolveQueue!: (value: { items: ReturnType<typeof video>[]; totalCount: number }) => void;
-  api.findVideos.mockImplementationOnce(() => new Promise((resolve) => { resolveQueue = resolve; }));
+  let resolveQueue!: (value: {
+    items: ReturnType<typeof video>[];
+    totalCount: number;
+  }) => void;
+  api.findVideos.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+  );
   fireEvent.click(screen.getAllByRole("button", { name: "Last page" })[0]);
-  expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 10 }), expect.anything());
-  expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeDisabled();
-  expect(screen.getAllByRole("button", { name: "Next page" })[0]).toBeDisabled();
+  expect(api.findVideos).toHaveBeenLastCalledWith(
+    review,
+    expect.objectContaining({ page: 10 }),
+    expect.anything(),
+  );
+  expect(
+    screen.getAllByRole("button", { name: "First page" })[0],
+  ).toBeDisabled();
+  expect(
+    screen.getAllByRole("button", { name: "Next page" })[0],
+  ).toBeDisabled();
   await act(async () => resolveQueue({ items: [video(3)], totalCount: 240 }));
   await screen.findByRole("article", { name: "Video 3" });
   expect(screen.queryByText("1 selected video")).not.toBeInTheDocument();
   expect(screen.getByText("focused video")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Last page" })[0]).toBeDisabled();
+  expect(
+    screen.getAllByRole("button", { name: "Last page" })[0],
+  ).toBeDisabled();
   fireEvent.click(screen.getAllByRole("button", { name: "Previous page" })[1]);
-  await waitFor(() => expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 9 }), expect.anything()));
-  await waitFor(() => expect(screen.getAllByRole("button", { name: "First page" })[0]).toBeEnabled());
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      review,
+      expect.objectContaining({ page: 9 }),
+      expect.anything(),
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole("button", { name: "First page" })[0],
+    ).toBeEnabled(),
+  );
   fireEvent.click(screen.getAllByRole("button", { name: "First page" })[0]);
-  await waitFor(() => expect(api.findVideos).toHaveBeenLastCalledWith(review, expect.objectContaining({ page: 1 }), expect.anything()));
+  await waitFor(() =>
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      review,
+      expect.objectContaining({ page: 1 }),
+      expect.anything(),
+    ),
+  );
 });
 
 it("keeps the visible range on the last successfully loaded page", async () => {

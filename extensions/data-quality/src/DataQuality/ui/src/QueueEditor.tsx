@@ -134,22 +134,18 @@ export function QueueEditor({
             <label>
               Preferred view
               <select
-                value={
-                  draft.view.displayMode === "tagger"
-                    ? "grid"
-                    : draft.view.displayMode
-                }
+                value={draft.view.displayMode === "wall" ? "wall" : "grid"}
                 onChange={(e) =>
                   onChange({
                     ...draft,
                     view: {
                       ...draft.view,
-                      displayMode: e.target.value as "grid" | "list" | "wall",
+                      displayMode: e.target.value as "grid" | "wall",
                     },
                   })
                 }
               >
-                {["grid", "list", "wall"].map((mode) => (
+                {["grid", "wall"].map((mode) => (
                   <option key={mode}>{mode}</option>
                 ))}
               </select>
@@ -175,11 +171,7 @@ export function QueueEditor({
           <h4>Card annotations</h4>
           <div className="dq-annotation-options">
             {(["date", "studio", "performers", "tags"] as const).map((name) => {
-              const selected = settings.annotations ?? [
-                "date",
-                "studio",
-                "performers",
-              ];
+              const selected = settings.annotations ?? [];
               return (
                 <label key={name} className="dq-checkbox">
                   <input
@@ -198,17 +190,23 @@ export function QueueEditor({
               );
             })}
           </div>
-          <p>
-            Show annotated tags only below these parents (empty means all tags).
-          </p>
-          <EntityReferenceMultiSelector
-            entityType="tag"
-            values={settings.annotationParents ?? []}
-            onChange={(annotationParents) =>
-              updatePresentation({ annotationParents })
-            }
-            allowCreate={false}
-          />
+          {(settings.annotations ?? []).includes("tags") && (
+            <>
+              <p>
+                Choose parent tags. Only their descendant tags appear in the
+                Review row; no tags appear until a parent is selected.
+              </p>
+              <EntityReferenceMultiSelector
+                entityType="tag"
+                values={settings.annotationParents ?? []}
+                placeholder="Search annotation parent tags..."
+                onChange={(annotationParents) =>
+                  updatePresentation({ annotationParents })
+                }
+                allowCreate={false}
+              />
+            </>
+          )}
           <h4>Tag bins</h4>
           <p>
             Choose parent tags. Their descendants become temporary queue
@@ -217,6 +215,7 @@ export function QueueEditor({
           <EntityReferenceMultiSelector
             entityType="tag"
             values={settings.binParents ?? []}
+            placeholder="Search tag-bin parent tags..."
             onChange={(binParents) => updatePresentation({ binParents })}
             allowCreate={false}
           />

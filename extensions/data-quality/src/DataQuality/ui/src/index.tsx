@@ -6,7 +6,6 @@ import React, {
   useState,
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
 } from "react";
 import {
   EntityReferenceMultiSelector,
@@ -14,13 +13,11 @@ import {
   DetailListPagination,
   SortableList,
   type DragHandleProps,
+  VideoCard,
   VideoPlayer,
-  formatDuration,
-  getResolutionLabel,
 } from "@cove/runtime/components";
 import {
   AlertTriangle,
-  Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -28,7 +25,6 @@ import {
   Grid3X3,
   GripVertical,
   LayoutGrid,
-  List,
   Loader2,
   Pencil,
   Play,
@@ -50,7 +46,6 @@ import {
   runReviewAction,
   settleReviewWrites,
   saveReviews,
-  videoCoverUrl,
   videoPreviewStatusUrl,
   videoPreviewUrl,
   videoScreenshotUrl,
@@ -88,17 +83,18 @@ import {
   queueSignature,
 } from "./model";
 
-type ReviewDisplayMode = "grid" | "list" | "wall";
+type ReviewDisplayMode = "grid" | "wall";
 
 const defaultCardSize = 180;
 const minimumCardSize = 115;
 const maximumCardSize = 380;
 
 function initialDisplayMode(review: VideoReview): ReviewDisplayMode {
-  return review.view.displayMode === "wall" ||
-    review.view.displayMode === "list"
-    ? review.view.displayMode
-    : "grid";
+  return review.view.displayMode === "wall" ? "wall" : "grid";
+}
+
+function supportedDisplayMode(value: unknown): ReviewDisplayMode {
+  return value === "wall" ? "wall" : "grid";
 }
 
 function selectedReviewId() {
@@ -121,10 +117,7 @@ function pageFilter(value: Record<string, unknown>) {
   return boundedFilter({ ...value, page: 1 });
 }
 
-function queueRangeLabel(
-  filter: Record<string, unknown>,
-  totalCount: number,
-) {
+function queueRangeLabel(filter: Record<string, unknown>, totalCount: number) {
   if (totalCount === 0) return "Showing 0 of 0";
   const perPage = Number(filter.perPage) || 40;
   const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
@@ -362,7 +355,11 @@ export function DataQualityPage({
         ? boundedFilter(resume.filter)
         : pageFilter(review.view.filter);
       setFilter(nextFilter);
-      setDisplayMode(resume?.displayMode ?? initialDisplayMode(review));
+      setDisplayMode(
+        resume
+          ? supportedDisplayMode(resume.displayMode)
+          : initialDisplayMode(review),
+      );
       setCardSize(
         resume
           ? (resume.cardSize ?? defaultCardSize)
@@ -537,8 +534,7 @@ export function DataQualityPage({
         queueLoading ||
         queueError ||
         !canWrite ||
-        (hasAssessmentSteps(action) &&
-          absenceFieldStatus?.kind !== "ready") ||
+        (hasAssessmentSteps(action) && absenceFieldStatus?.kind !== "ready") ||
         !actionTargets.length
       )
         return;
@@ -1003,11 +999,12 @@ export function DataQualityPage({
               role="group"
               aria-label="Review view"
             >
-              {([
-                { mode: "grid", label: "Grid", Icon: LayoutGrid },
-                { mode: "list", label: "List", Icon: List },
-                { mode: "wall", label: "Wall", Icon: Grid3X3 },
-              ] as const).map(({ mode, label, Icon }) => (
+              {(
+                [
+                  { mode: "grid", label: "Grid", Icon: LayoutGrid },
+                  { mode: "wall", label: "Wall", Icon: Grid3X3 },
+                ] as const
+              ).map(({ mode, label, Icon }) => (
                 <button
                   key={mode}
                   type="button"
@@ -1025,32 +1022,30 @@ export function DataQualityPage({
                 </button>
               ))}
             </div>
-            {displayMode !== "list" && (
-              <div className="hidden items-center gap-1 pl-1 md:flex">
-                <ZoomOut className="h-3 w-3 text-muted" />
-                <input
-                  aria-label={`Card size: ${cardSize}px`}
-                  title={`Card size: ${cardSize}px`}
-                  type="range"
-                  min={minimumCardSize}
-                  max={maximumCardSize}
-                  step="5"
-                  className="themed-range-input h-1 w-16 cursor-pointer sm:w-20"
-                  value={cardSize}
-                  style={
-                    {
-                      "--range-fill": `${
-                        ((cardSize - minimumCardSize) /
-                          (maximumCardSize - minimumCardSize)) *
-                        100
-                      }%`,
-                    } as React.CSSProperties
-                  }
-                  onChange={(event) => setCardSize(Number(event.target.value))}
-                />
-                <ZoomIn className="h-3 w-3 text-muted" />
-              </div>
-            )}
+            <div className="hidden items-center gap-1 pl-1 md:flex">
+              <ZoomOut className="h-3 w-3 text-muted" />
+              <input
+                aria-label={`Card size: ${cardSize}px`}
+                title={`Card size: ${cardSize}px`}
+                type="range"
+                min={minimumCardSize}
+                max={maximumCardSize}
+                step="5"
+                className="themed-range-input h-1 w-16 cursor-pointer sm:w-20"
+                value={cardSize}
+                style={
+                  {
+                    "--range-fill": `${
+                      ((cardSize - minimumCardSize) /
+                        (maximumCardSize - minimumCardSize)) *
+                      100
+                    }%`,
+                  } as React.CSSProperties
+                }
+                onChange={(event) => setCardSize(Number(event.target.value))}
+              />
+              <ZoomIn className="h-3 w-3 text-muted" />
+            </div>
           </>
         )}
       </section>
@@ -1112,22 +1107,16 @@ export function DataQualityPage({
               )}
               {!!queue.items.length && (
                 <div ref={gridRef}>
-                  {displayMode === "list" ? (
-                    <div className="dq-list" data-review-layout="list">
-                      {queue.items.map(renderCard)}
-                    </div>
-                  ) : (
-                    <div
-                      className="dq-grid"
-                      style={
-                        {
-                          "--dq-card-width": `${cardSize}px`,
-                        } as React.CSSProperties
-                      }
-                    >
-                      {queue.items.map(renderCard)}
-                    </div>
-                  )}
+                  <div
+                    className="dq-grid"
+                    style={
+                      {
+                        "--dq-card-width": `${cardSize}px`,
+                      } as React.CSSProperties
+                    }
+                  >
+                    {queue.items.map(renderCard)}
+                  </div>
                 </div>
               )}
               {renderPagination("bottom")}
@@ -1205,7 +1194,6 @@ export function DataQualityPage({
             focusCard(focusedRef.current);
           }}
           onAction={execute}
-          onOpen={() => onNavigate({ page: "video", id: previewVideo.id })}
         />
       )}
       {temporaryEditor && review && (
@@ -1290,11 +1278,8 @@ export function DataQualityPage({
           className="dq-pagination"
           ariaLabel={`Review queue pages ${position}`}
           onFilterChange={(next) => {
-            if (
-              pending ||
-              queueLoading ||
-              next.page === Number(filter.page)
-            ) return;
+            if (pending || queueLoading || next.page === Number(filter.page))
+              return;
             setFilterAndLoad(
               { ...filter, page: next.page },
               review,
@@ -1329,6 +1314,7 @@ export function DataQualityPage({
           setFocusedId(video.id);
           setPreviewOpen(true);
         }}
+        onNavigate={onNavigate}
       />
     );
   }
@@ -1366,6 +1352,7 @@ function ReviewCard({
   onFocus,
   onToggle,
   onPreview,
+  onNavigate,
 }: {
   video: Video;
   annotation: string;
@@ -1376,42 +1363,50 @@ function ReviewCard({
   onFocus: () => void;
   onToggle: () => void;
   onPreview: () => void;
+  onNavigate: (route: { page: string; id?: number }) => void;
 }) {
-  const file = video.files[0];
   const title = videoTitle(video);
-  const overlays = (
-    <>
-      <button
-        type="button"
-        aria-label={selected ? `Deselect ${title}` : `Select ${title}`}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggle();
-        }}
-        className={`dq-select ${selected ? "selected" : ""}`}
-      >
-        {selected && <Check />}
-      </button>
-      <button
-        type="button"
-        aria-label={`Preview ${title}`}
-        onClick={(event) => {
-          event.stopPropagation();
-          onPreview();
-        }}
-        className="dq-preview-button"
-      >
-        <Play />
-      </button>
-      <div className="dq-badges">
-        {file && <span>{getResolutionLabel(file.width, file.height)}</span>}
-        {file?.duration ? <span>{formatDuration(file.duration)}</span> : null}
-      </div>
-    </>
-  );
+  const root = useRef<HTMLElement | null>(null);
+  const nativeVideo = {
+    ...video,
+    organized: video.organized ?? false,
+    urls: video.urls ?? [],
+    tags: video.tags ?? [],
+    groups: video.groups ?? [],
+    galleries: video.galleries ?? [],
+    createdAt: video.createdAt ?? video.updatedAt,
+  };
+  useEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    const link = element.querySelector<HTMLAnchorElement>(
+      `a[href="/video/${video.id}"]`,
+    );
+    if (link) {
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.setAttribute("aria-label", `Open ${title} details in new tab`);
+      link.classList.add("dq-card-link");
+    }
+    const selection = element.querySelector<HTMLButtonElement>(
+      'button[aria-label="Select item"], button[aria-label="Deselect item"]',
+    );
+    if (selection)
+      selection.setAttribute(
+        "aria-label",
+        selected ? `Deselect ${title}` : `Select ${title}`,
+      );
+    const quickView = element.querySelector<HTMLButtonElement>(
+      'button[title="Quick View"]',
+    );
+    if (quickView) quickView.setAttribute("aria-label", `Preview ${title}`);
+  }, [selected, title, video.id]);
   return (
     <article
-      ref={setRef}
+      ref={(node) => {
+        root.current = node;
+        setRef(node);
+      }}
       tabIndex={0}
       aria-current={focused ? "true" : undefined}
       aria-label={`${title}${selected ? ", selected" : ""}`}
@@ -1420,36 +1415,30 @@ function ReviewCard({
         onFocus();
         event.currentTarget.focus({ preventScroll: true });
       }}
-      className={`dq-card ${displayMode} ${focused ? "focused" : ""} ${selected ? "selected" : ""}`}
+      className={`dq-review-card relative h-full ${displayMode} ${focused ? "focused" : ""} ${selected ? "selected" : ""}`}
     >
-      {displayMode === "wall" ? (
-        <WallPreview video={video}>
-          {overlays}
-          <p className="dq-wall-title">{title}</p>
-        </WallPreview>
-      ) : (
-        <div className="dq-poster">
-          <img src={videoCoverUrl(video)} alt="" />
-          {overlays}
-        </div>
-      )}
-      {(displayMode !== "wall" || annotation) && (
-        <div className="dq-card-copy">
-          <strong>{title}</strong>
-          <small>{annotation} </small>
+      <VideoCard
+        video={nativeVideo}
+        selected={selected}
+        onSelect={onToggle}
+        onNavigate={onNavigate}
+        onQuickView={onPreview}
+        onClick={() => {
+          window.open(`/video/${video.id}`, "_blank", "noopener,noreferrer");
+        }}
+      />
+      {displayMode === "wall" && <WallPreview video={video} />}
+      {annotation && (
+        <div className="dq-card-annotation" title={annotation}>
+          <span>Review</span>
+          <p>{annotation}</p>
         </div>
       )}
     </article>
   );
 }
 
-function WallPreview({
-  video,
-  children,
-}: {
-  video: Video;
-  children: ReactNode;
-}) {
+function WallPreview({ video }: { video: Video }) {
   const root = useRef<HTMLDivElement>(null);
   const media = useRef<HTMLVideoElement>(null);
   const [load, setLoad] = useState(false);
@@ -1503,8 +1492,7 @@ function WallPreview({
     else element.pause();
   }, [available, play]);
   return (
-    <div ref={root} className="dq-wall-media">
-      <img src={videoCoverUrl(video)} alt="" />
+    <div ref={root} className="dq-wall-autoplay" aria-hidden="true">
       {available && (
         <video
           ref={media}
@@ -1513,9 +1501,9 @@ function WallPreview({
           loop
           playsInline
           preload="metadata"
+          className="dq-wall-preview-video"
         />
       )}
-      {children}
     </div>
   );
 }
@@ -1537,7 +1525,6 @@ function ReviewPreview({
   onNext,
   onClose,
   onAction,
-  onOpen,
 }: {
   video: Video;
   review: VideoReview;
@@ -1555,7 +1542,6 @@ function ReviewPreview({
   onNext: () => void;
   onClose: () => void;
   onAction: (action: ReviewAction) => Promise<void>;
-  onOpen: () => void;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
   const playerControls = useRef<{
@@ -1685,13 +1671,16 @@ function ReviewPreview({
           >
             {selected ? "Selected" : "Select"}
           </button>
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label="Open video details"
+          <a
+            href={`/video/${video.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="dq-details-link"
+            aria-label={`Open ${title} details in new tab`}
+            title="Open video details in new tab"
           >
             <ExternalLink />
-          </button>
+          </a>
           <button
             type="button"
             onClick={onClose}
@@ -2083,8 +2072,9 @@ function ReviewEditor({
       {!temporary && (
         <div className="dq-editor-nav">
           <EntityDetailTabs
-            tabs={["Review", "Queue", "Appearance", "Actions"].map(name => ({
-              key: name, label: name,
+            tabs={["Review", "Queue", "Appearance", "Actions"].map((name) => ({
+              key: name,
+              label: name,
               count: name === "Actions" ? draft.actions.length : undefined,
               disabled: saving,
             }))}

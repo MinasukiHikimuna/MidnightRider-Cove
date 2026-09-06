@@ -5,9 +5,14 @@ import type { VideoReview } from "./model";
 export function usePresentationTags(review: VideoReview | null) {
   const [ids, setIds] = useState<Record<number, number[]>>({});
   const [error, setError] = useState("");
+  const annotatedParents = (
+    review?.presentation?.annotations ?? []
+  ).includes("tags")
+    ? (review?.presentation?.annotationParents ?? [])
+    : [];
   const parents = JSON.stringify([
     ...new Set([
-      ...(review?.presentation?.annotationParents ?? []),
+      ...annotatedParents,
       ...(review?.presentation?.binParents ?? []),
     ]),
   ]);
@@ -42,7 +47,7 @@ export function annotations(
   trees: Record<number, number[]>,
 ): string {
   const settings = review?.presentation;
-  const fields = settings?.annotations ?? ["date", "studio", "performers"];
+  const fields = settings?.annotations ?? [];
   const parents = settings?.annotationParents ?? [];
   return [
     fields.includes("date") && video.date,
@@ -50,10 +55,10 @@ export function annotations(
     fields.includes("performers") &&
       video.performers.map((p) => p.name).join(", "),
     fields.includes("tags") &&
+      parents.length > 0 &&
       (video.tags ?? [])
         .filter(
           (tag) =>
-            !parents.length ||
             parents.some(
               (parent) => parent !== tag.id && trees[parent]?.includes(tag.id),
             ),
