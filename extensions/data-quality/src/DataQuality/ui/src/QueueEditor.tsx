@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ActiveObjectFilterChips,
   countActiveObjectFilters,
+  FilterButton,
   FilterDialog,
   VIDEO_CRITERIA,
   VIDEO_SORT_OPTIONS,
@@ -13,26 +14,53 @@ export function QueueFilterPanel({
   objectFilter,
   overridden,
   disabled,
+  onAdjustQueue,
   onApply,
   onReset,
 }: {
   objectFilter: Record<string, unknown>;
   overridden: boolean;
   disabled: boolean;
+  onAdjustQueue(): void;
   onApply(objectFilter: Record<string, unknown>): void;
   onReset(): void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const activeCount = countActiveObjectFilters(VIDEO_CRITERIA, objectFilter);
   return (
-    <section className="dq-filter-panel">
-      <details>
-        <summary>
-          <span>Queue filters</span>
-          <span className="dq-filter-count">
-            {activeCount} active{overridden ? " · adjusted" : ""}
-          </span>
-        </summary>
+    <section
+      className="dq-filter-panel"
+      aria-label="Queue filters and settings"
+    >
+      <div className="dq-filter-toolbar">
+        <button
+          type="button"
+          className="dq-filter-disclosure"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span aria-hidden="true">›</span>
+          Current filters
+          {overridden && <em>Adjusted</em>}
+        </button>
+        <button
+          type="button"
+          className="dq-button"
+          disabled={disabled}
+          onClick={onAdjustQueue}
+        >
+          Adjust queue
+        </button>
+        <FilterButton
+          activeCount={activeCount}
+          disabled={disabled}
+          onClick={() => {
+            setFiltersOpen(true);
+          }}
+        />
+      </div>
+      {expanded && (
         <div className="dq-filter-panel-body">
           {activeCount ? (
             <div
@@ -55,14 +83,6 @@ export function QueueFilterPanel({
             <p>No video filters. All videos can enter the queue.</p>
           )}
           <div className="dq-filter-panel-actions">
-            <button
-              type="button"
-              className="dq-button"
-              disabled={disabled}
-              onClick={() => setFiltersOpen(true)}
-            >
-              Adjust filters
-            </button>
             {overridden && (
               <button
                 type="button"
@@ -75,7 +95,7 @@ export function QueueFilterPanel({
             )}
           </div>
         </div>
-      </details>
+      )}
       {filtersOpen && (
         <div onKeyDown={(event) => event.stopPropagation()}>
           <FilterDialog

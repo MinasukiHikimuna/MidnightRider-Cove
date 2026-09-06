@@ -885,10 +885,22 @@ it("shows saved filters in a collapsed panel and adjusts them temporarily", asyn
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
 
-  const summary = screen.getByText("Queue filters").closest("summary")!;
-  expect(summary.parentElement).not.toHaveAttribute("open");
-  expect(summary).toHaveTextContent("1 active");
-  fireEvent.click(summary);
+  const filterArea = screen.getByRole("region", {
+    name: "Queue filters and settings",
+  });
+  expect(
+    within(
+      screen.getByRole("region", { name: "Queue filters and settings" }),
+    ).getByRole("button", { name: "Adjust queue" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Filters, 1 active" }),
+  ).toBeInTheDocument();
+  const disclosure = within(filterArea).getByRole("button", {
+    name: "Current filters",
+  });
+  expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(disclosure);
   expect(
     screen.getByRole("region", { name: "Current queue filters" }),
   ).toHaveTextContent("titleCriterion");
@@ -904,7 +916,7 @@ it("shows saved filters in a collapsed panel and adjusts them temporarily", asyn
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Adjust filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 1 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await waitFor(() =>
     expect(api.findVideos).toHaveBeenLastCalledWith(
@@ -961,8 +973,8 @@ it("does not retain a temporary queue for reordered equivalent filters", async (
   };
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByText("Queue filters").closest("summary")!);
-  fireEvent.click(screen.getByRole("button", { name: "Adjust filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await waitFor(() =>
     expect(screen.getByRole("status")).toHaveTextContent(
@@ -991,7 +1003,7 @@ it("keeps filter controls inert while the queue is loading", async () => {
   });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByText("Queue filters").closest("summary")!);
+  fireEvent.click(screen.getByRole("button", { name: "Current filters" }));
 
   let resolveQueue!: (value: {
     items: ReturnType<typeof video>[];
@@ -1004,6 +1016,10 @@ it("keeps filter controls inert while the queue is loading", async () => {
       }),
   );
   fireEvent.click(screen.getAllByRole("button", { name: "Next page" })[0]);
+  expect(
+    screen.getByRole("button", { name: "Filters, 1 active" }),
+  ).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Adjust queue" })).toBeDisabled();
   const filterChip = screen.getByRole("button", {
     name: "Edit filter organized",
   });

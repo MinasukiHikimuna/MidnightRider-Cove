@@ -129,6 +129,26 @@ export function countActiveObjectFilters(
 ) {
   return Object.keys(objectFilter).length;
 }
+export function FilterButton({
+  activeCount,
+  onClick,
+  disabled,
+}: {
+  activeCount: number;
+  onClick(): void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={activeCount ? `Filters, ${activeCount} active` : "Filters"}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      Filters
+    </button>
+  );
+}
 export function ActiveObjectFilterChips({
   objectFilter,
   ariaLabel,

@@ -963,14 +963,6 @@ export function DataQualityPage({
             >
               Edit review
             </button>
-            <button
-              type="button"
-              className="dq-button"
-              disabled={pending || queueLoading}
-              onClick={() => setTemporaryEditor(true)}
-            >
-              Adjust queue
-            </button>
             {temporaryReview?.id === activeId && (
               <>
                 <span>Temporary queue</span>
@@ -1092,6 +1084,7 @@ export function DataQualityPage({
           objectFilter={review.view.objectFilter}
           overridden={filtersOverridden}
           disabled={pending || queueLoading}
+          onAdjustQueue={() => setTemporaryEditor(true)}
           onApply={applyQueueFilters}
           onReset={() => applyQueueFilters(savedReview.view.objectFilter)}
         />

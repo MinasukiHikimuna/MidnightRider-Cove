@@ -100,6 +100,11 @@ declare module "@cove/runtime/components" {
     criteriaDefinitions: typeof VIDEO_CRITERIA,
     objectFilter: Record<string, unknown>,
   ): number;
+  export const FilterButton: ComponentType<{
+    activeCount: number;
+    onClick(): void;
+    disabled?: boolean;
+  }>;
   export const FilterDialog: ComponentType<{
     open: boolean;
     onClose(): void;
