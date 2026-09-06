@@ -342,18 +342,43 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     const browser = await screen.findByRole("region", { name: "Reviews" });
-    expect(within(browser).getByText("2 videos")).toBeInTheDocument();
-    expect(within(browser).getByText("17 videos")).toBeInTheDocument();
+    expect(await within(browser).findByText("2")).toHaveAccessibleName(
+      "2 matching videos",
+    );
+    expect(await within(browser).findByText("17")).toHaveAccessibleName(
+      "17 matching videos",
+    );
+    expect(within(browser).getByRole("status")).toHaveTextContent(
+      "Review counts loaded.",
+    );
     expect(api.findVideos).toHaveBeenCalledWith(
       review,
       expect.objectContaining({ page: 1, perPage: 1 }),
       expect.anything(),
     );
 
+    const list = browser.querySelector(".dq-review-browser-list")!;
+    expect(list.querySelectorAll("button")[0]).toHaveTextContent("Other");
+    fireEvent.click(within(browser).getByRole("button", { name: "Ascending" }));
+    expect(list.querySelectorAll("button")[0]).toHaveTextContent("Review");
+    fireEvent.click(within(browser).getByRole("button", { name: "Descending" }));
+    fireEvent.change(within(browser).getByLabelText("Sort reviews by"), {
+      target: { value: "count" },
+    });
+    expect(list.querySelectorAll("button")[0]).toHaveTextContent("Review");
+    fireEvent.click(within(browser).getByRole("button", { name: "Ascending" }));
+    expect(list.querySelectorAll("button")[0]).toHaveTextContent("Other");
+
     fireEvent.click(within(browser).getByRole("button", { name: /Other/ }));
     expect(
       await screen.findByRole("heading", { name: "Other" }),
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "All reviews" }));
+    const reviewsHeading = await screen.findByRole("heading", {
+      name: "Reviews",
+    });
+    await waitFor(() => expect(reviewsHeading).toHaveFocus());
   });
 
   it("shows the visible video range and total in the toolbar", async () => {

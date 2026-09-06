@@ -91,6 +91,8 @@ import {
 } from "./model";
 
 type ReviewDisplayMode = "grid" | "wall";
+type ReviewBrowserSort = "name" | "count";
+type ReviewBrowserDirection = "asc" | "desc";
 
 const defaultCardSize = 180;
 const customFieldQueueCriterion = {
@@ -196,6 +198,12 @@ export function DataQualityPage({
   const [reviewCounts, setReviewCounts] = useState<
     Record<string, number | null>
   >({});
+  const [reviewBrowserSort, setReviewBrowserSort] =
+    useState<ReviewBrowserSort>("name");
+  const [reviewBrowserDirection, setReviewBrowserDirection] =
+    useState<ReviewBrowserDirection>("asc");
+  const reviewBrowserHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusReviewBrowser = useRef(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [editCurrent, setEditCurrent] = useState(false);
   const [temporaryReview, setTemporaryReview] = useState<VideoReview | null>(
@@ -209,6 +217,26 @@ export function DataQualityPage({
         : savedReview,
     [temporaryReview, activeId, savedReview],
   );
+  const sortedReviews = useMemo(() => {
+    const direction = reviewBrowserDirection === "asc" ? 1 : -1;
+    return [...reviews].sort((left, right) => {
+      if (reviewBrowserSort === "count") {
+        const leftCount = reviewCounts[left.id];
+        const rightCount = reviewCounts[right.id];
+        const leftKnown = typeof leftCount === "number";
+        const rightKnown = typeof rightCount === "number";
+        if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+        if (leftKnown && rightKnown && leftCount !== rightCount)
+          return (leftCount - rightCount) * direction;
+      }
+      return (
+        left.name.localeCompare(right.name, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }) * direction
+      );
+    });
+  }, [reviewBrowserDirection, reviewBrowserSort, reviewCounts, reviews]);
   const pendingToolbarObjectFilter = useRef<Record<string, unknown> | null>(
     null,
   );
@@ -358,6 +386,12 @@ export function DataQualityPage({
     }
     return () => controller.abort();
   }, [activeId, reviews]);
+
+  useLayoutEffect(() => {
+    if (activeId || reviewsLoading || !focusReviewBrowser.current) return;
+    focusReviewBrowser.current = false;
+    reviewBrowserHeadingRef.current?.focus();
+  }, [activeId, reviewsLoading]);
 
   const refreshAbsenceFieldStatus = useCallback(async () => {
     setAbsenceFieldError("");
@@ -837,6 +871,12 @@ export function DataQualityPage({
     writeSelectedReviewId(id);
   }
 
+  function showAllReviews() {
+    focusReviewBrowser.current = true;
+    setReviewCounts({});
+    chooseReview("");
+  }
+
   async function updateReviews(next: VideoReview[]): Promise<boolean> {
     if (!storageKey) return false;
     const normalized = next.map(withoutPreferredCardSize);
@@ -902,7 +942,7 @@ export function DataQualityPage({
             aria-label="All reviews"
             title="All reviews"
             disabled={pending}
-            onClick={() => chooseReview("")}
+            onClick={showAllReviews}
           >
             <ChevronLeft />
           </button>
@@ -1148,11 +1188,71 @@ export function DataQualityPage({
             aria-labelledby="dq-reviews-title"
           >
             <div className="dq-review-browser-heading">
-              <h2 id="dq-reviews-title">Reviews</h2>
-              <p>Choose a review to open its video queue.</p>
+              <div>
+                <h2
+                  id="dq-reviews-title"
+                  ref={reviewBrowserHeadingRef}
+                  tabIndex={-1}
+                >
+                  Reviews
+                </h2>
+                <p>Choose a review to open its video queue.</p>
+                <span className="dq-sr-only" role="status">
+                  {reviews.every(
+                    (item) => reviewCounts[item.id] !== undefined,
+                  )
+                    ? reviews.some((item) => reviewCounts[item.id] === null)
+                      ? "Review counts loaded; some counts are unavailable."
+                      : "Review counts loaded."
+                    : ""}
+                </span>
+              </div>
+              <div className="dq-review-browser-sort">
+                <label>
+                  <span className="dq-sr-only">Sort reviews by</span>
+                  <select
+                    aria-label="Sort reviews by"
+                    value={reviewBrowserSort}
+                    onChange={(event) =>
+                      setReviewBrowserSort(
+                        event.target.value as ReviewBrowserSort,
+                      )
+                    }
+                  >
+                    <option value="name">Name</option>
+                    <option value="count">Video count</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  aria-label={
+                    reviewBrowserDirection === "asc"
+                      ? "Ascending"
+                      : "Descending"
+                  }
+                  title={
+                    reviewBrowserDirection === "asc"
+                      ? "Ascending"
+                      : "Descending"
+                  }
+                  onClick={() =>
+                    setReviewBrowserDirection((current) =>
+                      current === "asc" ? "desc" : "asc",
+                    )
+                  }
+                >
+                  <ChevronRight
+                    className={
+                      reviewBrowserDirection === "asc"
+                        ? "dq-sort-ascending"
+                        : "dq-sort-descending"
+                    }
+                  />
+                </button>
+              </div>
             </div>
             <div className="dq-review-browser-list">
-              {reviews.map((item) => {
+              {sortedReviews.map((item) => {
                 const count = reviewCounts[item.id];
                 return (
                   <button
@@ -1161,18 +1261,30 @@ export function DataQualityPage({
                     disabled={pending}
                     onClick={() => chooseReview(item.id)}
                   >
-                    <span className="dq-review-browser-copy">
+                    <span className="dq-review-browser-summary">
                       <strong>{item.name}</strong>
-                      {item.description && <span>{item.description}</span>}
+                      <span
+                        className="dq-review-count"
+                        aria-label={
+                          count === undefined
+                            ? "Counting matching videos"
+                            : count === null
+                              ? "Matching video count unavailable"
+                              : `${count.toLocaleString()} matching ${count === 1 ? "video" : "videos"}`
+                        }
+                      >
+                        {count === undefined
+                          ? "…"
+                          : count === null
+                            ? "—"
+                            : count.toLocaleString()}
+                      </span>
                     </span>
-                    <span className="dq-review-count" aria-live="polite">
-                      {count === undefined
-                        ? "Counting…"
-                        : count === null
-                          ? "Count unavailable"
-                          : `${count.toLocaleString()} ${count === 1 ? "video" : "videos"}`}
-                    </span>
-                    <ChevronRight />
+                    {item.description && (
+                      <span className="dq-review-rule-name">
+                        {item.description}
+                      </span>
+                    )}
                   </button>
                 );
               })}
