@@ -612,10 +612,9 @@ entry have all landed.
   `Enter` plays from the selected segment. Add configurable small, medium, and
   long seek values before exposing currently unbound medium-seek actions.
 - [x] Adopt frame stepping: `,`/`.` small, `Shift+,`/`Shift+.` (or `;`/`:`)
-  medium, and `Ctrl+Shift+;`/`Ctrl+Shift+:` long. Use the video's frame rate when
-  Cove exposes it and a documented 30 fps fallback otherwise; stepping pauses
-  playback. Browsers report `Shift+;` as `:`, so `Ctrl+;` is also a functional
-  long-backward binding while the Stash-compatible label remains registered.
+  medium, and `Ctrl+,`/`Ctrl+.` long. Use the video's frame rate when Cove
+  exposes it and a documented 30 fps fallback otherwise; stepping pauses
+  playback.
 - [x] Adopt boundary jumps: `I`/`O` selected-segment start/end and
   `Shift+I`/`Shift+O` video start/end.
 - [x] Adopt `Y`/`U` previous/next shot navigation using Segment Studio-owned

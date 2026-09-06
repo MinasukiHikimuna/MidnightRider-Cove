@@ -11,6 +11,25 @@ using Microsoft.Extensions.DependencyInjection;
 
 public sealed class ExtensionTests
 {
+    [Theory]
+    [InlineData("Backward", ",", "<", ";", "Ctrl+,")]
+    [InlineData("Forward", ".", ">", ":", "Ctrl+.")]
+    public void FrameStepDefaultsUseDistinctLogicalPunctuation(
+        string direction, string smallKey, string mediumKey, string alternateMediumKey, string longKey)
+    {
+        var actions = CreateExtension().GetUIManifest().KeyboardActions;
+        var small = Assert.Single(actions, action => action.Id == $"video.frameSmall{direction}");
+        var medium = Assert.Single(actions, action => action.Id == $"video.frameMedium{direction}");
+        var longStep = Assert.Single(actions, action => action.Id == $"video.frameLong{direction}");
+
+        // Cove matches produced punctuation and removes Shift from punctuation bindings.
+        Assert.Equal([smallKey], small.DefaultBindings);
+        Assert.Equal([mediumKey, alternateMediumKey], medium.DefaultBindings);
+        Assert.Equal([longKey], longStep.DefaultBindings);
+        Assert.Empty(small.DefaultBindings.Intersect(medium.DefaultBindings));
+        Assert.Empty(small.DefaultBindings.Intersect(longStep.DefaultBindings));
+    }
+
     [Fact]
     public void ContributesSegmentStudioPage()
     {

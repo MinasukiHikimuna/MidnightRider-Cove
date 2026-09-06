@@ -176,9 +176,9 @@ The small, medium, and long seek intervals—and the frame-step sizes used by th
 next shortcut slice—can be changed under **Segment Studio → Settings**. They are
 browser-local preferences.
 
-Use **,** and **.** for the small frame step, **Shift+,**/**Shift+.** or
-**;**/**:** for the medium step, and **Ctrl+;**/**Ctrl+Shift+:** for the long
-step. Frame stepping always pauses playback and uses the selected streamed
+Use **,** and **.** for the small frame step, **<**/**>** or **;**/**:** for the medium step, and **Ctrl+,**/**Ctrl+.** for the long step.
+
+Frame stepping always pauses playback and uses the selected streamed
 source's frame rate, with a 30 fps fallback when source metadata is unavailable
 or invalid.
 

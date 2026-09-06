@@ -288,8 +288,8 @@ test("frame stepping pauses playback and uses configured frame counts", () => {
   );
   assert.equal(ui.findEditorShortcut(event(";"), false)?.id, "video.frameMediumBackward");
   assert.equal(ui.findEditorShortcut(event(":", { shiftKey: true }), false)?.id, "video.frameMediumForward");
-  assert.equal(ui.findEditorShortcut(event(";", { ctrlKey: true }), false)?.id, "video.frameLongBackward");
-  assert.equal(ui.findEditorShortcut(event(":", { ctrlKey: true, shiftKey: true }), false)?.id, "video.frameLongForward");
+  assert.equal(ui.findEditorShortcut(event(",", { ctrlKey: true }), false)?.id, "video.frameLongBackward");
+  assert.equal(ui.findEditorShortcut(event(".", { ctrlKey: true }), false)?.id, "video.frameLongForward");
   assert.match(source, /playbackControlsRef\.current\?\.pause\(\)/);
   assert.match(source, /frameStepSeconds\(frameCount, videoFrameRate\)/);
   assert.match(source, /const videoFrameRate = Number\(video\.videoFile\?\.frameRate\) > 0/);
