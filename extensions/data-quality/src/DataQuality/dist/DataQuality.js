@@ -1697,9 +1697,9 @@ function Nn({
         nt
       ] }),
       kt && /* @__PURE__ */ n("p", { role: "status", className: "dq-status", children: kt }),
+      Ut("top"),
       /* @__PURE__ */ f("div", { className: "dq-workspace", children: [
         /* @__PURE__ */ f("main", { children: [
-          Ut("top"),
           T && !te.items.length && /* @__PURE__ */ n(er, { label: "Loading review queue…" }),
           re && !T && /* @__PURE__ */ n(
             tr,
@@ -1722,8 +1722,7 @@ function Nn({
               },
               children: te.items.map(Cr)
             }
-          ) }),
-          Ut("bottom")
+          ) })
         ] }),
         /* @__PURE__ */ f("aside", { className: "dq-actions", children: [
           /* @__PURE__ */ n("strong", { children: $t }),
@@ -1752,7 +1751,8 @@ function Nn({
           ] }),
           /* @__PURE__ */ n("p", { className: "dq-shortcuts", children: "←→↑↓ move · space select · enter preview · 1–9 apply · A toggle shown · Esc clear" })
         ] })
-      ] })
+      ] }),
+      Ut("bottom")
     ] }) : /* @__PURE__ */ f("div", { className: "dq-empty", children: [
       /* @__PURE__ */ n(Jt, {}),
       /* @__PURE__ */ n("p", { children: t.length ? "Choose a saved review to open its queue." : "No saved reviews are available in this browser." })

@@ -320,6 +320,24 @@ describe("Data Quality extension page", () => {
     ).toBe(count);
   });
 
+  it("aligns review actions with the grid below the top pagination", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 1" });
+    const topPagination = screen.getByRole("group", {
+      name: "Review queue pagination top",
+    });
+    const bottomPagination = screen.getByRole("group", {
+      name: "Review queue pagination bottom",
+    });
+    const workspace = document.querySelector(".dq-workspace");
+
+    expect(topPagination.nextElementSibling).toBe(workspace);
+    expect(workspace?.querySelector(".dq-grid")).not.toBeNull();
+    expect(workspace?.querySelector(".dq-actions")).not.toBeNull();
+    expect(workspace?.nextElementSibling).toBe(bottomPagination);
+  });
+
   it("shows an empty range for a review without videos", async () => {
     api.findVideos.mockResolvedValue({ items: [], totalCount: 0 });
     render(<DataQualityPage onNavigate={vi.fn()} />);

@@ -1180,9 +1180,9 @@ export function DataQualityPage({
               {message}
             </p>
           )}
+          {renderPagination("top")}
           <div className="dq-workspace">
             <main>
-              {renderPagination("top")}
               {queueLoading && !queue.items.length && (
                 <CenteredStatus label="Loading review queue…" />
               )}
@@ -1214,7 +1214,6 @@ export function DataQualityPage({
                   </div>
                 </div>
               )}
-              {renderPagination("bottom")}
             </main>
             <aside className="dq-actions">
               <strong>{targetLabel}</strong>
@@ -1260,6 +1259,7 @@ export function DataQualityPage({
               </p>
             </aside>
           </div>
+          {renderPagination("bottom")}
         </>
       )}
 
