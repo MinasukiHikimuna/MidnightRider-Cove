@@ -909,87 +909,75 @@ export function DataQualityPage({
           </button>
         </p>
       )}
-      <section className="dq-toolbar">
-        <label className="dq-review-select">
-          Review
-          <select
-            value={review?.id ?? ""}
-            disabled={pending}
-            onChange={(event) => chooseReview(event.target.value)}
-          >
-            <option value="">Choose a review…</option>
-            {reviews.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {review && (
-          <>
+      {!review && (
+        <section className="dq-toolbar">
+          <label className="dq-review-select">
+            Review
+            <select
+              value=""
+              disabled={pending}
+              onChange={(event) => chooseReview(event.target.value)}
+            >
+              <option value="">Choose a review…</option>
+              {reviews.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+      )}
+      {review?.description && (
+        <p className="dq-review-description">{review.description}</p>
+      )}
+      {review && savedReview && (
+        <section
+          className="dq-queue-toolbar"
+          aria-label="Video queue toolbar"
+          style={
+            {
+              "--dq-review-select-width": `${Math.min(
+                32,
+                Math.max(12, review.name.length + 3),
+              )}ch`,
+            } as React.CSSProperties
+          }
+        >
+          <div className="dq-queue-review-controls">
+            <label>
+              <span className="dq-sr-only">Review</span>
+              <select
+                aria-label="Review"
+                value={review.id}
+                disabled={pending}
+                onChange={(event) => chooseReview(event.target.value)}
+              >
+                <option value="">Choose a review…</option>
+                {reviews.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
-              className="dq-button"
+              aria-label="Edit review"
+              title="Edit review"
               disabled={pending || queueLoading || !canConfigure}
               onClick={() => {
                 setEditCurrent(true);
                 setManagerOpen(true);
               }}
             >
-              Edit review
+              <Pencil />
             </button>
-            {temporaryReview?.id === activeId && (
-              <>
-                <span>Temporary queue</span>
-                <button
-                  type="button"
-                  className="dq-button"
-                  disabled={pending || queueLoading || !canConfigure}
-                  onClick={() => {
-                    if (savedReview) {
-                      void updateReviews(
-                        reviews.map((item) =>
-                          item.id === activeId
-                            ? {
-                                ...item,
-                                view: {
-                                  ...review.view,
-                                  filter: { ...filter, page: 1 },
-                                },
-                              }
-                            : item,
-                        ),
-                      )
-                        .then(() => {
-                          setTemporaryReview(null);
-                          setMessage("Queue saved to this review.");
-                        })
-                        .catch((error) =>
-                          setActionError(
-                            error instanceof Error
-                              ? error.message
-                              : "Could not save queue.",
-                          ),
-                        );
-                    }
-                  }}
-                >
-                  Save queue to review
-                </button>
-              </>
-            )}
-            <div className="dq-review-description">
-              {review.description && <p>{review.description}</p>}
-            </div>
-          </>
-        )}
-      </section>
-      {review && savedReview && (
-        <section aria-label="Video queue toolbar">
+          </div>
           <div
-            className={
-              pending || queueLoading ? "dq-native-toolbar-disabled" : undefined
-            }
+            className={`dq-native-toolbar-host${
+              pending || queueLoading ? " dq-native-toolbar-disabled" : ""
+            }`}
             aria-disabled={pending || queueLoading || undefined}
             inert={pending || queueLoading ? true : undefined}
           >
@@ -1021,6 +1009,15 @@ export function DataQualityPage({
           </div>
           {temporaryReview?.id === activeId && (
             <div className="dq-review-defaults">
+              <span>Temporary queue</span>
+              <button
+                type="button"
+                className="dq-button"
+                disabled={pending || queueLoading || !canConfigure}
+                onClick={saveTemporaryQueue}
+              >
+                Save queue to review
+              </button>
               <button
                 type="button"
                 className="dq-button"
@@ -1259,6 +1256,39 @@ export function DataQualityPage({
     setTemporaryReview(null);
     setMessage("Review queue defaults restored.");
     void resumeQueue(savedReview, targetFilter);
+  }
+
+  function saveTemporaryQueue() {
+    if (
+      pending ||
+      queueLoading ||
+      !review ||
+      !savedReview ||
+      !canConfigure
+    )
+      return;
+    void updateReviews(
+      reviews.map((item) =>
+        item.id === activeId
+          ? {
+              ...item,
+              view: {
+                ...review.view,
+                filter: { ...filter, page: 1 },
+              },
+            }
+          : item,
+      ),
+    )
+      .then(() => {
+        setTemporaryReview(null);
+        setMessage("Queue saved to this review.");
+      })
+      .catch((error) =>
+        setActionError(
+          error instanceof Error ? error.message : "Could not save queue.",
+        ),
+      );
   }
 
   function clearPageState() {
