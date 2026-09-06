@@ -1052,7 +1052,7 @@ function Ln({
     } catch {
       return !1;
     }
-  }), [l, d] = S(""), [c, v] = S(!0), [E, p] = S(""), [s, g] = S(!1), [C, R] = S(!0), [b, I] = S(""), [O, P] = S(""), [f, N] = S(!1), [q, L] = S(!1), [m, F] = S(Tn), [j, K] = S({}), [se, ae] = S("name"), [Z, Nr] = S("asc"), Tt = x(null), et = x(!1), [Pt, tt] = S(!1), [Lt, Mt] = S(!1), [W, Ne] = S(
+  }), [l, d] = S(""), [c, v] = S(!0), [E, p] = S(""), [s, g] = S(!1), [C, R] = S(!0), [b, I] = S(""), [O, P] = S(""), [f, N] = S(!1), [q, L] = S(!1), [m, F] = S(Tn), [j, K] = S({}), [se, le] = S("name"), [Z, Nr] = S("asc"), Tt = x(null), et = x(!1), [Pt, tt] = S(!1), [Lt, Mt] = S(!1), [W, Ne] = S(
     null
   ), $ = t.find((i) => i.id === m) ?? null, y = qe(
     () => (W == null ? void 0 : W.id) === m && $ ? { ...$, view: W.view } : $,
@@ -1081,8 +1081,8 @@ function Ln({
   }), [Ar, Rr] = S({
     page: 1,
     perPage: 40
-  }), [re, xt] = S({ items: [], totalCount: 0 }), [T, De] = S(!1), [ne, Dt] = S(""), [le, ue] = S(() => /* @__PURE__ */ new Set()), rt = x(le);
-  rt.current = le;
+  }), [re, xt] = S({ items: [], totalCount: 0 }), [T, De] = S(!1), [ne, Dt] = S(""), [ae, ue] = S(() => /* @__PURE__ */ new Set()), rt = x(ae);
+  rt.current = ae;
   const me = x(/* @__PURE__ */ new Map()), [G, ie] = S(null), ee = x(G);
   ee.current = G;
   const [oe, ye] = S(!1), ce = x(oe);
@@ -1298,7 +1298,7 @@ function Ln({
   ]);
   const ct = re.items.find((i) => i.id === G) ?? null;
   oe && ct && (Ft.current = ct);
-  const ge = ct ?? (oe ? Ft.current : null), kr = er(le, G), zt = le.size > 0 ? `${le.size} selected video${le.size === 1 ? "" : "s"}` : G == null ? "no video" : "focused video", J = he((i, a = !0) => {
+  const ge = ct ?? (oe ? Ft.current : null), kr = er(ae, G), zt = ae.size > 0 ? `${ae.size} selected video${ae.size === 1 ? "" : "s"}` : G == null ? "no video" : "focused video", J = he((i, a = !0) => {
     i != null && window.requestAnimationFrame(() => {
       const h = at.current.get(i);
       h == null || h.focus({ preventScroll: !0 }), a && (h == null || h.scrollIntoView({ block: "nearest", inline: "nearest" }));
@@ -1732,7 +1732,7 @@ function Ln({
           ) })
         ] }),
         /* @__PURE__ */ u("aside", { className: "dq-actions", children: [
-          /* @__PURE__ */ n("strong", { children: zt }),
+          ae.size > 0 && /* @__PURE__ */ n("strong", { children: zt }),
           y.actions.map((i, a) => /* @__PURE__ */ u(
             "button",
             {
@@ -1790,7 +1790,7 @@ function Ln({
                   {
                     "aria-label": "Sort reviews by",
                     value: se,
-                    onChange: (i) => ae(
+                    onChange: (i) => le(
                       i.target.value
                     ),
                     children: [
@@ -1862,7 +1862,7 @@ function Ln({
         error: st,
         canWrite: s,
         assessmentReady: (_ == null ? void 0 : _.kind) === "ready",
-        selected: le.has(ge.id),
+        selected: ae.has(ge.id),
         hasPrevious: D.indexOf(ge.id) > 0,
         hasNext: D.indexOf(ge.id) >= 0 && D.indexOf(ge.id) < D.length - 1,
         onToggleSelected: () => Ae((i) => mt(i, ge.id)),
@@ -1914,9 +1914,7 @@ function Ln({
         objectFilter: w
       }
     }, U = ve(A) !== ve($), z = U ? A : $;
-    Ne(U ? A : null), be(
-      U ? "Queue adjusted for this session." : "Review queue defaults restored."
-    ), Qe(z, k);
+    Ne(U ? A : null), be(U ? "" : "Review queue defaults restored."), Qe(z, k);
   }
   function Mr() {
     if (M || T || !$) return;
@@ -1987,7 +1985,7 @@ function Ln({
         video: Sn(i, y, Me.ids),
         displayMode: Fe,
         focused: i.id === G,
-        selected: le.has(i.id),
+        selected: ae.has(i.id),
         setRef: (a) => {
           a ? at.current.set(i.id, a) : at.current.delete(i.id);
         },
@@ -2163,7 +2161,7 @@ function $n({
     };
   }, []);
   function q(m) {
-    var K, se, ae;
+    var K, se, le;
     if (m.key !== "Tab") return;
     const F = [
       ...((K = O.current) == null ? void 0 : K.querySelectorAll(
@@ -2177,7 +2175,7 @@ function $n({
     const j = F.indexOf(
       document.activeElement
     );
-    m.shiftKey && j <= 0 ? (m.preventDefault(), (ae = F.at(-1)) == null || ae.focus()) : !m.shiftKey && j === F.length - 1 && (m.preventDefault(), F[0].focus());
+    m.shiftKey && j <= 0 ? (m.preventDefault(), (le = F.at(-1)) == null || le.focus()) : !m.shiftKey && j === F.length - 1 && (m.preventDefault(), F[0].focus());
   }
   function L(m) {
     if (m.defaultPrevented || m.ctrlKey || m.metaKey || m.target.closest(
@@ -2198,8 +2196,8 @@ function $n({
     else if ((m.key === "," || m.key === ".") && j) {
       const se = [f == null ? void 0 : f.duration, K == null ? void 0 : K.duration].find(
         (Z) => Z != null && Number.isFinite(Z) && Z > 0
-      ) ?? 0, ae = e.parentVideoId != null ? (e.clipEndSec ?? se) - (e.clipStartSec ?? 0) : se;
-      Number.isFinite(ae) && ae > 0 && j.seekBy((m.key === "," ? -1 : 1) * ae * 0.1);
+      ) ?? 0, le = e.parentVideoId != null ? (e.clipEndSec ?? se) - (e.clipStartSec ?? 0) : se;
+      Number.isFinite(le) && le > 0 && j.seekBy((m.key === "," ? -1 : 1) * le * 0.1);
     } else if (m.key.toLowerCase() === "n" || m.key.toLowerCase() === "m")
       !m.repeat && !o && !l && (m.key.toLowerCase() === "n" && p && C(), m.key.toLowerCase() === "m" && s && R());
     else if (m.key === "ArrowUp" && K)

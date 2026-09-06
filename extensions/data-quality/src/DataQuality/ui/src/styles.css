@@ -122,6 +122,30 @@
   opacity: 0.5;
   pointer-events: none;
 }
+.dq-native-toolbar-host input[aria-label="Wall card size"] ~ span {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .dq-native-toolbar-host > div:first-child {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr) auto auto auto auto auto
+      minmax(0, 1fr);
+  }
+  .dq-native-toolbar-host > div:first-child::after {
+    content: "";
+  }
+  .dq-native-toolbar-host > div:first-child > div:first-child {
+    min-width: 0;
+    margin-right: 0;
+    overflow: hidden;
+  }
+  .dq-native-toolbar-host > div:first-child > div:first-child span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 .dq-review-defaults {
   display: flex;
   align-items: center;

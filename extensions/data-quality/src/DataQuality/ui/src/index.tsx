@@ -1359,7 +1359,7 @@ export function DataQualityPage({
               )}
             </main>
             <aside className="dq-actions">
-              <strong>{targetLabel}</strong>
+              {selectedIds.size > 0 && <strong>{targetLabel}</strong>}
               {review.actions.map((action, index) => (
                 <button
                   key={action.id}
@@ -1495,11 +1495,7 @@ export function DataQualityPage({
       queueSignature(adjusted) !== queueSignature(savedReview);
     const target = keepsTemporaryQueue ? adjusted : savedReview;
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
-    setMessage(
-      keepsTemporaryQueue
-        ? "Queue adjusted for this session."
-        : "Review queue defaults restored.",
-    );
+    setMessage(keepsTemporaryQueue ? "" : "Review queue defaults restored.");
     void resumeQueue(target, targetFilter);
   }
 

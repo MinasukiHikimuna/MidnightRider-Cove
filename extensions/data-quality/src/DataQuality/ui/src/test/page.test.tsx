@@ -1002,6 +1002,9 @@ it("uses the native video toolbar and resets all queue values to review defaults
       expect.anything(),
     ),
   );
+  expect(
+    screen.queryByText("Queue adjusted for this session."),
+  ).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Filters, 1 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
@@ -1700,7 +1703,7 @@ it("uses shared pagination while clearing selection and blocking navigation duri
   await act(async () => resolveQueue({ items: [video(3)], totalCount: 240 }));
   await screen.findByRole("article", { name: "Video 3" });
   expect(screen.queryByText("1 selected video")).not.toBeInTheDocument();
-  expect(screen.getByText("focused video")).toBeInTheDocument();
+  expect(screen.queryByText("focused video")).not.toBeInTheDocument();
   expect(
     screen.getAllByRole("button", { name: "Last page" })[0],
   ).toBeDisabled();
