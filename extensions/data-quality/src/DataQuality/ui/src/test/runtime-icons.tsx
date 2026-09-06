@@ -14,3 +14,5 @@ export const Plus = Icon;
 export const Trash2 = Icon;
 export const Upload = Icon;
 export const X = Icon;
+
+export const GripVertical = Icon;

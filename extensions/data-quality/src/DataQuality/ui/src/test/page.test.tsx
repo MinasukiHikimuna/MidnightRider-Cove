@@ -283,7 +283,10 @@ describe("Data Quality extension page", () => {
     fireEvent.keyDown(playerScope, { key: "," });
     fireEvent.keyDown(playerScope, { key: "." });
     [60, -5, 10, -6, 6].forEach((seconds, index) => {
-      expect(testVideoControls.seekBy).toHaveBeenNthCalledWith(index + 1, seconds);
+      expect(testVideoControls.seekBy).toHaveBeenNthCalledWith(
+        index + 1,
+        seconds,
+      );
     });
     expect(
       screen.getByRole("dialog", { name: "Review preview: Video 1" }),
@@ -294,31 +297,53 @@ describe("Data Quality extension page", () => {
   });
 
   it.each([
-    { parentVideoId: undefined, clipStartSec: undefined, clipEndSec: undefined, seconds: 6 },
+    {
+      parentVideoId: undefined,
+      clipStartSec: undefined,
+      clipEndSec: undefined,
+      seconds: 6,
+    },
     { parentVideoId: 99, clipStartSec: 10, clipEndSec: 30, seconds: 2 },
     { parentVideoId: 99, clipStartSec: 10, clipEndSec: undefined, seconds: 5 },
-  ])("uses full source or clip duration for percentage seeking: %j", async ({ seconds, ...clip }) => {
-    api.findVideos.mockResolvedValue({ items: [{ ...video(1), ...clip }], totalCount: 1 });
-    render(<DataQualityPage onNavigate={vi.fn()} />);
-    fireEvent.keyDown(await screen.findByRole("article", { name: "Video 1" }), { key: "Enter" });
-    const dialog = await screen.findByRole("dialog");
-    const media = document.createElement("video");
-    Object.defineProperty(media, "duration", { value: 20 });
-    dialog.querySelector(".dq-player")!.append(media);
-    fireEvent.keyDown(dialog, { key: "." });
-    expect(testVideoControls.seekBy).toHaveBeenCalledWith(seconds);
-  });
+  ])(
+    "uses full source or clip duration for percentage seeking: %j",
+    async ({ seconds, ...clip }) => {
+      api.findVideos.mockResolvedValue({
+        items: [{ ...video(1), ...clip }],
+        totalCount: 1,
+      });
+      render(<DataQualityPage onNavigate={vi.fn()} />);
+      fireEvent.keyDown(
+        await screen.findByRole("article", { name: "Video 1" }),
+        { key: "Enter" },
+      );
+      const dialog = await screen.findByRole("dialog");
+      const media = document.createElement("video");
+      Object.defineProperty(media, "duration", { value: 20 });
+      dialog.querySelector(".dq-player")!.append(media);
+      fireEvent.keyDown(dialog, { key: "." });
+      expect(testVideoControls.seekBy).toHaveBeenCalledWith(seconds);
+    },
+  );
 
   it("preserves focused controls and navigates preview videos with n/m", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
-    fireEvent.keyDown(await screen.findByRole("article", { name: "Video 1" }), { key: "Enter" });
-    const close = await screen.findByRole("button", { name: "Close review preview" });
+    fireEvent.keyDown(await screen.findByRole("article", { name: "Video 1" }), {
+      key: "Enter",
+    });
+    const close = await screen.findByRole("button", {
+      name: "Close review preview",
+    });
     fireEvent.keyDown(close, { key: "Enter" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "m" });
-    expect(screen.getByRole("dialog", { name: "Review preview: Video 2" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Review preview: Video 2" }),
+    ).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "n" });
-    expect(screen.getByRole("dialog", { name: "Review preview: Video 1" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Review preview: Video 1" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -612,8 +637,12 @@ it("duplicates and reorders actions while rejecting conflicting shortcuts", asyn
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
   fireEvent.click(screen.getByRole("button", { name: "Duplicate action" }));
-  fireEvent.click(screen.getAllByRole("button", { name: "Move action up" })[1]);
+  fireEvent.keyDown(screen.getByRole("button", { name: "Reorder action 2" }), {
+    key: "ArrowUp",
+    altKey: true,
+  });
   fireEvent.change(screen.getAllByLabelText("Shortcut")[0], {
     target: { value: "2" },
   });
@@ -655,11 +684,40 @@ it("saves explicitly reordered tag operations", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getAllByRole("button", { name: "Move step down" })[0]);
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Reorder step 1" }), {
+    key: "ArrowDown",
+    altKey: true,
+  });
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
     { mode: "REMOVE", tagIds: [4] },
     { mode: "ADD", tagIds: [3] },
   ]);
+});
+
+it("keeps edits across review sections and saves the combined draft", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.change(screen.getByLabelText("Description"), {
+    target: { value: "Check metadata" },
+  });
+  fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
+  expect(screen.getByLabelText("Description")).not.toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
+  fireEvent.change(screen.getByLabelText("Preferred view"), {
+    target: { value: "wall" },
+  });
+  fireEvent.click(screen.getByRole("tab", { name: "Review" }));
+  expect(screen.getByLabelText("Description")).toHaveValue("Check metadata");
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
+  expect(api.saveReviews.mock.calls[0][1][0]).toMatchObject({
+    description: "Check metadata",
+    view: { objectFilter: { organized: true }, displayMode: "wall" },
+  });
 });

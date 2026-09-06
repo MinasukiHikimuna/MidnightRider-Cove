@@ -10,6 +10,9 @@ import React, {
 } from "react";
 import {
   EntityReferenceMultiSelector,
+  EntityDetailTabs,
+  SortableList,
+  type DragHandleProps,
   VideoPlayer,
   formatDuration,
   getResolutionLabel,
@@ -21,6 +24,7 @@ import {
   ChevronRight,
   ExternalLink,
   Film,
+  GripVertical,
   Loader2,
   Pencil,
   Play,
@@ -68,7 +72,6 @@ import {
 import { QueueEditor } from "./QueueEditor";
 import {
   actionShortcut,
-  moveItem,
   reviewValidation,
   boundedFilter,
   resumeFocus,
@@ -1484,9 +1487,12 @@ function ReviewPreview({
   }
   function handlePlayerKey(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
-    if ((event.target as HTMLElement).closest(
-      'button, input, select, textarea, a, [contenteditable="true"], [role="combobox"], [role="slider"]',
-    )) return;
+    if (
+      (event.target as HTMLElement).closest(
+        'button, input, select, textarea, a, [contenteditable="true"], [role="combobox"], [role="slider"]',
+      )
+    )
+      return;
     const arrow = event.key === "ArrowLeft" || event.key === "ArrowRight";
     if (event.altKey && !arrow) return;
     const controls = playerControls.current;
@@ -1501,15 +1507,20 @@ function ReviewPreview({
           (event.shiftKey ? 5 : event.altKey ? 10 : 60),
       );
     } else if ((event.key === "," || event.key === ".") && controls) {
-      const sourceDuration = [file?.duration, videoElement?.duration].find(
-        (value) => value != null && Number.isFinite(value) && value > 0,
-      ) ?? 0;
-      const duration = video.parentVideoId != null
-        ? (video.clipEndSec ?? sourceDuration) - (video.clipStartSec ?? 0)
-        : sourceDuration;
+      const sourceDuration =
+        [file?.duration, videoElement?.duration].find(
+          (value) => value != null && Number.isFinite(value) && value > 0,
+        ) ?? 0;
+      const duration =
+        video.parentVideoId != null
+          ? (video.clipEndSec ?? sourceDuration) - (video.clipStartSec ?? 0)
+          : sourceDuration;
       if (Number.isFinite(duration) && duration > 0)
         controls.seekBy((event.key === "," ? -1 : 1) * duration * 0.1);
-    } else if (event.key.toLowerCase() === "n" || event.key.toLowerCase() === "m") {
+    } else if (
+      event.key.toLowerCase() === "n" ||
+      event.key.toLowerCase() === "m"
+    ) {
       if (!event.repeat && !pending && !refreshing) {
         if (event.key.toLowerCase() === "n" && hasPrevious) onPrevious();
         if (event.key.toLowerCase() === "m" && hasNext) onNext();
@@ -1579,11 +1590,7 @@ function ReviewPreview({
             <X />
           </button>
         </header>
-        <div
-          className="dq-player"
-          data-review-player-controls
-          tabIndex={0}
-        >
+        <div className="dq-player" data-review-player-controls tabIndex={0}>
           {file ? (
             <VideoPlayer
               autostart
@@ -1623,7 +1630,8 @@ function ReviewPreview({
           </p>
         )}
         <p className="dq-editor-note">
-          Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m previous/next · Enter/Esc close
+          Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m
+          previous/next · Enter/Esc close
         </p>
         <footer data-review-player-controls>
           {review.actions.map((action, index) => (
@@ -1820,7 +1828,15 @@ function ReviewManager({
       <div className="dq-manager">
         <header>
           <div>
-            <h2>{temporary ? "Adjust queue temporarily" : "Manage reviews"}</h2>
+            <h2>
+              {temporary
+                ? "Adjust queue temporarily"
+                : draft
+                  ? reviews.some((item) => item.id === draft.id)
+                    ? "Edit review"
+                    : "New review"
+                  : "Manage reviews"}
+            </h2>
             <p>
               {temporary
                 ? "Apply changes for this session. Saved review settings stay available through Reset to saved queue."
@@ -1846,6 +1862,7 @@ function ReviewManager({
             <ReviewEditor
               draft={draft}
               temporary={temporary}
+              saving={saving}
               setDraft={setDraft}
               onSave={() => void persistDraft()}
               onCancel={onClose}
@@ -1917,16 +1934,28 @@ function ReviewManager({
 function ReviewEditor({
   draft,
   temporary = false,
+  saving = false,
   setDraft,
   onSave,
   onCancel,
 }: {
   draft: VideoReview;
   temporary?: boolean;
+  saving?: boolean;
   setDraft: (review: VideoReview) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const [section, setSection] = useState("Review");
+  const stepKeys = useRef(new WeakMap<ReviewStep, string>());
+  const stepKey = (step: ReviewStep): string => {
+    let key = stepKeys.current.get(step);
+    if (!key) {
+      key = crypto.randomUUID();
+      stepKeys.current.set(step, key);
+    }
+    return key;
+  };
   const updateAction = (index: number, action: ReviewAction) =>
     setDraft({
       ...draft,
@@ -1937,203 +1966,246 @@ function ReviewEditor({
   return (
     <div className="dq-editor">
       {!temporary && (
-        <>
-          <label>
-            Review name
-            <input
-              autoFocus
-              aria-label="Review name"
-              value={draft.name}
-              onChange={(event) =>
-                setDraft({ ...draft, name: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Description
-            <textarea
-              aria-label="Description"
-              value={draft.description}
-              onChange={(event) =>
-                setDraft({ ...draft, description: event.target.value })
-              }
-            />
-          </label>
-        </>
+        <div className="dq-editor-nav">
+          <EntityDetailTabs
+            tabs={["Review", "Queue", "Appearance", "Actions"].map(name => ({
+              key: name, label: name,
+              count: name === "Actions" ? draft.actions.length : undefined,
+              disabled: saving,
+            }))}
+            activeTab={section}
+            onTabChange={setSection}
+          />
+        </div>
       )}
-      <QueueEditor
-        draft={draft}
-        onChange={setDraft}
-        presentation={!temporary}
-      />
-      {!temporary && (
-        <>
-          <h3>Actions</h3>
-          <p>
-            Steps run in order. No steps means Skip. Earlier steps may remain
-            applied if a later step fails.
-          </p>
-          {draft.actions.map((action, index) => (
-            <fieldset key={action.id}>
-              <legend>Action {index + 1}</legend>
-              <div className="dq-row">
-                <button
-                  type="button"
-                  disabled={index === 0}
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      actions: moveItem(draft.actions, index, -1),
-                    })
-                  }
-                >
-                  Move action up
-                </button>
-                <button
-                  type="button"
-                  disabled={index === draft.actions.length - 1}
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      actions: moveItem(draft.actions, index, 1),
-                    })
-                  }
-                >
-                  Move action down
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      actions: [
-                        ...draft.actions.slice(0, index + 1),
-                        {
-                          ...structuredClone(action),
-                          id: crypto.randomUUID(),
-                          label: action.label + " copy",
-                          shortcut: "",
-                        },
-                        ...draft.actions.slice(index + 1),
-                      ],
-                    })
-                  }
-                >
-                  Duplicate action
-                </button>
-              </div>
-              <label>
-                Shortcut
-                <select
-                  value={action.shortcut ?? "auto"}
-                  onChange={(e) =>
-                    updateAction(index, {
-                      ...action,
-                      shortcut:
-                        e.target.value === "auto" ? undefined : e.target.value,
-                    })
-                  }
-                >
-                  <option value="auto">
-                    Position ({index < 9 ? index + 1 : "none"})
-                  </option>
-                  <option value="">None</option>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Button label
-                <input
-                  value={action.label}
-                  onChange={(event) =>
-                    updateAction(index, {
-                      ...action,
-                      label: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              {action.steps.map((step, stepIndex) => (
-                <ActionStep
-                  key={stepIndex}
-                  step={step}
-                  index={stepIndex}
-                  count={action.steps.length}
-                  onMove={(delta) =>
-                    updateAction(index, {
-                      ...action,
-                      steps: moveItem(action.steps, stepIndex, delta),
-                    })
-                  }
-                  onChange={(next) =>
-                    updateAction(index, {
-                      ...action,
-                      steps: action.steps.map((item, itemIndex) =>
-                        itemIndex === stepIndex ? next : item,
-                      ),
-                    })
-                  }
-                  onRemove={() =>
-                    updateAction(index, {
-                      ...action,
-                      steps: action.steps.filter(
-                        (_, itemIndex) => itemIndex !== stepIndex,
-                      ),
-                    })
-                  }
-                />
-              ))}
-              <div className="dq-row">
-                <button
-                  className="dq-button"
-                  type="button"
-                  onClick={() =>
-                    updateAction(index, {
-                      ...action,
-                      steps: [...action.steps, { mode: "ADD", tagIds: [] }],
-                    })
-                  }
-                >
-                  Add step
-                </button>
-                <button
-                  className="dq-button"
-                  type="button"
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      actions: draft.actions.filter(
-                        (_, itemIndex) => itemIndex !== index,
-                      ),
-                    })
-                  }
-                >
-                  Remove action
-                </button>
-              </div>
-            </fieldset>
-          ))}
-          <button
-            className="dq-button"
-            type="button"
-            onClick={() =>
-              setDraft({
-                ...draft,
-                actions: [
-                  ...draft.actions,
-                  { id: crypto.randomUUID(), label: "", steps: [] },
-                ],
-              })
-            }
+      <div className="dq-editor-body">
+        {!temporary && (
+          <section hidden={section !== "Review"} className="dq-editor-section">
+            <h3>Review details</h3>
+            <p className="dq-editor-note">
+              Give this review a name and describe what you want to check.
+            </p>
+            <label>
+              Review name
+              <input
+                autoFocus
+                aria-label="Review name"
+                value={draft.name}
+                onChange={(event) =>
+                  setDraft({ ...draft, name: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                aria-label="Description"
+                value={draft.description}
+                onChange={(event) =>
+                  setDraft({ ...draft, description: event.target.value })
+                }
+              />
+            </label>
+          </section>
+        )}
+        <section
+          hidden={!temporary && section !== "Queue"}
+          className="dq-editor-section"
+        >
+          <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
+        </section>
+        {!temporary && (
+          <section
+            hidden={section !== "Appearance"}
+            className="dq-editor-section"
           >
-            Add action
-          </button>
-        </>
-      )}
+            <QueueEditor draft={draft} onChange={setDraft} queue={false} />
+          </section>
+        )}
+        {!temporary && (
+          <section hidden={section !== "Actions"} className="dq-editor-section">
+            <h3>Actions</h3>
+            <p>
+              Steps run in order. No steps means Skip. Earlier steps may remain
+              applied if a later step fails.
+            </p>
+            <p className="dq-editor-note">
+              Drag the handles to reorder. With a handle focused, use Alt + ↑ or
+              ↓.
+            </p>
+            <SortableList
+              items={draft.actions}
+              getKey={(action) => action.id}
+              disabled={saving}
+              className="dq-sortable-list"
+              onReorder={(actions) => setDraft({ ...draft, actions })}
+              renderItem={(action, { index, dragHandleProps, isOver }) => (
+                <fieldset
+                  className={
+                    isOver ? "dq-action-card dq-drag-over" : "dq-action-card"
+                  }
+                >
+                  <legend>Action {index + 1}</legend>
+                  <div className="dq-action-heading">
+                    <button
+                      type="button"
+                      {...dragHandleProps}
+                      disabled={saving}
+                      className="dq-drag-handle"
+                      aria-label={`Reorder action ${index + 1}`}
+                    >
+                      <GripVertical />
+                    </button>
+                    <strong>{action.label || "New action"}</strong>
+                    <div className="dq-row">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            actions: [
+                              ...draft.actions.slice(0, index + 1),
+                              {
+                                ...structuredClone(action),
+                                id: crypto.randomUUID(),
+                                label: action.label + " copy",
+                                shortcut: "",
+                              },
+                              ...draft.actions.slice(index + 1),
+                            ],
+                          })
+                        }
+                      >
+                        Duplicate action
+                      </button>
+                    </div>
+                  </div>
+                  <div className="dq-field-grid">
+                    <label>
+                      Shortcut
+                      <select
+                        value={action.shortcut ?? "auto"}
+                        onChange={(e) =>
+                          updateAction(index, {
+                            ...action,
+                            shortcut:
+                              e.target.value === "auto"
+                                ? undefined
+                                : e.target.value,
+                          })
+                        }
+                      >
+                        <option value="auto">
+                          Position ({index < 9 ? index + 1 : "none"})
+                        </option>
+                        <option value="">None</option>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Button label
+                      <input
+                        value={action.label}
+                        onChange={(event) =>
+                          updateAction(index, {
+                            ...action,
+                            label: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <SortableList
+                    items={action.steps}
+                    getKey={stepKey}
+                    disabled={saving}
+                    className="dq-sortable-list"
+                    onReorder={(steps) =>
+                      updateAction(index, { ...action, steps })
+                    }
+                    renderItem={(
+                      step,
+                      { index: stepIndex, dragHandleProps, isOver },
+                    ) => (
+                      <ActionStep
+                        dragHandleProps={dragHandleProps}
+                        saving={saving}
+                        isOver={isOver}
+                        step={step}
+                        index={stepIndex}
+                        onChange={(next) => {
+                          stepKeys.current.set(next, stepKey(step));
+                          updateAction(index, {
+                            ...action,
+                            steps: action.steps.map((item, itemIndex) =>
+                              itemIndex === stepIndex ? next : item,
+                            ),
+                          });
+                        }}
+                        onRemove={() =>
+                          updateAction(index, {
+                            ...action,
+                            steps: action.steps.filter(
+                              (_, itemIndex) => itemIndex !== stepIndex,
+                            ),
+                          })
+                        }
+                      />
+                    )}
+                  />
+                  <div className="dq-row">
+                    <button
+                      className="dq-button"
+                      type="button"
+                      onClick={() =>
+                        updateAction(index, {
+                          ...action,
+                          steps: [...action.steps, { mode: "ADD", tagIds: [] }],
+                        })
+                      }
+                    >
+                      Add step
+                    </button>
+                    <button
+                      className="dq-button"
+                      type="button"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          actions: draft.actions.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        })
+                      }
+                    >
+                      Remove action
+                    </button>
+                  </div>
+                </fieldset>
+              )}
+            />
+            <button
+              className="dq-button"
+              type="button"
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  actions: [
+                    ...draft.actions,
+                    { id: crypto.randomUUID(), label: "", steps: [] },
+                  ],
+                })
+              }
+            >
+              Add action
+            </button>
+          </section>
+        )}
+      </div>
       <div className="dq-editor-footer">
         <button
           className="dq-button"
@@ -2167,37 +2239,32 @@ function ReviewEditor({
 function ActionStep({
   step,
   index,
-  count,
-  onMove,
+  dragHandleProps,
+  saving,
+  isOver,
   onChange,
   onRemove,
 }: {
   step: ReviewStep;
   index: number;
-  count: number;
-  onMove(delta: number): void;
+  dragHandleProps: DragHandleProps;
+  saving: boolean;
+  isOver: boolean;
   onChange: (step: ReviewStep) => void;
   onRemove: () => void;
 }) {
   return (
-    <div className="dq-action-step">
+    <div className={isOver ? "dq-action-step dq-drag-over" : "dq-action-step"}>
+      <button
+        type="button"
+        {...dragHandleProps}
+        disabled={saving}
+        className="dq-drag-handle"
+        aria-label={`Reorder step ${index + 1}`}
+      >
+        <GripVertical />
+      </button>
       <span>Step {index + 1}</span>
-      <button
-        type="button"
-        aria-label="Move step up"
-        disabled={index === 0}
-        onClick={() => onMove(-1)}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        aria-label="Move step down"
-        disabled={index === count - 1}
-        onClick={() => onMove(1)}
-      >
-        ↓
-      </button>
       <select
         aria-label="Tag operation"
         value={step.mode}

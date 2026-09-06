@@ -7,6 +7,28 @@ declare module "@cove/runtime/api" {
 
 declare module "@cove/runtime/components" {
   import type { ComponentType, CSSProperties, ReactNode } from "react";
+  export type DragHandleProps = import("react").HTMLAttributes<HTMLElement>;
+  export function SortableList<T>(props: {
+    items: T[];
+    getKey(item: T): string | number;
+    onReorder(items: T[]): void;
+    disabled?: boolean;
+    className?: string;
+    renderItem(
+      item: T,
+      state: {
+        index: number;
+        isOver: boolean;
+        dragHandleProps: DragHandleProps;
+      },
+    ): ReactNode;
+  }): ReactNode;
+  export const EntityDetailTabs: ComponentType<{
+    tabs: Array<{ key: string; label: string; count?: number; disabled?: boolean }>;
+    activeTab: string;
+    onTabChange(key: string): void;
+    className?: string;
+  }>;
   export const VIDEO_CRITERIA: Array<{
     id: string;
     label: string;
@@ -72,6 +94,7 @@ declare module "@cove/runtime/lucide-react" {
   export const ChevronRight: Icon;
   export const ExternalLink: Icon;
   export const Film: Icon;
+  export const GripVertical: Icon;
   export const Loader2: Icon;
   export const Pencil: Icon;
   export const Play: Icon;

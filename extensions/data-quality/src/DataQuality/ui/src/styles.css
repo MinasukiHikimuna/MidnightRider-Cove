@@ -38,7 +38,7 @@
 .dq-button,
 .dq-actions button,
 .dq-preview button,
-.dq-manager button {
+.dq-manager button:not([role="tab"]) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -53,7 +53,7 @@
 .dq-button:hover,
 .dq-actions button:hover:not(:disabled),
 .dq-preview button:hover:not(:disabled),
-.dq-manager button:hover:not(:disabled) {
+.dq-manager button:not([role="tab"]):hover:not(:disabled) {
   border-color: var(--color-accent);
 }
 .dq-button:disabled,
@@ -533,7 +533,9 @@
 }
 .dq-action-step {
   display: grid;
-  grid-template-columns: auto auto auto minmax(8rem, 1fr) minmax(10rem, 2fr) auto;
+  grid-template-columns:
+    auto auto auto minmax(8rem, 1fr) minmax(10rem, 2fr)
+    auto;
   align-items: start;
   gap: 0.5rem;
   padding-top: 0.5rem;
@@ -564,7 +566,7 @@
 .dq-editor .dq-checkbox input {
   width: auto;
 }
-.dq-editor button {
+.dq-editor button:not([role="tab"]) {
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: 0.35rem;
@@ -576,11 +578,154 @@
   .dq-review-list article > div {
     flex-basis: 100%;
   }
+}
+
+/* Review settings share one draft, with a fixed save bar. */
+.dq-manager:has(.dq-editor) {
+  display: flex;
+  flex-direction: column;
+  height: min(48rem, calc(100dvh - 2rem));
+  overflow: hidden;
+}
+.dq-manager-content:has(.dq-editor) {
+  min-height: 0;
+  flex: 1;
+}
+.dq-editor {
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+  padding: 0;
+}
+.dq-editor:not(:has(.dq-editor-nav)) {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.dq-editor-nav {
+  padding: 0 1.25rem;
+}
+.dq-editor-body {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 1.25rem;
+}
+.dq-editor-section {
+  display: grid;
+  gap: 1rem;
+}
+.dq-editor-section[hidden] {
+  display: none;
+}
+.dq-editor-section h3 {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.dq-editor-section h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+.dq-editor-section > p {
+  color: var(--color-secondary);
+  font-size: 0.8rem;
+}
+.dq-editor textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+.dq-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+}
+.dq-annotation-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  text-transform: capitalize;
+}
+.dq-editor .dq-queue-fields {
+  border: 0;
+  padding: 0;
+  gap: 1rem;
+}
+.dq-queue-fields legend {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin-bottom: 1rem;
+  padding: 0;
+}
+.dq-queue-fields > button {
+  justify-self: start;
+}
+.dq-queue-fields > p {
+  color: var(--color-secondary);
+  font-size: 0.8rem;
+}
+.dq-editor-footer {
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+.dq-editor-footer > button:first-child {
+  margin-right: auto;
+}
+.dq-sortable-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.dq-editor .dq-action-card {
+  padding: 0.75rem;
+  background: var(--color-input);
+}
+.dq-action-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dq-action-heading strong {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.dq-action-heading .dq-row {
+  padding: 0;
+}
+.dq-editor .dq-drag-handle {
+  border: 0;
+  color: var(--color-secondary);
+  cursor: grab;
+}
+.dq-editor .dq-drag-handle:active {
+  cursor: grabbing;
+}
+.dq-editor .dq-drag-handle[aria-pressed="true"],
+.dq-drag-over {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-action-step {
+  grid-template-columns: auto auto minmax(8rem, 1fr) minmax(10rem, 2fr) auto;
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .dq-editor-nav {
+    padding: 0 0.5rem;
+  }
+  .dq-editor-body {
+    padding: 0.75rem;
+  }
   .dq-action-step {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: auto 1fr auto;
   }
   .dq-action-step > select,
   .dq-action-step > div {
     grid-column: 1 / -1;
+  }
+  .dq-action-step > button:last-child {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .dq-editor-footer {
+    padding: 0.75rem;
   }
 }

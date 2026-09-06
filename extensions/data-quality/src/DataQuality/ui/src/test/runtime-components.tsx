@@ -42,3 +42,46 @@ export function FilterDialog({
     </div>
   );
 }
+
+// Runtime contract stub; pointer and keyboard behavior is verified in Cove and the live UI.
+export function SortableList<T>({
+  items,
+  getKey,
+  onReorder,
+  renderItem,
+  disabled,
+  className,
+}: Parameters<typeof import("@cove/runtime/components").SortableList<T>>[0]) {
+  return (
+    <div role="list" className={className}>
+      {items.map((item, index) => (
+        <div role="listitem" key={getKey(item)}>
+          {renderItem(item, {
+            index,
+            isOver: false,
+            dragHandleProps: {
+              onKeyDown: (event) => {
+                if (
+                  disabled ||
+                  !event.altKey ||
+                  !["ArrowUp", "ArrowDown"].includes(event.key)
+                )
+                  return;
+                event.preventDefault();
+                const target = index + (event.key === "ArrowUp" ? -1 : 1);
+                if (target < 0 || target >= items.length) return;
+                const next = [...items];
+                next.splice(target, 0, ...next.splice(index, 1));
+                onReorder(next);
+              },
+            },
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function EntityDetailTabs({ tabs, activeTab, onTabChange }: React.ComponentProps<typeof import("@cove/runtime/components").EntityDetailTabs>) {
+  return <div role="tablist" aria-label="Detail tabs">{tabs.map(tab => <button key={tab.key} role="tab" aria-selected={tab.key === activeTab} disabled={tab.disabled} onClick={() => onTabChange(tab.key)}>{tab.label}</button>)}</div>;
+}
