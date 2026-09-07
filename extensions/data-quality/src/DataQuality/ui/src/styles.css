@@ -329,7 +329,7 @@
 .dq-grid {
   display: grid;
   grid-template-columns: repeat(
-    auto-fit,
+    auto-fill,
     minmax(min(100%, var(--dq-card-width)), 1fr)
   );
   gap: 0.65rem;
