@@ -332,7 +332,7 @@
 }
 .dq-actions > button {
   width: 100%;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
   margin-top: 0.5rem;
   text-align: left;
@@ -392,7 +392,7 @@
   font-size: 0.7rem;
 }
 .dq-actions small {
-  margin-left: auto;
+  margin-left: 0;
   color: var(--color-muted);
 }
 .dq-actions .dq-shortcuts {

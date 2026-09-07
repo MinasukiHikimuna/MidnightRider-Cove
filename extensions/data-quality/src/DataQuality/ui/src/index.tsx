@@ -207,29 +207,43 @@ function writeSidebarWidth(sidebarWidth: number) {
   }
 }
 
-function reviewStepPresentation(step: ReviewStep) {
-  const count = step.tagIds.length;
-  const tags = `${count} ${count === 1 ? "tag" : "tags"}`;
+function reviewStepTone(mode: ReviewStep["mode"]) {
+  switch (mode) {
+    case "ADD":
+      return "positive";
+    case "REMOVE":
+    case "REMOVE_TREE":
+      return "negative";
+    case "MARK_PRESENT":
+      return "present";
+    case "MARK_ABSENT":
+      return "absent";
+    case "CLEAR_ABSENCE":
+      return "neutral";
+  }
+}
+
+function reviewStepTagLabel(step: ReviewStep, tagName: string) {
   switch (step.mode) {
     case "ADD":
-      return { label: `Add ${tags}`, tone: "positive" };
+      return `Add ${tagName}`;
     case "REMOVE":
-      return { label: `Remove ${tags}`, tone: "negative" };
+      return tagName;
     case "REMOVE_TREE":
-      return {
-        label: `Remove ${count} tag ${count === 1 ? "tree" : "trees"}`,
-        tone: "negative",
-      };
+      return `${tagName} tree`;
     case "MARK_PRESENT":
-      return { label: `Mark ${count} present`, tone: "present" };
+      return `Mark ${tagName} present`;
     case "MARK_ABSENT":
-      return { label: `Mark ${count} absent`, tone: "absent" };
+      return `Mark ${tagName} absent`;
     case "CLEAR_ABSENCE":
-      return {
-        label: `Clear ${count} ${count === 1 ? "absence" : "absences"}`,
-        tone: "neutral",
-      };
+      return `Clear ${tagName} absence`;
   }
+}
+
+function reviewStepAccessibleTagLabel(step: ReviewStep, tagName: string) {
+  if (step.mode === "REMOVE") return `Remove ${tagName}`;
+  if (step.mode === "REMOVE_TREE") return `Remove ${tagName} tree`;
+  return reviewStepTagLabel(step, tagName);
 }
 
 export function DataQualityPage({
@@ -341,6 +355,9 @@ export function DataQualityPage({
   const [customFieldTagNames, setCustomFieldTagNames] = useState<
     Record<string, string>
   >({});
+  const [actionTagNames, setActionTagNames] = useState<
+    Record<number, string | null>
+  >({});
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
   const sidebarResizeRef = useRef<{
@@ -352,6 +369,13 @@ export function DataQualityPage({
   const actionGeneration = useRef(0);
   const queueAbort = useRef<AbortController | null>(null);
   const allowCustomFieldRemoval = useRef(false);
+  const actionTagIds = JSON.stringify([
+    ...new Set(
+      review?.actions.flatMap((action) =>
+        action.steps.flatMap((step) => step.tagIds),
+      ) ?? [],
+    ),
+  ]);
 
   function updateSidebarWidth(value: number) {
     const next = clampSidebarWidth(value);
@@ -379,6 +403,32 @@ export function DataQualityPage({
     const timeout = window.setTimeout(() => setMessage(""), 4000);
     return () => window.clearTimeout(timeout);
   }, [message]);
+
+  useEffect(() => {
+    const ids = JSON.parse(actionTagIds) as number[];
+    setActionTagNames({});
+    if (!ids.length) return;
+    const controller = new AbortController();
+    let current = true;
+    void Promise.all(
+      ids.map(async (id) => {
+        try {
+          const tag = await request<{ name?: string }>(`/api/tags/${id}`, {
+            signal: controller.signal,
+          });
+          return [id, tag.name?.trim() || null] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (current) setActionTagNames(Object.fromEntries(entries));
+    });
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [actionTagIds]);
 
   useEffect(() => {
     const ids = review
@@ -1574,30 +1624,40 @@ export function DataQualityPage({
                   }
                   onClick={() => void execute(action)}
                 >
-                  {actionShortcut(action, index) && (
-                    <kbd>{actionShortcut(action, index)}</kbd>
-                  )}
                   <span className="dq-action-copy">
                     <span className="dq-action-label">{action.label}</span>
                     {action.steps.length ? (
                       <span className="dq-action-steps">
-                        {action.steps.map((step, stepIndex) => {
-                          const presentation = reviewStepPresentation(step);
-                          return (
-                            <span
-                              key={stepIndex}
-                              className="dq-step-summary"
-                              data-step-tone={presentation.tone}
-                            >
-                              {presentation.label}
-                            </span>
-                          );
-                        })}
+                        {action.steps.flatMap((step, stepIndex) =>
+                          step.tagIds.map((tagId, tagIndex) => {
+                            const tagName =
+                              actionTagNames[tagId] === undefined
+                                ? "Tag"
+                                : actionTagNames[tagId] ?? "Unavailable tag";
+                            const label = reviewStepTagLabel(step, tagName);
+                            const accessibleLabel =
+                              reviewStepAccessibleTagLabel(step, tagName);
+                            return (
+                              <span
+                                key={`${stepIndex}-${tagId}-${tagIndex}`}
+                                className="dq-step-summary"
+                                data-step-tone={reviewStepTone(step.mode)}
+                                aria-label={accessibleLabel}
+                                title={`Step ${stepIndex + 1}: ${accessibleLabel}`}
+                              >
+                                {label}
+                              </span>
+                            );
+                          }),
+                        )}
                       </span>
                     ) : (
                       <small>Skip</small>
                     )}
                   </span>
+                  {actionShortcut(action, index) && (
+                    <kbd>{actionShortcut(action, index)}</kbd>
+                  )}
                 </button>
               ))}
               {!review.actions.length && <p>This review has no actions.</p>}
@@ -2850,11 +2910,11 @@ function ActionStep({
   onChange: (step: ReviewStep) => void;
   onRemove: () => void;
 }) {
-  const presentation = reviewStepPresentation(step);
+  const tone = reviewStepTone(step.mode);
   return (
     <div
       className={isOver ? "dq-action-step dq-drag-over" : "dq-action-step"}
-      data-step-tone={presentation.tone}
+      data-step-tone={tone}
     >
       <button
         type="button"

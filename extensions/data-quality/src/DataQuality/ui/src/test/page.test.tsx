@@ -171,6 +171,13 @@ beforeEach(() => {
 
 describe("Data Quality extension page", () => {
   it("summarizes action steps with subdued semantic tones", async () => {
+    api.request.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith("/api/tags/")
+          ? { name: `Tag ${path.split("/").at(-1)}` }
+          : { available: true },
+      ),
+    );
     api.loadReviews.mockResolvedValueOnce({
       reviews: [
         {
@@ -199,17 +206,22 @@ describe("Data Quality extension page", () => {
 
     const action = screen.getByRole("button", { name: /Visualize/ });
     for (const [label, tone] of [
-      ["Add 2 tags", "positive"],
-      ["Remove 1 tag", "negative"],
-      ["Remove 1 tag tree", "negative"],
-      ["Mark 1 present", "present"],
-      ["Mark 1 absent", "absent"],
-      ["Clear 1 absence", "neutral"],
+      ["Add Tag 1", "positive"],
+      ["Add Tag 2", "positive"],
+      ["Tag 3", "negative"],
+      ["Tag 4 tree", "negative"],
+      ["Mark Tag 5 present", "present"],
+      ["Mark Tag 6 absent", "absent"],
+      ["Clear Tag 7 absence", "neutral"],
     ])
-      expect(within(action).getByText(label)).toHaveAttribute(
-        "data-step-tone",
-        tone,
-      );
+      expect(
+        await within(action).findByText(label),
+      ).toHaveAttribute("data-step-tone", tone);
+    expect(action.lastElementChild?.tagName).toBe("KBD");
+    expect(action.lastElementChild).toHaveTextContent("1");
+    expect(within(action).getByText("Tag 3")).toHaveAccessibleName(
+      "Remove Tag 3",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
     fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
@@ -307,7 +319,7 @@ describe("Data Quality extension page", () => {
 
     expect(api.runReviewAction).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /Assess.*Mark 1 absent/ }),
+      screen.getByRole("button", { name: /Assess.*absent.*1/ }),
     ).toBeDisabled();
   });
 
