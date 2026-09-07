@@ -1558,7 +1558,7 @@ export function DataQualityPage({
     const target = keepsTemporaryQueue ? adjusted : savedReview;
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
     setMessage(keepsTemporaryQueue ? "" : "Review queue defaults restored.");
-    void resumeQueue(target, targetFilter);
+    void resumeQueue(target, targetFilter, true);
   }
 
   function resetQueueToReviewDefaults() {

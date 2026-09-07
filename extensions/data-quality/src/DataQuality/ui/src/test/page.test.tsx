@@ -455,6 +455,28 @@ describe("Data Quality extension page", () => {
     );
   });
 
+  it("moves to the last page whenever queue parameters change", async () => {
+    api.findVideos.mockImplementation(async (_target, targetFilter) => ({
+      items:
+        Number(targetFilter.page) === 3
+          ? [video(49), video(50)]
+          : [video(1), video(2)],
+      totalCount: 50,
+    }));
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+
+    await screen.findByRole("article", { name: "Video 1" });
+    fireEvent.click(screen.getByRole("button", { name: "Descending" }));
+
+    await screen.findByRole("article", { name: "Video 49" });
+    expect(api.findVideos).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ direction: "asc", page: 3, perPage: 24 }),
+      expect.anything(),
+    );
+    expect(screen.getByText("49–50 of 50")).toBeInTheDocument();
+  });
+
   it("retries a failed end-start probe at the last page", async () => {
     const endReview = {
       ...review,

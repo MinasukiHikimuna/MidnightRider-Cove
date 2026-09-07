@@ -1970,7 +1970,7 @@ function Bn({
         objectFilter: w
       }
     }, P = Ne(T) !== Ne(F), z = P ? T : F;
-    Re(P ? T : null), Se(P ? "" : "Review queue defaults restored."), Xe(z, I);
+    Re(P ? T : null), Se(P ? "" : "Review queue defaults restored."), Xe(z, I, !0);
   }
   function jr() {
     if (x || O || !F) return;
