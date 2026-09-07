@@ -207,6 +207,31 @@ function writeSidebarWidth(sidebarWidth: number) {
   }
 }
 
+function reviewStepPresentation(step: ReviewStep) {
+  const count = step.tagIds.length;
+  const tags = `${count} ${count === 1 ? "tag" : "tags"}`;
+  switch (step.mode) {
+    case "ADD":
+      return { label: `Add ${tags}`, tone: "positive" };
+    case "REMOVE":
+      return { label: `Remove ${tags}`, tone: "negative" };
+    case "REMOVE_TREE":
+      return {
+        label: `Remove ${count} tag ${count === 1 ? "tree" : "trees"}`,
+        tone: "negative",
+      };
+    case "MARK_PRESENT":
+      return { label: `Mark ${count} present`, tone: "present" };
+    case "MARK_ABSENT":
+      return { label: `Mark ${count} absent`, tone: "absent" };
+    case "CLEAR_ABSENCE":
+      return {
+        label: `Clear ${count} ${count === 1 ? "absence" : "absences"}`,
+        tone: "neutral",
+      };
+  }
+}
+
 export function DataQualityPage({
   onNavigate,
 }: {
@@ -1552,12 +1577,27 @@ export function DataQualityPage({
                   {actionShortcut(action, index) && (
                     <kbd>{actionShortcut(action, index)}</kbd>
                   )}
-                  <span>{action.label}</span>
-                  <small>
-                    {action.steps.length
-                      ? `${action.steps.length} step(s)`
-                      : "Skip"}
-                  </small>
+                  <span className="dq-action-copy">
+                    <span className="dq-action-label">{action.label}</span>
+                    {action.steps.length ? (
+                      <span className="dq-action-steps">
+                        {action.steps.map((step, stepIndex) => {
+                          const presentation = reviewStepPresentation(step);
+                          return (
+                            <span
+                              key={stepIndex}
+                              className="dq-step-summary"
+                              data-step-tone={presentation.tone}
+                            >
+                              {presentation.label}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    ) : (
+                      <small>Skip</small>
+                    )}
+                  </span>
                 </button>
               ))}
               {!review.actions.length && <p>This review has no actions.</p>}
@@ -2810,8 +2850,12 @@ function ActionStep({
   onChange: (step: ReviewStep) => void;
   onRemove: () => void;
 }) {
+  const presentation = reviewStepPresentation(step);
   return (
-    <div className={isOver ? "dq-action-step dq-drag-over" : "dq-action-step"}>
+    <div
+      className={isOver ? "dq-action-step dq-drag-over" : "dq-action-step"}
+      data-step-tone={presentation.tone}
+    >
       <button
         type="button"
         {...dragHandleProps}
@@ -2836,13 +2880,15 @@ function ActionStep({
         <option value="MARK_ABSENT">Mark absent</option>
         <option value="CLEAR_ABSENCE">Clear absence</option>
       </select>
-      <EntityReferenceMultiSelector
-        entityType="tag"
-        values={step.tagIds}
-        onChange={(tagIds) => onChange({ ...step, tagIds })}
-        placeholder="Choose tags"
-        allowCreate={false}
-      />
+      <div className="dq-step-tags">
+        <EntityReferenceMultiSelector
+          entityType="tag"
+          values={step.tagIds}
+          onChange={(tagIds) => onChange({ ...step, tagIds })}
+          placeholder="Choose tags"
+          allowCreate={false}
+        />
+      </div>
       <button type="button" aria-label="Remove step" onClick={onRemove}>
         <Trash2 />
       </button>

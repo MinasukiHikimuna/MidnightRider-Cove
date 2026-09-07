@@ -170,6 +170,54 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("summarizes action steps with subdued semantic tones", async () => {
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          actions: [
+            {
+              id: "visualize",
+              label: "Visualize",
+              steps: [
+                { mode: "ADD", tagIds: [1, 2] },
+                { mode: "REMOVE", tagIds: [3] },
+                { mode: "REMOVE_TREE", tagIds: [4] },
+                { mode: "MARK_PRESENT", tagIds: [5] },
+                { mode: "MARK_ABSENT", tagIds: [6] },
+                { mode: "CLEAR_ABSENCE", tagIds: [7] },
+              ],
+            },
+          ],
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    await screen.findByRole("article", { name: "Video 1" });
+
+    const action = screen.getByRole("button", { name: /Visualize/ });
+    for (const [label, tone] of [
+      ["Add 2 tags", "positive"],
+      ["Remove 1 tag", "negative"],
+      ["Remove 1 tag tree", "negative"],
+      ["Mark 1 present", "present"],
+      ["Mark 1 absent", "absent"],
+      ["Clear 1 absence", "neutral"],
+    ])
+      expect(within(action).getByText(label)).toHaveAttribute(
+        "data-step-tone",
+        tone,
+      );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+    expect(
+      screen.getAllByLabelText("Tag operation")[0].closest("div"),
+    ).toHaveAttribute("data-step-tone", "positive");
+  });
+
   it("resizes the review sidebar with an accessible persistent separator", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
     await screen.findByRole("article", { name: "Video 1" });
@@ -259,7 +307,7 @@ describe("Data Quality extension page", () => {
 
     expect(api.runReviewAction).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /Assess.*1 step\(s\)/ }),
+      screen.getByRole("button", { name: /Assess.*Mark 1 absent/ }),
     ).toBeDisabled();
   });
 

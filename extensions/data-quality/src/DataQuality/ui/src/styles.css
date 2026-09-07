@@ -332,9 +332,57 @@
 }
 .dq-actions > button {
   width: 100%;
+  align-items: flex-start;
   justify-content: flex-start;
   margin-top: 0.5rem;
   text-align: left;
+}
+.dq-action-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 0.35rem;
+}
+.dq-action-label {
+  line-height: 1.2rem;
+}
+.dq-action-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.dq-step-summary {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--dq-step-color) 32%, transparent);
+  border-radius: 9999px;
+  color: color-mix(
+    in srgb,
+    var(--dq-step-color) 62%,
+    var(--color-foreground)
+  );
+  background: color-mix(in srgb, var(--dq-step-color) 9%, transparent);
+  font-size: 0.65rem;
+  line-height: 1rem;
+}
+.data-quality-page [data-step-tone="positive"],
+.dq-manager [data-step-tone="positive"] {
+  --dq-step-color: rgb(34 197 94);
+}
+.data-quality-page [data-step-tone="negative"],
+.dq-manager [data-step-tone="negative"] {
+  --dq-step-color: rgb(239 68 68);
+}
+.data-quality-page [data-step-tone="present"],
+.dq-manager [data-step-tone="present"] {
+  --dq-step-color: rgb(14 165 233);
+}
+.data-quality-page [data-step-tone="absent"],
+.dq-manager [data-step-tone="absent"] {
+  --dq-step-color: rgb(245 158 11);
+}
+.data-quality-page [data-step-tone="neutral"],
+.dq-manager [data-step-tone="neutral"] {
+  --dq-step-color: var(--color-muted);
 }
 .dq-actions kbd,
 .dq-preview kbd {
@@ -815,6 +863,19 @@
 .dq-action-step {
   grid-template-columns: auto auto minmax(8rem, 1fr) minmax(10rem, 2fr) auto;
   align-items: center;
+  padding: 0.5rem;
+  border-left: 3px solid
+    color-mix(in srgb, var(--dq-step-color) 38%, transparent);
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--dq-step-color) 4%, transparent);
+}
+.dq-action-step .dq-step-tags > div > div:first-child > span {
+  border-color: color-mix(
+    in srgb,
+    var(--dq-step-color) 32%,
+    var(--color-border)
+  );
+  background: color-mix(in srgb, var(--dq-step-color) 8%, var(--color-card));
 }
 @media (max-width: 700px) {
   .dq-editor-nav {
