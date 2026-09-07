@@ -31,6 +31,8 @@ import {
   Pencil,
   Play,
   Plus,
+  RotateCcw,
+  Save,
   Settings,
   Trash2,
   Upload,
@@ -1209,22 +1211,25 @@ export function DataQualityPage({
           </div>
           {temporaryReview?.id === activeId && (
             <div className="dq-review-defaults">
-              <span>Temporary queue</span>
               <button
                 type="button"
                 className="dq-button"
+                aria-label="Save changes to review filters"
+                title="Save changes to review filters"
                 disabled={pending || queueLoading || !canConfigure}
                 onClick={saveTemporaryQueue}
               >
-                Save queue to review
+                <Save />
               </button>
               <button
                 type="button"
                 className="dq-button"
+                aria-label="Reset to default review filters"
+                title="Reset to default review filters"
                 disabled={pending || queueLoading}
                 onClick={resetQueueToReviewDefaults}
               >
-                Reset to review defaults
+                <RotateCcw />
               </button>
             </div>
           )}

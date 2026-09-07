@@ -1128,10 +1128,12 @@ it("uses the native video toolbar and resets all queue values to review defaults
   );
   expect(api.saveReviews).not.toHaveBeenCalled();
   expect(
-    screen.getByRole("button", { name: "Reset to review defaults" }),
+    screen.getByRole("button", { name: "Reset to default review filters" }),
   ).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Reset to default review filters" }),
+  );
   await waitFor(() =>
     expect(api.findVideos).toHaveBeenLastCalledWith(
       configuredReview,
@@ -1145,7 +1147,7 @@ it("uses the native video toolbar and resets all queue values to review defaults
   );
   expect(screen.queryByText("Temporary queue")).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "Reset to review defaults" }),
+    screen.queryByRole("button", { name: "Reset to default review filters" }),
   ).not.toBeInTheDocument();
 });
 
@@ -1171,7 +1173,9 @@ it("changes sort and page size directly from the native toolbar", async () => {
       expect.anything(),
     ),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Save queue to review" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save changes to review filters" }),
+  );
   await waitFor(() =>
     expect(api.saveReviews).toHaveBeenCalledWith(
       "reviews",
@@ -1267,10 +1271,14 @@ it("preserves custom field rows through dialog applies and removes them explicit
       expect.anything(),
     ),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Reset to default review filters" }),
+  );
   await waitFor(() =>
     expect(
-      screen.queryByRole("button", { name: "Reset to review defaults" }),
+      screen.queryByRole("button", {
+        name: "Reset to default review filters",
+      }),
     ).not.toBeInTheDocument(),
   );
   const customChip = await screen.findByRole("button", {
@@ -1286,10 +1294,14 @@ it("preserves custom field rows through dialog applies and removes them explicit
       expect.anything(),
     ),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Reset to default review filters" }),
+  );
   await waitFor(() =>
     expect(
-      screen.queryByRole("button", { name: "Reset to review defaults" }),
+      screen.queryByRole("button", {
+        name: "Reset to default review filters",
+      }),
     ).not.toBeInTheDocument(),
   );
   fireEvent.click(
@@ -1331,7 +1343,7 @@ it("does not retain a temporary queue for reordered equivalent filters", async (
   );
   expect(screen.queryByText("Temporary queue")).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "Reset to review defaults" }),
+    screen.queryByRole("button", { name: "Reset to default review filters" }),
   ).not.toBeInTheDocument();
 });
 
