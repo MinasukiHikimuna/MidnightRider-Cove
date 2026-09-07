@@ -99,6 +99,7 @@ function video(id: number) {
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/data-quality?review=review");
+  localStorage.removeItem("data-quality.workspace-layout.v1");
   api.loadReviews.mockReset().mockResolvedValue({
     reviews: [review],
     storageKey: "reviews",
@@ -169,6 +170,31 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("resizes the review sidebar with an accessible persistent separator", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    await screen.findByRole("article", { name: "Video 1" });
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize review sidebar",
+    });
+    expect(separator).toHaveAttribute("aria-orientation", "vertical");
+    expect(separator).toHaveAttribute("aria-valuenow", "240");
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+    expect(separator).toHaveAttribute("aria-valuenow", "256");
+    expect(
+      JSON.parse(
+        localStorage.getItem("data-quality.workspace-layout.v1") ?? "{}",
+      ).sidebarWidth,
+    ).toBe(256);
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft", shiftKey: true });
+    expect(separator).toHaveAttribute("aria-valuenow", "296");
+
+    fireEvent.doubleClick(separator);
+    expect(separator).toHaveAttribute("aria-valuenow", "240");
+  });
+
   it("offers explicit setup when the absence field is missing", async () => {
     api.getConfirmedAbsentTagsFieldStatus
       .mockResolvedValueOnce({

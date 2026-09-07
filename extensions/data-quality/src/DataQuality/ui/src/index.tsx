@@ -174,6 +174,39 @@ function consumeShortcut(event: ReactKeyboardEvent<HTMLElement>) {
   event.nativeEvent.stopImmediatePropagation();
 }
 
+const WORKSPACE_LAYOUT_STORAGE_KEY = "data-quality.workspace-layout.v1";
+const DEFAULT_SIDEBAR_WIDTH = 240;
+const MIN_SIDEBAR_WIDTH = 192;
+const MAX_SIDEBAR_WIDTH = 560;
+
+function clampSidebarWidth(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value))
+    : DEFAULT_SIDEBAR_WIDTH;
+}
+
+function readSidebarWidth() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "null",
+    );
+    return clampSidebarWidth(value?.sidebarWidth);
+  } catch {
+    return DEFAULT_SIDEBAR_WIDTH;
+  }
+}
+
+function writeSidebarWidth(sidebarWidth: number) {
+  try {
+    localStorage.setItem(
+      WORKSPACE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({ sidebarWidth }),
+    );
+  } catch {
+    // Resizing remains available when browser storage is unavailable.
+  }
+}
+
 export function DataQualityPage({
   onNavigate,
 }: {
@@ -270,6 +303,7 @@ export function DataQualityPage({
   const previewVideoRef = useRef<Video | null>(null);
   const [displayMode, setDisplayMode] = useState<ReviewDisplayMode>("grid");
   const [cardSize, setCardSize] = useState(defaultCardSize);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [pendingTargetLabel, setPendingTargetLabel] = useState("");
@@ -284,10 +318,36 @@ export function DataQualityPage({
   >({});
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
+  const sidebarResizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const loadGeneration = useRef(0);
   const actionGeneration = useRef(0);
   const queueAbort = useRef<AbortController | null>(null);
   const allowCustomFieldRemoval = useRef(false);
+
+  function updateSidebarWidth(value: number) {
+    const next = clampSidebarWidth(value);
+    setSidebarWidth(next);
+    writeSidebarWidth(next);
+  }
+
+  function handleSidebarSeparatorKeyDown(
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) {
+    const step = event.shiftKey ? 40 : 16;
+    let nextWidth: number | null = null;
+    if (event.key === "ArrowLeft") nextWidth = sidebarWidth + step;
+    if (event.key === "ArrowRight") nextWidth = sidebarWidth - step;
+    if (event.key === "Home") nextWidth = MIN_SIDEBAR_WIDTH;
+    if (event.key === "End") nextWidth = MAX_SIDEBAR_WIDTH;
+    if (nextWidth === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateSidebarWidth(nextWidth);
+  }
 
   useEffect(() => {
     if (!message) return;
@@ -1384,7 +1444,14 @@ export function DataQualityPage({
             </p>
           )}
           {renderPagination("top")}
-          <div className="dq-workspace">
+          <div
+            className="dq-workspace"
+            style={
+              {
+                "--dq-sidebar-width": `${sidebarWidth}px`,
+              } as React.CSSProperties
+            }
+          >
             <main>
               {queueLoading && !queue.items.length && (
                 <CenteredStatus label="Loading review queue…" />
@@ -1425,6 +1492,46 @@ export function DataQualityPage({
                 </div>
               )}
             </main>
+            <div
+              className="dq-workspace-separator"
+              role="separator"
+              tabIndex={0}
+              aria-label="Resize review sidebar"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_SIDEBAR_WIDTH}
+              aria-valuemax={MAX_SIDEBAR_WIDTH}
+              aria-valuenow={sidebarWidth}
+              aria-valuetext={`${sidebarWidth} pixels wide`}
+              title="Drag or use Left/Right to resize · Shift for larger steps · double-click to reset"
+              onPointerDown={(event) => {
+                sidebarResizeRef.current = {
+                  pointerId: event.pointerId,
+                  startX: event.clientX,
+                  startWidth: sidebarWidth,
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                const resize = sidebarResizeRef.current;
+                if (
+                  resize?.pointerId === event.pointerId &&
+                  event.currentTarget.hasPointerCapture(event.pointerId)
+                )
+                  updateSidebarWidth(
+                    resize.startWidth + resize.startX - event.clientX,
+                  );
+              }}
+              onPointerUp={() => {
+                sidebarResizeRef.current = null;
+              }}
+              onPointerCancel={() => {
+                sidebarResizeRef.current = null;
+              }}
+              onKeyDown={handleSidebarSeparatorKeyDown}
+              onDoubleClick={() => updateSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
+            >
+              <span />
+            </div>
             <aside className="dq-actions">
               {selectedIds.size > 0 && <strong>{targetLabel}</strong>}
               {review.actions.map((action, index) => (
