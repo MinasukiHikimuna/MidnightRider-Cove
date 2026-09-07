@@ -941,6 +941,22 @@ describe("Data Quality extension page", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Action failed");
   });
 
+  it("shows action confirmations in a non-layout toast", async () => {
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Video 1" });
+
+    fireEvent.keyDown(first, { key: "1" });
+
+    const toast = await screen.findByText("Apply: 1 video updated.");
+    expect(toast).toHaveClass("dq-toast");
+    expect(toast).toHaveAttribute("role", "status");
+    expect(toast).toHaveAttribute("aria-live", "polite");
+    expect(toast).toHaveStyle({
+      position: "fixed",
+      overflowWrap: "anywhere",
+    });
+  });
+
   it("drops selected targets that leave the queue after a partial failure", async () => {
     let changed = false;
     api.findVideos.mockImplementation(async () =>

@@ -290,6 +290,12 @@ export function DataQualityPage({
   const allowCustomFieldRemoval = useRef(false);
 
   useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(""), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
+  useEffect(() => {
     const ids = review
       ? unresolvedCustomFieldTagIds(review.view.objectFilter)
       : [];
@@ -1373,7 +1379,7 @@ export function DataQualityPage({
             </div>
           )}
           {message && (
-            <p role="status" className="dq-status">
+            <p role="status" aria-live="polite" className="dq-status dq-toast">
               {message}
             </p>
           )}

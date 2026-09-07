@@ -427,6 +427,17 @@
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
+.dq-toast {
+  position: fixed;
+  z-index: 130;
+  right: 1rem;
+  bottom: 1rem;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  overflow-wrap: anywhere;
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
 .dq-spin {
   animation: dq-spin 1s linear infinite;
 }
