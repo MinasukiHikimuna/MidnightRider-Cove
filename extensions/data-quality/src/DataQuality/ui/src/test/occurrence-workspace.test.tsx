@@ -116,12 +116,15 @@ it("runs plain action shortcuts but leaves browser modifier shortcuts alone", as
   const workspace = screen.getByRole("region", {
     name: "Performer occurrence review",
   });
+  expect(workspace).not.toHaveAttribute("tabindex");
   for (const modifier of ["ctrlKey", "altKey", "metaKey"])
     fireEvent.keyDown(workspace, { key: "1", [modifier]: true });
   expect(api.runOccurrenceAction).not.toHaveBeenCalled();
   fireEvent.focusIn(screen.getByRole("button", { name: "1 Hair down" }));
   expect(useKeySequence.mock.calls.at(-1)![1]).toBe(false);
-  fireEvent.focusIn(workspace);
+  fireEvent.focusOut(screen.getByRole("button", { name: "1 Hair down" }), {
+    relatedTarget: null,
+  });
   const [bindings, enabled] = useKeySequence.mock.calls.at(-1)!;
   expect(enabled).toBe(true);
   expect(bindings[0]).toMatchObject({ keys: "1", surface: "local" });

@@ -133,8 +133,14 @@ export function OccurrenceWorkspace({
   useEffect(() => {
     const update = (event: FocusEvent) =>
       setShortcutTarget(isReviewShortcutTarget(event.target));
+    const leave = (event: FocusEvent) =>
+      setShortcutTarget(isReviewShortcutTarget(event.relatedTarget ?? document.body));
     document.addEventListener("focusin", update);
-    return () => document.removeEventListener("focusin", update);
+    document.addEventListener("focusout", leave);
+    return () => {
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", leave);
+    };
   }, []);
   const review = useMemo(
     () => ({
@@ -461,7 +467,6 @@ export function OccurrenceWorkspace({
     <section
       className="dq-occurrence-workspace"
       aria-label="Performer occurrence review"
-      tabIndex={0}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (
