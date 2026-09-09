@@ -125,7 +125,7 @@ const MODIFIERS: Record<string, string> = {
   NOT_UNDER_PATH: "notUnderPath",
 };
 
-function normalizeCriteria(value: unknown): unknown {
+export function normalizeCriteria(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeCriteria);
   if (value && typeof value === "object") {
     return Object.fromEntries(

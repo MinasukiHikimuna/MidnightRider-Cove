@@ -1,11 +1,13 @@
 # Data Quality
 
-Data Quality is a self-contained Cove extension for running saved video and tag review queues. Installing and enabling it adds a top-level page to **Settings → My → Interface → Navigation**, where it can be shown, hidden, and reordered with other extension pages.
+Data Quality is a Cove extension for running saved video, tag, and performer occurrence review queues. Installing and enabling it adds a top-level page to **Settings → My → Interface → Navigation**, where it can be shown, hidden, and reordered with other extension pages.
 
 The extension owns its page, interaction model, review storage bridge, editor, styles, and tests. Each review targets exactly one entity type. Video reviews retain Grid and Wall presentation, while tag reviews provide Grid and List views and can assign selected tags to a tag group or return them to Ungrouped. Both use the same keyboard focus, explicit selection, action targeting, resumable progress, and deterministic advancement.
 
 Reviews, ordered actions, native entity filters, and preferred presentation are editable in the review route. A review's entity type is chosen at creation and cannot be converted after saving or duplication. Save or cancel returns to the current position. Toolbar changes apply to the current session; **Reset to review defaults** restores the review's complete saved queue, and **Save queue to review** explicitly replaces it.
 
 Configuration and resumable progress use Cove's account-scoped saved-filter API. Existing prototype reviews migrate without changing IDs or restoring deletions. Accounts without saved-filter read permission retain browser-only storage; accounts with read but no write permission can run and temporarily adjust their account reviews. Migration conflicts retain both versions and offer a browser recovery export. See the [user guide](docs/video-data-quality.md), [storage contract](docs/storage-and-verification.md), and [TODO.md](TODO.md).
+
+Performer occurrence reviews target all performers, selected performers, or performers matching native filters within a separately filtered scene queue. Each occurrence has its own tag choices and reviewed or inconclusive outcome. The video stays mounted when advancing between performers in the same scene. Counts show occurrences on the loaded page and matching scenes across the queue. This development version requires Cove's shared runtime to export `PERFORMER_CRITERIA`.
 
 Registry publication and its final compatibility floor remain deferred. Visual-similarity searches are unavailable through the public extension API. Legacy multi-step actions use existing authorized bulk operations and can partially succeed. Present/absent tag assessments use the shared `confirmed_absent_tags` custom field and sequential read-modify-write requests; cross-writer concurrency, library-wide contradiction discovery, atomic actions, and undo remain separate follow-up work.

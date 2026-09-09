@@ -65,10 +65,30 @@ export interface TagReview extends ReviewBase {
   presentation?: { cardSize?: number | null };
 }
 
-export type Review = VideoReview | TagReview;
+export interface OccurrenceReview extends ReviewBase {
+  entityType: "performerOccurrence";
+  actions: VideoReviewAction[];
+  occurrence: {
+    targetMode: "all" | "selected" | "filter";
+    performerIds: number[];
+    performerFilter: Record<string, unknown>;
+    condition: "any" | "includes" | "includesAll" | "excludes" | "isNull";
+    conditionTagIds: number[];
+    tagIds: number[];
+    multiple: boolean;
+  };
+  presentation?: { cardSize?: number | null };
+}
 
-export function reviewEntityType(review: Review): "video" | "tag" {
-  return review.entityType === "tag" ? "tag" : "video";
+export type Review = VideoReview | TagReview | OccurrenceReview;
+export type ReviewEntityType = "video" | "tag" | "performerOccurrence";
+
+export function occurrenceAnswerSignature(review: OccurrenceReview): string {
+  return JSON.stringify([[...review.occurrence.tagIds].sort((a, b) => a - b), review.occurrence.multiple]);
+}
+
+export function reviewEntityType(review: Review): ReviewEntityType {
+  return review.entityType ?? "video";
 }
 
 export function actionShortcut(action: ReviewAction, index: number): string {
@@ -91,6 +111,12 @@ export function moveItem<T>(items: T[], index: number, delta: number): T[] {
 }
 
 export function reviewValidation(review: Review): string {
+  if (review.entityType === "performerOccurrence") {
+    if (!validOccurrenceSettings(review.occurrence))
+      return "Choose target performers, occurrence conditions, and at least one tag choice.";
+    if (review.actions.length)
+      return "Performer occurrence reviews use tag choices instead of video actions.";
+  }
   if (
     reviewEntityType(review) === "video" &&
     review.actions.some((action) =>
@@ -151,13 +177,15 @@ export function queueSignature(review: Review): string {
     review.view.searchMode,
   ];
   return JSON.stringify(
-    reviewEntityType(review) === "tag" ? ["tag", ...signature] : signature,
+    review.entityType === "performerOccurrence"
+      ? ["performerOccurrence", ...signature, review.occurrence]
+      : reviewEntityType(review) === "tag" ? ["tag", ...signature] : signature,
   );
 }
 
 export function validAction(
   action: ReviewAction,
-  entityType?: "video" | "tag",
+  entityType?: ReviewEntityType,
 ): boolean {
   const actionType = entityType ?? ("effect" in action ? "tag" : "video");
   if (!action.label.trim()) return false;
@@ -232,7 +260,9 @@ export function parseReviews(raw: string | null): Review[] {
         typeof review.description === "string" &&
         (review.entityType === undefined ||
           review.entityType === "video" ||
-          review.entityType === "tag") &&
+          review.entityType === "tag" ||
+          review.entityType === "performerOccurrence") &&
+        (review.entityType !== "performerOccurrence" || validOccurrenceSettings(review.occurrence)) &&
         review.view &&
         typeof review.view === "object" &&
         (review.entityType === "tag"
@@ -333,6 +363,19 @@ export function mergeReviews(...sources: Review[][]): Review[] {
     }
   }
   return merged;
+}
+
+function validOccurrenceSettings(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const settings = value as OccurrenceReview["occurrence"];
+  const ids = (value: unknown): value is number[] => Array.isArray(value) &&
+    value.every((id) => Number.isSafeInteger(id) && id > 0) && new Set(value).size === value.length;
+  return ["all", "selected", "filter"].includes(settings.targetMode) &&
+    ids(settings.performerIds) && (settings.targetMode !== "selected" || settings.performerIds.length > 0) &&
+    !!settings.performerFilter && typeof settings.performerFilter === "object" && !Array.isArray(settings.performerFilter) &&
+    ["any", "includes", "includesAll", "excludes", "isNull"].includes(settings.condition) &&
+    ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
+    ids(settings.tagIds) && settings.tagIds.length > 0 && typeof settings.multiple === "boolean";
 }
 
 export function getReviewActionTargets(

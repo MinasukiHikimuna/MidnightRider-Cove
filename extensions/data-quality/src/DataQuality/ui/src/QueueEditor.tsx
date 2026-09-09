@@ -21,7 +21,7 @@ export function QueueEditor({
   queue?: boolean;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const entityType = reviewEntityType(draft);
+  const entityType = reviewEntityType(draft) === "tag" ? "tag" : "video";
   const filter = draft.view.filter;
   const sortOptions =
     entityType === "tag" ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS;

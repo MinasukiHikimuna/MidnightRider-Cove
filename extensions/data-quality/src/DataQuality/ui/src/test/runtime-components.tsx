@@ -8,13 +8,15 @@ export const testVideoControls = {
 };
 export function VideoPlayer({
   autostart,
+  clip,
   onPlaybackControlRegister,
 }: {
   autostart?: boolean;
+  clip?: { start: number; end?: number | null; loop?: boolean };
   onPlaybackControlRegister?: (controls: typeof testVideoControls) => void;
 }) {
   onPlaybackControlRegister?.(testVideoControls);
-  return <div data-testid="video-player" data-autostart={autostart} />;
+  return <div data-testid="video-player" data-autostart={autostart} data-clip={clip ? JSON.stringify(clip) : undefined} />;
 }
 export function EntityReferenceMultiSelector({
   placeholder,

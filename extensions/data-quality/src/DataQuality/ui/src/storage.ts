@@ -352,6 +352,11 @@ export interface ReviewProgress {
   displayMode: "grid" | "list" | "wall";
   cardSize: number | null;
   updatedAt: number;
+  occurrence?: {
+    answerSignature?: string;
+    focusedKey: string | null;
+    outcomes: Record<string, "reviewed" | "cannotDetermine">;
+  };
 }
 function progressValue(raw: string): ReviewProgress {
   const value = JSON.parse(raw);
@@ -370,7 +375,14 @@ function progressValue(raw: string): ReviewProgress {
       (!Number.isFinite(value.cardSize) ||
         value.cardSize < 115 ||
         value.cardSize > 380)) ||
-    !Number.isFinite(value.updatedAt)
+    !Number.isFinite(value.updatedAt) ||
+    (value.occurrence !== undefined && (
+      !value.occurrence ||
+      (value.occurrence.answerSignature !== undefined && typeof value.occurrence.answerSignature !== "string") ||
+      (value.occurrence.focusedKey !== null && !/^[1-9]\d*:[1-9]\d*$/.test(value.occurrence.focusedKey)) ||
+      !value.occurrence.outcomes || typeof value.occurrence.outcomes !== "object" || Array.isArray(value.occurrence.outcomes) ||
+      !Object.entries(value.occurrence.outcomes).every(([key, outcome]) => /^[1-9]\d*:[1-9]\d*$/.test(key) && ["reviewed", "cannotDetermine"].includes(String(outcome)))
+    ))
   )
     throw new Error(
       "Saved review progress could not be read. Existing progress has been kept.",

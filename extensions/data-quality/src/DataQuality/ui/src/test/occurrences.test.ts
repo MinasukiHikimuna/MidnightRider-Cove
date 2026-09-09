@@ -1,0 +1,285 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { extensionFetch } from "@cove/runtime/api";
+import {
+  loadOccurrencePage,
+  occurrenceMatches,
+  occurrenceSceneReview,
+  resolvePerformers,
+  saveOccurrenceTags,
+  type Occurrence,
+} from "../occurrences";
+import {
+  parseReviews,
+  queueSignature,
+  reviewValidation,
+  type OccurrenceReview,
+} from "../model";
+
+export const occurrenceReview: OccurrenceReview = {
+  id: "occurrences",
+  entityType: "performerOccurrence",
+  name: "Hair setup",
+  description: "",
+  view: {
+    filter: { page: 1, perPage: 40 },
+    objectFilter: {},
+    displayMode: "grid",
+    searchMode: "text",
+    startFrom: "beginning",
+  },
+  actions: [],
+  occurrence: {
+    targetMode: "selected",
+    performerIds: [11],
+    performerFilter: {},
+    condition: "excludes",
+    conditionTagIds: [21],
+    tagIds: [21, 22],
+    multiple: true,
+  },
+};
+const fetchMock = vi.mocked(extensionFetch);
+const video = {
+  id: 1,
+  title: "Scene",
+  performers: [
+    { id: 11, name: "First" },
+    { id: 12, name: "Second" },
+  ],
+  files: [],
+  updatedAt: "now",
+};
+const application = (id: number, performer: number, tag: number) => ({
+  id,
+  hostType: "video",
+  hostId: 1,
+  contextType: "performer",
+  contextId: performer,
+  tag: { id: tag, name: `Tag ${tag}` },
+});
+const occurrence: Occurrence = {
+  key: "1:11",
+  video,
+  performer: video.performers[0],
+  applications: [],
+};
+const response = (value: unknown) =>
+  Promise.resolve(new Response(JSON.stringify(value)));
+beforeEach(() => fetchMock.mockReset());
+
+it("round trips occurrence reviews and rejects missing targets and invalid choices", () => {
+  expect(parseReviews(JSON.stringify([occurrenceReview]))).toEqual([
+    occurrenceReview,
+  ]);
+  expect(
+    reviewValidation({
+      ...occurrenceReview,
+      occurrence: { ...occurrenceReview.occurrence, performerIds: [] },
+    }),
+  ).toBeTruthy();
+  expect(() =>
+    parseReviews(
+      JSON.stringify([
+        {
+          ...occurrenceReview,
+          occurrence: { ...occurrenceReview.occurrence, tagIds: [0] },
+        },
+      ]),
+    ),
+  ).toThrow();
+  expect(() =>
+    parseReviews(JSON.stringify([{ ...occurrenceReview, occurrence: null }])),
+  ).toThrow();
+});
+it("changes progress identity when targets or tag choices change", () => {
+  expect(queueSignature(occurrenceReview)).not.toBe(
+    queueSignature({
+      ...occurrenceReview,
+      occurrence: { ...occurrenceReview.occurrence, performerIds: [12] },
+    }),
+  );
+  expect(queueSignature(occurrenceReview)).not.toBe(
+    queueSignature({
+      ...occurrenceReview,
+      occurrence: { ...occurrenceReview.occurrence, tagIds: [23] },
+    }),
+  );
+});
+it("keeps scene selection separate and binds identity and tag conditions to the same link", () => {
+  const scene = occurrenceSceneReview(
+    {
+      ...occurrenceReview,
+      view: {
+        ...occurrenceReview.view,
+        objectFilter: {
+          studioId: 9,
+          _filterExpression: {
+            operator: "OR",
+            children: [{ filter: { organized: true } }],
+          },
+        },
+      },
+    },
+    [11],
+  );
+  expect(scene.view.objectFilter).toEqual({
+    _filterExpression: {
+      operator: "AND",
+      children: [
+        {
+          group: {
+            operator: "OR",
+            children: [{ filter: { organized: true } }],
+          },
+        },
+        { filter: { studioId: 9 } },
+        {
+          filter: {
+            performerFilterCriterion: {
+              mode: "atLeastOne",
+              conditionOperator: "and",
+              performerIdsCriterion: { modifier: "includes", value: [11] },
+              performerOccurrenceTagsCriterion: {
+                modifier: "excludes",
+                value: [21],
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+it("tests each supported exact occurrence condition", () => {
+  const settings = {
+    ...occurrenceReview.occurrence,
+    conditionTagIds: [21, 22],
+  };
+  expect(occurrenceMatches({ ...settings, condition: "includes" }, [21])).toBe(
+    true,
+  );
+  expect(
+    occurrenceMatches({ ...settings, condition: "includesAll" }, [21]),
+  ).toBe(false);
+  expect(
+    occurrenceMatches({ ...settings, condition: "includesAll" }, [21, 22]),
+  ).toBe(true);
+  expect(occurrenceMatches({ ...settings, condition: "excludes" }, [23])).toBe(
+    true,
+  );
+  expect(occurrenceMatches({ ...settings, condition: "excludes" }, [21])).toBe(
+    false,
+  );
+  expect(occurrenceMatches({ ...settings, condition: "isNull" }, [])).toBe(
+    true,
+  );
+  expect(occurrenceMatches({ ...settings, condition: "isNull" }, [21])).toBe(
+    false,
+  );
+});
+it("does not review scene partners just because their scene matched the target", async () => {
+  fetchMock.mockImplementation((path) =>
+    path === "/api/videos/find"
+      ? response({ items: [video], totalCount: 1 })
+      : response([application(2, 12, 21)]),
+  );
+  const result = await loadOccurrencePage(occurrenceReview, [11], 1);
+  expect(result.items.map((item) => item.key)).toEqual(["1:11"]);
+});
+it("filters occurrences individually when all performers are targeted", async () => {
+  fetchMock.mockImplementation((path) =>
+    path === "/api/videos/find"
+      ? response({ items: [video], totalCount: 1 })
+      : response([application(1, 11, 21)]),
+  );
+  expect(
+    (await loadOccurrencePage(occurrenceReview, null, 1)).items.map(
+      (item) => item.key,
+    ),
+  ).toEqual(["1:12"]);
+});
+it("returns no scenes without querying when a performer filter resolves to no targets", async () => {
+  expect(await loadOccurrencePage(occurrenceReview, [], 1)).toEqual({
+    items: [],
+    totalCount: 0,
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+it("resolves performer filters through every page", async () => {
+  fetchMock
+    .mockResolvedValueOnce(
+      await response({ items: [{ id: 11 }], totalCount: 1001 }),
+    )
+    .mockResolvedValueOnce(
+      await response({ items: [{ id: 12 }], totalCount: 1001 }),
+    );
+  expect(
+    await resolvePerformers({
+      ...occurrenceReview,
+      occurrence: {
+        ...occurrenceReview.occurrence,
+        targetMode: "filter",
+        performerFilter: { favorite: true },
+      },
+    }),
+  ).toEqual([11, 12]);
+  expect(
+    JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).findFilter.page,
+  ).toBe(2);
+});
+it("only edits configured tags on the active performer occurrence", async () => {
+  const apps = [
+    application(1, 11, 21),
+    application(2, 11, 99),
+    application(3, 12, 21),
+    { ...application(4, 11, 21), contextType: null },
+  ];
+  fetchMock.mockImplementation((path) =>
+    path === "/api/videos/1" ? response(video) : response(apps),
+  );
+  await saveOccurrenceTags(occurrenceReview, occurrence, [22]);
+  const writes = fetchMock.mock.calls.filter(([, options]) =>
+    ["POST", "DELETE"].includes(options?.method ?? ""),
+  );
+  expect(writes).toHaveLength(2);
+  expect(JSON.parse(String(writes[0][1]?.body))).toEqual({
+    hostType: "video",
+    hostId: 1,
+    contextType: "performer",
+    contextId: 11,
+    tagId: 22,
+    sourceKey: "user",
+  });
+  expect(writes[1][0]).toBe("/api/tagapplications/1");
+});
+it("does not write after an occurrence was unlinked or with invalid single-choice input", async () => {
+  fetchMock.mockImplementation(() => response({ ...video, performers: [] }));
+  await expect(
+    saveOccurrenceTags(occurrenceReview, occurrence, [22]),
+  ).rejects.toThrow("no longer linked");
+  await expect(
+    saveOccurrenceTags(
+      {
+        ...occurrenceReview,
+        occurrence: { ...occurrenceReview.occurrence, multiple: false },
+      },
+      occurrence,
+      [21, 22],
+    ),
+  ).rejects.toThrow("configured tags");
+  expect(fetchMock.mock.calls.every(([, options]) => !options?.method)).toBe(
+    true,
+  );
+});
+it("explains partial failure and can safely retry to finish the desired state", async () => {
+  fetchMock.mockImplementation((path, options) =>
+    options?.method === "DELETE"
+      ? Promise.resolve(new Response("{}", { status: 500 }))
+      : path === "/api/videos/1"
+        ? response(video)
+        : response([application(1, 11, 21)]),
+  );
+  await expect(
+    saveOccurrenceTags(occurrenceReview, occurrence, [22]),
+  ).rejects.toThrow("some tag changes may have been applied");
+});

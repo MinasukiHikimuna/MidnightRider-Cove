@@ -138,6 +138,7 @@ declare module "@cove/runtime/components" {
     filterKey: string;
   }>;
   export const TAG_CRITERIA: typeof VIDEO_CRITERIA;
+  export const PERFORMER_CRITERIA: typeof VIDEO_CRITERIA;
   export const TAG_SORT_OPTIONS: Array<{ value: string; label: string }>;
   export const VIDEO_SORT_OPTIONS: Array<{ value: string; label: string }>;
   export const FilterDialog: ComponentType<{
@@ -169,7 +170,7 @@ declare module "@cove/runtime/components" {
     clip?: { start: number; end?: number | null; loop?: boolean };
   }>;
   export const EntityReferenceMultiSelector: ComponentType<{
-    entityType: "tag";
+    entityType: "tag" | "performer";
     values: number[];
     onChange(values: number[]): void;
     placeholder?: string;

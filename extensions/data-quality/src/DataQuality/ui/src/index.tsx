@@ -82,7 +82,10 @@ import {
   type TagReviewEffect,
   type VideoReview,
   type VideoReviewAction,
+  type ReviewEntityType,
 } from "./model";
+import { OccurrenceSettings, OccurrenceWorkspace } from "./OccurrenceReview";
+import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
 import "./styles.css";
 import {
   usePresentationTags,
@@ -123,11 +126,11 @@ const customFieldQueueCriterion = {
   supported: false,
 };
 
-function ReviewEntityIcon({ entityType }: { entityType: "video" | "tag" }) {
+function ReviewEntityIcon({ entityType }: { entityType: ReviewEntityType }) {
   return entityType === "tag" ? (
     <TagsIcon role="img" aria-label="Tag review" />
   ) : (
-    <Film role="img" aria-label="Video review" />
+    <Film role="img" aria-label={entityType === "performerOccurrence" ? "Performer occurrence review" : "Video review"} />
   );
 }
 
@@ -139,7 +142,7 @@ function initialDisplayMode(review: Review): ReviewDisplayMode {
 
 function supportedDisplayMode(
   value: unknown,
-  entityType: "video" | "tag" = "video",
+  entityType: ReviewEntityType = "video",
 ): ReviewDisplayMode {
   if (entityType === "tag") return value === "list" ? "list" : "grid";
   return value === "wall" ? "wall" : "grid";
@@ -576,7 +579,9 @@ export function DataQualityPage({
     setReviewCounts({});
     for (const item of reviews) {
       const countRequest =
-        reviewEntityType(item) === "tag"
+        item.entityType === "performerOccurrence"
+          ? resolvePerformers(item, controller.signal).then((ids) => ids?.length === 0 ? { totalCount: 0 } : findVideos(occurrenceSceneReview(item, ids), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal))
+          : reviewEntityType(item) === "tag"
           ? findTags(
               item as TagReview,
               boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
@@ -707,7 +712,7 @@ export function DataQualityPage({
     setMessage("");
     setActionError("");
     setQueue({ items: [], totalCount: 0 });
-    if (!review) {
+    if (!review || review.entityType === "performerOccurrence") {
       setQueueLoading(false);
       return;
     }
@@ -1190,7 +1195,7 @@ export function DataQualityPage({
     ) {
       if (updated.view.displayMode !== savedReview.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
-      if (queueSignature(updated) !== queueSignature(savedReview)) {
+      if (updated.entityType !== "performerOccurrence" && queueSignature(updated) !== queueSignature(savedReview)) {
         setTemporaryReview(null);
         void resumeQueue(
           updated,
@@ -1366,7 +1371,7 @@ export function DataQualityPage({
           </button>
         </p>
       )}
-      {review && savedReview && (
+      {review && savedReview && review.entityType !== "performerOccurrence" && (
         <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
           <div
             className={`dq-native-toolbar-host${
@@ -1557,7 +1562,7 @@ export function DataQualityPage({
               {sortedReviews.map((item) => {
                 const count = reviewCounts[item.id];
                 const itemType = reviewEntityType(item);
-                const singular = itemType === "tag" ? "tag" : "video";
+                const singular = itemType === "tag" ? "tag" : itemType === "performerOccurrence" ? "scene" : "video";
                 return (
                   <button
                     key={item.id}
@@ -1603,6 +1608,8 @@ export function DataQualityPage({
             <p>No saved reviews are available in this browser.</p>
           </div>
         )
+      ) : review.entityType === "performerOccurrence" ? (
+        <OccurrenceWorkspace key={review.id} review={review} storageKey={storageKey} canWrite={canWriteTags} onBusy={setPending} />
       ) : (
         <>
           {entityType === "video" && presentationTags.error && (
@@ -2868,8 +2875,15 @@ function ReviewEditor({
 }) {
   const [section, setSection] = useState("Review");
   const entityType = reviewEntityType(draft);
-  const changeEntityType = (next: "video" | "tag") => {
+  const changeEntityType = (next: ReviewEntityType) => {
     if (entityTypeLocked || next === entityType) return;
+    if (next === "performerOccurrence") {
+      setDraft({ id: draft.id, entityType: next, name: draft.name, description: draft.description,
+        view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "beginning" },
+        actions: [], occurrence: { targetMode: "all", performerIds: [], performerFilter: {}, condition: "any", conditionTagIds: [], tagIds: [], multiple: true },
+      });
+      return;
+    }
     setDraft(
       next === "tag"
         ? {
@@ -2927,7 +2941,7 @@ function ReviewEditor({
     <div className="dq-editor">
       <div className="dq-editor-nav">
         <EntityDetailTabs
-          tabs={["Review", "Queue", "Appearance", "Actions"].map((name) => ({
+          tabs={(entityType === "performerOccurrence" ? ["Review", "Queue", "Tag choices"] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
             key: name,
             label: name,
             count: name === "Actions" ? draft.actions.length : undefined,
@@ -2950,11 +2964,12 @@ function ReviewEditor({
                 value={entityType}
                 disabled={entityTypeLocked}
                 onChange={(event) =>
-                  changeEntityType(event.target.value as "video" | "tag")
+                  changeEntityType(event.target.value as ReviewEntityType)
                 }
               >
                 <option value="video">Videos</option>
                 <option value="tag">Tags</option>
+                <option value="performerOccurrence">Performer occurrence tags</option>
               </select>
             </label>
             <label>
@@ -2981,7 +2996,9 @@ function ReviewEditor({
         </section>
         <section hidden={section !== "Queue"} className="dq-editor-section">
           <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
+          {draft.entityType === "performerOccurrence" && <OccurrenceSettings review={draft} onChange={setDraft} />}
         </section>
+        {draft.entityType === "performerOccurrence" && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft} onChange={setDraft} choices /></section>}
         <section hidden={section !== "Appearance"} className="dq-editor-section">
             <QueueEditor draft={draft} onChange={setDraft} queue={false} />
         </section>
