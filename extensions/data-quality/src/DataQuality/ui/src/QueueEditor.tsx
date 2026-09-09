@@ -1,11 +1,13 @@
 import { useState } from "react";
 import {
   FilterDialog,
+  TAG_CRITERIA,
+  TAG_SORT_OPTIONS,
   VIDEO_CRITERIA,
   VIDEO_SORT_OPTIONS,
   EntityReferenceMultiSelector,
 } from "@cove/runtime/components";
-import type { VideoReview } from "./model";
+import { reviewEntityType, type Review, type VideoReview } from "./model";
 
 export function QueueEditor({
   draft,
@@ -13,19 +15,25 @@ export function QueueEditor({
   presentation = true,
   queue = true,
 }: {
-  draft: VideoReview;
-  onChange(review: VideoReview): void;
+  draft: Review;
+  onChange(review: Review): void;
   presentation?: boolean;
   queue?: boolean;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const entityType = reviewEntityType(draft);
   const filter = draft.view.filter;
+  const sortOptions =
+    entityType === "tag" ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS;
   const updateFilter = (change: Record<string, unknown>) =>
     onChange({
       ...draft,
       view: { ...draft.view, filter: { ...filter, ...change } },
     });
-  const settings = draft.presentation ?? {};
+  const settings =
+    entityType === "video"
+      ? ((draft as VideoReview).presentation ?? {})
+      : {};
   const updatePresentation = (
     change: NonNullable<VideoReview["presentation"]>,
   ) => onChange({ ...draft, presentation: { ...settings, ...change } });
@@ -51,13 +59,13 @@ export function QueueEditor({
                   updateFilter({ sort: e.target.value, sorts: undefined })
                 }
               >
-                {!VIDEO_SORT_OPTIONS.some((o) => o.value === filter.sort) &&
+                {!sortOptions.some((o) => o.value === filter.sort) &&
                   filter.sort != null && (
                     <option value={String(filter.sort)}>
                       {String(filter.sort)}
                     </option>
                   )}
-                {VIDEO_SORT_OPTIONS.map((o) => (
+                {sortOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -76,7 +84,7 @@ export function QueueEditor({
               </select>
             </label>
             <label>
-              Videos per page
+              {entityType === "tag" ? "Tags" : "Videos"} per page
               <input
                 type="number"
                 min="1"
@@ -117,23 +125,24 @@ export function QueueEditor({
             className="dq-button"
             onClick={() => setFiltersOpen(true)}
           >
-            Edit video filters
+            Edit {entityType} filters
           </button>
           <p>
             {Object.keys(draft.view.objectFilter).length
-              ? "Video filters configured"
-              : "No video filters"}
-            . Choose which videos enter the queue.
+              ? `${entityType === "tag" ? "Tag" : "Video"} filters configured`
+              : `No ${entityType} filters`}
+            . Choose which {entityType === "tag" ? "tags" : "videos"} enter
+            the queue.
           </p>
           {filtersOpen && (
             <div onKeyDown={(e) => e.stopPropagation()}>
               <FilterDialog
                 open
                 onClose={() => setFiltersOpen(false)}
-                criteria={VIDEO_CRITERIA}
+                criteria={entityType === "tag" ? TAG_CRITERIA : VIDEO_CRITERIA}
                 activeFilter={draft.view.objectFilter}
-                supportsFilterExpressions
-                subjectLabel="videos"
+                supportsFilterExpressions={entityType === "video"}
+                subjectLabel={entityType === "tag" ? "tags" : "videos"}
                 onApply={(objectFilter) => {
                   onChange({ ...draft, view: { ...draft.view, objectFilter } });
                   setFiltersOpen(false);
@@ -147,30 +156,41 @@ export function QueueEditor({
         <>
           <h3>Appearance</h3>
           <p className="dq-editor-note">
-            Choose how videos and tags appear while reviewing.
+            Choose how {entityType === "tag" ? "tags" : "videos and tags"} appear while reviewing.
           </p>
           <div className="dq-field-grid">
             <label>
               Preferred view
               <select
-                value={draft.view.displayMode === "wall" ? "wall" : "grid"}
+                value={
+                  entityType === "tag"
+                    ? draft.view.displayMode === "list"
+                      ? "list"
+                      : "grid"
+                    : draft.view.displayMode === "wall"
+                      ? "wall"
+                      : "grid"
+                }
                 onChange={(e) =>
                   onChange({
                     ...draft,
                     view: {
                       ...draft.view,
-                      displayMode: e.target.value as "grid" | "wall",
+                      displayMode: e.target.value as
+                        | "grid"
+                        | "list"
+                        | "wall",
                     },
                   })
                 }
               >
-                {["grid", "wall"].map((mode) => (
+                {(entityType === "tag" ? ["grid", "list"] : ["grid", "wall"]).map((mode) => (
                   <option key={mode}>{mode}</option>
                 ))}
               </select>
             </label>
           </div>
-          <h4>Card annotations</h4>
+          {entityType === "video" && <><h4>Card annotations</h4>
           <div className="dq-annotation-options">
             {(["date", "studio", "performers", "tags"] as const).map((name) => {
               const selected = settings.annotations ?? [];
@@ -221,6 +241,7 @@ export function QueueEditor({
             onChange={(binParents) => updatePresentation({ binParents })}
             allowCreate={false}
           />
+          </>}
         </>
       )}
     </>

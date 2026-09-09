@@ -1,5 +1,5 @@
 import { request } from "./api";
-import { mergeReviews, parseReviews, type VideoReview } from "./model";
+import { mergeReviews, parseReviews, type Review } from "./model";
 
 const CONFIG_SCOPE = "ext:com.midnightrider.data-quality:configuration";
 const IMPORT_SCOPE = "ext:cove-data-quality:video-reviews";
@@ -12,7 +12,7 @@ interface RecordRow {
 interface Configuration {
   version: 2;
   revision: string;
-  reviews: VideoReview[];
+  reviews: Review[];
   deletedIds: string[];
   importedIds: string[];
 }
@@ -67,7 +67,7 @@ function legacy(userId: string) {
     `cove-data-quality-reviews-v1:${userId}`,
     `cove-video-reviews-v1:${userId}`,
   ];
-  let reviews: VideoReview[] | undefined;
+  let reviews: Review[] | undefined;
   const known = new Set<string>();
   for (const key of keys) {
     const raw = localStorage.getItem(key);
@@ -260,6 +260,9 @@ async function loadAccountReviews() {
     reviews: config.reviews,
     storageKey,
     canWrite: has(me.permissions, "videos.write"),
+    canWriteVideos: has(me.permissions, "videos.write"),
+    canWriteTags: has(me.permissions, "tags.write"),
+    canReadTagGroups: has(me.permissions, "taggroups.read"),
     canConfigure: !readable || writable,
     storageNotice: !readable
       ? "Reviews and progress are saved only in this browser. Saved filter read and write permissions enable account storage."
@@ -321,7 +324,7 @@ async function persist(key: string, next: Configuration) {
 
 export function saveReviews(
   key: string,
-  reviews: VideoReview[],
+  reviews: Review[],
 ): Promise<void> {
   parseReviews(JSON.stringify(reviews));
   return serial(key, async () => {

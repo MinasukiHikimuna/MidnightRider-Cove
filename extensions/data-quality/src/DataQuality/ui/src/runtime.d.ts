@@ -104,11 +104,41 @@ declare module "@cove/runtime/components" {
     onNavigate?(route: { page: string; id?: number }): void;
     onQuickView?(): void;
   }>;
+  export const TagTile: ComponentType<{
+    tag: {
+      id: number;
+      name: string;
+      description?: string;
+      imagePath?: string;
+      favorite: boolean;
+      organized: boolean;
+      tagGroupId?: number | null;
+      tagGroupName?: string | null;
+      tagGroupColor?: string | null;
+      aliases: string[];
+      videoCount?: number;
+      segmentCount?: number;
+      imageCount?: number;
+      galleryCount?: number;
+      groupCount?: number;
+      performerCount?: number;
+      studioCount?: number;
+      audioCount?: number;
+      textCount?: number;
+    };
+    onClick(): void;
+    selected?: boolean;
+    onSelect?(): void;
+    selecting?: boolean;
+    onNavigate?(route: { page: string; id?: number }): void;
+  }>;
   export const VIDEO_CRITERIA: Array<{
     id: string;
     label: string;
     filterKey: string;
   }>;
+  export const TAG_CRITERIA: typeof VIDEO_CRITERIA;
+  export const TAG_SORT_OPTIONS: Array<{ value: string; label: string }>;
   export const VIDEO_SORT_OPTIONS: Array<{ value: string; label: string }>;
   export const FilterDialog: ComponentType<{
     open: boolean;

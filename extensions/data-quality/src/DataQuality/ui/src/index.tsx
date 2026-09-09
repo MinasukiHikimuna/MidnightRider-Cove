@@ -14,6 +14,9 @@ import {
   DetailListPagination,
   DetailListToolbar,
   SortableList,
+  TAG_CRITERIA,
+  TAG_SORT_OPTIONS,
+  TagTile,
   VIDEO_CRITERIA,
   VIDEO_SORT_OPTIONS,
   type DragHandleProps,
@@ -40,21 +43,25 @@ import {
 } from "@cove/runtime/lucide-react";
 import {
   createConfirmedAbsentTagsField,
+  findTags,
   findVideos,
   getConfirmedAbsentTagsFieldStatus,
+  listTagGroups,
   loadReviews,
   loadProgress,
   saveProgress,
   request,
   runReviewAction,
+  runTagReviewAction,
   settleReviewWrites,
   saveReviews,
   videoPreviewStatusUrl,
   videoPreviewUrl,
   videoScreenshotUrl,
   videoStreamUrl,
+  type Tag,
+  type TagGroup,
   type Video,
-  type VideoPage,
   type ConfirmedAbsentTagsFieldStatus,
 } from "./api";
 import {
@@ -64,11 +71,16 @@ import {
   isReviewShortcutTarget,
   mergeReviews,
   parseReviews,
+  reviewEntityType,
   toggleShownReviewSelection,
-  validAction,
+  type Review,
   type ReviewAction,
   type ReviewStep,
+  type TagReview,
+  type TagReviewAction,
+  type TagReviewEffect,
   type VideoReview,
+  type VideoReviewAction,
 } from "./model";
 import "./styles.css";
 import {
@@ -92,7 +104,12 @@ import {
   queueSignature,
 } from "./model";
 
-type ReviewDisplayMode = "grid" | "wall";
+type ReviewDisplayMode = "grid" | "list" | "wall";
+type ReviewEntity = Video | Tag;
+interface ReviewPage {
+  items: ReviewEntity[];
+  totalCount: number;
+}
 type ReviewBrowserSort = "name" | "count";
 type ReviewBrowserDirection = "asc" | "desc";
 
@@ -105,11 +122,17 @@ const customFieldQueueCriterion = {
   supported: false,
 };
 
-function initialDisplayMode(review: VideoReview): ReviewDisplayMode {
+function initialDisplayMode(review: Review): ReviewDisplayMode {
+  if (reviewEntityType(review) === "tag")
+    return review.view.displayMode === "list" ? "list" : "grid";
   return review.view.displayMode === "wall" ? "wall" : "grid";
 }
 
-function supportedDisplayMode(value: unknown): ReviewDisplayMode {
+function supportedDisplayMode(
+  value: unknown,
+  entityType: "video" | "tag" = "video",
+): ReviewDisplayMode {
+  if (entityType === "tag") return value === "list" ? "list" : "grid";
   return value === "wall" ? "wall" : "grid";
 }
 
@@ -251,7 +274,7 @@ export function DataQualityPage({
 }: {
   onNavigate: (route: { page: string; id?: number }) => void;
 }) {
-  const [reviews, setReviews] = useState<VideoReview[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [unassignedLegacy] = useState(() => {
     try {
       return localStorage.getItem("page-videos") !== null;
@@ -262,7 +285,11 @@ export function DataQualityPage({
   const [storageKey, setStorageKey] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState("");
-  const [canWrite, setCanWrite] = useState(false);
+  const [canWriteVideos, setCanWriteVideos] = useState(false);
+  const [canWriteTags, setCanWriteTags] = useState(false);
+  const [canReadTagGroups, setCanReadTagGroups] = useState(false);
+  const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
+  const [tagGroupsError, setTagGroupsError] = useState("");
   const [canConfigure, setCanConfigure] = useState(true);
   const [storageNotice, setStorageNotice] = useState("");
   const [progressError, setProgressError] = useState("");
@@ -280,7 +307,7 @@ export function DataQualityPage({
   const focusReviewBrowser = useRef(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [editCurrent, setEditCurrent] = useState(false);
-  const [temporaryReview, setTemporaryReview] = useState<VideoReview | null>(
+  const [temporaryReview, setTemporaryReview] = useState<Review | null>(
     null,
   );
   const savedReview = reviews.find((item) => item.id === activeId) ?? null;
@@ -291,6 +318,9 @@ export function DataQualityPage({
         : savedReview,
     [temporaryReview, activeId, savedReview],
   );
+  const entityType = review ? reviewEntityType(review) : "video";
+  const videoReview = entityType === "video" ? (review as VideoReview | null) : null;
+  const canWriteCurrent = entityType === "tag" ? canWriteTags : canWriteVideos;
   const sortedReviews = useMemo(() => {
     const direction = reviewBrowserDirection === "asc" ? 1 : -1;
     return [...reviews].sort((left, right) => {
@@ -314,7 +344,7 @@ export function DataQualityPage({
   const pendingToolbarObjectFilter = useRef<Record<string, unknown> | null>(
     null,
   );
-  const presentationTags = usePresentationTags(review);
+  const presentationTags = usePresentationTags(videoReview);
   const [filter, setFilter] = useState<Record<string, unknown>>({
     page: 1,
     perPage: 40,
@@ -325,7 +355,7 @@ export function DataQualityPage({
     page: 1,
     perPage: 40,
   });
-  const [queue, setQueue] = useState<VideoPage>({ items: [], totalCount: 0 });
+  const [queue, setQueue] = useState<ReviewPage>({ items: [], totalCount: 0 });
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState("");
   const [queueRetryFromEnd, setQueueRetryFromEnd] = useState(false);
@@ -371,7 +401,7 @@ export function DataQualityPage({
   const allowCustomFieldRemoval = useRef(false);
   const actionTagIds = JSON.stringify([
     ...new Set(
-      review?.actions.flatMap((action) =>
+      videoReview?.actions.flatMap((action) =>
         action.steps.flatMap((step) => step.tagIds),
       ) ?? [],
     ),
@@ -431,8 +461,8 @@ export function DataQualityPage({
   }, [actionTagIds]);
 
   useEffect(() => {
-    const ids = review
-      ? unresolvedCustomFieldTagIds(review.view.objectFilter)
+    const ids = videoReview
+      ? unresolvedCustomFieldTagIds(videoReview.view.objectFilter)
       : [];
     setCustomFieldTagNames({});
     if (!ids.length) return;
@@ -459,24 +489,26 @@ export function DataQualityPage({
       current = false;
       controller.abort();
     };
-  }, [review?.id, review?.view.objectFilter]);
+  }, [videoReview?.id, videoReview?.view.objectFilter]);
 
   const toolbarObjectFilter = useMemo(
     () =>
-      review
+      videoReview
         ? presentCustomFieldCriteria(
-            review.view.objectFilter,
+            videoReview.view.objectFilter,
             customFieldTagNames,
           )
-        : {},
-    [customFieldTagNames, review],
+        : (review?.view.objectFilter ?? {}),
+    [customFieldTagNames, review, videoReview],
   );
   const queueCriteria = useMemo(
     () =>
-      Array.isArray(toolbarObjectFilter.customFieldCriteria)
+      entityType === "video" && Array.isArray(toolbarObjectFilter.customFieldCriteria)
         ? [...VIDEO_CRITERIA, customFieldQueueCriterion]
-        : VIDEO_CRITERIA,
-    [toolbarObjectFilter.customFieldCriteria],
+        : entityType === "tag"
+          ? TAG_CRITERIA
+          : VIDEO_CRITERIA,
+    [entityType, toolbarObjectFilter.customFieldCriteria],
   );
 
   const loadAllReviews = useCallback(async () => {
@@ -486,7 +518,9 @@ export function DataQualityPage({
       const result = await loadReviews();
       setReviews(result.reviews);
       setStorageKey(result.storageKey);
-      setCanWrite(result.canWrite);
+      setCanWriteVideos(result.canWriteVideos ?? result.canWrite);
+      setCanWriteTags(result.canWriteTags ?? false);
+      setCanReadTagGroups(result.canReadTagGroups ?? false);
       setCanConfigure(result.canConfigure ?? true);
       setStorageNotice(result.storageNotice ?? "");
       if (activeId && !result.reviews.some((item) => item.id === activeId)) {
@@ -503,6 +537,27 @@ export function DataQualityPage({
   }, [activeId]);
 
   useEffect(() => {
+    if (!canReadTagGroups) {
+      setTagGroups([]);
+      setTagGroupsError("");
+      return;
+    }
+    const controller = new AbortController();
+    setTagGroupsError("");
+    void listTagGroups(controller.signal)
+      .then(setTagGroups)
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setTagGroupsError(
+            error instanceof Error
+              ? error.message
+              : "Could not load tag groups.",
+          );
+      });
+    return () => controller.abort();
+  }, [canReadTagGroups]);
+
+  useEffect(() => {
     void loadAllReviews();
   }, []);
 
@@ -511,11 +566,19 @@ export function DataQualityPage({
     const controller = new AbortController();
     setReviewCounts({});
     for (const item of reviews) {
-      void findVideos(
-        item,
-        boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
-        controller.signal,
-      )
+      const countRequest =
+        reviewEntityType(item) === "tag"
+          ? findTags(
+              item as TagReview,
+              boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
+              controller.signal,
+            )
+          : findVideos(
+              item as VideoReview,
+              boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
+              controller.signal,
+            );
+      void countRequest
         .then((result) => {
           if (!controller.signal.aborted)
             setReviewCounts((current) => ({
@@ -556,7 +619,7 @@ export function DataQualityPage({
 
   const fetchQueue = useCallback(
     async (
-      targetReview: VideoReview,
+      targetReview: Review,
       targetFilter: Record<string, unknown>,
       startFromEnd = false,
     ) => {
@@ -572,11 +635,19 @@ export function DataQualityPage({
       setQueueLoading(true);
       setQueueError("");
       try {
-        let result = await findVideos(
-          targetReview,
-          targetFilter,
-          controller.signal,
-        );
+        const load = (nextFilter: Record<string, unknown>) =>
+          reviewEntityType(targetReview) === "tag"
+            ? findTags(
+                targetReview as TagReview,
+                nextFilter,
+                controller.signal,
+              )
+            : findVideos(
+                targetReview as VideoReview,
+                nextFilter,
+                controller.signal,
+              );
+        let result: ReviewPage = await load(targetFilter);
         const lastPage = Math.max(
           1,
           Math.ceil(result.totalCount / Number(targetFilter.perPage)),
@@ -586,11 +657,7 @@ export function DataQualityPage({
           : Math.min(requestedPage, lastPage);
         if (Number(targetFilter.page) !== targetPage) {
           targetFilter = { ...targetFilter, page: targetPage };
-          result = await findVideos(
-            targetReview,
-            targetFilter,
-            controller.signal,
-          );
+          result = await load(targetFilter);
         }
         if (generation === loadGeneration.current) {
           setQueue(result);
@@ -658,7 +725,7 @@ export function DataQualityPage({
       setFilter(nextFilter);
       setDisplayMode(
         resume
-          ? supportedDisplayMode(resume.displayMode)
+          ? supportedDisplayMode(resume.displayMode, reviewEntityType(review))
           : initialDisplayMode(review),
       );
       setCardSize(
@@ -757,18 +824,20 @@ export function DataQualityPage({
     progressLoadBlocked,
   ]);
 
-  const focusedVideo =
+  const focusedEntity =
     queue.items.find((item) => item.id === focusedId) ?? null;
+  const focusedVideo =
+    entityType === "video" ? (focusedEntity as Video | null) : null;
   if (previewOpen && focusedVideo) previewVideoRef.current = focusedVideo;
   const previewVideo =
     focusedVideo ?? (previewOpen ? previewVideoRef.current : null);
   const targets = getReviewActionTargets(selectedIds, focusedId);
   const targetLabel =
     selectedIds.size > 0
-      ? `${selectedIds.size} selected video${selectedIds.size === 1 ? "" : "s"}`
+      ? `${selectedIds.size} selected ${entityType}${selectedIds.size === 1 ? "" : "s"}`
       : focusedId == null
-        ? "no video"
-        : "focused video";
+        ? `no ${entityType}`
+        : `focused ${entityType}`;
 
   const focusCard = useCallback((id: number | null, scroll = true) => {
     if (id == null) return;
@@ -827,6 +896,20 @@ export function DataQualityPage({
 
   const execute = useCallback(
     async (action: ReviewAction) => {
+      const changesData =
+        "steps" in action
+          ? action.steps.length > 0
+          : action.effect.mode !== "SKIP";
+      const tagGroupId =
+        "effect" in action && action.effect.mode === "SET_TAG_GROUP"
+          ? action.effect.tagGroupId
+          : null;
+      const unavailableTagGroup =
+        tagGroupId != null &&
+        (!canReadTagGroups ||
+          !tagGroups.some((group) => group.id === tagGroupId));
+      const unavailableTagGroupAccess =
+        "effect" in action && changesData && !canReadTagGroups;
       const actionTargets = getReviewActionTargets(
         selectedRef.current,
         focusedRef.current,
@@ -836,7 +919,9 @@ export function DataQualityPage({
         pendingRef.current ||
         queueLoading ||
         queueError ||
-        !canWrite ||
+        (changesData && !canWriteCurrent) ||
+        unavailableTagGroupAccess ||
+        unavailableTagGroup ||
         (hasAssessmentSteps(action) && absenceFieldStatus?.kind !== "ready") ||
         !actionTargets.length
       )
@@ -856,8 +941,8 @@ export function DataQualityPage({
       setPending(true);
       setPendingTargetLabel(
         selectedRef.current.size
-          ? `${actionTargets.length} selected videos`
-          : "the focused video",
+          ? `${actionTargets.length} selected ${entityType}s`
+          : `the focused ${entityType}`,
       );
       setMessage("");
       setActionError("");
@@ -884,7 +969,9 @@ export function DataQualityPage({
       if (!previewOpenRef.current) focusCard(optimisticFocus);
       let succeeded = false;
       try {
-        await runReviewAction(action, actionTargets);
+        if ("effect" in action)
+          await runTagReviewAction(action, actionTargets);
+        else await runReviewAction(action, actionTargets);
         succeeded = true;
         if (!isCurrent()) return;
         setSelectedIds((current) => {
@@ -895,7 +982,7 @@ export function DataQualityPage({
           return next;
         });
         setMessage(
-          `${action.label}: ${actionTargets.length} video${actionTargets.length === 1 ? "" : "s"} ${action.steps.length ? "updated" : "skipped"}.`,
+          `${action.label}: ${actionTargets.length} ${entityType}${actionTargets.length === 1 ? "" : "s"} ${changesData ? "updated" : "skipped"}.`,
         );
       } catch (error) {
         if (!isCurrent()) return;
@@ -971,7 +1058,10 @@ export function DataQualityPage({
       }
     },
     [
-      canWrite,
+      canWriteCurrent,
+      canReadTagGroups,
+      tagGroups,
+      entityType,
       absenceFieldStatus,
       fetchQueue,
       filter,
@@ -985,6 +1075,7 @@ export function DataQualityPage({
   );
 
   function gridColumnCount() {
+    if (displayMode === "list") return 1;
     const grid = gridRef.current?.firstElementChild;
     const template = grid ? getComputedStyle(grid).gridTemplateColumns : "";
     return Math.max(1, template.split(" ").filter(Boolean).length);
@@ -1038,7 +1129,9 @@ export function DataQualityPage({
     if (previewOpen) return;
     if (event.key === "Enter" && focusedId != null) {
       consumeShortcut(event);
-      setPreviewOpen(true);
+      if (entityType === "tag")
+        window.open(`/tag/${focusedId}`, "_blank", "noopener,noreferrer");
+      else setPreviewOpen(true);
       return;
     }
     const columns = gridColumnCount();
@@ -1069,7 +1162,7 @@ export function DataQualityPage({
     chooseReview("");
   }
 
-  async function updateReviews(next: VideoReview[]): Promise<boolean> {
+  async function updateReviews(next: Review[]): Promise<boolean> {
     if (!storageKey) return false;
     const normalized = next.map(withoutPreferredCardSize);
     try {
@@ -1176,7 +1269,7 @@ export function DataQualityPage({
       </header>
 
       {storageNotice && <p className="dq-status">{storageNotice}</p>}
-      {absenceFieldStatus?.kind === "missing" && (
+      {videoReview && absenceFieldStatus?.kind === "missing" && (
         <div role="status" className="dq-status">
           {absenceFieldStatus.message}{" "}
           <button
@@ -1202,7 +1295,7 @@ export function DataQualityPage({
           </button>
         </div>
       )}
-      {(absenceFieldStatus?.kind === "incompatible" || absenceFieldError) && (
+      {videoReview && (absenceFieldStatus?.kind === "incompatible" || absenceFieldError) && (
         <div role="alert" className="dq-alert">
           <AlertTriangle />
           {absenceFieldError || absenceFieldStatus?.message}
@@ -1320,30 +1413,35 @@ export function DataQualityPage({
               filter={queueError ? loadedFilter : filter}
               onFilterChange={applyQueueToolbarFilter}
               totalCount={queue.totalCount}
-              sortOptions={VIDEO_SORT_OPTIONS}
+              sortOptions={entityType === "tag" ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS}
               showSearch
               showSort
               displayMode={displayMode}
               onDisplayModeChange={(mode) =>
-                setDisplayMode(supportedDisplayMode(mode))
+                setDisplayMode(supportedDisplayMode(mode, entityType))
               }
-              availableDisplayModes={["grid", "wall"]}
+              availableDisplayModes={entityType === "tag" ? ["grid", "list"] : ["grid", "wall"]}
               zoomLevel={(cardSize - 225) / 50}
               onZoomChange={(level) =>
                 setCardSize(Math.round(225 + level * 50))
               }
-              cardSizeEntityType="videos"
+              cardSizeEntityType={entityType === "tag" ? "tags" : "videos"}
               criteriaDefinitions={queueCriteria}
               objectFilter={toolbarObjectFilter}
               onObjectFilterChange={(objectFilter) => {
                 if (!pending && !queueLoading) {
-                  const stripped = stripCustomFieldPresentation(objectFilter);
+                  const stripped =
+                    entityType === "video"
+                      ? stripCustomFieldPresentation(objectFilter)
+                      : objectFilter;
                   pendingToolbarObjectFilter.current =
-                    preserveCustomFieldCriteria(
-                      review.view.objectFilter,
-                      stripped,
-                      allowCustomFieldRemoval.current,
-                    );
+                    entityType === "video"
+                      ? preserveCustomFieldCriteria(
+                          review.view.objectFilter,
+                          stripped,
+                          allowCustomFieldRemoval.current,
+                        )
+                      : stripped;
                   allowCustomFieldRemoval.current = false;
                 }
               }}
@@ -1391,7 +1489,7 @@ export function DataQualityPage({
                 >
                   Reviews
                 </h2>
-                <p>Choose a review to open its video queue.</p>
+                <p>Choose a review to open its queue.</p>
                 <span className="dq-sr-only" role="status">
                   {reviews.every(
                     (item) => reviewCounts[item.id] !== undefined,
@@ -1415,7 +1513,7 @@ export function DataQualityPage({
                     }
                   >
                     <option value="name">Name</option>
-                    <option value="count">Video count</option>
+                    <option value="count">Item count</option>
                   </select>
                 </label>
                 <button
@@ -1449,6 +1547,8 @@ export function DataQualityPage({
             <div className="dq-review-browser-list">
               {sortedReviews.map((item) => {
                 const count = reviewCounts[item.id];
+                const itemType = reviewEntityType(item);
+                const singular = itemType === "tag" ? "tag" : "video";
                 return (
                   <button
                     key={item.id}
@@ -1458,14 +1558,17 @@ export function DataQualityPage({
                   >
                     <span className="dq-review-browser-summary">
                       <strong>{item.name}</strong>
+                      <span className="dq-review-entity-type">
+                        {itemType === "tag" ? "Tags" : "Videos"}
+                      </span>
                       <span
                         className="dq-review-count"
                         aria-label={
                           count === undefined
-                            ? "Counting matching videos"
+                            ? `Counting matching ${singular}s`
                             : count === null
-                              ? "Matching video count unavailable"
-                              : `${count.toLocaleString()} matching ${count === 1 ? "video" : "videos"}`
+                              ? `Matching ${singular} count unavailable`
+                              : `${count.toLocaleString()} matching ${count === 1 ? singular : `${singular}s`}`
                         }
                       >
                         {count === undefined
@@ -1493,20 +1596,22 @@ export function DataQualityPage({
         )
       ) : (
         <>
-          {presentationTags.error && (
+          {entityType === "video" && presentationTags.error && (
             <p role="alert">{presentationTags.error}</p>
           )}
-          <TagBins
-            videos={queue.items}
-            review={review}
-            trees={presentationTags.ids}
-            disabled={pending || queueLoading}
-            onChoose={(id) => {
-              const adjusted = withTagBin(review, id);
-              setTemporaryReview(adjusted);
-              void resumeQueue(adjusted, { ...filter, page: 1 });
-            }}
-          />
+          {videoReview && (
+            <TagBins
+              videos={queue.items as Video[]}
+              review={videoReview}
+              trees={presentationTags.ids}
+              disabled={pending || queueLoading}
+              onChoose={(id) => {
+                const adjusted = withTagBin(videoReview, id);
+                setTemporaryReview(adjusted);
+                void resumeQueue(adjusted, { ...filter, page: 1 });
+              }}
+            />
+          )}
           {actionError && !previewOpen && (
             <div role="alert" className="dq-alert">
               <AlertTriangle />
@@ -1549,13 +1654,13 @@ export function DataQualityPage({
                 !queue.items.length && (
                   <div className="dq-empty">
                     <Film />
-                    <p>No videos match this review.</p>
+                    <p>No {entityType}s match this review.</p>
                   </div>
                 )}
               {!!queue.items.length && (
                 <div ref={gridRef}>
                   <div
-                    className="dq-grid"
+                    className={displayMode === "list" ? "dq-tag-list" : "dq-grid"}
                     style={
                       {
                         "--dq-card-width": `${cardSize}px`,
@@ -1609,15 +1714,33 @@ export function DataQualityPage({
             </div>
             <aside className="dq-actions">
               {selectedIds.size > 0 && <strong>{targetLabel}</strong>}
-              {review.actions.map((action, index) => (
-                <button
+              {review.actions.map((action, index) => {
+                const changesData =
+                  "steps" in action
+                    ? action.steps.length > 0
+                    : action.effect.mode !== "SKIP";
+                const targetGroupId =
+                  "effect" in action &&
+                  action.effect.mode === "SET_TAG_GROUP"
+                    ? action.effect.tagGroupId
+                    : null;
+                const group =
+                  targetGroupId != null
+                    ? tagGroups.find((item) => item.id === targetGroupId)
+                    : undefined;
+                const groupUnavailable =
+                  targetGroupId != null &&
+                  !group;
+                return <button
                   key={action.id}
                   type="button"
                   disabled={
                     pending ||
                     queueLoading ||
                     !!queueError ||
-                    !canWrite ||
+                    (changesData && !canWriteCurrent) ||
+                    ("effect" in action && changesData &&
+                      (!canReadTagGroups || groupUnavailable)) ||
                     (hasAssessmentSteps(action) &&
                       absenceFieldStatus?.kind !== "ready") ||
                     !targets.length
@@ -1626,7 +1749,17 @@ export function DataQualityPage({
                 >
                   <span className="dq-action-copy">
                     <span className="dq-action-label">{action.label}</span>
-                    {action.steps.length ? (
+                    {"effect" in action ? (
+                      <small>
+                        {action.effect.mode === "SKIP"
+                          ? "Skip"
+                          : action.effect.mode === "CLEAR_TAG_GROUP"
+                            ? "Set Ungrouped"
+                            : group
+                              ? `Assign ${group.name}`
+                              : "Unavailable tag group"}
+                      </small>
+                    ) : action.steps.length ? (
                       <span className="dq-action-steps">
                         {action.steps.flatMap((step, stepIndex) =>
                           step.tagIds.map((tagId, tagIndex) => {
@@ -1658,11 +1791,14 @@ export function DataQualityPage({
                   {actionShortcut(action, index) && (
                     <kbd>{actionShortcut(action, index)}</kbd>
                   )}
-                </button>
-              ))}
+                </button>;
+              })}
               {!review.actions.length && <p>This review has no actions.</p>}
-              {!canWrite && (
-                <p>Video write permission is required to apply actions.</p>
+              {!canWriteCurrent && (
+                <p>{entityType === "tag" ? "Tag" : "Video"} write permission is required to apply actions.</p>
+              )}
+              {entityType === "tag" && tagGroupsError && (
+                <p>Tag groups are unavailable. {tagGroupsError}</p>
               )}
               {pending && (
                 <p role="status">
@@ -1671,7 +1807,7 @@ export function DataQualityPage({
                 </p>
               )}
               <p className="dq-shortcuts">
-                ←→↑↓ move · space select · enter preview · 1–9 apply · A toggle
+                ←→↑↓ move · space select · enter {entityType === "tag" ? "open" : "preview"} · 1–9 apply · A toggle
                 shown · Esc clear
               </p>
             </aside>
@@ -1680,15 +1816,15 @@ export function DataQualityPage({
         </>
       )}
 
-      {previewOpen && previewVideo && review && (
+      {previewOpen && previewVideo && videoReview && (
         <ReviewPreview
           video={previewVideo}
-          review={review}
+          review={videoReview}
           targetLabel={targetLabel}
           pending={pending}
           refreshing={queueLoading || !!queueError}
           error={actionError}
-          canWrite={canWrite}
+          canWrite={canWriteVideos}
           assessmentReady={absenceFieldStatus?.kind === "ready"}
           selected={selectedIds.has(previewVideo.id)}
           hasPrevious={itemIds.indexOf(previewVideo.id) > 0}
@@ -1712,6 +1848,7 @@ export function DataQualityPage({
         <ReviewManager
           reviews={reviews}
           activeReview={savedReview}
+          tagGroups={tagGroups}
           initialEdit={editCurrent}
           onSave={updateReviews}
           onChoose={chooseReview}
@@ -1725,7 +1862,7 @@ export function DataQualityPage({
   );
 
   async function resumeQueue(
-    target: VideoReview,
+    target: Review,
     nextFilter: Record<string, unknown>,
     startFromEnd = false,
   ) {
@@ -1861,11 +1998,36 @@ export function DataQualityPage({
     );
   }
 
-  function renderCard(video: Video) {
+  function renderCard(item: ReviewEntity) {
+    if (entityType === "tag") {
+      const tag = item as Tag;
+      return (
+        <ReviewTagCard
+          key={tag.id}
+          tag={tag}
+          displayMode={displayMode === "list" ? "list" : "grid"}
+          focused={tag.id === focusedId}
+          selected={selectedIds.has(tag.id)}
+          setRef={(node) => {
+            if (node) cardRefs.current.set(tag.id, node);
+            else cardRefs.current.delete(tag.id);
+          }}
+          onFocus={() => setFocusedId(tag.id)}
+          onToggle={() =>
+            updateSelection((current) => toggleOne(current, tag.id))
+          }
+          onOpen={() =>
+            window.open(`/tag/${tag.id}`, "_blank", "noopener,noreferrer")
+          }
+          onNavigate={onNavigate}
+        />
+      );
+    }
+    const video = item as Video;
     return (
       <ReviewCard
         key={video.id}
-        video={presentedVideo(video, review, presentationTags.ids)}
+        video={presentedVideo(video, videoReview, presentationTags.ids)}
         displayMode={displayMode}
         focused={video.id === focusedId}
         selected={selectedIds.has(video.id)}
@@ -1889,11 +2051,11 @@ export function DataQualityPage({
 
 function setFilterAndLoad(
   next: Record<string, unknown>,
-  review: VideoReview,
+  review: Review,
   fetchQueue: (
-    review: VideoReview,
+    review: Review,
     filter: Record<string, unknown>,
-  ) => Promise<VideoPage>,
+  ) => Promise<ReviewPage>,
   clear: () => void,
 ) {
   clear();
@@ -1907,11 +2069,78 @@ function toggleOne(current: Set<number>, id: number) {
   return next;
 }
 
-function withoutPreferredCardSize(review: VideoReview): VideoReview {
+function withoutPreferredCardSize(review: Review): Review {
   if (review.presentation?.cardSize === undefined) return review;
   const presentation = { ...review.presentation };
   delete presentation.cardSize;
   return { ...review, presentation };
+}
+
+function ReviewTagCard({
+  tag,
+  displayMode,
+  focused,
+  selected,
+  setRef,
+  onFocus,
+  onToggle,
+  onOpen,
+  onNavigate,
+}: {
+  tag: Tag;
+  displayMode: "grid" | "list";
+  focused: boolean;
+  selected: boolean;
+  setRef: (node: HTMLElement | null) => void;
+  onFocus: () => void;
+  onToggle: () => void;
+  onOpen: () => void;
+  onNavigate: (route: { page: string; id?: number }) => void;
+}) {
+  return (
+    <article
+      ref={setRef}
+      tabIndex={0}
+      aria-current={focused ? "true" : undefined}
+      aria-label={`${tag.name}${selected ? ", selected" : ""}`}
+      onFocus={onFocus}
+      onClick={(event) => {
+        onFocus();
+        event.currentTarget.focus({ preventScroll: true });
+      }}
+      className={`dq-review-card dq-tag-card ${displayMode} ${focused ? "focused" : ""} ${selected ? "selected" : ""}`}
+    >
+      {displayMode === "grid" ? (
+        <TagTile
+          tag={tag}
+          selected={selected}
+          onSelect={onToggle}
+          onClick={onOpen}
+          onNavigate={onNavigate}
+        />
+      ) : (
+        <div className="dq-tag-list-row">
+          <button
+            type="button"
+            aria-label={selected ? `Deselect ${tag.name}` : `Select ${tag.name}`}
+            aria-pressed={selected}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle();
+            }}
+          >
+            {selected ? "✓" : ""}
+          </button>
+          <button type="button" className="dq-tag-list-name" onClick={onOpen}>
+            {tag.name}
+          </button>
+          <span>{tag.tagGroupName || "Ungrouped"}</span>
+          <span>{tag.description || ""}</span>
+          <span>{tag.videoCount ?? 0} videos</span>
+        </div>
+      )}
+    </article>
+  );
 }
 
 function ReviewCard({
@@ -2115,7 +2344,7 @@ function ReviewPreview({
   onPrevious: () => void;
   onNext: () => void;
   onClose: () => void;
-  onAction: (action: ReviewAction) => Promise<void>;
+  onAction: (action: VideoReviewAction) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
   const playerControls = useRef<{
@@ -2314,7 +2543,7 @@ function ReviewPreview({
               disabled={
                 pending ||
                 refreshing ||
-                !canWrite ||
+                (action.steps.length > 0 && !canWrite) ||
                 (hasAssessmentSteps(action) && !assessmentReady)
               }
               onClick={() => void onAction(action)}
@@ -2334,23 +2563,28 @@ function ReviewPreview({
 function ReviewManager({
   reviews,
   activeReview,
+  tagGroups,
   initialEdit = false,
   onSave,
   onChoose,
   onClose,
 }: {
-  reviews: VideoReview[];
-  activeReview: VideoReview | null;
+  reviews: Review[];
+  activeReview: Review | null;
+  tagGroups: TagGroup[];
   initialEdit?: boolean;
-  onSave: (reviews: VideoReview[]) => boolean | Promise<boolean>;
+  onSave: (reviews: Review[]) => boolean | Promise<boolean>;
   onChoose: (id: string) => void;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState<VideoReview | null>(() =>
+  const [draft, setDraft] = useState<Review | null>(() =>
     initialEdit && activeReview ? structuredClone(activeReview) : null,
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [entityTypeLocked, setEntityTypeLocked] = useState(
+    initialEdit && activeReview != null,
+  );
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -2401,7 +2635,8 @@ function ReviewManager({
       focusable[0].focus();
     } else event.stopPropagation();
   }
-  function begin(review?: VideoReview) {
+  function begin(review?: Review, lockEntityType = Boolean(review)) {
+    setEntityTypeLocked(lockEntityType);
     setDraft(
       review
         ? structuredClone(review)
@@ -2409,20 +2644,17 @@ function ReviewManager({
             id: crypto.randomUUID(),
             name: "",
             description: "",
+            entityType: "video",
             view: {
-              ...structuredClone(
-                activeReview?.view ?? {
-                  filter: {
-                    page: 1,
-                    perPage: 40,
-                    sort: "date",
-                    direction: "desc",
-                  },
-                  objectFilter: {},
-                  displayMode: "grid",
-                  searchMode: "text",
-                },
-              ),
+              filter: {
+                page: 1,
+                perPage: 40,
+                sort: "date",
+                direction: "desc",
+              },
+              objectFilter: {},
+              displayMode: "grid",
+              searchMode: "text",
               startFrom: "end",
             },
             actions: [],
@@ -2455,7 +2687,7 @@ function ReviewManager({
       setSaving(false);
     }
   }
-  async function persistList(next: VideoReview[]) {
+  async function persistList(next: Review[]) {
     if (saving) return;
     setSaving(true);
     setError("");
@@ -2534,6 +2766,8 @@ function ReviewManager({
           {draft ? (
             <ReviewEditor
               draft={draft}
+              entityTypeLocked={entityTypeLocked}
+              tagGroups={tagGroups}
               saving={saving}
               setDraft={setDraft}
               onSave={() => void persistDraft()}
@@ -2563,6 +2797,7 @@ function ReviewManager({
                   <article key={review.id}>
                     <div>
                       <strong>{review.name}</strong>
+                      <small>{reviewEntityType(review) === "tag" ? "Tags" : "Videos"}</small>
                       <p>{review.description || "No description"}</p>
                     </div>
                     <button type="button" onClick={() => begin(review)}>
@@ -2575,7 +2810,7 @@ function ReviewManager({
                           ...structuredClone(review),
                           id: crypto.randomUUID(),
                           name: `${review.name} copy`,
-                        })
+                        }, true)
                       }
                     >
                       Duplicate
@@ -2605,18 +2840,69 @@ function ReviewManager({
 
 function ReviewEditor({
   draft,
+  entityTypeLocked,
+  tagGroups,
   saving = false,
   setDraft,
   onSave,
   onCancel,
 }: {
-  draft: VideoReview;
+  draft: Review;
+  entityTypeLocked: boolean;
+  tagGroups: TagGroup[];
   saving?: boolean;
-  setDraft: (review: VideoReview) => void;
+  setDraft: (review: Review) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
   const [section, setSection] = useState("Review");
+  const entityType = reviewEntityType(draft);
+  const changeEntityType = (next: "video" | "tag") => {
+    if (entityTypeLocked || next === entityType) return;
+    setDraft(
+      next === "tag"
+        ? {
+            id: draft.id,
+            entityType: "tag",
+            name: draft.name,
+            description: draft.description,
+            view: {
+              filter: {
+                page: 1,
+                perPage: 40,
+                sort: "name",
+                direction: "asc",
+              },
+              objectFilter: {
+                tagGroupsCriterion: { value: [], modifier: "IS_NULL" },
+              },
+              displayMode: "grid",
+              searchMode: "text",
+              startFrom: "beginning",
+            },
+            actions: [],
+          }
+        : {
+            id: draft.id,
+            entityType: "video",
+            name: draft.name,
+            description: draft.description,
+            view: {
+              filter: {
+                page: 1,
+                perPage: 40,
+                sort: "date",
+                direction: "desc",
+              },
+              objectFilter: {},
+              displayMode: "grid",
+              searchMode: "text",
+              startFrom: "end",
+            },
+            actions: [],
+          },
+    );
+  };
   const stepKeys = useRef(new WeakMap<ReviewStep, string>());
   const stepKey = (step: ReviewStep): string => {
     let key = stepKeys.current.get(step);
@@ -2626,13 +2912,6 @@ function ReviewEditor({
     }
     return key;
   };
-  const updateAction = (index: number, action: ReviewAction) =>
-    setDraft({
-      ...draft,
-      actions: draft.actions.map((item, itemIndex) =>
-        itemIndex === index ? action : item,
-      ),
-    });
   return (
     <div className="dq-editor">
       <div className="dq-editor-nav">
@@ -2653,6 +2932,20 @@ function ReviewEditor({
             <p className="dq-editor-note">
               Give this review a name and describe what you want to check.
             </p>
+            <label>
+              Entity type
+              <select
+                aria-label="Entity type"
+                value={entityType}
+                disabled={entityTypeLocked}
+                onChange={(event) =>
+                  changeEntityType(event.target.value as "video" | "tag")
+                }
+              >
+                <option value="video">Videos</option>
+                <option value="tag">Tags</option>
+              </select>
+            </label>
             <label>
               Review name
               <input
@@ -2682,185 +2975,24 @@ function ReviewEditor({
             <QueueEditor draft={draft} onChange={setDraft} queue={false} />
         </section>
         <section hidden={section !== "Actions"} className="dq-editor-section">
-            <h3>Actions</h3>
-            <p>
-              Steps run in order. No steps means Skip. Earlier steps may remain
-              applied if a later step fails.
-            </p>
-            <p className="dq-editor-note">
-              Drag the handles to reorder. With a handle focused, use Alt + ↑ or
-              ↓.
-            </p>
-            <SortableList
-              items={draft.actions}
-              getKey={(action) => action.id}
-              disabled={saving}
-              className="dq-sortable-list"
-              onReorder={(actions) => setDraft({ ...draft, actions })}
-              renderItem={(action, { index, dragHandleProps, isOver }) => (
-                <fieldset
-                  className={
-                    isOver ? "dq-action-card dq-drag-over" : "dq-action-card"
-                  }
-                >
-                  <legend>Action {index + 1}</legend>
-                  <div className="dq-action-heading">
-                    <button
-                      type="button"
-                      {...dragHandleProps}
-                      disabled={saving}
-                      className="dq-drag-handle"
-                      aria-label={`Reorder action ${index + 1}`}
-                    >
-                      <GripVertical />
-                    </button>
-                    <strong>{action.label || "New action"}</strong>
-                    <div className="dq-row">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            actions: [
-                              ...draft.actions.slice(0, index + 1),
-                              {
-                                ...structuredClone(action),
-                                id: crypto.randomUUID(),
-                                label: action.label + " copy",
-                                shortcut: "",
-                              },
-                              ...draft.actions.slice(index + 1),
-                            ],
-                          })
-                        }
-                      >
-                        Duplicate action
-                      </button>
-                    </div>
-                  </div>
-                  <div className="dq-field-grid">
-                    <label>
-                      Shortcut
-                      <select
-                        value={action.shortcut ?? "auto"}
-                        onChange={(e) =>
-                          updateAction(index, {
-                            ...action,
-                            shortcut:
-                              e.target.value === "auto"
-                                ? undefined
-                                : e.target.value,
-                          })
-                        }
-                      >
-                        <option value="auto">
-                          Position ({index < 9 ? index + 1 : "none"})
-                        </option>
-                        <option value="">None</option>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Button label
-                      <input
-                        value={action.label}
-                        onChange={(event) =>
-                          updateAction(index, {
-                            ...action,
-                            label: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
-                  <SortableList
-                    items={action.steps}
-                    getKey={stepKey}
-                    disabled={saving}
-                    className="dq-sortable-list"
-                    onReorder={(steps) =>
-                      updateAction(index, { ...action, steps })
-                    }
-                    renderItem={(
-                      step,
-                      { index: stepIndex, dragHandleProps, isOver },
-                    ) => (
-                      <ActionStep
-                        dragHandleProps={dragHandleProps}
-                        saving={saving}
-                        isOver={isOver}
-                        step={step}
-                        index={stepIndex}
-                        onChange={(next) => {
-                          stepKeys.current.set(next, stepKey(step));
-                          updateAction(index, {
-                            ...action,
-                            steps: action.steps.map((item, itemIndex) =>
-                              itemIndex === stepIndex ? next : item,
-                            ),
-                          });
-                        }}
-                        onRemove={() =>
-                          updateAction(index, {
-                            ...action,
-                            steps: action.steps.filter(
-                              (_, itemIndex) => itemIndex !== stepIndex,
-                            ),
-                          })
-                        }
-                      />
-                    )}
-                  />
-                  <div className="dq-row">
-                    <button
-                      className="dq-button"
-                      type="button"
-                      onClick={() =>
-                        updateAction(index, {
-                          ...action,
-                          steps: [...action.steps, { mode: "ADD", tagIds: [] }],
-                        })
-                      }
-                    >
-                      Add step
-                    </button>
-                    <button
-                      className="dq-button"
-                      type="button"
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          actions: draft.actions.filter(
-                            (_, itemIndex) => itemIndex !== index,
-                          ),
-                        })
-                      }
-                    >
-                      Remove action
-                    </button>
-                  </div>
-                </fieldset>
-              )}
+          {entityType === "tag" ? (
+            <TagActionsEditor
+              draft={draft as TagReview}
+              saving={saving}
+              tagGroups={tagGroups}
+              setDraft={setDraft}
             />
-            <button
-              className="dq-button"
-              type="button"
-              onClick={() =>
-                setDraft({
-                  ...draft,
-                  actions: [
-                    ...draft.actions,
-                    { id: crypto.randomUUID(), label: "", steps: [] },
-                  ],
-                })
+          ) : (
+            <VideoActionsEditor
+              draft={draft as VideoReview}
+              saving={saving}
+              stepKey={stepKey}
+              rememberStepKey={(next, previous) =>
+                stepKeys.current.set(next, stepKey(previous))
               }
-            >
-              Add action
-            </button>
+              setDraft={setDraft}
+            />
+          )}
         </section>
       </div>
       <div className="dq-editor-footer">
@@ -2890,6 +3022,381 @@ function ReviewEditor({
         </button>
       </div>
     </div>
+  );
+}
+
+function ActionIdentityFields({
+  action,
+  index,
+  onChange,
+}: {
+  action: ReviewAction;
+  index: number;
+  onChange: (action: ReviewAction) => void;
+}) {
+  return (
+    <div className="dq-field-grid">
+      <label>
+        Shortcut
+        <select
+          value={action.shortcut ?? "auto"}
+          onChange={(event) =>
+            onChange({
+              ...action,
+              shortcut:
+                event.target.value === "auto"
+                  ? undefined
+                  : event.target.value,
+            })
+          }
+        >
+          <option value="auto">
+            Position ({index < 9 ? index + 1 : "none"})
+          </option>
+          <option value="">None</option>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => (
+            <option key={number} value={number}>
+              {number}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Button label
+        <input
+          value={action.label}
+          onChange={(event) =>
+            onChange({ ...action, label: event.target.value })
+          }
+        />
+      </label>
+    </div>
+  );
+}
+
+function VideoActionsEditor({
+  draft,
+  saving,
+  stepKey,
+  rememberStepKey,
+  setDraft,
+}: {
+  draft: VideoReview;
+  saving: boolean;
+  stepKey: (step: ReviewStep) => string;
+  rememberStepKey: (next: ReviewStep, previous: ReviewStep) => void;
+  setDraft: (review: Review) => void;
+}) {
+  const updateAction = (index: number, action: VideoReviewAction) =>
+    setDraft({
+      ...draft,
+      actions: draft.actions.map((item, itemIndex) =>
+        itemIndex === index ? action : item,
+      ),
+    });
+  return (
+    <>
+      <h3>Actions</h3>
+      <p>
+        Steps run in order. No steps means Skip. Earlier steps may remain
+        applied if a later step fails.
+      </p>
+      <p className="dq-editor-note">
+        Drag the handles to reorder. With a handle focused, use Alt + ↑ or ↓.
+      </p>
+      <SortableList
+        items={draft.actions}
+        getKey={(action) => action.id}
+        disabled={saving}
+        className="dq-sortable-list"
+        onReorder={(actions) => setDraft({ ...draft, actions })}
+        renderItem={(action, { index, dragHandleProps, isOver }) => (
+          <fieldset
+            className={isOver ? "dq-action-card dq-drag-over" : "dq-action-card"}
+          >
+            <legend>Action {index + 1}</legend>
+            <div className="dq-action-heading">
+              <button
+                type="button"
+                {...dragHandleProps}
+                disabled={saving}
+                className="dq-drag-handle"
+                aria-label={`Reorder action ${index + 1}`}
+              >
+                <GripVertical />
+              </button>
+              <strong>{action.label || "New action"}</strong>
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    actions: [
+                      ...draft.actions.slice(0, index + 1),
+                      {
+                        ...structuredClone(action),
+                        id: crypto.randomUUID(),
+                        label: action.label + " copy",
+                        shortcut: "",
+                      },
+                      ...draft.actions.slice(index + 1),
+                    ],
+                  })
+                }
+              >
+                Duplicate action
+              </button>
+            </div>
+            <ActionIdentityFields
+              action={action}
+              index={index}
+              onChange={(next) =>
+                updateAction(index, next as VideoReviewAction)
+              }
+            />
+            <SortableList
+              items={action.steps}
+              getKey={stepKey}
+              disabled={saving}
+              className="dq-sortable-list"
+              onReorder={(steps) => updateAction(index, { ...action, steps })}
+              renderItem={(step, state) => (
+                <ActionStep
+                  dragHandleProps={state.dragHandleProps}
+                  saving={saving}
+                  isOver={state.isOver}
+                  step={step}
+                  index={state.index}
+                  onChange={(next) => {
+                    rememberStepKey(next, step);
+                    updateAction(index, {
+                      ...action,
+                      steps: action.steps.map((item, itemIndex) =>
+                        itemIndex === state.index ? next : item,
+                      ),
+                    });
+                  }}
+                  onRemove={() =>
+                    updateAction(index, {
+                      ...action,
+                      steps: action.steps.filter(
+                        (_, itemIndex) => itemIndex !== state.index,
+                      ),
+                    })
+                  }
+                />
+              )}
+            />
+            <div className="dq-row">
+              <button
+                className="dq-button"
+                type="button"
+                onClick={() =>
+                  updateAction(index, {
+                    ...action,
+                    steps: [...action.steps, { mode: "ADD", tagIds: [] }],
+                  })
+                }
+              >
+                Add step
+              </button>
+              <button
+                className="dq-button"
+                type="button"
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    actions: draft.actions.filter(
+                      (_, itemIndex) => itemIndex !== index,
+                    ),
+                  })
+                }
+              >
+                Remove action
+              </button>
+            </div>
+          </fieldset>
+        )}
+      />
+      <button
+        className="dq-button"
+        type="button"
+        onClick={() =>
+          setDraft({
+            ...draft,
+            actions: [
+              ...draft.actions,
+              { id: crypto.randomUUID(), label: "", steps: [] },
+            ],
+          })
+        }
+      >
+        Add action
+      </button>
+    </>
+  );
+}
+
+function TagActionsEditor({
+  draft,
+  saving,
+  tagGroups,
+  setDraft,
+}: {
+  draft: TagReview;
+  saving: boolean;
+  tagGroups: TagGroup[];
+  setDraft: (review: Review) => void;
+}) {
+  const updateAction = (index: number, action: TagReviewAction) =>
+    setDraft({
+      ...draft,
+      actions: draft.actions.map((item, itemIndex) =>
+        itemIndex === index ? action : item,
+      ),
+    });
+  return (
+    <>
+      <h3>Actions</h3>
+      <p>Each action assigns one tag group, clears the group, or skips.</p>
+      <p className="dq-editor-note">
+        Drag the handles to reorder. With a handle focused, use Alt + ↑ or ↓.
+      </p>
+      <SortableList
+        items={draft.actions}
+        getKey={(action) => action.id}
+        disabled={saving}
+        className="dq-sortable-list"
+        onReorder={(actions) => setDraft({ ...draft, actions })}
+        renderItem={(action, { index, dragHandleProps, isOver }) => (
+          <fieldset
+            className={isOver ? "dq-action-card dq-drag-over" : "dq-action-card"}
+          >
+            <legend>Action {index + 1}</legend>
+            <div className="dq-action-heading">
+              <button
+                type="button"
+                {...dragHandleProps}
+                disabled={saving}
+                className="dq-drag-handle"
+                aria-label={`Reorder action ${index + 1}`}
+              >
+                <GripVertical />
+              </button>
+              <strong>{action.label || "New action"}</strong>
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    actions: [
+                      ...draft.actions.slice(0, index + 1),
+                      {
+                        ...structuredClone(action),
+                        id: crypto.randomUUID(),
+                        label: action.label + " copy",
+                        shortcut: "",
+                      },
+                      ...draft.actions.slice(index + 1),
+                    ],
+                  })
+                }
+              >
+                Duplicate action
+              </button>
+            </div>
+            <ActionIdentityFields
+              action={action}
+              index={index}
+              onChange={(next) => updateAction(index, next as TagReviewAction)}
+            />
+            <label>
+              Action effect
+              <select
+                aria-label="Tag group action"
+                value={
+                  action.effect.mode === "SET_TAG_GROUP"
+                    ? `group:${action.effect.tagGroupId}`
+                    : action.effect.mode
+                }
+                onChange={(event) => {
+                  const value = event.target.value;
+                  updateAction(index, {
+                    ...action,
+                    effect:
+                      value === "SKIP"
+                        ? { mode: "SKIP" }
+                        : value === "CLEAR_TAG_GROUP"
+                          ? { mode: "CLEAR_TAG_GROUP" }
+                          : {
+                              mode: "SET_TAG_GROUP",
+                              tagGroupId: Number(value.slice("group:".length)),
+                            },
+                  });
+                }}
+              >
+                <option value="SKIP">Skip</option>
+                <option value="CLEAR_TAG_GROUP">Ungrouped</option>
+                {action.effect.mode === "SET_TAG_GROUP" &&
+                  !tagGroups.some(
+                    (group) =>
+                      group.id ===
+                      (action.effect as Extract<
+                        TagReviewEffect,
+                        { mode: "SET_TAG_GROUP" }
+                      >).tagGroupId,
+                  ) && (
+                    <option
+                      value={`group:${action.effect.tagGroupId}`}
+                      disabled
+                    >
+                      Unavailable tag group
+                    </option>
+                  )}
+                {tagGroups.map((group) => (
+                  <option key={group.id} value={`group:${group.id}`}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="dq-button"
+              type="button"
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  actions: draft.actions.filter(
+                    (_, itemIndex) => itemIndex !== index,
+                  ),
+                })
+              }
+            >
+              Remove action
+            </button>
+          </fieldset>
+        )}
+      />
+      <button
+        className="dq-button"
+        type="button"
+        onClick={() =>
+          setDraft({
+            ...draft,
+            actions: [
+              ...draft.actions,
+              {
+                id: crypto.randomUUID(),
+                label: "",
+                effect: { mode: "SKIP" as const },
+              },
+            ],
+          })
+        }
+      >
+        Add action
+      </button>
+    </>
   );
 }
 

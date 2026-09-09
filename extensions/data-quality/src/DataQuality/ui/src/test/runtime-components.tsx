@@ -121,6 +121,35 @@ export function VideoCard({
   );
 }
 
+export function TagTile({
+  tag,
+  onClick,
+  selected,
+  onSelect,
+}: React.ComponentProps<typeof import("@cove/runtime/components").TagTile>) {
+  return (
+    <div className={selected ? "selected" : ""}>
+      <a
+        href={`/tag/${tag.id}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onClick();
+        }}
+      >
+        <span className="card-title">{tag.name}</span>
+      </a>
+      {tag.tagGroupName ? <span>{tag.tagGroupName}</span> : null}
+      {onSelect ? (
+        <button
+          type="button"
+          aria-label={selected ? "Deselect item" : "Select item"}
+          onClick={onSelect}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 const RELATED_PERFORMER_CRITERIA = [
   {
     id: "tags",
@@ -187,6 +216,16 @@ export const VIDEO_CRITERIA = [
   },
 ];
 export const VIDEO_SORT_OPTIONS = [{ value: "date", label: "Date" }];
+export const TAG_CRITERIA = [
+  {
+    id: "tagGroup",
+    label: "Tag Group",
+    type: "multiId",
+    entityType: "tagGroups",
+    filterKey: "tagGroupsCriterion",
+  },
+];
+export const TAG_SORT_OPTIONS = [{ value: "name", label: "Name" }];
 export const testFilterControls = {
   result: { organized: true } as Record<string, unknown>,
 };

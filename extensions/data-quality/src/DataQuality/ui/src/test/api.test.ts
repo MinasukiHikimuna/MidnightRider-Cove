@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
 import {
   createConfirmedAbsentTagsField,
+  findTags,
   findVideos,
   getConfirmedAbsentTagsFieldStatus,
   loadReviews,
   runReviewAction,
+  runTagReviewAction,
 } from "../api";
 
 const fetchMock = vi.mocked(extensionFetch);
@@ -49,6 +51,59 @@ describe("Data Quality API adapter", () => {
         body: expect.stringContaining('"modifier":"includes"'),
       }),
     );
+  });
+
+  it("queries tag reviews and assigns or clears tag groups in one bulk request", async () => {
+    fetchMock.mockImplementation(() => response({ items: [], totalCount: 0 }));
+    const review = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {
+          tagGroupsCriterion: { value: [], modifier: "IS_NULL" },
+        },
+        displayMode: "grid" as const,
+        searchMode: "text",
+      },
+      actions: [],
+    };
+    await findTags(review, review.view.filter);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/tags/find",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"modifier":"isNull"'),
+      }),
+    );
+
+    await runTagReviewAction(
+      {
+        id: "assign",
+        label: "Assign",
+        effect: { mode: "SET_TAG_GROUP", tagGroupId: 8 },
+      },
+      [4, 5],
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({
+      ids: [4, 5],
+      tagGroupId: 8,
+    });
+
+    await runTagReviewAction(
+      {
+        id: "clear",
+        label: "Ungrouped",
+        effect: { mode: "CLEAR_TAG_GROUP" },
+      },
+      [4],
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({
+      ids: [4],
+      clearFields: ["tagGroupId"],
+    });
   });
 
   it("uses Cove's canonical custom-field key in assessment queue requests", async () => {

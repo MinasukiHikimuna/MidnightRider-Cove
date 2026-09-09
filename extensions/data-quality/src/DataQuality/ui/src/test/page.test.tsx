@@ -18,7 +18,10 @@ const { api, review } = vi.hoisted(() => ({
     loadProgress: vi.fn(),
     saveProgress: vi.fn(),
     findVideos: vi.fn(),
+    findTags: vi.fn(),
+    listTagGroups: vi.fn(),
     runReviewAction: vi.fn(),
+    runTagReviewAction: vi.fn(),
     settleReviewWrites: vi.fn().mockResolvedValue(undefined),
     getConfirmedAbsentTagsFieldStatus: vi.fn(),
     createConfirmedAbsentTagsField: vi.fn(),
@@ -97,6 +100,20 @@ function video(id: number) {
   };
 }
 
+function tag(id: number, groupName?: string) {
+  return {
+    id,
+    name: `Tag ${id}`,
+    description: `Description ${id}`,
+    favorite: false,
+    organized: false,
+    aliases: [],
+    tagGroupId: groupName ? 8 : null,
+    tagGroupName: groupName,
+    videoCount: id,
+  };
+}
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/data-quality?review=review");
   localStorage.removeItem("data-quality.workspace-layout.v1");
@@ -108,7 +125,14 @@ beforeEach(() => {
   api.findVideos
     .mockReset()
     .mockResolvedValue({ items: [video(1), video(2)], totalCount: 2 });
+  api.findTags
+    .mockReset()
+    .mockResolvedValue({ items: [tag(11), tag(12)], totalCount: 2 });
+  api.listTagGroups.mockReset().mockResolvedValue([
+    { id: 8, name: "Classification", sortOrder: 10, tagCount: 0 },
+  ]);
   api.runReviewAction.mockReset().mockResolvedValue(undefined);
+  api.runTagReviewAction.mockReset().mockResolvedValue(undefined);
   api.loadProgress.mockReset().mockResolvedValue(null);
   api.saveProgress.mockReset().mockResolvedValue(undefined);
   api.saveReviews.mockReset().mockResolvedValue(undefined);
@@ -170,6 +194,207 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("runs a tag review with native queue behavior and group actions", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "Classify ungrouped tags",
+      view: {
+        filter: { page: 1, perPage: 40, sort: "name", direction: "asc" },
+        objectFilter: {
+          tagGroupsCriterion: { value: [], modifier: "IS_NULL" },
+        },
+        displayMode: "grid" as const,
+        searchMode: "text",
+        startFrom: "beginning" as const,
+      },
+      actions: [
+        {
+          id: "assign",
+          label: "Classify",
+          effect: { mode: "SET_TAG_GROUP" as const, tagGroupId: 8 },
+        },
+      ],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteVideos: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Tag 11" });
+    expect(api.findTags).toHaveBeenCalledWith(
+      tagReview,
+      expect.objectContaining({ page: 1, perPage: 40 }),
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByRole("button", { name: /Classify/ })).toHaveTextContent(
+      "Assign Classification",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Classify/ }));
+    await waitFor(() =>
+      expect(api.runTagReviewAction).toHaveBeenCalledWith(
+        tagReview.actions[0],
+        [11],
+      ),
+    );
+
+    const next = screen.getByRole("article", { name: "Tag 12" });
+    fireEvent.focus(next);
+    fireEvent.keyDown(next, { key: "Enter" });
+    expect(open).toHaveBeenCalledWith(
+      "/tag/12",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("creates tag reviews with an ungrouped queue and one-effect actions", async () => {
+    window.history.replaceState(null, "", "/data-quality");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteVideos: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage reviews" }));
+    fireEvent.click(screen.getByRole("button", { name: "New review" }));
+    fireEvent.change(screen.getByLabelText("Entity type"), {
+      target: { value: "tag" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(
+          element?.tagName === "P" &&
+            element.textContent?.includes("Tag filters configured"),
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Sort")).toHaveValue("name");
+    expect(screen.getByLabelText("Start from")).toHaveValue("beginning");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add action" }));
+    expect(screen.getByLabelText("Tag group action")).toHaveValue("SKIP");
+    await screen.findByRole("option", { name: "Classification" });
+    fireEvent.change(screen.getByLabelText("Tag group action"), {
+      target: { value: "group:8" },
+    });
+    expect(screen.getByLabelText("Tag group action")).toHaveValue("group:8");
+  });
+  it("blocks tag-group shortcuts when tag groups cannot be resolved", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "Classify tags",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "grid" as const,
+        searchMode: "text",
+      },
+      actions: [
+        {
+          id: "clear",
+          label: "Ungrouped",
+          effect: { mode: "CLEAR_TAG_GROUP" as const },
+        },
+      ],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteVideos: true,
+      canWriteTags: true,
+      canReadTagGroups: false,
+    });
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Tag 11" });
+    expect(screen.getByRole("button", { name: /Ungrouped/ })).toBeDisabled();
+    fireEvent.keyDown(first, { key: "1" });
+    expect(api.runTagReviewAction).not.toHaveBeenCalled();
+  });
+  it("moves vertically one tag at a time in List view", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Review tags",
+      description: "List tags",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "list" as const,
+        searchMode: "text",
+      },
+      actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Tag 11" });
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(screen.getByRole("article", { name: "Tag 12" })).toHaveFocus(),
+    );
+  });
+  it("locks the entity type when editing or duplicating a saved review", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Review tags",
+      description: "Classify tags",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "grid" as const,
+        searchMode: "text",
+      },
+      actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit review" }));
+    expect(screen.getByLabelText("Entity type")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage reviews" }));
+    const manager = screen.getByRole("dialog", {
+      name: "Manage Data Quality reviews",
+    });
+    fireEvent.click(within(manager).getByRole("button", { name: "Duplicate" }));
+    expect(screen.getByLabelText("Entity type")).toBeDisabled();
+    expect(screen.getByLabelText("Entity type")).toHaveValue("tag");
+  });
   it("summarizes action steps with subdued semantic tones", async () => {
     api.request.mockImplementation((path: string) =>
       Promise.resolve(
@@ -1591,6 +1816,33 @@ it("does not save or enable video actions for a read-only account", async () => 
   expect(
     screen.getByRole("toolbar", { name: "Video list controls" }),
   ).toBeInTheDocument();
+});
+it("keeps non-writing video actions available in preview for a read-only account", async () => {
+  const skipReview = {
+    ...review,
+    actions: [{ id: "skip", label: "Skip", steps: [] }],
+  };
+  api.loadReviews.mockResolvedValue({
+    reviews: [skipReview],
+    storageKey: "reviews",
+    canWrite: false,
+    canConfigure: false,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const card = await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.keyDown(card, { key: "Enter" });
+  const preview = await screen.findByRole("dialog", {
+    name: "Review preview: Video 1",
+  });
+  const skip = within(preview).getByRole("button", { name: /Skip/ });
+  expect(skip).toBeEnabled();
+  fireEvent.click(skip);
+  await waitFor(() =>
+    expect(api.runReviewAction).toHaveBeenCalledWith(
+      skipReview.actions[0],
+      [1],
+    ),
+  );
 });
 it("blocks actions on a stale queue after refresh failure and can retry the query", async () => {
   api.findVideos

@@ -19,26 +19,56 @@ export interface ReviewStep {
   tagIds: number[];
 }
 
-export interface ReviewAction {
+interface ReviewActionBase {
   id: string;
   label: string;
   shortcut?: string;
+}
+
+export interface VideoReviewAction extends ReviewActionBase {
   steps: ReviewStep[];
 }
 
-export interface VideoReview {
+export type TagReviewEffect =
+  | { mode: "SET_TAG_GROUP"; tagGroupId: number }
+  | { mode: "CLEAR_TAG_GROUP" }
+  | { mode: "SKIP" };
+
+export interface TagReviewAction extends ReviewActionBase {
+  effect: TagReviewEffect;
+}
+
+export type ReviewAction = VideoReviewAction | TagReviewAction;
+
+interface ReviewBase {
   id: string;
   name: string;
   description: string;
   view: ReviewView;
-  actions: ReviewAction[];
   importNotes?: string[];
+}
+
+export interface VideoReview extends ReviewBase {
+  entityType?: "video";
+  actions: VideoReviewAction[];
   presentation?: {
     cardSize?: number | null;
     annotations?: Array<"date" | "studio" | "performers" | "tags">;
     annotationParents?: number[];
     binParents?: number[];
   };
+}
+
+export interface TagReview extends ReviewBase {
+  entityType: "tag";
+  actions: TagReviewAction[];
+  presentation?: { cardSize?: number | null };
+}
+
+export type Review = VideoReview | TagReview;
+
+export function reviewEntityType(review: Review): "video" | "tag" {
+  return review.entityType === "tag" ? "tag" : "video";
 }
 
 export function actionShortcut(action: ReviewAction, index: number): string {
@@ -60,10 +90,18 @@ export function moveItem<T>(items: T[], index: number, delta: number): T[] {
   return next;
 }
 
-export function reviewValidation(review: VideoReview): string {
-  if (review.actions.some(hasContradictoryAssessments))
+export function reviewValidation(review: Review): string {
+  if (
+    reviewEntityType(review) === "video" &&
+    review.actions.some((action) =>
+      hasContradictoryAssessments(action as VideoReviewAction),
+    )
+  )
     return "An action cannot contain contradictory assessments for the same tag.";
-  if (!review.name.trim() || !review.actions.every(validAction))
+  if (
+    !review.name.trim() ||
+    !review.actions.every((action) => validAction(action, reviewEntityType(review)))
+  )
     return "Name the review and complete every action step before saving.";
   if (new Set(review.actions.map((a) => a.id)).size !== review.actions.length)
     return "Action IDs must be unique within a review.";
@@ -105,18 +143,43 @@ export function resumeFocus(
     : (ids[Math.max(0, Math.min(index, ids.length - 1))] ?? null);
 }
 
-export function queueSignature(review: VideoReview): string {
+export function queueSignature(review: Review): string {
   const { page: _page, ...filter } = review.view.filter;
-  return JSON.stringify([
+  const signature = [
     filter,
     review.view.objectFilter,
     review.view.searchMode,
-  ]);
+  ];
+  return JSON.stringify(
+    reviewEntityType(review) === "tag" ? ["tag", ...signature] : signature,
+  );
 }
 
-export function validAction(action: ReviewAction): boolean {
+export function validAction(
+  action: ReviewAction,
+  entityType?: "video" | "tag",
+): boolean {
+  const actionType = entityType ?? ("effect" in action ? "tag" : "video");
+  if (!action.label.trim()) return false;
+  if (actionType === "tag") {
+    if (
+      !("effect" in action) ||
+      "steps" in action ||
+      !action.effect ||
+      typeof action.effect !== "object"
+    )
+      return false;
+    return (
+      ["SET_TAG_GROUP", "CLEAR_TAG_GROUP", "SKIP"].includes(
+        action.effect.mode,
+      ) &&
+      (action.effect.mode !== "SET_TAG_GROUP" ||
+        (Number.isSafeInteger(action.effect.tagGroupId) &&
+          action.effect.tagGroupId > 0))
+    );
+  }
+  if (!("steps" in action) || "effect" in action) return false;
   return (
-    Boolean(action.label.trim()) &&
     action.steps.every(
       (step) =>
         [
@@ -135,12 +198,13 @@ export function validAction(action: ReviewAction): boolean {
 }
 
 export function hasAssessmentSteps(action: ReviewAction): boolean {
+  if (!("steps" in action)) return false;
   return action.steps.some((step) =>
     ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode),
   );
 }
 
-function hasContradictoryAssessments(action: ReviewAction): boolean {
+function hasContradictoryAssessments(action: VideoReviewAction): boolean {
   const assessments = new Map<number, ReviewStep["mode"]>();
   for (const step of action.steps) {
     if (!["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode))
@@ -154,7 +218,7 @@ function hasContradictoryAssessments(action: ReviewAction): boolean {
   return false;
 }
 
-export function parseReviews(raw: string | null): VideoReview[] {
+export function parseReviews(raw: string | null): Review[] {
   if (!raw) return [];
   const data: unknown = JSON.parse(raw);
   if (
@@ -166,9 +230,16 @@ export function parseReviews(raw: string | null): VideoReview[] {
         typeof review.id === "string" &&
         typeof review.name === "string" &&
         typeof review.description === "string" &&
+        (review.entityType === undefined ||
+          review.entityType === "video" ||
+          review.entityType === "tag") &&
         review.view &&
         typeof review.view === "object" &&
-        ["grid", "list", "wall", "tagger"].includes(review.view.displayMode) &&
+        (review.entityType === "tag"
+          ? ["grid", "list"].includes(review.view.displayMode)
+          : ["grid", "list", "wall", "tagger"].includes(
+              review.view.displayMode,
+            )) &&
         typeof review.view.searchMode === "string" &&
         (review.view.startFrom === undefined ||
           ["beginning", "end"].includes(review.view.startFrom)) &&
@@ -178,7 +249,7 @@ export function parseReviews(raw: string | null): VideoReview[] {
         review.view.objectFilter &&
         typeof review.view.objectFilter === "object" &&
         !Array.isArray(review.view.objectFilter) &&
-        validPresentation(review.presentation) &&
+        validPresentation(review.presentation, review.entityType === "tag") &&
         (review.importNotes === undefined ||
           (Array.isArray(review.importNotes) &&
             review.importNotes.every(
@@ -191,9 +262,17 @@ export function parseReviews(raw: string | null): VideoReview[] {
             typeof action.label === "string" &&
             (action.shortcut === undefined ||
               typeof action.shortcut === "string") &&
-            Array.isArray(action.steps) &&
-            action.steps.every((step) => step && Array.isArray(step.tagIds)) &&
-            validAction(action),
+            (review.entityType === "tag"
+              ? "effect" in action &&
+                !("steps" in action) &&
+                validAction(action, "tag")
+              : "steps" in action &&
+                !("effect" in action) &&
+                Array.isArray(action.steps) &&
+                action.steps.every(
+                  (step) => step && Array.isArray(step.tagIds),
+                ) &&
+                validAction(action, "video")),
         ),
     )
   ) {
@@ -201,21 +280,21 @@ export function parseReviews(raw: string | null): VideoReview[] {
       "Saved reviews could not be read. Existing browser data has been kept.",
     );
   }
-  if ((data as VideoReview[]).some((review) => reviewValidation(review)))
+  if ((data as Review[]).some((review) => reviewValidation(review)))
     throw new Error(
       "Saved reviews contain invalid actions or shortcuts. Existing data has been kept; assign shortcuts 1–9 only once or leave them empty.",
     );
   if (
-    new Set((data as VideoReview[]).map((review) => review.id)).size !==
+    new Set((data as Review[]).map((review) => review.id)).size !==
     data.length
   )
     throw new Error(
       "Saved review IDs must be unique. Existing data has been kept.",
     );
-  return data as VideoReview[];
+  return data as Review[];
 }
 
-function validPresentation(value: unknown): boolean {
+function validPresentation(value: unknown, tagReview: boolean): boolean {
   if (value === undefined) return true;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const settings = value as NonNullable<VideoReview["presentation"]>;
@@ -225,6 +304,10 @@ function validPresentation(value: unknown): boolean {
       (Number.isFinite(settings.cardSize) &&
         settings.cardSize >= 115 &&
         settings.cardSize <= 380)) &&
+    (!tagReview ||
+      (settings.annotations === undefined &&
+        settings.annotationParents === undefined &&
+        settings.binParents === undefined)) &&
     (settings.annotations === undefined ||
       (Array.isArray(settings.annotations) &&
         settings.annotations.every((field) =>
@@ -239,8 +322,8 @@ function validPresentation(value: unknown): boolean {
   );
 }
 
-export function mergeReviews(...sources: VideoReview[][]): VideoReview[] {
-  const merged: VideoReview[] = [];
+export function mergeReviews(...sources: Review[][]): Review[] {
+  const merged: Review[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
     for (const review of source) {

@@ -1,5 +1,11 @@
 import { extensionFetch } from "@cove/runtime/api";
-import type { ReviewAction, VideoReview } from "./model";
+import type {
+  ReviewAction,
+  TagReview,
+  TagReviewAction,
+  VideoReview,
+  VideoReviewAction,
+} from "./model";
 import { hasAssessmentSteps, validAction, boundedFilter } from "./model";
 
 export const CONFIRMED_ABSENT_TAGS_KEY = "confirmed_absent_tags";
@@ -62,6 +68,42 @@ export interface Video {
 export interface VideoPage {
   items: Video[];
   totalCount: number;
+}
+
+export interface Tag {
+  id: number;
+  name: string;
+  description?: string;
+  imagePath?: string;
+  favorite: boolean;
+  organized: boolean;
+  tagGroupId?: number | null;
+  tagGroupName?: string | null;
+  tagGroupColor?: string | null;
+  aliases: string[];
+  videoCount?: number;
+  segmentCount?: number;
+  imageCount?: number;
+  galleryCount?: number;
+  groupCount?: number;
+  performerCount?: number;
+  studioCount?: number;
+  audioCount?: number;
+  textCount?: number;
+}
+
+export interface TagPage {
+  items: Tag[];
+  totalCount: number;
+}
+
+export interface TagGroup {
+  id: number;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  sortOrder: number;
+  tagCount: number;
 }
 
 const MODIFIERS: Record<string, string> = {
@@ -167,6 +209,29 @@ export async function findVideos(
   });
 }
 
+export async function findTags(
+  review: TagReview,
+  filter: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  const objectFilter = { ...review.view.objectFilter };
+  delete objectFilter._filterExpression;
+  return request<TagPage>("/api/tags/find", {
+    method: "POST",
+    signal,
+    body: JSON.stringify(
+      normalizeCriteria({
+        findFilter: boundedFilter(filter),
+        objectFilter,
+      }),
+    ),
+  });
+}
+
+export function listTagGroups(signal?: AbortSignal): Promise<TagGroup[]> {
+  return request<TagGroup[]>("/api/taggroups", { signal });
+}
+
 export function videoCoverUrl(video: Video): string {
   return `/api/videos/${video.id}/image?max=1280&v=${encodeURIComponent(video.updatedAt)}`;
 }
@@ -191,7 +256,7 @@ export function videoPreviewStatusUrl(videoId: number): string {
 // No public invalidation/conditional-read API exists. Keep the action pending until
 // that cache expires, including after partial failure, before refreshing membership.
 export function settleReviewWrites(action: ReviewAction): Promise<void> {
-  return action.steps.length
+  return "steps" in action && action.steps.length
     ? new Promise((resolve) => window.setTimeout(resolve, 1100))
     : Promise.resolve();
 }
@@ -304,7 +369,7 @@ function directlyAssignedTagIds(video: Video): number[] {
 }
 
 async function runAssessmentAction(
-  action: ReviewAction,
+  action: VideoReviewAction,
   ids: number[],
 ): Promise<void> {
   let status: ConfirmedAbsentTagsFieldStatus;
@@ -395,7 +460,7 @@ async function runAssessmentAction(
 }
 
 export async function runReviewAction(
-  action: ReviewAction,
+  action: VideoReviewAction,
   ids: number[],
 ): Promise<void> {
   if (
@@ -434,4 +499,26 @@ export async function runReviewAction(
       );
     }
   }
+}
+
+export async function runTagReviewAction(
+  action: TagReviewAction,
+  ids: number[],
+): Promise<void> {
+  if (
+    !validAction(action, "tag") ||
+    ids.length === 0 ||
+    ids.some((id) => !Number.isSafeInteger(id) || id <= 0)
+  ) {
+    throw new Error("Choose tags and configure a valid action first.");
+  }
+  if (action.effect.mode === "SKIP") return;
+  await request("/api/tags/bulk", {
+    method: "POST",
+    body: JSON.stringify(
+      action.effect.mode === "SET_TAG_GROUP"
+        ? { ids: [...new Set(ids)], tagGroupId: action.effect.tagGroupId }
+        : { ids: [...new Set(ids)], clearFields: ["tagGroupId"] },
+    ),
+  });
 }

@@ -3,6 +3,7 @@ import {
   getNextReviewFocus,
   getReviewActionTargets,
   parseReviews,
+  reviewEntityType,
   reviewValidation,
   toggleShownReviewSelection,
   validAction,
@@ -57,6 +58,92 @@ describe("Data Quality review model", () => {
     expect(() => parseReviews('[{"id":"broken"}]')).toThrow(
       /could not be read/i,
     );
+  });
+
+  it("keeps legacy reviews as videos and validates tag group actions", () => {
+    const [legacy] = parseReviews(
+      JSON.stringify([
+        {
+          id: "legacy",
+          name: "Legacy",
+          description: "",
+          view: {
+            filter: {},
+            objectFilter: {},
+            displayMode: "grid",
+            searchMode: "text",
+          },
+          actions: [],
+        },
+      ]),
+    );
+    expect(reviewEntityType(legacy)).toBe("video");
+
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "",
+      view: {
+        filter: { page: 1, perPage: 40, sort: "name", direction: "asc" },
+        objectFilter: {
+          tagGroupsCriterion: { value: [], modifier: "IS_NULL" },
+        },
+        displayMode: "list" as const,
+        searchMode: "text",
+      },
+      actions: [
+        {
+          id: "assign",
+          label: "Assign",
+          effect: { mode: "SET_TAG_GROUP" as const, tagGroupId: 7 },
+        },
+        {
+          id: "clear",
+          label: "Ungrouped",
+          effect: { mode: "CLEAR_TAG_GROUP" as const },
+        },
+        { id: "skip", label: "Skip", effect: { mode: "SKIP" as const } },
+      ],
+    };
+    expect(reviewValidation(tagReview)).toBe("");
+    expect(parseReviews(JSON.stringify([tagReview]))).toEqual([tagReview]);
+    expect(() =>
+      parseReviews(
+        JSON.stringify([
+          { ...tagReview, view: { ...tagReview.view, displayMode: "wall" } },
+        ]),
+      ),
+    ).toThrow(/could not be read/i);
+    expect(() =>
+      parseReviews(
+        JSON.stringify([
+          {
+            ...tagReview,
+            actions: [
+              {
+                id: "mixed",
+                label: "Mixed",
+                effect: { mode: "SKIP" },
+                steps: [],
+              },
+            ],
+          },
+        ]),
+      ),
+    ).toThrow(/could not be read/i);
+    expect(
+      reviewValidation({
+        ...tagReview,
+        actions: [
+          {
+            id: "bad",
+            label: "Bad",
+            effect: { mode: "SET_TAG_GROUP", tagGroupId: 0 },
+          },
+        ],
+      } as typeof tagReview),
+    ).toMatch(/complete every action/i);
   });
 
   it("accepts assessment modes and rejects contradictory tag assessments", () => {
