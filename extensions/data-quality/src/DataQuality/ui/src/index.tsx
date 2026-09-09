@@ -82,10 +82,11 @@ import {
   type TagReviewEffect,
   type VideoReview,
   type VideoReviewAction,
+  type OccurrenceReview,
   type ReviewEntityType,
 } from "./model";
 import { OccurrenceSettings, OccurrenceWorkspace } from "./OccurrenceReview";
-import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
+import { occurrenceSceneReview } from "./occurrences";
 import "./styles.css";
 import {
   usePresentationTags,
@@ -580,7 +581,7 @@ export function DataQualityPage({
     for (const item of reviews) {
       const countRequest =
         item.entityType === "performerOccurrence"
-          ? resolvePerformers(item, controller.signal).then((ids) => ids?.length === 0 ? { totalCount: 0 } : findVideos(occurrenceSceneReview(item, ids), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal))
+          ? findVideos(occurrenceSceneReview(item, null), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal)
           : reviewEntityType(item) === "tag"
           ? findTags(
               item as TagReview,
@@ -2941,7 +2942,7 @@ function ReviewEditor({
     <div className="dq-editor">
       <div className="dq-editor-nav">
         <EntityDetailTabs
-          tabs={(entityType === "performerOccurrence" ? ["Review", "Queue", "Tag choices"] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
+          tabs={(entityType === "performerOccurrence" ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
             key: name,
             label: name,
             count: name === "Actions" ? draft.actions.length : undefined,
@@ -3012,7 +3013,7 @@ function ReviewEditor({
             />
           ) : (
             <VideoActionsEditor
-              draft={draft as VideoReview}
+              draft={draft as VideoReview | OccurrenceReview}
               saving={saving}
               stepKey={stepKey}
               rememberStepKey={(next, previous) =>
@@ -3109,7 +3110,7 @@ function VideoActionsEditor({
   rememberStepKey,
   setDraft,
 }: {
-  draft: VideoReview;
+  draft: VideoReview | OccurrenceReview;
   saving: boolean;
   stepKey: (step: ReviewStep) => string;
   rememberStepKey: (next: ReviewStep, previous: ReviewStep) => void;
@@ -3125,6 +3126,7 @@ function VideoActionsEditor({
   return (
     <>
       <h3>Actions</h3>
+      {draft.entityType === "performerOccurrence" && <p>Actions apply only to the active performer in this scene. Choose performers with the temporary filter while reviewing.</p>}
       <p>
         Steps run in order. No steps means Skip. Earlier steps may remain
         applied if a later step fails.
@@ -3190,6 +3192,7 @@ function VideoActionsEditor({
               onReorder={(steps) => updateAction(index, { ...action, steps })}
               renderItem={(step, state) => (
                 <ActionStep
+                  occurrence={draft.entityType === "performerOccurrence"}
                   dragHandleProps={state.dragHandleProps}
                   saving={saving}
                   isOver={state.isOver}
@@ -3429,6 +3432,7 @@ function TagActionsEditor({
 }
 
 function ActionStep({
+  occurrence = false,
   step,
   index,
   dragHandleProps,
@@ -3437,6 +3441,7 @@ function ActionStep({
   onChange,
   onRemove,
 }: {
+  occurrence?: boolean;
   step: ReviewStep;
   index: number;
   dragHandleProps: DragHandleProps;
@@ -3471,9 +3476,9 @@ function ActionStep({
         <option value="ADD">Add tags</option>
         <option value="REMOVE">Remove tags</option>
         <option value="REMOVE_TREE">Remove tags and descendants</option>
-        <option value="MARK_PRESENT">Mark present</option>
+        {!occurrence && <><option value="MARK_PRESENT">Mark present</option>
         <option value="MARK_ABSENT">Mark absent</option>
-        <option value="CLEAR_ABSENCE">Clear absence</option>
+        <option value="CLEAR_ABSENCE">Clear absence</option></>}
       </select>
       <div className="dq-step-tags">
         <EntityReferenceMultiSelector

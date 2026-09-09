@@ -980,6 +980,7 @@
   gap: .75rem;
 }
 .dq-occurrence-toolbar { margin-block: 1rem; }
+.dq-occurrence-filter { flex-basis: 100%; max-width: 42rem; display: grid; gap: .5rem; }
 .dq-occurrence-toolbar p { flex-basis: 100%; }
 .dq-occurrence-content { border: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 1.25rem; }
 .dq-occurrence-media { min-width: 0; }

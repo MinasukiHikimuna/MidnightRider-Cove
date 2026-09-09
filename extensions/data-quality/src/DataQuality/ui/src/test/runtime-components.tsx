@@ -1,5 +1,7 @@
 import React from "react";
 
+export const useKeySequence = vi.fn();
+
 export const testVideoControls = {
   play: vi.fn().mockResolvedValue(undefined),
   pause: vi.fn(),
@@ -20,10 +22,12 @@ export function VideoPlayer({
 }
 export function EntityReferenceMultiSelector({
   placeholder,
+  values = [], onChange, disabled,
 }: {
   placeholder?: string;
+  values?: number[]; onChange?: (ids: number[]) => void; disabled?: boolean;
 }) {
-  return <input data-testid="tag-selector" placeholder={placeholder} />;
+  return <input data-testid="tag-selector" placeholder={placeholder} disabled={disabled} value={values.join(",")} onChange={(event) => onChange?.(event.target.value.split(",").filter(Boolean).map(Number))} />;
 }
 export function formatDuration(seconds: number) {
   return `${seconds}s`;

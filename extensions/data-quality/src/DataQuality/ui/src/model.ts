@@ -84,6 +84,7 @@ export type Review = VideoReview | TagReview | OccurrenceReview;
 export type ReviewEntityType = "video" | "tag" | "performerOccurrence";
 
 export function occurrenceAnswerSignature(review: OccurrenceReview): string {
+  if (review.actions.length) return JSON.stringify(["actions", review.actions.map((action) => action.steps)]);
   return JSON.stringify([[...review.occurrence.tagIds].sort((a, b) => a - b), review.occurrence.multiple]);
 }
 
@@ -113,9 +114,9 @@ export function moveItem<T>(items: T[], index: number, delta: number): T[] {
 export function reviewValidation(review: Review): string {
   if (review.entityType === "performerOccurrence") {
     if (!validOccurrenceSettings(review.occurrence))
-      return "Choose target performers, occurrence conditions, and at least one tag choice.";
-    if (review.actions.length)
-      return "Performer occurrence reviews use tag choices instead of video actions.";
+      return "Complete the optional occurrence condition before saving.";
+    if (review.actions.some((action) => action.steps.some((step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode))))
+      return "Occurrence actions support adding and removing tags on the active performer. Video tag assessments are not supported here.";
   }
   if (
     reviewEntityType(review) === "video" &&
@@ -375,7 +376,7 @@ function validOccurrenceSettings(value: unknown): boolean {
     !!settings.performerFilter && typeof settings.performerFilter === "object" && !Array.isArray(settings.performerFilter) &&
     ["any", "includes", "includesAll", "excludes", "isNull"].includes(settings.condition) &&
     ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
-    ids(settings.tagIds) && settings.tagIds.length > 0 && typeof settings.multiple === "boolean";
+    ids(settings.tagIds) && typeof settings.multiple === "boolean";
 }
 
 export function getReviewActionTargets(

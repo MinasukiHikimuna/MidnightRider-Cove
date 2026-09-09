@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useKeySequence } from "./runtime-components";
 import { beforeEach, expect, it, vi } from "vitest";
 import { OccurrenceWorkspace } from "../OccurrenceReview";
 import {
@@ -15,6 +16,7 @@ const api = vi.hoisted(() => ({
   resolvePerformers: vi.fn(),
   loadOccurrencePage: vi.fn(),
   saveOccurrenceTags: vi.fn(),
+  runOccurrenceAction: vi.fn(),
 }));
 vi.mock("../api", () => ({
   ...api,
@@ -68,6 +70,209 @@ const second: Occurrence = {
   applications: [],
 };
 const onBusy = vi.fn();
+
+it("ignores hidden legacy choice tags when actions are configured", async () => {
+  api.request.mockRejectedValue(new Error("Deleted legacy tag"));
+  render(
+    <OccurrenceWorkspace
+      review={{
+        ...review,
+        actions: [
+          {
+            id: "down",
+            label: "Hair down",
+            steps: [{ mode: "ADD", tagIds: [23] }],
+          },
+        ],
+      }}
+      storageKey="account"
+      canWrite
+      onBusy={onBusy}
+    />,
+  );
+  await screen.findByRole("button", { name: "1 Hair down" });
+  expect(api.request).not.toHaveBeenCalled();
+});
+
+it("runs plain action shortcuts but leaves browser modifier shortcuts alone", async () => {
+  render(
+    <OccurrenceWorkspace
+      review={{
+        ...review,
+        actions: [
+          {
+            id: "down",
+            label: "Hair down",
+            steps: [{ mode: "ADD", tagIds: [21] }],
+          },
+        ],
+      }}
+      storageKey="account"
+      canWrite
+      onBusy={onBusy}
+    />,
+  );
+  await screen.findByRole("heading", { name: "Reviewing First performer" });
+  const workspace = screen.getByRole("region", {
+    name: "Performer occurrence review",
+  });
+  for (const modifier of ["ctrlKey", "altKey", "metaKey"])
+    fireEvent.keyDown(workspace, { key: "1", [modifier]: true });
+  expect(api.runOccurrenceAction).not.toHaveBeenCalled();
+  fireEvent.focusIn(screen.getByRole("button", { name: "1 Hair down" }));
+  expect(useKeySequence.mock.calls.at(-1)![1]).toBe(false);
+  fireEvent.focusIn(workspace);
+  const [bindings, enabled] = useKeySequence.mock.calls.at(-1)!;
+  expect(enabled).toBe(true);
+  expect(bindings[0]).toMatchObject({ keys: "1", surface: "local" });
+  act(() => bindings[0].action({ target: workspace, repeat: true }));
+  expect(api.runOccurrenceAction).not.toHaveBeenCalled();
+  await act(async () => bindings[0].action({ target: workspace, repeat: false }));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  expect(api.runOccurrenceAction).toHaveBeenCalledTimes(1);
+});
+
+it("starts fresh answer progress when action effects change but the scene queue stays the same", async () => {
+  const previous = {
+    ...review,
+    actions: [
+      {
+        id: "tag",
+        label: "Apply",
+        steps: [{ mode: "ADD" as const, tagIds: [21] }],
+      },
+    ],
+  };
+  const updated = {
+    ...previous,
+    actions: [
+      {
+        ...previous.actions[0],
+        steps: [{ mode: "ADD" as const, tagIds: [22] }],
+      },
+    ],
+  };
+  api.loadProgress.mockResolvedValue({
+    signature: queueSignature(previous),
+    filter: { page: 5 },
+    occurrence: {
+      answerSignature: occurrenceAnswerSignature(previous),
+      focusedKey: "1:12",
+      outcomes: { "1:11": "reviewed", "1:12": "reviewed" },
+    },
+  });
+  render(
+    <OccurrenceWorkspace
+      review={updated}
+      storageKey="account"
+      canWrite
+      onBusy={onBusy}
+    />,
+  );
+  await screen.findByRole("heading", { name: "Reviewing First performer" });
+  expect(api.loadOccurrencePage).toHaveBeenCalledWith(expect.anything(), null, 1, expect.anything());
+  expect(
+    screen.getByText(/2 unresolved of 2 performer occurrences/),
+  ).toBeInTheDocument();
+});
+
+it("filters performers temporarily with multiple selections and leaves the saved rule untouched", async () => {
+  api.resolvePerformers.mockImplementation(async (rule: OccurrenceReview) =>
+    rule.occurrence.targetMode === "selected"
+      ? rule.occurrence.performerIds
+      : null,
+  );
+  api.loadOccurrencePage.mockImplementation(async (_rule, ids) => ({
+    items: [first, second].filter(
+      (item) => ids === null || ids.includes(item.performer.id),
+    ),
+    totalCount: 1,
+  }));
+  const configured = {
+    ...review,
+    actions: [
+      {
+        id: "down",
+        label: "Hair down",
+        steps: [{ mode: "ADD" as const, tagIds: [21] }],
+      },
+    ],
+    occurrence: { ...review.occurrence, tagIds: [] },
+  };
+  const original = JSON.stringify(configured);
+  render(
+    <OccurrenceWorkspace
+      review={configured}
+      storageKey="account"
+      canWrite
+      onBusy={onBusy}
+    />,
+  );
+  await screen.findByRole("heading", { name: "Reviewing First performer" });
+  fireEvent.change(
+    screen.getByPlaceholderText("All performers — select performers..."),
+    { target: { value: "12" } },
+  );
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  expect(
+    screen.queryByRole("button", { name: /First performer ·/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.change(
+    screen.getByPlaceholderText("All performers — select performers..."),
+    { target: { value: "11,12" } },
+  );
+  await screen.findByRole("heading", { name: "Reviewing First performer" });
+  fireEvent.click(screen.getByRole("button", { name: "1 Hair down" }));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  expect(api.runOccurrenceAction).toHaveBeenCalledWith(
+    expect.objectContaining({
+      occurrence: expect.objectContaining({ performerIds: [11, 12] }),
+    }),
+    first,
+    configured.actions[0],
+  );
+  expect(api.saveOccurrenceTags).not.toHaveBeenCalled();
+  expect(JSON.stringify(configured)).toBe(original);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Clear performer filter" }),
+  );
+  await waitFor(() =>
+    expect(api.loadOccurrencePage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      null,
+      1,
+      expect.anything(),
+    ),
+  );
+});
+
+it("keeps the performer active after an action fails and does not mark completion", async () => {
+  api.runOccurrenceAction.mockRejectedValueOnce(new Error("Action failed"));
+  render(
+    <OccurrenceWorkspace
+      review={{
+        ...review,
+        actions: [
+          {
+            id: "down",
+            label: "Hair down",
+            steps: [{ mode: "ADD", tagIds: [21] }],
+          },
+        ],
+      }}
+      storageKey="account"
+      canWrite
+      onBusy={onBusy}
+    />,
+  );
+  await screen.findByRole("heading", { name: "Reviewing First performer" });
+  fireEvent.click(screen.getByRole("button", { name: "1 Hair down" }));
+  await screen.findByRole("alert");
+  expect(
+    screen.getByRole("heading", { name: "Reviewing First performer" }),
+  ).toBeInTheDocument();
+  expect(api.saveProgress).not.toHaveBeenCalled();
+});
 beforeEach(() => {
   vi.clearAllMocks();
   api.loadProgress.mockResolvedValue(null);
@@ -81,6 +286,7 @@ beforeEach(() => {
     totalCount: 1,
   });
   api.saveOccurrenceTags.mockResolvedValue([]);
+  api.runOccurrenceAction.mockResolvedValue([]);
 });
 const open = () =>
   render(
@@ -263,23 +469,63 @@ it("respects scene clip boundaries in the player", async () => {
   );
 });
 
-it.each(["beginning", "end"] as const)("resumes past a completed scene page from the %s", async (startFrom) => {
-  const configured = { ...review, view: { ...review.view, startFrom } };
-  const initialPage = startFrom === "beginning" ? 1 : 2;
-  api.loadProgress.mockResolvedValue({ signature: queueSignature(configured), filter: { page: initialPage }, occurrence: { answerSignature: occurrenceAnswerSignature(configured), focusedKey: null, outcomes: { "1:11": "reviewed" } } });
-  api.loadOccurrencePage.mockResolvedValueOnce({ items: [first], totalCount: 3 }).mockResolvedValueOnce({ items: [second], totalCount: 3 });
-  render(<OccurrenceWorkspace review={configured} storageKey="account" canWrite onBusy={onBusy} />);
-  await screen.findByRole("heading", { name: "Reviewing Second performer" });
-  expect(api.loadOccurrencePage.mock.calls.map((call) => call[2])).toEqual(startFrom === "beginning" ? [1, 2] : [2, 1]);
-});
+it.each(["beginning", "end"] as const)(
+  "resumes past a completed scene page from the %s",
+  async (startFrom) => {
+    const configured = { ...review, view: { ...review.view, startFrom } };
+    const initialPage = startFrom === "beginning" ? 1 : 2;
+    api.loadProgress.mockResolvedValue({
+      signature: queueSignature(configured),
+      filter: { page: initialPage },
+      occurrence: {
+        answerSignature: occurrenceAnswerSignature(configured),
+        focusedKey: null,
+        outcomes: { "1:11": "reviewed" },
+      },
+    });
+    api.loadOccurrencePage
+      .mockResolvedValueOnce({ items: [first], totalCount: 3 })
+      .mockResolvedValueOnce({ items: [second], totalCount: 3 });
+    render(
+      <OccurrenceWorkspace
+        review={configured}
+        storageKey="account"
+        canWrite
+        onBusy={onBusy}
+      />,
+    );
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(api.loadOccurrencePage.mock.calls.map((call) => call[2])).toEqual(
+      startFrom === "beginning" ? [1, 2] : [2, 1],
+    );
+  },
+);
 
 it("cannot save a stale performer when loading changed targets fails", async () => {
   const view = open();
   await screen.findByRole("heading", { name: "Reviewing First performer" });
   api.resolvePerformers.mockRejectedValueOnce(new Error("Targets unavailable"));
-  view.rerender(<OccurrenceWorkspace review={{ ...review, occurrence: { ...review.occurrence, targetMode: "selected", performerIds: [12] } }} storageKey="account" canWrite onBusy={onBusy} />);
+  view.rerender(
+    <OccurrenceWorkspace
+      review={{
+        ...review,
+        occurrence: {
+          ...review.occurrence,
+          targetMode: "selected",
+          performerIds: [12],
+        },
+      }}
+      storageKey="account"
+      canWrite
+      onBusy={onBusy}
+    />,
+  );
   await screen.findByRole("alert");
-  expect(screen.queryByRole("button", { name: "Save & next performer" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Reviewing First performer" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Save & next performer" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Reviewing First performer" }),
+  ).not.toBeInTheDocument();
   expect(api.saveOccurrenceTags).not.toHaveBeenCalled();
 });

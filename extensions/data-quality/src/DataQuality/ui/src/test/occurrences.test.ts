@@ -6,6 +6,7 @@ import {
   occurrenceSceneReview,
   resolvePerformers,
   saveOccurrenceTags,
+  runOccurrenceAction,
   type Occurrence,
 } from "../occurrences";
 import {
@@ -38,6 +39,29 @@ export const occurrenceReview: OccurrenceReview = {
     multiple: true,
   },
 };
+
+it("allows an action-based occurrence rule without target performers or tag choices", () => {
+  const rule: OccurrenceReview = {
+    ...occurrenceReview,
+    actions: [
+      {
+        id: "down",
+        label: "Hair down",
+        steps: [{ mode: "ADD", tagIds: [21] }],
+      },
+    ],
+    occurrence: {
+      ...occurrenceReview.occurrence,
+      targetMode: "all",
+      performerIds: [],
+      condition: "any",
+      conditionTagIds: [],
+      tagIds: [],
+    },
+  };
+  expect(reviewValidation(rule)).toBe("");
+  expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
+});
 const fetchMock = vi.mocked(extensionFetch);
 const video = {
   id: 1,
@@ -63,6 +87,75 @@ const occurrence: Occurrence = {
   performer: video.performers[0],
   applications: [],
 };
+
+it("runs ordered actions only on the active occurrence without touching partner or unrelated tags", async () => {
+  const apps = [
+    application(1, 11, 21),
+    application(2, 11, 99),
+    application(3, 12, 21),
+  ];
+  fetchMock.mockImplementation((path) =>
+    path === "/api/videos/1" ? response(video) : response(apps),
+  );
+  await runOccurrenceAction(occurrenceReview, occurrence, {
+    id: "replace",
+    label: "Pigtails",
+    steps: [
+      { mode: "REMOVE", tagIds: [21] },
+      { mode: "ADD", tagIds: [22] },
+    ],
+  });
+  const writes = fetchMock.mock.calls.filter(([, options]) =>
+    ["POST", "DELETE"].includes(options?.method ?? ""),
+  );
+  expect(writes).toHaveLength(2);
+  expect(writes[0][0]).toBe("/api/tagapplications/1");
+  expect(JSON.parse(String(writes[1][1]?.body))).toMatchObject({
+    hostId: 1,
+    contextId: 11,
+    tagId: 22,
+  });
+});
+
+it("stops ordered occurrence actions at the first failed step", async () => {
+  fetchMock.mockImplementation((path, options) =>
+    options?.method === "DELETE"
+      ? Promise.resolve(new Response("{}", { status: 500 }))
+      : path === "/api/videos/1"
+        ? response(video)
+        : response([application(1, 11, 21)]),
+  );
+  await expect(
+    runOccurrenceAction(occurrenceReview, occurrence, {
+      id: "replace",
+      label: "Pigtails",
+      steps: [
+        { mode: "REMOVE", tagIds: [21] },
+        { mode: "ADD", tagIds: [22] },
+      ],
+    }),
+  ).rejects.toThrow("Saving stopped");
+  expect(
+    fetchMock.mock.calls.some(([, options]) => options?.method === "POST"),
+  ).toBe(false);
+});
+
+it("skips without API writes and rejects video-level assessment actions", async () => {
+  await runOccurrenceAction(occurrenceReview, occurrence, {
+    id: "skip",
+    label: "Skip",
+    steps: [],
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+  await expect(
+    runOccurrenceAction(occurrenceReview, occurrence, {
+      id: "absent",
+      label: "Absent",
+      steps: [{ mode: "MARK_ABSENT", tagIds: [21] }],
+    }),
+  ).rejects.toThrow("occurrence tag action");
+  expect(fetchMock).not.toHaveBeenCalled();
+});
 const response = (value: unknown) =>
   Promise.resolve(new Response(JSON.stringify(value)));
 beforeEach(() => fetchMock.mockReset());

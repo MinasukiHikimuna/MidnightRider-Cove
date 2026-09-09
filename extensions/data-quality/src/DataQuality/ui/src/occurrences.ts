@@ -2,10 +2,16 @@ import {
   findVideos,
   normalizeCriteria,
   request,
+  resolveTagTree,
   type Video,
   type Tag,
 } from "./api";
-import { type OccurrenceReview, type VideoReview } from "./model";
+import {
+  validAction,
+  type OccurrenceReview,
+  type VideoReview,
+  type VideoReviewAction,
+} from "./model";
 
 export interface OccurrenceApplication {
   id: number;
@@ -22,6 +28,46 @@ export interface Occurrence {
   applications: OccurrenceApplication[];
 }
 export type OccurrenceOutcome = "reviewed" | "cannotDetermine";
+
+export async function runOccurrenceAction(
+  review: OccurrenceReview,
+  occurrence: Occurrence,
+  action: VideoReviewAction,
+): Promise<OccurrenceApplication[]> {
+  if (
+    !validAction(action) ||
+    action.steps.some(
+      (step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
+    )
+  )
+    throw new Error("Configure an occurrence tag action first.");
+  if (!action.steps.length) return occurrence.applications;
+  const steps = await Promise.all(
+    action.steps.map(async (step) => ({
+      ...step,
+      tagIds:
+        step.mode === "REMOVE_TREE"
+          ? await resolveTagTree(step.tagIds)
+          : step.tagIds,
+    })),
+  );
+  let applications = occurrence.applications;
+  for (const step of steps) {
+    applications = await saveOccurrenceTags(
+      {
+        ...review,
+        occurrence: {
+          ...review.occurrence,
+          tagIds: step.tagIds,
+          multiple: true,
+        },
+      },
+      occurrence,
+      step.mode === "ADD" ? step.tagIds : [],
+    );
+  }
+  return applications;
+}
 
 export async function resolvePerformers(
   review: OccurrenceReview,

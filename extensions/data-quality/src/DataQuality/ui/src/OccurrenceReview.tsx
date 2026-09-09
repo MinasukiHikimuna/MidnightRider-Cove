@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EntityReferenceMultiSelector,
-  FilterDialog,
-  PERFORMER_CRITERIA,
   VideoPlayer,
+  useKeySequence,
 } from "@cove/runtime/components";
 import {
   loadProgress,
@@ -14,14 +13,18 @@ import {
 } from "./api";
 import {
   boundedFilter,
+  actionShortcut,
+  isReviewShortcutTarget,
   occurrenceAnswerSignature,
   queueSignature,
   type OccurrenceReview,
+  type VideoReviewAction,
 } from "./model";
 import {
   loadOccurrencePage,
   resolvePerformers,
   saveOccurrenceTags,
+  runOccurrenceAction,
   type Occurrence,
   type OccurrenceOutcome,
 } from "./occurrences";
@@ -36,7 +39,6 @@ export function OccurrenceSettings({
   onChange(review: OccurrenceReview): void;
   choices?: boolean;
 }) {
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const settings = review.occurrence;
   const update = (change: Partial<OccurrenceReview["occurrence"]>) =>
     onChange({ ...review, occurrence: { ...settings, ...change } });
@@ -73,66 +75,11 @@ export function OccurrenceSettings({
     );
   return (
     <fieldset className="dq-queue-fields">
-      <legend>Target performers</legend>
+      <legend>Occurrence condition (optional)</legend>
       <p>
-        Scene filters choose videos. These settings choose which performers
-        within those videos need review.
+        Leave this unrestricted to review any appearance. Choose performers
+        temporarily in the review workspace.
       </p>
-      <label>
-        Performers to review
-        <select
-          aria-label="Performers to review"
-          value={settings.targetMode}
-          onChange={(event) =>
-            update({
-              targetMode: event.target.value as typeof settings.targetMode,
-            })
-          }
-        >
-          <option value="all">All performers in each scene</option>
-          <option value="selected">Selected performers only</option>
-          <option value="filter">Performers matching a filter</option>
-        </select>
-      </label>
-      {settings.targetMode === "selected" && (
-        <EntityReferenceMultiSelector
-          entityType="performer"
-          values={settings.performerIds}
-          onChange={(performerIds) => update({ performerIds })}
-          placeholder="Search target performers..."
-          allowCreate={false}
-        />
-      )}
-      {settings.targetMode === "filter" && (
-        <>
-          <button
-            type="button"
-            className="dq-button"
-            onClick={() => setFiltersOpen(true)}
-          >
-            Edit target performer filters
-          </button>
-          <p>
-            {Object.keys(settings.performerFilter).length
-              ? "Performer filters configured"
-              : "No performer restrictions"}
-          </p>
-        </>
-      )}
-      {filtersOpen && (
-        <FilterDialog
-          open
-          criteria={PERFORMER_CRITERIA}
-          activeFilter={settings.performerFilter}
-          subjectLabel="performers"
-          supportsFilterExpressions
-          onClose={() => setFiltersOpen(false)}
-          onApply={(performerFilter) => {
-            update({ performerFilter });
-            setFiltersOpen(false);
-          }}
-        />
-      )}
       <label>
         Occurrence condition
         <select
@@ -169,7 +116,7 @@ export function OccurrenceSettings({
 }
 
 export function OccurrenceWorkspace({
-  review,
+  review: savedReview,
   storageKey,
   canWrite,
   onBusy,
@@ -179,6 +126,30 @@ export function OccurrenceWorkspace({
   canWrite: boolean;
   onBusy(value: boolean): void;
 }) {
+  const [performerIds, setPerformerIds] = useState<number[]>([]);
+  const [shortcutTarget, setShortcutTarget] = useState(() =>
+    isReviewShortcutTarget(document.activeElement),
+  );
+  useEffect(() => {
+    const update = (event: FocusEvent) =>
+      setShortcutTarget(isReviewShortcutTarget(event.target));
+    document.addEventListener("focusin", update);
+    return () => document.removeEventListener("focusin", update);
+  }, []);
+  const review = useMemo(
+    () => ({
+      ...savedReview,
+      occurrence: {
+        ...savedReview.occurrence,
+        targetMode: performerIds.length
+          ? ("selected" as const)
+          : ("all" as const),
+        performerIds,
+        performerFilter: {},
+      },
+    }),
+    [savedReview, performerIds],
+  );
   const [items, setItems] = useState<Occurrence[]>([]);
   const [page, setPage] = useState(1);
   const [totalScenes, setTotalScenes] = useState(0);
@@ -265,14 +236,17 @@ export function OccurrenceWorkspace({
     skipped.current.clear();
     void (async () => {
       const saved = await loadProgress(storageKey, review.id);
-      const resume = saved?.signature === queueSignature(review) ? saved : null;
+      const answerCompatible = saved?.occurrence?.answerSignature === undefined || saved.occurrence.answerSignature === occurrenceAnswerSignature(review);
+      const resume = answerCompatible && saved?.signature === queueSignature(review) ? saved : null;
       const nextOutcomes =
         saved?.occurrence?.answerSignature === occurrenceAnswerSignature(review)
           ? saved.occurrence.outcomes
-          : (resume?.occurrence?.outcomes ?? {});
+          : saved?.occurrence?.answerSignature === undefined
+            ? (resume?.occurrence?.outcomes ?? {})
+            : {};
       const performerIds = await resolvePerformers(review, abort.signal);
       const tagNames = await Promise.all(
-        review.occurrence.tagIds.map(
+        (review.actions.length ? [] : review.occurrence.tagIds).map(
           async (id) =>
             [
               id,
@@ -381,19 +355,21 @@ export function OccurrenceWorkspace({
     }
   }
 
-  async function finish(outcome?: OccurrenceOutcome) {
-    if (!ready || !current || busy.current || loading || (outcome && !canWrite)) return;
+  async function finish(
+    outcome?: OccurrenceOutcome,
+    action?: VideoReviewAction,
+  ) {
+    if (!ready || !current || busy.current || loading || (outcome && !canWrite))
+      return;
     busy.current = true;
     setPending(true);
     onBusy(true);
     setError("");
     try {
       if (outcome === "reviewed") {
-        const applications = await saveOccurrenceTags(
-          review,
-          current,
-          selected,
-        );
+        const applications = action
+          ? await runOccurrenceAction(review, current, action)
+          : await saveOccurrenceTags(review, current, selected);
         setItems((items) =>
           items.map((item) =>
             item.key === current.key ? { ...item, applications } : item,
@@ -470,13 +446,75 @@ export function OccurrenceWorkspace({
   }
 
   const remaining = items.filter((item) => !outcomes[item.key]).length;
+  useKeySequence(
+    review.actions.map((action, index) => ({
+      keys: actionShortcut(action, index),
+      surface: "local" as const,
+      action: (context?: { repeat: boolean; target: EventTarget | null }) => {
+        if (context?.repeat || (context && !isReviewShortcutTarget(context.target))) return;
+        void finish(action.steps.length ? "reviewed" : undefined, action);
+      },
+    })).filter((binding) => binding.keys),
+    ready && !pending && !loading && shortcutTarget,
+  );
   return (
     <section
       className="dq-occurrence-workspace"
       aria-label="Performer occurrence review"
-      onKeyDown={(event) => event.stopPropagation()}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (
+          event.defaultPrevented ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.metaKey ||
+          event.repeat ||
+          !isReviewShortcutTarget(event.target)
+        )
+          return;
+        const action = review.actions.find(
+          (action, index) => actionShortcut(action, index) === event.key,
+        );
+        if (action) {
+          event.preventDefault();
+          void finish(action.steps.length ? "reviewed" : undefined, action);
+        }
+      }}
     >
       <div className="dq-occurrence-toolbar">
+        <div className="dq-occurrence-filter">
+          <strong>Filter performers</strong>
+          <EntityReferenceMultiSelector
+            entityType="performer"
+            values={performerIds}
+            onChange={(ids) => {
+              setReady(false);
+              setPerformerIds(ids);
+            }}
+            placeholder="All performers — select performers..."
+            disabled={pending || loading}
+            allowCreate={false}
+          />
+          <p>
+            {performerIds.length
+              ? "Only selected performers are reviewed. This filter does not change the saved review."
+              : "All performers in matching scenes. Select one or more to focus this session."}
+          </p>
+          {performerIds.length > 0 && (
+            <button
+              type="button"
+              className="dq-button"
+              disabled={pending || loading}
+              onClick={() => {
+                setReady(false);
+                setPerformerIds([]);
+              }}
+            >
+              Clear performer filter
+            </button>
+          )}
+        </div>
         <p role="status">
           {loading
             ? "Loading performer occurrences…"
@@ -547,7 +585,10 @@ export function OccurrenceWorkspace({
             : "No performer occurrences match on this page."}
         </p>
       )}
-      <fieldset disabled={!ready || pending || loading} className="dq-occurrence-content">
+      <fieldset
+        disabled={!ready || pending || loading}
+        className="dq-occurrence-content"
+      >
         {current && (
           <>
             <div className="dq-occurrence-media">
@@ -601,11 +642,22 @@ export function OccurrenceWorkspace({
                         void persist(progress(page, item.key));
                       }}
                     >
-                      {item.performer.imagePath ? <img
-                        src={`/api/performers/${item.performer.id}/image?max=96`}
-                        alt=""
-                        onError={(event) => { event.currentTarget.hidden = true; }}
-                      /> : <span className="dq-occurrence-avatar" aria-hidden="true">{item.performer.name.slice(0, 1)}</span>}
+                      {item.performer.imagePath ? (
+                        <img
+                          src={`/api/performers/${item.performer.id}/image?max=96`}
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                        />
+                      ) : (
+                        <span
+                          className="dq-occurrence-avatar"
+                          aria-hidden="true"
+                        >
+                          {item.performer.name.slice(0, 1)}
+                        </span>
+                      )}
                       {item.performer.name} ·{" "}
                       {outcomes[item.key] === "reviewed"
                         ? "Reviewed"
@@ -615,49 +667,94 @@ export function OccurrenceWorkspace({
                     </button>
                   ))}
               </div>
-              <fieldset disabled={!canWrite} className="dq-occurrence-choices">
-                <legend>Occurrence tags</legend>
-                {review.occurrence.tagIds.map((id) => (
-                  <label key={id}>
-                    <input
-                      type={review.occurrence.multiple ? "checkbox" : "radio"}
-                      name="occurrence-tag"
-                      checked={selected.includes(id)}
-                      onChange={(event) =>
-                        setSelected(
-                          review.occurrence.multiple
-                            ? event.target.checked
-                              ? [...selected, id]
-                              : selected.filter((value) => value !== id)
-                            : [id],
-                        )
-                      }
-                    />
-                    {names[id] ?? "Loading tag…"}
-                  </label>
-                ))}
-                <label>
-                  <input
-                    type={review.occurrence.multiple ? "checkbox" : "radio"}
-                    name="occurrence-tag"
-                    checked={selected.length === 0}
-                    onChange={() => setSelected([])}
-                  />
-                  No applicable tags
-                </label>
-              </fieldset>
+              <p>
+                Current occurrence tags:{" "}
+                {current.applications.length
+                  ? [
+                      ...new Set(
+                        current.applications.map((item) => item.tag.name),
+                      ),
+                    ].join(", ")
+                  : "None"}
+              </p>
+              {review.actions.length === 0 &&
+                review.occurrence.tagIds.length > 0 && (
+                  <fieldset
+                    disabled={!canWrite}
+                    className="dq-occurrence-choices"
+                  >
+                    <legend>Occurrence tags</legend>
+                    {review.occurrence.tagIds.map((id) => (
+                      <label key={id}>
+                        <input
+                          type={
+                            review.occurrence.multiple ? "checkbox" : "radio"
+                          }
+                          name="occurrence-tag"
+                          checked={selected.includes(id)}
+                          onChange={(event) =>
+                            setSelected(
+                              review.occurrence.multiple
+                                ? event.target.checked
+                                  ? [...selected, id]
+                                  : selected.filter((value) => value !== id)
+                                : [id],
+                            )
+                          }
+                        />
+                        {names[id] ?? "Loading tag…"}
+                      </label>
+                    ))}
+                    <label>
+                      <input
+                        type={review.occurrence.multiple ? "checkbox" : "radio"}
+                        name="occurrence-tag"
+                        checked={selected.length === 0}
+                        onChange={() => setSelected([])}
+                      />
+                      No applicable tags
+                    </label>
+                  </fieldset>
+                )}
+              {review.actions.length === 0 &&
+                review.occurrence.tagIds.length === 0 && (
+                  <p>Use Edit review → Actions to add your review actions.</p>
+                )}
               <div className="dq-occurrence-actions">
-                <button
-                  type="button"
-                  className="dq-button primary"
-                  disabled={
-                    !canWrite ||
-                    (!review.occurrence.multiple && selected.length > 1)
-                  }
-                  onClick={() => void finish("reviewed")}
-                >
-                  {pending ? "Saving…" : "Save & next performer"}
-                </button>
+                {review.actions.map((action, index) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="dq-button primary"
+                    disabled={!canWrite && action.steps.length > 0}
+                    onClick={() =>
+                      void finish(
+                        action.steps.length ? "reviewed" : undefined,
+                        action,
+                      )
+                    }
+                    title={`Apply to ${current.performer.name} in this scene`}
+                  >
+                    {actionShortcut(action, index) && (
+                      <kbd>{actionShortcut(action, index)}</kbd>
+                    )}{" "}
+                    {action.label}
+                  </button>
+                ))}
+                {review.actions.length === 0 &&
+                  review.occurrence.tagIds.length > 0 && (
+                    <button
+                      type="button"
+                      className="dq-button primary"
+                      disabled={
+                        !canWrite ||
+                        (!review.occurrence.multiple && selected.length > 1)
+                      }
+                      onClick={() => void finish("reviewed")}
+                    >
+                      {pending ? "Saving…" : "Save & next performer"}
+                    </button>
+                  )}
                 <button
                   type="button"
                   className="dq-button"

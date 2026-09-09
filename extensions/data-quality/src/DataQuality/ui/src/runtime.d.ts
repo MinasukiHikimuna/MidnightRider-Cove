@@ -6,6 +6,11 @@ declare module "@cove/runtime/api" {
 }
 
 declare module "@cove/runtime/components" {
+  export function useKeySequence(bindings: Array<{
+    keys: string;
+    action: () => void;
+    surface?: "local";
+  }>, enabled?: boolean): void;
   import type { ComponentType, CSSProperties, ReactNode } from "react";
   export type DragHandleProps = import("react").HTMLAttributes<HTMLElement>;
   export function SortableList<T>(props: {
