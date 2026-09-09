@@ -37,6 +37,7 @@ import {
   RotateCcw,
   Save,
   Settings,
+  Tags as TagsIcon,
   Trash2,
   Upload,
   X,
@@ -121,6 +122,14 @@ const customFieldQueueCriterion = {
   type: "string",
   supported: false,
 };
+
+function ReviewEntityIcon({ entityType }: { entityType: "video" | "tag" }) {
+  return entityType === "tag" ? (
+    <TagsIcon role="img" aria-label="Tag review" />
+  ) : (
+    <Film role="img" aria-label="Video review" />
+  );
+}
 
 function initialDisplayMode(review: Review): ReviewDisplayMode {
   if (reviewEntityType(review) === "tag")
@@ -1557,9 +1566,9 @@ export function DataQualityPage({
                     onClick={() => chooseReview(item.id)}
                   >
                     <span className="dq-review-browser-summary">
-                      <strong>{item.name}</strong>
-                      <span className="dq-review-entity-type">
-                        {itemType === "tag" ? "Tags" : "Videos"}
+                      <span className="dq-review-title">
+                        <ReviewEntityIcon entityType={itemType} />
+                        <strong>{item.name}</strong>
                       </span>
                       <span
                         className="dq-review-count"
@@ -2796,8 +2805,10 @@ function ReviewManager({
                 {reviews.map((review) => (
                   <article key={review.id}>
                     <div>
-                      <strong>{review.name}</strong>
-                      <small>{reviewEntityType(review) === "tag" ? "Tags" : "Videos"}</small>
+                      <div className="dq-review-title">
+                        <ReviewEntityIcon entityType={reviewEntityType(review)} />
+                        <strong>{review.name}</strong>
+                      </div>
                       <p>{review.description || "No description"}</p>
                     </div>
                     <button type="button" onClick={() => begin(review)}>

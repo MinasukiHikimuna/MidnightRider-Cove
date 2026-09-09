@@ -265,9 +265,21 @@
 .dq-review-browser-summary {
   display: flex;
   min-width: 0;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+.dq-review-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+}
+.dq-review-title svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  color: var(--color-muted);
 }
 .dq-review-browser-summary strong,
 .dq-review-rule-name {
@@ -279,15 +291,6 @@
 .dq-review-count {
   color: var(--color-secondary);
   font-size: 0.75rem;
-}
-.dq-review-entity-type,
-.dq-review-list small {
-  flex: none;
-  padding: 0.1rem 0.4rem;
-  border: 1px solid var(--color-border);
-  border-radius: 9999px;
-  color: var(--color-muted);
-  font-size: 0.65rem;
 }
 .dq-review-count {
   flex: none;

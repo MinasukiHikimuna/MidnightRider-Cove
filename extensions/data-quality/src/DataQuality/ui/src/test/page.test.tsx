@@ -194,6 +194,59 @@ beforeEach(() => {
 });
 
 describe("Data Quality extension page", () => {
+  it("shows entity icons beside review names instead of type badges", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Review tags",
+      description: "Classify tags",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "grid" as const,
+        searchMode: "text",
+      },
+      actions: [
+        { id: "skip", label: "Skip", effect: { mode: "SKIP" as const } },
+      ],
+    };
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [review, tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteVideos: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    await screen.findByRole("article", { name: "Video 1" });
+    fireEvent.click(screen.getByRole("button", { name: "All reviews" }));
+
+    const browser = screen.getByRole("region", { name: "Reviews" });
+    expect(
+      within(browser).getByRole("img", { name: "Video review" }),
+    ).toBeInTheDocument();
+    expect(
+      within(browser).getByRole("img", { name: "Tag review" }),
+    ).toBeInTheDocument();
+    expect(within(browser).queryByText("Videos")).not.toBeInTheDocument();
+    expect(within(browser).queryByText("Tags")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage reviews" }));
+    const manager = screen.getByRole("dialog", {
+      name: "Manage Data Quality reviews",
+    });
+    expect(
+      within(manager).getByRole("img", { name: "Video review" }),
+    ).toBeInTheDocument();
+    expect(
+      within(manager).getByRole("img", { name: "Tag review" }),
+    ).toBeInTheDocument();
+    expect(within(manager).queryByText("Videos")).not.toBeInTheDocument();
+    expect(within(manager).queryByText("Tags")).not.toBeInTheDocument();
+  });
+
   it("runs a tag review with native queue behavior and group actions", async () => {
     const tagReview = {
       id: "tags",
