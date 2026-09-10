@@ -588,3 +588,42 @@ test("playhead-relative selection is directional and swimlane controls remain re
   assert.match(source, /unreviewed,.*approved,.*rejected/);
   assert.doesNotMatch(source, /New marker|Split marker|Duplicate marker|Delete swimlane/);
 });
+
+
+test("initial selection follows visible swimlane priority and skips processed segments", () => {
+  const processed = { id: 1, startSec: 30, reviewState: "approved" };
+  const priority = { id: 2, startSec: 60, reviewState: "unreviewed" };
+  const earlier = { id: 3, startSec: 1, reviewState: "unreviewed" };
+  const lanes = [
+    { markers: [processed, priority].map((segment) => ({ segment })) },
+    { markers: [{ segment: earlier }] },
+  ];
+  assert.equal(ui.findInitialSegmentSelection(lanes)?.id, 2);
+  assert.equal(ui.findInitialSegmentSelection(lanes, 1)?.id, 1);
+  assert.equal(ui.findInitialSegmentSelection(lanes, 99)?.id, 2);
+  assert.equal(ui.findInitialSegmentSelection(lanes.slice(1))?.id, 3);
+  assert.equal(ui.findInitialSegmentSelection([]), null);
+  priority.reviewState = "rejected";
+  earlier.reviewState = "approved";
+  assert.equal(ui.findInitialSegmentSelection(lanes)?.id, 1);
+  assert.equal(ui.findInitialSegmentSelection(lanes, 2)?.id, 2);
+});
+
+
+test("initialization resets prior filters before resolving an explicit segment", () => {
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  const start = controller.indexOf("    const initialSwimlanes =");
+  const end = controller.indexOf("    setSelectedSegmentId(nextSegmentId);", start);
+  const initialize = new Function("detail", "initialSegmentId", "compatibilityMode", "hideDerivedSegments",
+    "groupSegmentsIntoSwimlanes", "filterEditorSegments", "normalizeEditorSegmentFilters", "findInitialSegmentSelection",
+    "editorFilters", controller.slice(start, end) + "return nextSegmentId;");
+  const detail = { segments: [
+    { id: 1, tagId: 10, tagName: "Earlier", startSec: 1, reviewState: "unreviewed" },
+    { id: 2, tagId: 20, tagName: "Requested", startSec: 5, reviewState: "approved" },
+  ] };
+  const select = (preferredId) => initialize(detail, preferredId, true, false,
+    ui.groupSegmentsIntoSwimlanes, ui.filterEditorSegments, ui.normalizeEditorSegmentFilters,
+    ui.findInitialSegmentSelection, { reviewStates: ["unreviewed"], tagId: 10 });
+  assert.equal(select(2), 2);
+  assert.equal(select(null), 1);
+});

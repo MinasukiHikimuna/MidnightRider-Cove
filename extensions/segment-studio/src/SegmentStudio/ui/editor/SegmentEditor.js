@@ -12,7 +12,7 @@ import { findUniquePerformerSlotAssignment } from "../discovery/model.js";
 
 import { buildSegmentRailRows, expandedSwimlanes, groupSegmentsIntoSwimlanes, groupSelectedSwimlanes, groupSwimlanesBySegmentGroup, reconcileSegmentGroupKey, revealCollapsedSegmentGroup, segmentGroupKeyForSegment, visibleVirtualRows } from "./model/swimlanes.js";
 
-import { calculateTimelineRatioBounds, clampEditorPanelWidth, clampTimelineRatioForHeight } from "./model/timeline.js";
+import { calculateTimelineRatioBounds, clampEditorPanelWidth, clampTimelineRatioForHeight, findInitialSegmentSelection } from "./model/timeline.js";
 
 import { indexPerformerSlotsBySegment, performerSlotStatusFromSegmentSlots } from "./model/history.js";
 
@@ -269,15 +269,18 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   }, [tagEditing, selectedSegmentId]);
 
   useEffect(() => {
-    const nextSegmentId = detail.segments.some((segment) => segment.id === initialSegmentId) ? initialSegmentId : detail.segments[0]?.id ?? null;
+    const initialSwimlanes = groupSegmentsIntoSwimlanes(
+      filterEditorSegments(detail.segments, detail.performerSlots || [], normalizeEditorSegmentFilters({}),
+        compatibilityMode && hideDerivedSegments, detail.segmentGroups || []),
+      detail.segmentGroups || [], detail.performerSlots || [],
+    );
+    const nextSegmentId = detail.segments.find((segment) => segment.id === initialSegmentId)?.id
+      ?? findInitialSegmentSelection(initialSwimlanes)?.id ?? null;
     setSelectedSegmentId(nextSegmentId);
     setSelectedSegmentIds(nextSegmentId == null ? [] : [nextSegmentId]);
     selectionAnchorIdRef.current = nextSegmentId;
     selectionRangeBaseIdsRef.current = [];
-    setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
-      groupSegmentsIntoSwimlanes(detail.segments || [], detail.segmentGroups || [], detail.performerSlots || []),
-      nextSegmentId,
-    ));
+    setSelectedSegmentGroupKey(segmentGroupKeyForSegment(initialSwimlanes, nextSegmentId));
     setEditorFilters(normalizeEditorSegmentFilters({}));
     setFiltersOpen(false);
     pendingFirstSegmentStartSecRef.current = null;
@@ -402,7 +405,13 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     editorFilters,
     compatibilityMode && hideDerivedSegments,
   );
-  const selectedSegment = resolveVisibleSelectedSegment(visibleSegments, selectedSegmentId);
+  const allSwimlanes = useMemo(
+    () => groupSegmentsIntoSwimlanes(visibleSegments, segmentGroups, performerSlots),
+    [visibleSegments, segmentGroups, performerSlots],
+  );
+  const selectedSegment = selectedSegmentId == null
+    ? findInitialSegmentSelection(allSwimlanes, initialSegmentId)
+    : resolveVisibleSelectedSegment(visibleSegments, selectedSegmentId);
   const selectedSegments = resolveSelectedSegments(visibleSegments, selectedSegmentIds);
   const canMoveSelectionToBin = !compatibilityMode
     && selectedSegments.length > 0
@@ -412,10 +421,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   selectedSegmentIdRef.current = selectedSegment?.id ?? null;
   const selectedPerformerSlots = performerSlotsBySegment.get(selectedSegment?.id) || [];
   const selectedSlotStatus = performerSlotStatusFromSegmentSlots(selectedPerformerSlots);
-  const allSwimlanes = useMemo(
-    () => groupSegmentsIntoSwimlanes(visibleSegments, segmentGroups, performerSlots),
-    [visibleSegments, segmentGroups, performerSlots],
-  );
   const selectedGroups = useMemo(
     () => groupSelectedSwimlanes(allSwimlanes, selectedSegmentIds),
     [allSwimlanes, selectedSegmentIds],

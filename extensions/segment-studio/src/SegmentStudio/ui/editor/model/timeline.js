@@ -11,6 +11,14 @@ export function validateSegmentTiming(startSec, endSec, duration) {
   return { startSec, endSec };
 }
 
+export function findInitialSegmentSelection(lanes, preferredId = null) {
+  const ordered = lanes.flatMap((lane) => lane.markers.map((marker) => marker.segment));
+  return ordered.find((segment) => segment.id === preferredId)
+    ?? findUnreviewedSelection(lanes, null, 1, true)
+    ?? ordered[0]
+    ?? null;
+}
+
 export function findUnreviewedSelection(lanes, selectedId, direction, global = false) {
   const laneIndex = lanes.findIndex((lane) => lane.markers.some((marker) => marker.segment.id === selectedId));
   if (laneIndex < 0) {
