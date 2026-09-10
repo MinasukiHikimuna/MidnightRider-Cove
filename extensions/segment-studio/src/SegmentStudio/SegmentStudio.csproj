@@ -10,6 +10,7 @@
     <EmbeddedResource Include="SegmentStudioBaseline.sql" />
     <EmbeddedResource Include="SegmentStudioAnalysisSourceTags.sql" />
     <EmbeddedResource Include="SegmentStudioRemoveCorrespondingTags.sql" />
+    <EmbeddedResource Include="SegmentStudioTagDeleteCascade.sql" />
   </ItemGroup>
 
 </Project>

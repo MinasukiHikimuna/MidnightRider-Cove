@@ -568,7 +568,7 @@ public static class SegmentStudioModelConfiguration
             builder.HasOne<Tag>()
                 .WithMany()
                 .HasForeignKey(item => item.TagId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioNativeRecycleBinEntry>(builder =>
@@ -605,7 +605,7 @@ public static class SegmentStudioModelConfiguration
             builder.HasOne<Video>().WithMany().HasForeignKey(entry => entry.VideoId)
                 .OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<Tag>().WithMany().HasForeignKey(entry => entry.TagId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioSegmentOperation>(builder =>
@@ -767,8 +767,8 @@ public static class SegmentStudioModelConfiguration
             builder.HasIndex(row => row.ItemId).IsUnique().HasFilter("item_id IS NOT NULL");
             builder.HasIndex(row => row.NativeBinEntryId).IsUnique().HasFilter("native_bin_entry_id IS NOT NULL");
             builder.HasIndex(row => new { row.VideoId, row.CreatedAt });
-            builder.HasOne(row => row.Item).WithMany().HasForeignKey(row => row.ItemId).OnDelete(DeleteBehavior.Restrict);
-            builder.HasOne(row => row.NativeBinEntry).WithMany().HasForeignKey(row => row.NativeBinEntryId).OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne(row => row.Item).WithMany().HasForeignKey(row => row.ItemId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne(row => row.NativeBinEntry).WithMany().HasForeignKey(row => row.NativeBinEntryId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<Video>().WithMany().HasForeignKey(row => row.VideoId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -956,8 +956,8 @@ public static class SegmentStudioModelConfiguration
             builder.HasIndex(rule => new { rule.SourceTagId, rule.DerivedTagId })
                 .IsUnique()
                 .HasDatabaseName("IX_segment_studio_derivation_rules_relationship");
-            builder.HasOne<Tag>().WithMany().HasForeignKey(rule => rule.SourceTagId).OnDelete(DeleteBehavior.Restrict);
-            builder.HasOne<Tag>().WithMany().HasForeignKey(rule => rule.DerivedTagId).OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(rule => rule.SourceTagId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(rule => rule.DerivedTagId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioDerivationEdge>(builder =>
@@ -985,8 +985,8 @@ public static class SegmentStudioModelConfiguration
             builder.HasOne<SegmentStudioLineageNode>().WithMany().HasForeignKey(edge => edge.DerivedNodeId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<SegmentStudioDerivationRule>().WithMany().HasForeignKey(edge => edge.RuleId).OnDelete(DeleteBehavior.Restrict);
             builder.HasOne<SegmentStudioProvenanceActivity>().WithMany().HasForeignKey(edge => edge.ActivityId).OnDelete(DeleteBehavior.Restrict);
-            builder.HasOne<Tag>().WithMany().HasForeignKey(edge => edge.SourceTagIdAtCreation).OnDelete(DeleteBehavior.Restrict);
-            builder.HasOne<Tag>().WithMany().HasForeignKey(edge => edge.DerivedTagIdAtCreation).OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(edge => edge.SourceTagIdAtCreation).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(edge => edge.DerivedTagIdAtCreation).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioLineageIssue>(builder =>
@@ -1089,7 +1089,7 @@ public static class SegmentStudioModelConfiguration
             builder.Property(set => set.AllowSamePerformerInMultipleSlots).HasColumnName("allow_same_performer_in_multiple_slots");
             builder.Property(set => set.CreatedAt).HasColumnName("created_at");
             builder.HasIndex(set => set.TagId).IsUnique();
-            builder.HasOne<Tag>().WithMany().HasForeignKey(set => set.TagId).OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Tag>().WithMany().HasForeignKey(set => set.TagId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioSlotDefinition>(builder =>

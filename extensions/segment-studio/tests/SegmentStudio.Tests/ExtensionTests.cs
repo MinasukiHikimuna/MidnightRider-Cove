@@ -457,8 +457,9 @@ public sealed class ExtensionTests
     public void DefinesCleanSchemaMigrations()
     {
         var migrations = CreateExtension().GetMigrations().ToArray();
-        Assert.Equal(3, migrations.Length);
-        var migration = migrations[0];
+        Assert.Equal(5, migrations.Length);
+        Assert.Equal("000_adopt_legacy_migration_owner", migrations[0].Name);
+        var migration = migrations[1];
 
         Assert.Equal("001_initial_schema", migration.Name);
         Assert.Equal(32, migration.UpSql.Split("CREATE TABLE ").Length - 1);
@@ -486,11 +487,12 @@ public sealed class ExtensionTests
         Assert.DoesNotContain("segment_studio_marker_replacement_receipts", migration.UpSql);
         Assert.DoesNotContain("segment_studio_slot_import_runs", migration.UpSql);
 
-        Assert.Equal("002_corresponding_tags", migrations[1].Name);
-        Assert.Contains("ADD COLUMN source_tag_id", migrations[1].UpSql);
-        Assert.DoesNotContain("segment_studio_corresponding_tag_mappings", migrations[1].UpSql);
-        Assert.Equal("003_remove_corresponding_tags", migrations[2].Name);
-        Assert.Contains("DROP TABLE IF EXISTS segment_studio_corresponding_tag_mappings", migrations[2].UpSql);
+        Assert.Equal("002_corresponding_tags", migrations[2].Name);
+        Assert.Contains("ADD COLUMN source_tag_id", migrations[2].UpSql);
+        Assert.DoesNotContain("segment_studio_corresponding_tag_mappings", migrations[2].UpSql);
+        Assert.Equal("004_tag_delete_cascade", migrations[4].Name);
+        Assert.Equal("003_remove_corresponding_tags", migrations[3].Name);
+        Assert.Contains("DROP TABLE IF EXISTS segment_studio_corresponding_tag_mappings", migrations[3].UpSql);
     }
 
     [Fact]

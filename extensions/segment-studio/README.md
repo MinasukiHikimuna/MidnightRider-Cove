@@ -49,3 +49,11 @@ inspection.
 Before applying the pre-release migration rebaseline, stop Cove and retain a
 database backup. The rebaseline accepts only the exact 36-migration development
 chain and replaces it with the public `001_initial_schema` receipt.
+
+## Referenced entity deletion
+
+Segment Studio declares foreign-key deletion policies through EF `.OnDelete(...)` relationships and matching SQL migrations. Required tag dependencies cascade when the tag is deleted, including draft items, recycled segments, rules, and slot definitions. Optional analysis source-tag and item references use `SetNull` to preserve the analysis record. These policies are enforced by PostgreSQL even when the extension is disabled.
+
+Tag deletion runs rule cleanup before foreign-key cascades so unsupported derived segments are removed and shared derivations retain their other supporting rules. Feedback examples are removed with their owning item or recycle-bin entry. Existing lineage tombstones, history invalidation during rule cleanup, and the blob-cleanup outbox retain their normal lifecycle behavior.
+
+Upgrades from the development ID `segment-studio` retain their existing migration receipts and copy the three recognized baseline-chain receipts to the published extension ID before applying new migrations. Fresh installations run the complete schema chain.

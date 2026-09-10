@@ -127,6 +127,17 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
     protected override void DefineMigrations()
     {
+        // Published packages use the manifest ID; development installations used
+        // the short ID. Adopt only recorded migrations from the same schema chain.
+        Migration("000_adopt_legacy_migration_owner", """
+            INSERT INTO extension_migrations (extension_id, migration_name, applied_at)
+            SELECT 'com.midnightrider.segment-studio', migration_name, applied_at
+            FROM extension_migrations
+            WHERE extension_id = 'segment-studio'
+              AND migration_name IN ('001_initial_schema', '002_corresponding_tags', '003_remove_corresponding_tags')
+            ON CONFLICT (extension_id, migration_name) DO NOTHING;
+            """);
+
         using var stream = typeof(SegmentStudioExtension).Assembly
             .GetManifestResourceStream("SegmentStudio.SegmentStudioBaseline.sql")
             ?? throw new InvalidOperationException(
@@ -147,6 +158,13 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 "The embedded Segment Studio mapping cleanup migration is missing.");
         using var removeCorrespondingTagsReader = new StreamReader(removeCorrespondingTagsStream);
         Migration("003_remove_corresponding_tags", removeCorrespondingTagsReader.ReadToEnd());
+
+        using var tagDeleteCascadeStream = typeof(SegmentStudioExtension).Assembly
+            .GetManifestResourceStream("SegmentStudio.SegmentStudioTagDeleteCascade.sql")
+            ?? throw new InvalidOperationException(
+                "The embedded Segment Studio tag deletion migration is missing.");
+        using var tagDeleteCascadeReader = new StreamReader(tagDeleteCascadeStream);
+        Migration("004_tag_delete_cascade", tagDeleteCascadeReader.ReadToEnd());
 
     }
 
