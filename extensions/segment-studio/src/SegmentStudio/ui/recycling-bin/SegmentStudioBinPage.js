@@ -1,3 +1,5 @@
+import { SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
+
 import { h, useEffect, useRef, useRegisterExtensionKeyboardActions, useState } from "../shared/runtime.js";
 
 import { completeOperation, confirmEmptyRecyclingBin, formatTime, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestJson } from "../shared/api.js";
@@ -30,7 +32,7 @@ function SegmentStudioBinPage({ onNavigate, profile }) {
     return () => controller.abort();
   }, []);
 
-  useRegisterExtensionKeyboardActions("segment-studio", [{
+  useRegisterExtensionKeyboardActions(SEGMENT_STUDIO_EXTENSION_ID, [{
     id: "system.emptyBin",
     surface: "local",
     action: () => emptyBinRef.current?.(),

@@ -132,7 +132,7 @@ test("the editor shortcut registry drives both dispatch and visible help", () =>
   assert.equal(ui.findEditorShortcut({ key: "u", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, true)?.id, "navigation.nextShot");
   assert.match(source, /function KeyboardShortcutsDialog/);
   assert.match(source, /Keyboard shortcuts/);
-  assert.match(source, /useExtensionKeyboardBindings\("segment-studio"\)/);
+  assert.match(source, /useExtensionKeyboardBindings\(SEGMENT_STUDIO_EXTENSION_ID\)/);
   assert.match(source, /executeShortcutById\(shortcutId, invocation\)/);
   assert.match(source, /saveSelectedReviewState\("approved"\)/);
   assert.match(source, /saveSelectedReviewState\("rejected"\)/);
@@ -317,7 +317,7 @@ test("native shortcut registrations keep keyboard ownership with the mounted edi
     { key: "Enter", target: body, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false },
     { querySelector: () => ({ role: "dialog" }) },
   ), false);
-  assert.match(editorSource, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
+  assert.match(editorSource, /useRegisterExtensionKeyboardActions\(SEGMENT_STUDIO_EXTENSION_ID, keyboardActions\)/);
   assert.match(editorSource, /id: shortcut\.id/);
   assert.match(editorSource, /enabled: shortcutAvailableInMode\(shortcut, compatibilityMode\)/);
   assert.doesNotMatch(editorSource, /mode: compatibilityMode \? "full" : "basic"/);
@@ -339,4 +339,13 @@ test("segment selection does not move or autoplay the playhead", () => {
   assert.match(source, /onClick: \(event\) => selectSegment\(segment, \{ additive: event\.metaKey \|\| event\.ctrlKey \}\)/);
   assert.match(source, /onSelect: \(segment, options\) => selectSegment\(segment, options\)/);
   assert.match(source, /seekRef\.current\?\.\(selectedSegment\.startSec, true\)/);
+});
+
+
+test("all mounted keyboard registrations and binding lookups use the manifest owner", () => {
+  assert.equal(ui.SEGMENT_STUDIO_EXTENSION_ID, manifest.id);
+  const registrations = Object.values(sourceByModule).join("\n").match(/use(?:RegisterExtensionKeyboardActions|ExtensionKeyboardBindings)\([^)]+/g);
+  assert.equal(registrations.length, 3);
+  for (const registration of registrations)
+    assert.match(registration, /\(SEGMENT_STUDIO_EXTENSION_ID(?:,|$)/);
 });

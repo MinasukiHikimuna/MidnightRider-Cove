@@ -1,6 +1,6 @@
 import { h, useEffect, useMemo, useRef, useRegisterExtensionKeyboardActions, useState } from "../shared/runtime.js";
 
-import { EMPTY_EDITOR_HISTORY, REVIEW_STATES } from "../shared/constants.js";
+import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 
 import { activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileFilteredSelectedSegmentId, reconcileSelectedSegmentIds, resolveSelectedSegments, resolveVisibleSelectedSegment, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
@@ -802,7 +802,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       surface: "local",
       action: (invocation) => shortcutHandlerRef.current?.(shortcut.id, invocation),
     })), [compatibilityMode]);
-  useRegisterExtensionKeyboardActions("segment-studio", keyboardActions);
+  useRegisterExtensionKeyboardActions(SEGMENT_STUDIO_EXTENSION_ID, keyboardActions);
 
   const timelineRatioBounds = calculateTimelineRatioBounds(mediaStackHeight);
   const markerRailWidth = clampEditorPanelWidth(editorLayout.markerRailWidth, panelWidthMaximum("markerRailWidth"));

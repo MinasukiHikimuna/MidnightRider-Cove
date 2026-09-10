@@ -19,3 +19,4 @@ export { buildDerivationRuleGraph, layoutDerivationRuleComponent, layoutDerivati
 export { recyclingBinActionText } from "./shared/navigation.js";
 export { isSegmentStudioSettingsRoute, isSegmentStudioSegmentsRoute, isSegmentStudioBinRoute, segmentStudioActionTarget } from "./routing/SegmentStudioExtension.js";
 export { default } from "./routing/SegmentStudioExtension.js";
+export { SEGMENT_STUDIO_EXTENSION_ID } from "./shared/constants.js";

@@ -1,3 +1,5 @@
+export const SEGMENT_STUDIO_EXTENSION_ID = "com.midnightrider.segment-studio";
+
 const EDITOR_LAYOUT_STORAGE_KEY = "segment-studio.layout.v1";
 
 const REVIEW_FILTER_STORAGE_KEY = "segment-studio.review-filters.v1";

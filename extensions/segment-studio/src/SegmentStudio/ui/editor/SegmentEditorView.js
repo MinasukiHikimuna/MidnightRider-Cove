@@ -11,7 +11,7 @@ import { EditorFiltersDialog, FirstSegmentTagDialog } from "./dialogs/EditorFilt
 import { ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, IncorrectExamplesDialog, KeyboardShortcutsDialog, MergeSelectionDialog, SegmentQuickSearchDialog } from "./dialogs/EditorDialogs.js";
 import { DerivedSegmentMaterializationDialog } from "./dialogs/MaterializationDialog.js";
 import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
-import { DEFAULT_EDITOR_LAYOUT } from "../shared/constants.js";
+import { DEFAULT_EDITOR_LAYOUT, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
 import { ChevronDown } from "@cove/runtime/lucide-react";
@@ -22,7 +22,7 @@ function SegmentEditorView(props) {
     () => segments.filter((segment) => !segment.published && segment.reviewState === "approved"),
     [segments],
   );
-  const shortcutBindings = useExtensionKeyboardBindings("segment-studio");
+  const shortcutBindings = useExtensionKeyboardBindings(SEGMENT_STUDIO_EXTENSION_ID);
   const approvedDraftCount = approvedDrafts.length;
   const materializeChangeCount = materializePreview
     ? materializePreview.createCount + materializePreview.linkCount

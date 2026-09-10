@@ -590,8 +590,8 @@ test("keyboard bindings are configured by Cove while playback quantities remain 
   const settingsPage = sourceByModule["settings/SegmentStudioSettingsPage.js"];
   const shortcutSettings = sourceByModule["settings/shortcuts.js"];
 
-  assert.match(source, /useRegisterExtensionKeyboardActions\("segment-studio", keyboardActions\)/);
-  assert.match(source, /useExtensionKeyboardBindings\("segment-studio"\)/);
+  assert.match(source, /useRegisterExtensionKeyboardActions\(SEGMENT_STUDIO_EXTENSION_ID, keyboardActions\)/);
+  assert.match(source, /useExtensionKeyboardBindings\(SEGMENT_STUDIO_EXTENSION_ID\)/);
   assert.match(settingsPage, /href: "\/settings\/my\/keyboard-shortcuts"/);
   assert.match(settingsPage, /Configure Segment Studio shortcuts in Cove settings/);
   assert.doesNotMatch(shortcutSettings, /ShortcutBindingSettings|shortcut-bindings\.v1/);
