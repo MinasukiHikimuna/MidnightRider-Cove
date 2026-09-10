@@ -296,8 +296,8 @@ it("undo returns to the affected performer after advancement", async () => {
     expect.objectContaining({ tags: { added: [21, 22], removed: [] } }),
   );
 });
-it("Skip only moves the stable cursor and page revisits make items available again", async () => {
-  open();
+it("Skip only moves the stable cursor and reloading makes items available again", async () => {
+  const view = open();
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
@@ -309,7 +309,8 @@ it("Skip only moves the stable cursor and page revisits make items available aga
   );
   expect(api.applyTags).not.toHaveBeenCalled();
   expect(api.editTags).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Refresh page" }));
+  view.unmount();
+  open();
   await screen.findByRole("heading", { name: "Reviewing First performer" });
 });
 it("reconciles page contraction and does not loop back to still matching loaded items", async () => {
@@ -797,4 +798,13 @@ it("labels portrait controls and preserves selection when an image is missing", 
   fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(first).toHaveAttribute("aria-pressed", "false");
+});
+
+it("keeps only native pagination in the queue before the player", async () => {
+  open(); await ready();
+  const queue = screen.getByRole("complementary", { name: "Review queue" });
+  expect(queue).not.toHaveTextContent(/matching scenes|Position|Scene page|Toward/);
+  expect(within(queue).queryByRole("button", { name: /scene page|Refresh page/ })).not.toBeInTheDocument();
+  const title = screen.getByRole("heading", { name: "First scene" });
+  expect(queue.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

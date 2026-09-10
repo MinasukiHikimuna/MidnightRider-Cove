@@ -10,7 +10,7 @@ Inspect the player and current tags, then choose an action. Actions apply and ad
 
 Use **Edit tags** to add or remove any tags without changing configured actions. **Save** stays on the item, **Save & next** advances, and **Cancel** discards the draft. Inputs remain available if saving fails. If some changes succeeded before an error, inspect the refreshed current tags and retry to finish the intended edit.
 
-**Skip** changes only the cursor. It does not save tags, reviewed status, or an inconclusive answer. Skipped items and items that still match remain available in their sorted pages. Queue counts and position describe the loaded query/page, without completion percentages.
+**Skip** changes only the cursor. It does not save tags, reviewed status, or an inconclusive answer. Skipped items and items that still match remain available in their sorted pages. The native toolbar shows the matching scene range and total, without completion percentages. Use pagination above the scene list to change pages.
 
 **Undo latest tag operation** restores the most recent tag change and returns to its item and page. Unrelated edits are preserved; conflicting changes are reported. Undo is available only in the open workspace, including after automatic advancement. If a save succeeds but loading the next page fails, the success message distinguishes that navigation failure; Skip retries navigation without resubmitting the tag action.
 

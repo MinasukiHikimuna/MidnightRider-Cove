@@ -291,7 +291,6 @@ export function ReviewWorkspace({
   reviewRef.current = review;
   const blocked = pending || loading || editing;
   const page = Number(query.filter.page);
-  const lastPage = Math.max(1, Math.ceil(total / Number(query.filter.perPage)));
 
   function replaceQuery(next: ReviewQuery, end = false) {
     if (lock.current) return;
@@ -945,19 +944,57 @@ export function ReviewWorkspace({
         )}
       </div>
       <div className="dq-review-layout">
+        <aside className="dq-review-queue" aria-label="Review queue">
+          <fieldset disabled={blocked}>
+            <DetailListPagination
+              filter={query.filter}
+              totalCount={total}
+              onFilterChange={(filter) =>
+                replaceQuery({ ...query, filter: boundedFilter(filter) })
+              }
+            />
+          </fieldset>
+          <div className="dq-review-queue-items">
+            {items.map((item) => (
+              <button
+                type="button"
+                className="dq-button"
+                key={item.key}
+                title={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
+                aria-label={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
+                disabled={blocked}
+                aria-pressed={current?.key === item.key}
+                onClick={() => {
+                  setCurrent(item);
+                  setError("");
+                  setNotice("");
+                }}
+              >
+                {item.occurrence && (
+                  <PerformerAvatar performer={item.occurrence.performer} />
+                )}
+                <span className="dq-queue-scene-title">
+                  {item.video.title || item.video.files[0]?.basename || "Scene"}
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
         <div className="dq-review-inspector">
           {current ? (
             <>
               <div className="dq-review-media">
-                <a
-                  href={`/video/${current.video.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {current.video.title ||
-                    current.video.files[0]?.basename ||
-                    "Open scene"}
-                </a>
+                <h2 className="dq-review-video-title">
+                  <a
+                    href={`/video/${current.video.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {current.video.title ||
+                      current.video.files[0]?.basename ||
+                      `Video ${current.video.id}`}
+                  </a>
+                </h2>
                 <VideoPlayer
                   key={current.video.id}
                   videoId={current.video.id}
@@ -1185,92 +1222,6 @@ export function ReviewWorkspace({
             </p>
           )}
         </div>
-        <aside className="dq-review-queue" aria-label="Review queue">
-          <p role="status">
-            {total} matching scenes ·{" "}
-            {scope
-              ? `${items.length} performers on loaded page`
-              : `${items.length} videos on loaded page`}
-            {current && items.some((item) => item.key === current.key)
-              ? ` · Position ${items.findIndex((item) => item.key === current.key) + 1} of ${items.length}`
-              : ""}
-          </p>
-          <fieldset disabled={blocked}>
-            <DetailListPagination
-              filter={query.filter}
-              totalCount={total}
-              onFilterChange={(filter) =>
-                replaceQuery({ ...query, filter: boundedFilter(filter) })
-              }
-            />
-            <div className="dq-row">
-              <button
-                type="button"
-                className="dq-button"
-                disabled={page <= 1}
-                onClick={() =>
-                  replaceQuery({
-                    ...query,
-                    filter: { ...query.filter, page: page - 1 },
-                  })
-                }
-              >
-                Previous scene page
-              </button>
-              <button
-                type="button"
-                className="dq-button"
-                disabled={page >= lastPage}
-                onClick={() =>
-                  replaceQuery({
-                    ...query,
-                    filter: { ...query.filter, page: page + 1 },
-                  })
-                }
-              >
-                Next scene page
-              </button>
-              <button
-                type="button"
-                className="dq-button"
-                onClick={() => replaceQuery(query)}
-              >
-                Refresh page
-              </button>
-            </div>
-            <p>
-              Scene page {page} of {lastPage} ·{" "}
-              {query.startFrom === "end"
-                ? "Toward the beginning"
-                : "Toward the end"}
-            </p>
-          </fieldset>
-          <div className="dq-review-queue-items">
-            {items.map((item) => (
-              <button
-                type="button"
-                className="dq-button"
-                key={item.key}
-                title={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
-                aria-label={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
-                disabled={blocked}
-                aria-pressed={current?.key === item.key}
-                onClick={() => {
-                  setCurrent(item);
-                  setError("");
-                  setNotice("");
-                }}
-              >
-                {item.occurrence && (
-                  <PerformerAvatar performer={item.occurrence.performer} />
-                )}
-                <span className="dq-queue-scene-title">
-                  {item.video.title || item.video.files[0]?.basename || "Scene"}
-                </span>
-              </button>
-            ))}
-          </div>
-        </aside>
       </div>
     </section>
   );

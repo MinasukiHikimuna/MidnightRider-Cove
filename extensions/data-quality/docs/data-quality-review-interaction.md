@@ -16,7 +16,7 @@ A bare review link reads the saved review and serializes its defaults. A link wi
 
 New reviews start from the end. Existing explicit direction is honored, and an explicit URL page takes precedence over the default starting page. Scenes traverse toward the configured end; matching performers in each scene stay together. Skip performs no mutation and creates no exclusion, outcome, or completion record. Video and occurrence reviews neither read nor write legacy progress.
 
-The loaded-page cursor remains stable during tagging. At forward boundaries the current page is reconciled for scenes shifted into it; reverse traversal proceeds to the preceding page. Reconciliation waits for the host query cache after writes, clamps invalid pages, and avoids choosing the just-traversed loaded items again. Revisiting or refreshing a page creates a fresh cursor. Counts describe matching scenes and performers or videos on the loaded page, with a position within that page. No matches and reaching the end in the current direction have distinct messages.
+The loaded-page cursor remains stable during tagging. At forward boundaries the current page is reconciled for scenes shifted into it; reverse traversal proceeds to the preceding page. Reconciliation waits for the host query cache after writes, clamps invalid pages, and avoids choosing the just-traversed loaded items again. Revisiting or refreshing a page creates a fresh cursor. The native toolbar shows the matching scene range and total. The scene queue sits to the left of the player with native pagination; it does not repeat counts, direction, or page navigation controls. No matches and reaching the end in the current direction have distinct messages.
 
 ## Undo
 

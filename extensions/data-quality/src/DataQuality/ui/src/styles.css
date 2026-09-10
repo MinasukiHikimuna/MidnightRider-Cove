@@ -1002,7 +1002,7 @@
 .dq-scope-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .dq-scope-controls label { display: flex; align-items: center; gap: .4rem; }
 .dq-scope-controls select { background: var(--color-card); color: var(--color-foreground); border: 1px solid var(--color-border); border-radius: .3rem; padding: .3rem; }
-.dq-review-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(13rem, 19rem); align-items: start; gap: .75rem; }
+.dq-review-layout { display: grid; grid-template-columns: minmax(13rem, 19rem) minmax(0, 1fr); align-items: start; gap: .75rem; }
 .dq-review-inspector { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(15rem, 1fr); gap: .75rem; min-width: 0; }
 .dq-review-media, .dq-review-panel { min-width: 0; overflow-wrap: anywhere; }
 .dq-review-media video { max-height: min(60vh, 38rem); }
@@ -1038,3 +1038,6 @@
 .dq-review-partners .dq-partner-button { border-radius: 50%; padding: .2rem; }
 .dq-review-workspace [aria-pressed="true"] .dq-performer-avatar { border-color: var(--color-accent); }
 .dq-queue-scene-title { min-width: 0; overflow-wrap: anywhere; }
+
+.dq-review-video-title { margin-top: .25rem; margin-bottom: .5rem; overflow-wrap: anywhere; font-size: 1.25rem; font-weight: 600; line-height: 1.375; color: var(--color-foreground); }
+@media (min-width: 640px) { .dq-review-video-title { font-size: 1.5rem; } }
