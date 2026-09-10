@@ -4,7 +4,7 @@ Open **Data Quality** from Cove's navigation and choose a saved review. Use **Ed
 
 The filter toolbar shows the effective scene query. Occurrence reviews separately offer **All performers**, **Specific performers**, or **Matching performer criteria**, plus conditions on tags attached to that performer's appearance. A scene filter describes which videos match; performer scope describes which partners within them are reviewed. Conditions on occurrence tags apply to the same performer link, independently of video tags and performer profile tags.
 
-Copy the URL to preserve the current search, criteria, performer scope, sort, page size, page, and direction. Reloading that URL restores its query even if the saved review later changes. **Reset to review defaults** restores saved criteria. **Save as review defaults** explicitly updates the review; ordinary toolbar changes do not.
+Copy the URL to preserve the current search, criteria, performer scope, sort, page size, page, and direction. Reloading that URL restores its query even if the saved review later changes. **Reset to review defaults** restores saved criteria. **Save as review defaults** opens the same workspace editing mode as **Edit review**. Change rule details, actions, direction, scene filters, and performer criteria there, then choose **Save review** or **Cancel**. Ordinary toolbar changes remain temporary.
 
 Inspect the player and current tags, then choose an action. Actions apply and advance by default. Hold Shift while clicking or using its numbered shortcut to stay, or choose the action's **Apply & stay** button. Multiple matching scene partners are processed before switching videos, and selecting another partner preserves playback.
 

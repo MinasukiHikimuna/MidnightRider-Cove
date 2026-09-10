@@ -796,44 +796,13 @@ it("keeps edits across review sections and saves the combined draft", async () =
   fireEvent.change(screen.getByLabelText("Description"), {
     target: { value: "Check metadata" },
   });
-  fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
-  expect(screen.getByLabelText("Description")).not.toBeVisible();
-  expect(screen.getByLabelText("Start from")).toHaveDisplayValue(
-    "The beginning",
-  );
-  fireEvent.change(screen.getByLabelText("Start from"), {
-    target: { value: "end" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
+  expect(screen.queryByRole("dialog", { name: "Manage Data Quality reviews" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Queue" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Review direction"), { target: { value: "end" } });
+  fireEvent.click(screen.getByRole("button", { name: "Filters" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
-  for (const annotation of ["date", "studio", "performers", "tags"])
-    expect(screen.getByLabelText(annotation)).not.toBeChecked();
-  expect(
-    screen.queryByPlaceholderText("Search annotation parent tags..."),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.getByPlaceholderText("Search tag-bin parent tags..."),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByLabelText("tags"));
-  expect(
-    screen.getByPlaceholderText("Search annotation parent tags..."),
-  ).toBeInTheDocument();
-  expect(
-    screen.queryByLabelText("Preferred card width"),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("option", { name: "Auto fit" }),
-  ).not.toBeInTheDocument();
-  const preferredView = screen.getByLabelText("Preferred view");
-  expect(
-    within(preferredView)
-      .getAllByRole("option")
-      .map((option) => option.textContent),
-  ).toEqual(["grid", "wall"]);
-  fireEvent.change(preferredView, {
-    target: { value: "wall" },
-  });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
   fireEvent.click(screen.getByRole("tab", { name: "Review" }));
   expect(screen.getByLabelText("Description")).toHaveValue("Check metadata");
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
@@ -842,9 +811,39 @@ it("keeps edits across review sections and saves the combined draft", async () =
     description: "Check metadata",
     view: {
       objectFilter: { organized: true },
-      displayMode: "wall",
+      displayMode: "grid",
       startFrom: "end",
     },
-    presentation: { annotations: ["tags"] },
   });
+});
+
+it("reopens the same media rule from management after cancel without clearing its query", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  const original = window.location.search;
+  for (let i = 0; i < 2; i++) {
+    fireEvent.click(screen.getByRole("button", { name: "Manage reviews" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Edit$/ }));
+    await screen.findByRole("region", { name: "Edit review rule" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await screen.findByRole("heading", { name: "Reviewing this video" });
+    expect(window.location.search).toBe(original);
+  }
+});
+
+it("creates media review details then configures the rule in the workspace", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", {name: "Reviewing this video"});
+  fireEvent.click(screen.getByRole("button", {name: "Manage reviews"}));
+  fireEvent.click(screen.getByRole("button", {name: "New review"}));
+  expect(screen.queryByRole("tab", {name: "Queue"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", {name: "Actions"})).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Review name"), {target: {value: "New media review"}});
+  fireEvent.click(screen.getByRole("button", {name: "Create & configure"}));
+  await screen.findByRole("region", {name: "Edit review rule"});
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Review name")).toHaveValue("New media review");
+  expect(screen.getByRole("tab", {name: "Actions"})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  await screen.findByRole("heading", {name: "Reviewing this video"});
 });

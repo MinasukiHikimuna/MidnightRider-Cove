@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
+import { testFilterControls } from "./runtime-components";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
 import type { OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
@@ -395,6 +396,8 @@ it("keeps saved defaults separate from reset and restores browser URL state", as
   fireEvent.click(
     screen.getByRole("button", { name: "Save as review defaults" }),
   );
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() =>
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -807,4 +810,62 @@ it("keeps only native pagination in the queue before the player", async () => {
   expect(within(queue).queryByRole("button", { name: /scene page|Refresh page/ })).not.toBeInTheDocument();
   const title = screen.getByRole("heading", { name: "First scene" });
   expect(queue.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it("cancels rule criteria without changing saved defaults or the selected partner", async () => {
+  const save = vi.fn(); open(review, true, save); await ready();
+  fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+  const before = window.location.search;
+  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft search" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
+  fireEvent.keyDown(document.body, { key: "1", code: "Digit1" });
+  expect(api.applyTags).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  expect(window.location.search).toBe(before);
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("keeps a failed rule save open and persists performer scope when retried", async () => {
+  const female = { genderCriterion: { value: "Female", modifier: "EQUALS" } };
+  testFilterControls.result = female;
+  const save = vi.fn().mockRejectedValueOnce(new Error("Denied")).mockResolvedValueOnce(true);
+  open(review, true, save); await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
+  fireEvent.click(screen.getByRole("button", { name: "Edit performer criteria" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Your edits are still open");
+  expect(screen.getByRole("combobox", { name: "Performers to review" })).toHaveValue("filter");
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await screen.findByText("Review saved.");
+  expect(save).toHaveBeenLastCalledWith(expect.objectContaining({occurrence: expect.objectContaining({targetMode: "filter", performerFilter: female})}));
+});
+
+it("waits for the initial queue before opening a requested rule draft", async () => {
+  let finish!: (value: {items: (typeof first)[]; totalCount: number}) => void;
+  api.loadOccurrencePage.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
+  await waitFor(() => expect(api.loadOccurrencePage).toHaveBeenCalled());
+  expect(screen.queryByRole("region", {name: "Edit review rule"})).not.toBeInTheDocument();
+  await act(async () => finish({items: [first, second], totalCount: 1}));
+  await screen.findByRole("region", {name: "Edit review rule"});
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  await screen.findByRole("heading", {name: "Reviewing First performer"});
+});
+
+it("allows requested rule editing after an initial queue failure and preserves retry on cancel", async () => {
+  api.loadOccurrencePage.mockRejectedValueOnce(new Error("Queue offline"));
+  const original = window.location.search;
+  render(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
+  await screen.findByRole("region", {name: "Edit review rule"});
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  expect(screen.getByRole("alert")).toHaveTextContent("Queue offline");
+  expect(window.location.search).toBe(original);
+  fireEvent.click(screen.getByRole("button", {name: "Retry queue"}));
+  await screen.findByRole("heading", {name: "Reviewing First performer"});
 });

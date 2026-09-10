@@ -321,6 +321,7 @@ export function DataQualityPage({
     useState<ReviewBrowserDirection>("asc");
   const reviewBrowserHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusReviewBrowser = useRef(false);
+  const [workspaceEditRequest, setWorkspaceEditRequest] = useState(0);
   const [managerOpen, setManagerOpen] = useState(false);
   const [editCurrent, setEditCurrent] = useState(false);
   const [temporaryReview, setTemporaryReview] = useState<Review | null>(
@@ -1176,6 +1177,7 @@ export function DataQualityPage({
   }
 
   function chooseReview(id: string) {
+    setWorkspaceEditRequest(0);
     setActiveId(id);
     writeSelectedReviewId(id);
   }
@@ -1270,8 +1272,8 @@ export function DataQualityPage({
             title="Edit review"
             disabled={pending || queueLoading || !canConfigure}
             onClick={() => {
-              setEditCurrent(true);
-              setManagerOpen(true);
+              if (review.entityType !== "tag") setWorkspaceEditRequest(value => value + 1);
+              else { setEditCurrent(true); setManagerOpen(true); }
             }}
           >
             <Pencil />
@@ -1619,7 +1621,7 @@ export function DataQualityPage({
           </div>
         )
       ) : entityType !== "tag" ? (
-        <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} onBusy={setPending} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
+        <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as VideoReview | OccurrenceReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
       ) : (
         <>
           {videoReview && presentationTags.error && (
@@ -1878,6 +1880,7 @@ export function DataQualityPage({
           initialEdit={editCurrent}
           onSave={updateReviews}
           onChoose={chooseReview}
+          onEditWorkspace={id => { if (id !== activeId) chooseReview(id); setWorkspaceEditRequest(value => value + 1); setManagerOpen(false); }}
           onClose={() => {
             setManagerOpen(false);
             if (editCurrent) focusCard(focusedRef.current, false);
@@ -2591,6 +2594,7 @@ function ReviewManager({
   activeReview,
   tagGroups,
   initialEdit = false,
+  onEditWorkspace,
   onSave,
   onChoose,
   onClose,
@@ -2599,6 +2603,7 @@ function ReviewManager({
   activeReview: Review | null;
   tagGroups: TagGroup[];
   initialEdit?: boolean;
+  onEditWorkspace(id: string): void;
   onSave: (reviews: Review[]) => boolean | Promise<boolean>;
   onChoose: (id: string) => void;
   onClose: () => void;
@@ -2702,8 +2707,8 @@ function ReviewManager({
     setError("");
     try {
       if (!(await onSave(next))) throw new Error("Could not save reviews.");
-      onChoose(saved.id);
-      onClose();
+      if (saved.entityType !== "tag") onEditWorkspace(saved.id);
+      else { onChoose(saved.id); onClose(); }
     } catch (error) {
       setError(
         "Could not save reviews. Your edits are still open. " +
@@ -2791,6 +2796,7 @@ function ReviewManager({
         <fieldset disabled={saving} className="dq-manager-content">
           {draft ? (
             <ReviewEditor
+              setup={draft.entityType !== "tag"}
               draft={draft}
               entityTypeLocked={entityTypeLocked}
               tagGroups={tagGroups}
@@ -2802,6 +2808,10 @@ function ReviewManager({
           ) : (
             <>
               <div className="dq-manager-tools">
+                <button type="button" className="dq-button" onClick={() => {
+                  const url = URL.createObjectURL(new Blob([JSON.stringify(reviews, null, 2)], { type: "application/json" }));
+                  const link = document.createElement("a"); link.href = url; link.download = "data-quality-reviews.json"; link.click(); URL.revokeObjectURL(url);
+                }}>Export reviews</button>
                 <button
                   className="dq-button"
                   type="button"
@@ -2828,7 +2838,7 @@ function ReviewManager({
                       </div>
                       <p>{review.description || "No description"}</p>
                     </div>
-                    <button type="button" onClick={() => begin(review)}>
+                    <button type="button" onClick={() => review.entityType === "tag" ? begin(review) : onEditWorkspace(review.id)}>
                       <Pencil /> Edit
                     </button>
                     <button
@@ -2867,6 +2877,8 @@ function ReviewManager({
 }
 
 function ReviewEditor({
+  workspace = false,
+  setup = false,
   draft,
   entityTypeLocked,
   tagGroups,
@@ -2876,6 +2888,8 @@ function ReviewEditor({
   onCancel,
 }: {
   draft: Review;
+  workspace?: boolean;
+  setup?: boolean;
   entityTypeLocked: boolean;
   tagGroups: TagGroup[];
   saving?: boolean;
@@ -2951,7 +2965,7 @@ function ReviewEditor({
     <div className="dq-editor">
       <div className="dq-editor-nav">
         <EntityDetailTabs
-          tabs={(entityType === "performerOccurrence" ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
+          tabs={(setup ? ["Review"] : workspace ? ["Review", "Actions", ...(entityType === "performerOccurrence" ? ["Tag choices"] : [])] : entityType === "performerOccurrence" ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
             key: name,
             label: name,
             count: name === "Actions" ? draft.actions.length : undefined,
@@ -3004,15 +3018,15 @@ function ReviewEditor({
               />
             </label>
         </section>
-        <section hidden={section !== "Queue"} className="dq-editor-section">
+        {!workspace && !setup && <section hidden={section !== "Queue"} className="dq-editor-section">
           <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
           {draft.entityType === "performerOccurrence" && <OccurrenceSettings review={draft} onChange={setDraft} />}
-        </section>
-        {draft.entityType === "performerOccurrence" && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft} onChange={setDraft} choices /></section>}
-        <section hidden={section !== "Appearance"} className="dq-editor-section">
+        </section>}
+        {!setup && draft.entityType === "performerOccurrence" && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft} onChange={setDraft} choices /></section>}
+        {!workspace && !setup && <section hidden={section !== "Appearance"} className="dq-editor-section">
             <QueueEditor draft={draft} onChange={setDraft} queue={false} />
-        </section>
-        <section hidden={section !== "Actions"} className="dq-editor-section">
+        </section>}
+        {!setup && <section hidden={section !== "Actions"} className="dq-editor-section">
           {entityType === "tag" ? (
             <TagActionsEditor
               draft={draft as TagReview}
@@ -3031,9 +3045,9 @@ function ReviewEditor({
               setDraft={setDraft}
             />
           )}
-        </section>
+        </section>}
       </div>
-      <div className="dq-editor-footer">
+      {!workspace && <div className="dq-editor-footer">
         <button
           className="dq-button"
           type="button"
@@ -3056,9 +3070,9 @@ function ReviewEditor({
           Cancel
         </button>
         <button className="dq-button primary" type="button" onClick={onSave}>
-          Save review
+          {setup ? "Create & configure" : "Save review"}
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -3135,7 +3149,7 @@ function VideoActionsEditor({
   return (
     <>
       <h3>Actions</h3>
-      {draft.entityType === "performerOccurrence" && <p>Actions apply only to the active performer in this scene. Choose performers with the temporary filter while reviewing.</p>}
+      {draft.entityType === "performerOccurrence" && <p>Actions apply only to the active performer in this scene. Set performer matching in the review filters below. Save review keeps those criteria with this rule.</p>}
       <p>
         Steps run in order. No steps means Skip. Earlier steps may remain
         applied if a later step fails.

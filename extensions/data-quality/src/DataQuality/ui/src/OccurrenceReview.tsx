@@ -49,8 +49,8 @@ export function OccurrenceSettings({
     <fieldset className="dq-queue-fields">
       <legend>Occurrence condition (optional)</legend>
       <p>
-        Leave this unrestricted to review any appearance. Choose performers
-        temporarily in the review workspace.
+        Leave this unrestricted to review any appearance. Set performer matching
+        in the review workspace and save it with the rule.
       </p>
       <label>
         Occurrence condition

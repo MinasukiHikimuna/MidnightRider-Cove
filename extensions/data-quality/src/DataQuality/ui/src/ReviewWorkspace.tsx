@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DetailListToolbar,
   DetailListPagination,
@@ -11,6 +11,7 @@ import {
 } from "@cove/runtime/components";
 import { findVideos, request, videoCoverUrl, videoStreamUrl } from "./api";
 import {
+  reviewValidation,
   actionShortcut,
   boundedFilter,
   isReviewShortcutTarget,
@@ -180,11 +181,19 @@ export function ReviewWorkspace({
   canWrite,
   onBusy,
   onSaveDefaults,
+  editRequest = 0,
+  renderRuleEditor,
 }: {
   review: MediaReview;
   canWrite: boolean;
   onBusy(value: boolean): void;
   onSaveDefaults?(review: MediaReview): Promise<unknown>;
+  editRequest?: number;
+  renderRuleEditor?(
+    draft: MediaReview,
+    onChange: (draft: MediaReview) => void,
+    saving: boolean,
+  ): ReactNode;
 }) {
   const initial = useRef<ReturnType<typeof readQuery> | null>(null);
   const initialError = useRef("");
@@ -199,6 +208,20 @@ export function ReviewWorkspace({
       initial.current = { query: defaultQuery(saved), startAtEnd: false };
     }
   }
+  const [ruleDraft, setRuleDraft] = useState<MediaReview | null>(null);
+  const ruleSnapshot = useRef<{
+    error: string;
+    url: string;
+    query: ReviewQuery;
+    items: ReviewItem[];
+    current: ReviewItem | null;
+    total: number;
+    targets: number[] | null;
+  } | null>(null);
+  const ruleOpener = useRef<HTMLElement | null>(null);
+  const activeLoad = useRef<AbortController | null>(null);
+  const [initialLoadSettled, setInitialLoadSettled] = useState(Boolean(initialError.current));
+  const handledEditRequest = useRef(0);
   const [query, setQuery] = useState(initial.current.query);
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -286,7 +309,11 @@ export function ReviewWorkspace({
   const generation = useRef(0);
   const savedRef = useRef(saved);
   savedRef.current = saved;
-  const review = useMemo(() => effectiveReview(saved, query), [saved, query]);
+  const definition = ruleDraft ?? saved;
+  const review = useMemo(
+    () => effectiveReview(definition, query),
+    [definition, query],
+  );
   const reviewRef = useRef(review);
   reviewRef.current = review;
   const blocked = pending || loading || editing;
@@ -333,9 +360,9 @@ export function ReviewWorkspace({
     return () => window.removeEventListener("popstate", restore);
   }, [saved.id]);
   useEffect(() => {
-    onBusy(pending || loading || editing);
+    onBusy(pending || loading || editing || !!ruleDraft);
     return () => onBusy(false);
-  }, [pending, loading, editing, onBusy]);
+  }, [pending, loading, editing, !!ruleDraft, onBusy]);
 
   async function fetchPage(
     rule: MediaReview,
@@ -374,6 +401,7 @@ export function ReviewWorkspace({
     next: ReviewItem | null,
   ) {
     if (!alive.current || deferredRestore.current) return;
+    setInitialLoadSettled(true);
     setItems(orderedItems(result.items, queryRef.current.startFrom === "end"));
     setTotal(result.totalCount);
     setCurrent(next);
@@ -388,6 +416,7 @@ export function ReviewWorkspace({
   useEffect(() => {
     if (initialError.current) return;
     const controller = new AbortController();
+    activeLoad.current = controller;
     const token = ++generation.current;
     setLoading(true);
     setError("");
@@ -417,10 +446,14 @@ export function ReviewWorkspace({
       acceptPage(result, nextPage, ordered[0] ?? null);
     })()
       .catch((error) => {
-        if (!controller.signal.aborted) setError(errorText(error));
+        if (!controller.signal.aborted && token === generation.current)
+          setError(errorText(error));
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted && token === generation.current) {
+          setInitialLoadSettled(true);
+          setLoading(false);
+        }
       });
     return () => {
       controller.abort();
@@ -526,7 +559,8 @@ export function ReviewWorkspace({
     adHoc = false,
     legacy = false,
   ) {
-    if (!current || lock.current || loading || (editing && !adHoc)) return;
+    if (ruleDraft || !current || lock.current || loading || (editing && !adHoc))
+      return;
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
     if (mutating && (!canWrite || !tags)) return;
     lock.current = true;
@@ -651,6 +685,7 @@ export function ReviewWorkspace({
     const keydown = (event: KeyboardEvent) => {
       if (
         editing ||
+        ruleDraft ||
         pending ||
         loading ||
         performerDialog ||
@@ -677,6 +712,84 @@ export function ReviewWorkspace({
     document.addEventListener("keydown", keydown);
     return () => document.removeEventListener("keydown", keydown);
   });
+  function beginRuleEdit() {
+    if (!onSaveDefaults || ruleDraft || lock.current || editing) return;
+    ruleOpener.current = document.activeElement as HTMLElement;
+    ruleSnapshot.current = {
+      error,
+      url:
+        window.location.pathname +
+        window.location.search +
+        window.location.hash,
+      query: structuredClone(queryRef.current),
+      items,
+      current,
+      total,
+      targets: targets.current,
+    };
+    setRuleDraft(structuredClone(effectiveReview(saved, queryRef.current)));
+    setNotice("");
+    setError("");
+  }
+  useEffect(() => {
+    if (
+      editRequest &&
+      editRequest !== handledEditRequest.current &&
+      initialLoadSettled &&
+      !loading
+    ) {
+      handledEditRequest.current = editRequest;
+      beginRuleEdit();
+    }
+  }, [editRequest, loading, initialLoadSettled]);
+  function finishRuleEdit() {
+    setRuleDraft(null);
+    requestAnimationFrame(() => ruleOpener.current?.focus());
+  }
+  function cancelRuleEdit() {
+    const snapshot = ruleSnapshot.current;
+    if (!snapshot || pending) return;
+    activeLoad.current?.abort();
+    generation.current++;
+    queryRef.current = snapshot.query;
+    setQuery(snapshot.query);
+    setItems(snapshot.items);
+    setCurrent(snapshot.current);
+    setTotal(snapshot.total);
+    targets.current = snapshot.targets;
+    setLoading(false);
+    setError(snapshot.error);
+    setNotice("");
+    window.history.replaceState(window.history.state, "", snapshot.url);
+    finishRuleEdit();
+  }
+  async function saveRuleEdit() {
+    if (!ruleDraft || !onSaveDefaults || lock.current) return;
+    const updated = effectiveReview(
+      { ...ruleDraft, name: ruleDraft.name.trim() },
+      queryRef.current,
+    );
+    const invalid = reviewValidation(updated);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    lock.current = true;
+    setPending(true);
+    setError("");
+    try {
+      const result = await onSaveDefaults(updated);
+      if (result === false) throw new Error("Could not save review.");
+      finishRuleEdit();
+      setNotice("Review saved.");
+    } catch (error) {
+      setError(
+        "Could not save review. Your edits are still open. " + errorText(error),
+      );
+    } finally {
+      endOperation();
+    }
+  }
   const scope = query.performerScope;
   const updateScope = (
     change: Partial<NonNullable<ReviewQuery["performerScope"]>>,
@@ -692,6 +805,56 @@ export function ReviewWorkspace({
       className="dq-review-workspace"
       aria-label={scope ? "Performer occurrence review" : "Video review"}
     >
+      {ruleDraft && (
+        <section className="dq-rule-editor" aria-label="Edit review rule">
+          <h2>Edit review</h2>
+          <p>
+            Preview matching scenes below. Save review keeps all rule changes;
+            Cancel restores your previous view.
+          </p>
+          <fieldset disabled={pending}>
+            {renderRuleEditor?.(
+              effectiveReview(ruleDraft, query),
+              setRuleDraft,
+              pending,
+            )}
+            <label>
+              Review direction
+              <select
+                aria-label="Review direction"
+                value={query.startFrom}
+                onChange={(event) =>
+                  replaceQuery({
+                    ...queryRef.current,
+                    startFrom: event.target.value as "beginning" | "end",
+                  })
+                }
+              >
+                <option value="end">Start from the end</option>
+                <option value="beginning">Start from the beginning</option>
+              </select>
+            </label>
+          </fieldset>
+          <div className="dq-row">
+            <button
+              className="dq-button primary"
+              type="button"
+              disabled={pending || loading}
+              onClick={() => void saveRuleEdit()}
+            >
+              Save review
+            </button>
+            <button
+              className="dq-button"
+              type="button"
+              disabled={pending}
+              onClick={cancelRuleEdit}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
       <fieldset
         className="dq-review-filters"
         disabled={blocked}
@@ -868,35 +1031,29 @@ export function ReviewWorkspace({
             )}
           </div>
         )}
-        <div className="dq-row">
-          <button
-            type="button"
-            className="dq-button"
-            onClick={() => {
-              const defaults = defaultQuery(saved);
-              replaceQuery(defaults, defaults.startFrom === "end");
-            }}
-          >
-            Reset to review defaults
-          </button>
-          {onSaveDefaults && (
+        {!ruleDraft && (
+          <div className="dq-row">
             <button
               type="button"
               className="dq-button"
               onClick={() => {
-                lock.current = true;
-                setPending(true);
-                setError("");
-                void onSaveDefaults(effectiveReview(saved, query))
-                  .then(() => setNotice("Review defaults saved."))
-                  .catch((error) => setError(errorText(error)))
-                  .finally(endOperation);
+                const defaults = defaultQuery(saved);
+                replaceQuery(defaults, defaults.startFrom === "end");
               }}
             >
-              Save as review defaults
+              Reset to review defaults
             </button>
-          )}
-        </div>
+            {onSaveDefaults && (
+              <button
+                type="button"
+                className="dq-button"
+                onClick={beginRuleEdit}
+              >
+                Save as review defaults
+              </button>
+            )}
+          </div>
+        )}
       </fieldset>
       {scope && (
         <FilterDialog
@@ -932,7 +1089,7 @@ export function ReviewWorkspace({
           </p>
         )}
         {notice && <p role="status">{notice}</p>}
-        {undo && (
+        {undo && !ruleDraft && (
           <button
             type="button"
             className="dq-button"
@@ -1121,15 +1278,19 @@ export function ReviewWorkspace({
                 ) : (
                   <>
                     <ReviewActionControls
-                      actions={saved.actions}
+                      actions={definition.actions}
                       canWrite={canWrite}
-                      disabled={pending || loading || !tags}
+                      disabled={pending || loading || !tags || !!ruleDraft}
                       onApply={(action, stay) => void execute(action, stay)}
                     />
                     {saved.entityType === "performerOccurrence" &&
                       !saved.actions.length &&
                       saved.occurrence.tagIds.length > 0 && (
-                        <fieldset disabled={!canWrite || pending || !tags}>
+                        <fieldset
+                          disabled={
+                            !canWrite || pending || !tags || !!ruleDraft
+                          }
+                        >
                           <legend>Tag choices</legend>
                           {saved.occurrence.tagIds.map((id) => (
                             <label key={id}>
@@ -1189,7 +1350,7 @@ export function ReviewWorkspace({
                     type="button"
                     ref={editButton}
                     className="dq-button"
-                    disabled={blocked || !canWrite || !tags}
+                    disabled={blocked || !!ruleDraft || !canWrite || !tags}
                     onClick={() => {
                       editorBase.current = [...tags!.ids];
                       setDraft([...tags!.ids]);
@@ -1201,7 +1362,7 @@ export function ReviewWorkspace({
                   <button
                     type="button"
                     className="dq-button"
-                    disabled={blocked}
+                    disabled={blocked || !!ruleDraft}
                     onClick={() => void execute()}
                   >
                     Skip{scope ? " performer" : " video"}

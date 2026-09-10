@@ -27,3 +27,9 @@ Cove's current APIs do not offer atomic compare-and-swap tag changes. A write ra
 ## Tag-group reviews
 
 Tag-group reviews retain native Grid/List selection, focused-item keyboard navigation, group assignment or clearing, and account-scoped progress. Their existing workflow is separate from the filter-driven video and occurrence workspace. The review catalog and immutable review entity types are unchanged.
+
+## Edit a media review
+
+**Edit review** opens a draft in the existing review workspace. Change the name, description, actions, tag choices, direction, scene filters, and performer matching there; the scene list previews the draft criteria. **Save as review defaults** enters the same editing mode using the current temporary query. **Save review** persists the complete rule, including performer criteria such as Female. **Cancel** discards the rule draft and restores the query and selected item from before editing. Failed saves leave the draft open for correction or retry. Tag actions and their shortcuts are disabled while editing the rule.
+
+Management retains creation, duplication, deletion, import, and export. Editing an existing video or occurrence review from management opens this workspace mode; legacy tag-group reviews retain their existing editor.
