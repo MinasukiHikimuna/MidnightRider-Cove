@@ -8,7 +8,7 @@ extension-owned drafts and derived segments.
 Its extension ID is `com.midnightrider.segment-studio`. The shorter
 `segment-studio` name remains in user-facing routes and internal data namespaces.
 
-Version 0.1.1 requires Cove 1.4.0-rc.1 or later.
+Version 0.1.2 requires Cove 1.4.0-rc.1 or later.
 
 The extension includes video discovery, a timeline-first editor, review and
 recycling-bin workflows, segment groups, provenance inspection, integrity
