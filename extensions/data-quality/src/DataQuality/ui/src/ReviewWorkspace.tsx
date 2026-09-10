@@ -234,11 +234,18 @@ export function ReviewWorkspace({
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [current, setCurrent] = useState<ReviewItem | null>(null);
   const stayedCursor = useRef<StayedCursor | null>(null);
-  const playback = useRef({ videoId: 0, playing: false });
   const [autostartVideoId, setAutostartVideoId] = useState<number | null>(null);
-  const onPlaybackStateChange = useCallback((playing: boolean) => {
-    playback.current = { videoId: current?.video.id ?? 0, playing };
-  }, [current?.video.id]);
+  const [playerRevision, setPlayerRevision] = useState(0);
+  const nextItemToPreload = useMemo(() => {
+    if (!current) return null;
+    const currentIndex = items.findIndex((item) => item.key === current.key);
+    if (currentIndex < 0) return null;
+    return (
+      items
+        .slice(currentIndex + 1)
+        .find((item) => item.video.id !== current.video.id) ?? null
+    );
+  }, [current, items]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
@@ -399,10 +406,15 @@ export function ReviewWorkspace({
     nextPage: number,
     next: ReviewItem | null,
     resumePlayback = false,
+    preserveOrder = false,
   ) {
     if (!alive.current || deferredRestore.current) return;
     setInitialLoadSettled(true);
-    setItems(orderedItems(result.items, queryRef.current.startFrom === "end"));
+    setItems(
+      preserveOrder
+        ? result.items
+        : orderedItems(result.items, queryRef.current.startFrom === "end"),
+    );
     setTotal(result.totalCount);
     showItem(next, resumePlayback);
     const nextQuery = {
@@ -416,7 +428,6 @@ export function ReviewWorkspace({
   function showItem(next: ReviewItem | null, resumePlayback = false) {
     if (next?.key !== current?.key) stayedCursor.current = null;
     if (next?.video.id !== current?.video.id) {
-      playback.current = { videoId: 0, playing: false };
       setAutostartVideoId(resumePlayback && next ? next.video.id : null);
     }
     setCurrent(next);
@@ -431,7 +442,6 @@ export function ReviewWorkspace({
     setNotice("");
     stayedCursor.current = null;
     setAutostartVideoId(null);
-    playback.current = { videoId: 0, playing: false };
     setCurrent(null);
     setItems([]);
     setEditing(false);
@@ -554,22 +564,49 @@ export function ReviewWorkspace({
         nextPage = end;
         result = await fetchPage(review, nextPage);
       }
+      const orderedResult = orderedItems(result.items, direction === -1);
+      const resultByKey = new Map(orderedResult.map((item) => [item.key, item]));
+      const preservedRemaining = refresh
+        ? cursor.after.flatMap((key) => {
+            const item = resultByKey.get(key);
+            return item ? [item] : [];
+          })
+        : [];
+      const preservedKeys = new Set(preservedRemaining.map((item) => item.key));
+      const reconciledResult = refresh
+        ? {
+            ...result,
+            items: [
+              ...preservedRemaining,
+              ...orderedResult.filter(
+                (item) =>
+                  item.key !== current.key && !preservedKeys.has(item.key),
+              ),
+            ],
+          }
+        : result;
       if (stay) {
         stayedCursor.current = cursor;
-        acceptPage(result, nextPage, current);
+        acceptPage(reconciledResult, nextPage, current, false, refresh);
         return;
       }
       const candidate =
         direction === -1 && page === 1 && !refresh
           ? undefined
-          : orderedItems(result.items, direction === -1).find(
+          : reconciledResult.items.find(
               (item) => !loadedKeys.has(item.key) &&
                 // A reverse-page refill comes from scenes already traversed.
                 // Keep remaining partners, then continue on the preceding page.
                 (!(refresh && direction === -1 && nextPage === cursor.page) || remainingKeys.has(item.key)),
             );
       if (candidate || (direction === -1 ? nextPage <= 1 : nextPage >= end)) {
-        acceptPage(result, nextPage, candidate ?? null, resumePlayback);
+        acceptPage(
+          reconciledResult,
+          nextPage,
+          candidate ?? null,
+          resumePlayback,
+          refresh,
+        );
         if (!candidate)
           setNotice(
             result.totalCount
@@ -590,12 +627,23 @@ export function ReviewWorkspace({
     if (ruleDraft || !current || lock.current || loading || (editing && !adHoc))
       return;
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
-    const resumePlayback = mutating && playback.current.videoId === current.video.id && playback.current.playing;
+    const autoplayNext = mutating && !stay;
     if (mutating && (!canWrite || !tags)) return;
     lock.current = true;
     setPending(true);
     setError("");
     setNotice("");
+    const currentIndex = items.findIndex((item) => item.key === current.key);
+    const optimisticNext =
+      mutating && !stay && currentIndex >= 0
+        ? (items[currentIndex + 1] ?? null)
+        : null;
+    if (optimisticNext) {
+      setItems((currentItems) =>
+        currentItems.filter((item) => item.key !== current.key),
+      );
+      showItem(optimisticNext, true);
+    }
     let savedTags = false;
     try {
       if (mutating) {
@@ -613,13 +661,13 @@ export function ReviewWorkspace({
         }
         lastWriteAt.current = Date.now();
         const after = await readTags(current);
-        setTags(after);
+        if (!optimisticNext) setTags(after);
         savedTags = true;
         setEditing(false);
         setNotice("Tags saved.");
       }
       if (!alive.current || deferredRestore.current) return;
-      if (mutating) await advance(true, stay, resumePlayback);
+      if (mutating) await advance(true, stay, autoplayNext);
       else if (!stay) await advance();
       if (stay && adHoc) requestAnimationFrame(() => editButton.current?.focus());
     } catch (error) {
@@ -631,6 +679,12 @@ export function ReviewWorkspace({
             : `Could not advance. ${errorText(error)}`,
       );
       if (mutating && !savedTags) {
+        if (optimisticNext) {
+          setItems(items);
+          setAutostartVideoId(null);
+          setPlayerRevision((revision) => revision + 1);
+          setCurrent(current);
+        }
         lastWriteAt.current = Date.now();
         try {
           setTags(await readTags(current));
@@ -1117,28 +1171,39 @@ export function ReviewWorkspace({
                       `Video ${current.video.id}`}
                   </a>
                 </h2>
-                <VideoPlayer
-                  key={current.video.id}
-                  videoId={current.video.id}
-                  streamUrl={videoStreamUrl(current.video.id)}
-                  posterUrl={videoCoverUrl(current.video)}
-                  duration={current.video.files[0]?.duration ?? 0}
-                  format={current.video.files[0]?.format}
-                  audioCodec={current.video.files[0]?.audioCodec}
-                  extensionSurface="quick-view"
-                  autostart={autostartVideoId === current.video.id}
-                  onPlaybackStateChange={onPlaybackStateChange}
-                  showAbLoop
-                  clip={
-                    current.video.parentVideoId != null
-                      ? {
-                          start: current.video.clipStartSec ?? 0,
-                          end: current.video.clipEndSec,
-                          loop: false,
+                {[current, nextItemToPreload].filter(Boolean).map((item) => {
+                  const playerItem = item as ReviewItem;
+                  const active = playerItem.key === current.key;
+                  return (
+                    <div
+                      key={`${playerItem.video.id}:${playerRevision}`}
+                      className={active ? "dq-review-video-current" : "dq-review-video-preload"}
+                      aria-hidden={active ? undefined : true}
+                      inert={active ? undefined : true}
+                    >
+                      <VideoPlayer
+                        videoId={playerItem.video.id}
+                        streamUrl={videoStreamUrl(playerItem.video.id)}
+                        posterUrl={active ? videoCoverUrl(playerItem.video) : undefined}
+                        duration={playerItem.video.files[0]?.duration ?? 0}
+                        format={playerItem.video.files[0]?.format}
+                        audioCodec={playerItem.video.files[0]?.audioCodec}
+                        extensionSurface={active ? "quick-view" : undefined}
+                        autostart={active && autostartVideoId === playerItem.video.id}
+                        showAbLoop={active}
+                        clip={
+                          playerItem.video.parentVideoId != null
+                            ? {
+                                start: playerItem.video.clipStartSec ?? 0,
+                                end: playerItem.video.clipEndSec,
+                                loop: false,
+                              }
+                            : undefined
                         }
-                      : undefined
-                  }
-                />
+                      />
+                    </div>
+                  );
+                })}
               </div>
               <div className="dq-review-panel">
                 <h2>

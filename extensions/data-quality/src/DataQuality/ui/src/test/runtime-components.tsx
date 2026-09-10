@@ -9,18 +9,22 @@ export const testVideoControls = {
   seekBy: vi.fn(),
 };
 export function VideoPlayer({
+  videoId,
   autostart,
+  extensionSurface,
   onPlaybackStateChange,
   clip,
   onPlaybackControlRegister,
 }: {
+  videoId?: number;
   autostart?: boolean;
+  extensionSurface?: string;
   onPlaybackStateChange?: (playing: boolean) => void;
   clip?: { start: number; end?: number | null; loop?: boolean };
   onPlaybackControlRegister?: (controls: typeof testVideoControls) => void;
 }) {
   onPlaybackControlRegister?.(testVideoControls);
-  return <div data-testid="video-player" data-autostart={autostart} data-clip={clip ? JSON.stringify(clip) : undefined}><button onClick={() => onPlaybackStateChange?.(true)}>Play review video</button><button onClick={() => onPlaybackStateChange?.(false)}>Pause review video</button></div>;
+  return <div data-testid={extensionSurface ? "video-player" : "video-player-preload"} data-video-id={videoId} data-autostart={autostart} data-clip={clip ? JSON.stringify(clip) : undefined}><button onClick={() => onPlaybackStateChange?.(true)}>Play review video</button><button onClick={() => onPlaybackStateChange?.(false)}>Pause review video</button></div>;
 }
 export function EntityReferenceMultiSelector({
   placeholder,

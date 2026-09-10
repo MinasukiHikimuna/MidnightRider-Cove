@@ -1,7 +1,7 @@
 {
   "id": "com.midnightrider.data-quality",
   "name": "Data Quality",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "Adds dedicated keyboard-driven video and tag data-quality review workspaces.",
   "author": "MidnightRider",
   "kind": "extension",

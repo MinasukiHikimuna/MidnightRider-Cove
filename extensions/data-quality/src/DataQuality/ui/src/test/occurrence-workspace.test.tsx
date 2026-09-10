@@ -141,6 +141,22 @@ async function ready() {
     expect(screen.getByRole("button", { name: "Edit tags" })).toBeEnabled(),
   );
 }
+it("preloads the next distinct video in a reusable player", async () => {
+  api.loadOccurrencePage.mockResolvedValue({
+    items: [first, second, third],
+    totalCount: 3,
+  });
+  open();
+  await ready();
+
+  const preload = document.querySelector(".dq-review-video-preload");
+  expect(preload).toHaveAttribute("aria-hidden", "true");
+  expect(preload).toHaveAttribute("inert");
+  expect(preload?.querySelector('[data-testid="video-player-preload"]')).toHaveAttribute(
+    "data-video-id",
+    "2",
+  );
+});
 it("ignores legacy progress and uses saved performer targeting", async () => {
   localStorage.setItem(
     "progress:r",
@@ -417,16 +433,104 @@ it("keeps saved defaults separate from reset and restores browser URL state", as
   );
 });
 it("gives video reviews the same Save and default advancement behavior", async () => {
-  const rule: VideoReview = { ...review, entityType: "video" };
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  api.findVideos
+    .mockResolvedValueOnce({ items: [video, third.video, later], totalCount: 3 })
+    .mockResolvedValue({ items: [third.video, later], totalCount: 2 });
   open(rule);
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
+  expect(screen.getByRole("button", { name: "Later scene" })).toBeInTheDocument();
+  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
   expect(api.applyTags).toHaveBeenCalledWith(
     expect.anything(),
     expect.objectContaining({ key: "1", video }),
     rule.actions[0],
   );
+});
+it("removes the active video and autoplays its successor before the write settles", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  let finish!: () => void;
+  api.applyTags.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  api.findVideos
+    .mockResolvedValueOnce({ items: [video, third.video, later], totalCount: 3 })
+    .mockResolvedValue({ items: [later, third.video], totalCount: 2 });
+  open(rule);
+  await ready();
+  const preloadedSuccessor = screen.getByTestId("video-player-preload");
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+
+  expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "First scene" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Later scene" })).toBeInTheDocument();
+  expect(screen.getByTestId("video-player")).toBe(preloadedSuccessor);
+  expect(preloadedSuccessor).toHaveAttribute("data-autostart", "true");
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  await act(async () => finish());
+  await ready();
+  expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+});
+it("remounts the prepared successor paused when a write fails", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  api.findVideos.mockResolvedValue({
+    items: [video, third.video, later],
+    totalCount: 3,
+  });
+  api.applyTags.mockRejectedValueOnce(new Error("write failed"));
+  open(rule);
+  await ready();
+  const preparedSuccessor = screen.getByTestId("video-player-preload");
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  expect(screen.getByTestId("video-player")).toBe(preparedSuccessor);
+
+  await screen.findByRole("link", { name: "First scene" });
+  const restoredPreload = screen.getByTestId("video-player-preload");
+  expect(restoredPreload).not.toBe(preparedSuccessor);
+  expect(restoredPreload).toHaveAttribute("data-autostart", "false");
+});
+it("keeps earlier unprocessed videos after applying a manually selected item", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  api.findVideos
+    .mockResolvedValueOnce({ items: [video, third.video, later], totalCount: 3 })
+    .mockResolvedValue({ items: [later, video], totalCount: 2 });
+  open(rule);
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Next scene" }));
+  await screen.findByRole("link", { name: "Next scene" });
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+
+  await screen.findByRole("link", { name: "Later scene" });
+  await ready();
+  expect(screen.getByRole("button", { name: "First scene" })).toBeInTheDocument();
 });
 it("blocks duplicate submissions and keeps Skip available without write permission", async () => {
   open(review, false);
@@ -797,7 +901,7 @@ it("refreshes the queue after each save and removes a scene only after its last 
   expect(queue.queryByRole("button", { name: /First scene/ })).not.toBeInTheDocument();
 });
 
-it.each([true, false])("continues playback after applying and advancing only if playing (%s)", async playing => {
+it.each([true, false])("autoplays the next video after applying regardless of prior playback (%s)", async playing => {
   api.loadOccurrencePage.mockResolvedValueOnce({ items: [first, third], totalCount: 2 });
   api.loadOccurrencePage.mockResolvedValue({ items: [third], totalCount: 1 });
   open(); await ready();
@@ -806,7 +910,7 @@ it.each([true, false])("continues playback after applying and advancing only if 
   if (!playing) fireEvent.click(screen.getByRole("button", { name: "Pause review video" }));
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" }, { timeout: 3000 });
-  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", String(playing));
+  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
 });
 
 
@@ -851,16 +955,25 @@ it("keeps partners together during a shrinking reverse review and does not revis
 });
 
 it("does not carry autoplay into a manually selected video", async () => {
-  api.loadOccurrencePage.mockResolvedValueOnce({ items: [first, third], totalCount: 2 });
-  api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
-  open(); await ready();
+  const later = {
+    ...first,
+    key: "3:11",
+    video: { ...video, id: 3, title: "Later scene" },
+  };
+  const rule: OccurrenceReview = {
+    ...review,
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  api.loadOccurrencePage.mockResolvedValueOnce({ items: [first, third, later], totalCount: 3 });
+  api.loadOccurrencePage.mockResolvedValue({ items: [third, later], totalCount: 2 });
+  open(rule); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   await ready();
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
-  fireEvent.click(screen.getByRole("button", { name: "First performer — First scene" }));
-  await screen.findByRole("link", { name: "First scene" });
+  fireEvent.click(screen.getByRole("button", { name: "First performer — Later scene" }));
+  await screen.findByRole("link", { name: "Later scene" });
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
 });
 
@@ -942,7 +1055,7 @@ it("restores the pinned cursor when cancelling a rule edit after a queue reload"
   await screen.findByRole("link", { name: "Next scene" });
 });
 
-it("forgets playing state when manual query navigation remounts a paused player", async () => {
+it("autoplays after an action even when query navigation remounted a paused player", async () => {
   api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
   open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
@@ -950,11 +1063,11 @@ it("forgets playing state when manual query navigation remounts a paused player"
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
-  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
+  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
 });
 
 
-it("forgets earlier playback after manually visiting another scene and returning", async () => {
+it("autoplays after an action even after manually visiting another scene", async () => {
   api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
   open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
@@ -964,5 +1077,5 @@ it("forgets earlier playback after manually visiting another scene and returning
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
-  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
+  expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
 });
