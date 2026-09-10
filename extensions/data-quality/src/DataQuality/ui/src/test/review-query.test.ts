@@ -58,6 +58,7 @@ it("round trips performer scope, occurrence conditions, multicolumn sort and exp
     ...query.performerScope!,
     targetMode: "selected",
     performerIds: [4, 5],
+    includeSubtags: false,
   };
   query.filter = {
     ...query.filter,
@@ -77,9 +78,11 @@ it("round trips performer scope, occurrence conditions, multicolumn sort and exp
   const effective = effectiveReview(review, query) as OccurrenceReview;
   expect(effective.occurrence.tagIds).toEqual([3]);
   expect(effective.occurrence.performerIds).toEqual([4, 5]);
+  expect(effective.occurrence.includeSubtags).toBe(false);
   expect(effective.view.objectFilter).toEqual({ organized: false });
 });
 it("rejects malformed criteria instead of silently restoring hidden defaults", () => {
+  expect(() => readQuery(review, new URLSearchParams('performerScope={"includeSubtags":"false"}'))).toThrow();
   expect(() => readQuery(review, new URLSearchParams("filters=[]"))).toThrow();
   expect(() =>
     readQuery(
@@ -87,4 +90,13 @@ it("rejects malformed criteria instead of silently restoring hidden defaults", (
       new URLSearchParams('performerScope={"targetMode":"invalid"}'),
     ),
   ).toThrow();
+});
+
+it("restores the saved subtag choice and defaults older reviews to including subtags", () => {
+  expect(defaultQuery(review).performerScope?.includeSubtags).toBe(true);
+  const exact = { ...review, occurrence: { ...review.occurrence, includeSubtags: false } };
+  expect(defaultQuery(exact).performerScope?.includeSubtags).toBe(false);
+  const legacyScope = { ...review.occurrence };
+  const params = new URLSearchParams({ performerScope: JSON.stringify(legacyScope) });
+  expect(readQuery(exact, params).query.performerScope?.includeSubtags).toBe(true);
 });

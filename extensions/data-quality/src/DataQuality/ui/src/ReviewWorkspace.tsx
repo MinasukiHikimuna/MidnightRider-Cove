@@ -1,5 +1,4 @@
-import { BatchOccurrenceDialog } from "./BatchOccurrenceDialog";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DetailListToolbar,
   DetailListPagination,
@@ -29,16 +28,12 @@ import {
   type ReviewQuery,
 } from "./reviewQuery";
 import {
-  actionTagIds,
   applyTags,
   difference,
   editTags,
   readTags,
-  undoOperation,
-  undoTags,
   type ReviewItem,
   type TagState,
-  type UndoOperation,
 } from "./reviewTags";
 
 function PerformerAvatar({
@@ -177,6 +172,13 @@ export function ReviewActionControls({
   );
 }
 
+interface StayedCursor {
+  key: string;
+  page: number;
+  before: string[];
+  after: string[];
+}
+
 export function ReviewWorkspace({
   review: saved,
   canWrite,
@@ -218,6 +220,7 @@ export function ReviewWorkspace({
     current: ReviewItem | null;
     total: number;
     targets: number[] | null;
+    stayedCursor: StayedCursor | null;
   } | null>(null);
   const ruleOpener = useRef<HTMLElement | null>(null);
   const activeLoad = useRef<AbortController | null>(null);
@@ -230,6 +233,12 @@ export function ReviewWorkspace({
   const startAtEnd = useRef(initial.current.startAtEnd);
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [current, setCurrent] = useState<ReviewItem | null>(null);
+  const stayedCursor = useRef<StayedCursor | null>(null);
+  const playback = useRef({ videoId: 0, playing: false });
+  const [autostartVideoId, setAutostartVideoId] = useState<number | null>(null);
+  const onPlaybackStateChange = useCallback((playing: boolean) => {
+    playback.current = { videoId: current?.video.id ?? 0, playing };
+  }, [current?.video.id]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
@@ -258,17 +267,6 @@ export function ReviewWorkspace({
     if (editing)
       editor.current?.querySelector<HTMLInputElement>("input")?.focus();
   }, [editing]);
-  const [undo, setUndo] = useState<
-    | (UndoOperation & {
-        cursor: {
-          query: ReviewQuery;
-          items: ReviewItem[];
-          total: number;
-          targets: number[] | null;
-        };
-      })
-    | null
-  >(null);
   const [performerDialog, setPerformerDialog] = useState(false);
   useEffect(() => {
     if (loading || performerDialog || !filterReturnFocus.current) return;
@@ -400,12 +398,13 @@ export function ReviewWorkspace({
     result: { items: ReviewItem[]; totalCount: number },
     nextPage: number,
     next: ReviewItem | null,
+    resumePlayback = false,
   ) {
     if (!alive.current || deferredRestore.current) return;
     setInitialLoadSettled(true);
     setItems(orderedItems(result.items, queryRef.current.startFrom === "end"));
     setTotal(result.totalCount);
-    setCurrent(next);
+    showItem(next, resumePlayback);
     const nextQuery = {
       ...queryRef.current,
       filter: { ...queryRef.current.filter, page: nextPage },
@@ -413,6 +412,14 @@ export function ReviewWorkspace({
     queryRef.current = nextQuery;
     setQuery(nextQuery);
     writeQuery(saved.id, nextQuery);
+  }
+  function showItem(next: ReviewItem | null, resumePlayback = false) {
+    if (next?.key !== current?.key) stayedCursor.current = null;
+    if (next?.video.id !== current?.video.id) {
+      playback.current = { videoId: 0, playing: false };
+      setAutostartVideoId(resumePlayback && next ? next.video.id : null);
+    }
+    setCurrent(next);
   }
   useEffect(() => {
     if (initialError.current) return;
@@ -422,6 +429,9 @@ export function ReviewWorkspace({
     setLoading(true);
     setError("");
     setNotice("");
+    stayedCursor.current = null;
+    setAutostartVideoId(null);
+    playback.current = { videoId: 0, playing: false };
     setCurrent(null);
     setItems([]);
     setEditing(false);
@@ -508,23 +518,32 @@ export function ReviewWorkspace({
     };
   }, [saved]);
 
-  async function advance() {
+  async function advance(refresh = false, stay = false, resumePlayback = false) {
     if (!current) return;
     const index = items.findIndex((item) => item.key === current.key);
-    if (index >= 0 && index + 1 < items.length) {
-      setCurrent(items[index + 1]);
+    const direction = query.startFrom === "end" ? -1 : 1;
+    // Apply & stay may remove the current row. Retain its place among the old
+    // keys so the next action cannot return to a skipped row or reverse refill.
+    const cursor = stayedCursor.current?.key === current.key
+      ? stayedCursor.current
+      : { key: current.key, page, before: items.slice(0, index + 1).map(item => item.key), after: items.slice(index + 1).map(item => item.key) };
+    const remainingKeys = new Set(cursor.after);
+    const visitedKeys = new Set(cursor.before);
+    const nextLoaded = items.find(item => remainingKeys.has(item.key) ||
+      ((direction === 1 || page < cursor.page) && stayedCursor.current?.key === current.key && !visitedKeys.has(item.key)));
+    if (!refresh && nextLoaded) {
+      showItem(nextLoaded, resumePlayback);
       return;
     }
     // Only loaded-page keys are excluded during boundary reconciliation. Manual
     // page navigation starts a fresh cursor and makes every matching item available.
-    const loadedKeys = new Set(items.map((item) => item.key));
+    const loadedKeys = refresh ? visitedKeys : new Set(items.map(item => item.key));
     const cacheWait = 1100 - (Date.now() - lastWriteAt.current);
     if (cacheWait > 0)
       await new Promise((resolve) => window.setTimeout(resolve, cacheWait));
-    const direction = query.startFrom === "end" ? -1 : 1;
     // In reverse traversal, refills on the current page come from the side
     // already traversed. Move to the preceding page instead.
-    let nextPage = direction === -1 ? Math.max(1, page - 1) : page;
+    let nextPage = direction === -1 && !refresh ? Math.max(1, page - 1) : page;
     while (alive.current && !deferredRestore.current) {
       let result = await fetchPage(review, nextPage);
       const end = Math.max(
@@ -535,14 +554,22 @@ export function ReviewWorkspace({
         nextPage = end;
         result = await fetchPage(review, nextPage);
       }
+      if (stay) {
+        stayedCursor.current = cursor;
+        acceptPage(result, nextPage, current);
+        return;
+      }
       const candidate =
-        direction === -1 && page === 1
+        direction === -1 && page === 1 && !refresh
           ? undefined
           : orderedItems(result.items, direction === -1).find(
-              (item) => !loadedKeys.has(item.key),
+              (item) => !loadedKeys.has(item.key) &&
+                // A reverse-page refill comes from scenes already traversed.
+                // Keep remaining partners, then continue on the preceding page.
+                (!(refresh && direction === -1 && nextPage === cursor.page) || remainingKeys.has(item.key)),
             );
       if (candidate || (direction === -1 ? nextPage <= 1 : nextPage >= end)) {
-        acceptPage(result, nextPage, candidate ?? null);
+        acceptPage(result, nextPage, candidate ?? null, resumePlayback);
         if (!candidate)
           setNotice(
             result.totalCount
@@ -563,6 +590,7 @@ export function ReviewWorkspace({
     if (ruleDraft || !current || lock.current || loading || (editing && !adHoc))
       return;
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
+    const resumePlayback = mutating && playback.current.videoId === current.video.id && playback.current.playing;
     if (mutating && (!canWrite || !tags)) return;
     lock.current = true;
     setPending(true);
@@ -572,9 +600,7 @@ export function ReviewWorkspace({
     try {
       if (mutating) {
         const before = await readTags(current);
-        let touched: number[];
         if (action) {
-          touched = await actionTagIds(action);
           await applyTags(review, current, action);
         } else {
           const base =
@@ -583,34 +609,19 @@ export function ReviewWorkspace({
               : editorBase.current;
           const selected = legacy ? legacySelected : draft;
           const change = difference(base, selected);
-          touched = [...change.added, ...change.removed];
           await editTags(review, current, change);
         }
         lastWriteAt.current = Date.now();
         const after = await readTags(current);
         setTags(after);
-        const operation = undoOperation(current, before, after, touched);
-        if (
-          [operation.tags, operation.absence].some(
-            (delta) => delta.added.length || delta.removed.length,
-          )
-        )
-          setUndo({
-            ...operation,
-            cursor: {
-              query: structuredClone(query),
-              items: [...items],
-              total,
-              targets: targets.current ? [...targets.current] : null,
-            },
-          });
         savedTags = true;
         setEditing(false);
         setNotice("Tags saved.");
       }
       if (!alive.current || deferredRestore.current) return;
-      if (!stay) await advance();
-      else if (adHoc) requestAnimationFrame(() => editButton.current?.focus());
+      if (mutating) await advance(true, stay, resumePlayback);
+      else if (!stay) await advance();
+      if (stay && adHoc) requestAnimationFrame(() => editButton.current?.focus());
     } catch (error) {
       setError(
         savedTags
@@ -630,53 +641,6 @@ export function ReviewWorkspace({
               `${previous} Current tags could not be refreshed; reload tags before retrying.`,
           );
         }
-      }
-    } finally {
-      endOperation();
-    }
-  }
-  async function performUndo() {
-    if (!undo || lock.current || editing || loading) return;
-    lock.current = true;
-    setPending(true);
-    setError("");
-    setNotice("");
-    try {
-      await undoTags(review, undo);
-      setUndo(null);
-      lastWriteAt.current = Date.now();
-      const state = await readTags(undo.item);
-      if (!alive.current || deferredRestore.current) return;
-      setLegacySelected(
-        saved.entityType === "performerOccurrence"
-          ? state.ids.filter((id) => saved.occurrence.tagIds.includes(id))
-          : [],
-      );
-      targets.current = undo.cursor.targets;
-      queryRef.current = undo.cursor.query;
-      setQuery(undo.cursor.query);
-      writeQuery(saved.id, undo.cursor.query);
-      setItems(undo.cursor.items);
-      setTotal(undo.cursor.total);
-      setCurrent(undo.item);
-      setTags(state);
-      setUndo(null);
-      setNotice("Latest tag operation undone. Inspecting the affected item.");
-    } catch (error) {
-      if (!alive.current || deferredRestore.current) return;
-      setError(`Undo stopped. ${errorText(error)}`);
-      // Keep the operation available on conflicts. Partial writes require inspection.
-      targets.current = undo.cursor.targets;
-      queryRef.current = undo.cursor.query;
-      setQuery(undo.cursor.query);
-      writeQuery(saved.id, undo.cursor.query);
-      setItems(undo.cursor.items);
-      setTotal(undo.cursor.total);
-      setCurrent(undo.item);
-      try {
-        setTags(await readTags(undo.item));
-      } catch {
-        setTags(null);
       }
     } finally {
       endOperation();
@@ -727,6 +691,7 @@ export function ReviewWorkspace({
       current,
       total,
       targets: targets.current,
+      stayedCursor: stayedCursor.current,
     };
     setRuleDraft(structuredClone(effectiveReview(saved, queryRef.current)));
     setNotice("");
@@ -758,6 +723,7 @@ export function ReviewWorkspace({
     setCurrent(snapshot.current);
     setTotal(snapshot.total);
     targets.current = snapshot.targets;
+    stayedCursor.current = snapshot.stayedCursor;
     setLoading(false);
     setError(snapshot.error);
     setNotice("");
@@ -1022,13 +988,23 @@ export function ReviewWorkspace({
               </select>
             </label>
             {!["any", "isNull"].includes(scope.condition) && (
-              <EntityReferenceMultiSelector
-                entityType="tag"
-                values={scope.conditionTagIds}
-                onChange={(conditionTagIds) => updateScope({ conditionTagIds })}
-                placeholder="Occurrence condition tags..."
-                allowCreate={false}
-              />
+              <>
+                <EntityReferenceMultiSelector
+                  entityType="tag"
+                  values={scope.conditionTagIds}
+                  onChange={(conditionTagIds) => updateScope({ conditionTagIds })}
+                  placeholder="Occurrence condition tags..."
+                  allowCreate={false}
+                />
+                <label className="dq-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={scope.includeSubtags ?? true}
+                    onChange={(event) => updateScope({ includeSubtags: event.target.checked })}
+                  />
+                  Include subtags
+                </label>
+              </>
             )}
           </div>
         )}
@@ -1070,24 +1046,6 @@ export function ReviewWorkspace({
           }}
         />
       )}
-      {review.entityType === "performerOccurrence" && canWrite && (
-        <BatchOccurrenceDialog
-          review={review}
-          hidden={!!ruleDraft}
-          disabled={blocked || !!ruleDraft}
-          onOpen={() => { lock.current = true; setPending(true); }}
-          onWrite={() => { setUndo(null); lastWriteAt.current = Date.now(); }}
-          onClose={(wrote) => {
-            if (wrote) {
-              lastWriteAt.current = Date.now();
-              void new Promise(resolve => window.setTimeout(resolve, 1100)).then(() => {
-                endOperation();
-                if (alive.current) setRevision(value => value + 1);
-              });
-            } else endOperation();
-          }}
-        />
-      )}
       <div className="dq-review-feedback" aria-live="polite">
         {error && (
           <p role="alert">
@@ -1108,16 +1066,6 @@ export function ReviewWorkspace({
           </p>
         )}
         {notice && <p role="status">{notice}</p>}
-        {undo && !ruleDraft && (
-          <button
-            type="button"
-            className="dq-button"
-            disabled={blocked}
-            onClick={() => void performUndo()}
-          >
-            Undo latest tag operation
-          </button>
-        )}
       </div>
       <div className="dq-review-layout">
         <aside className="dq-review-queue" aria-label="Review queue">
@@ -1141,7 +1089,7 @@ export function ReviewWorkspace({
                 disabled={blocked}
                 aria-pressed={current?.key === item.key}
                 onClick={() => {
-                  setCurrent(item);
+                  showItem(item);
                   setError("");
                   setNotice("");
                 }}
@@ -1180,6 +1128,8 @@ export function ReviewWorkspace({
                   format={current.video.files[0]?.format}
                   audioCodec={current.video.files[0]?.audioCodec}
                   extensionSurface="quick-view"
+                  autostart={autostartVideoId === current.video.id}
+                  onPlaybackStateChange={onPlaybackStateChange}
                   showAbLoop
                   clip={
                     current.video.parentVideoId != null
@@ -1220,7 +1170,7 @@ export function ReviewWorkspace({
                           key={item.key}
                           aria-pressed={item.key === current.key}
                           onClick={() => {
-                            setCurrent(item);
+                            showItem(item);
                             setError("");
                           }}
                         >

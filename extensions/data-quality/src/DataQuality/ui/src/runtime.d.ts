@@ -157,6 +157,7 @@ declare module "@cove/runtime/components" {
   }>;
   export const VideoPlayer: ComponentType<{
     autostart?: boolean;
+    onPlaybackStateChange?: (playing: boolean) => void;
     streamUrl: string;
     posterUrl?: string;
     format?: string;

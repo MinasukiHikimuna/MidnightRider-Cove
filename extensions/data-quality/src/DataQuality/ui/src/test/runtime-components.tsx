@@ -10,15 +10,17 @@ export const testVideoControls = {
 };
 export function VideoPlayer({
   autostart,
+  onPlaybackStateChange,
   clip,
   onPlaybackControlRegister,
 }: {
   autostart?: boolean;
+  onPlaybackStateChange?: (playing: boolean) => void;
   clip?: { start: number; end?: number | null; loop?: boolean };
   onPlaybackControlRegister?: (controls: typeof testVideoControls) => void;
 }) {
   onPlaybackControlRegister?.(testVideoControls);
-  return <div data-testid="video-player" data-autostart={autostart} data-clip={clip ? JSON.stringify(clip) : undefined} />;
+  return <div data-testid="video-player" data-autostart={autostart} data-clip={clip ? JSON.stringify(clip) : undefined}><button onClick={() => onPlaybackStateChange?.(true)}>Play review video</button><button onClick={() => onPlaybackStateChange?.(false)}>Pause review video</button></div>;
 }
 export function EntityReferenceMultiSelector({
   placeholder,

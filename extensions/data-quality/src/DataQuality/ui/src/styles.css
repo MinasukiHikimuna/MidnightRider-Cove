@@ -1046,31 +1046,3 @@
 .dq-rule-editor > p { color: var(--color-secondary); font-size: .875rem; }
 .dq-rule-editor input, .dq-rule-editor textarea, .dq-rule-editor select { color: var(--color-foreground); background: var(--color-input); border: 1px solid var(--color-border); border-radius: .375rem; padding: .4rem .5rem; }
 .dq-rule-editor label { display: grid; gap: .35rem; }
-
-.dq-batch-dialog {
-  margin: auto;
-  width: min(850px, calc(100vw - 2rem));
-  max-height: calc(100dvh - 3rem);
-  overflow: auto;
-  padding: 1.5rem;
-  border: 1px solid var(--color-border, #555);
-  border-radius: 0.75rem;
-  background: var(--color-background);
-  color: var(--color-foreground);
-}
-.dq-batch-dialog::backdrop { background: #0009; }
-.dq-batch-dialog fieldset { display: grid; gap: 0.75rem; }
-.dq-batch-dialog label { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
-.dq-batch-dialog select { max-width: 100%; color: inherit; background: var(--color-surface, #27272a); padding: 0.5rem; }
-.dq-batch-dialog .dq-row { margin-top: 1rem; flex-wrap: wrap; }
-.dq-batch-items { max-height: 20rem; overflow: auto; margin: 1rem 0; }
-.dq-batch-items table { width: 100%; border-collapse: collapse; }
-.dq-batch-items td, .dq-batch-items th { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border, #555); }
-
-/* Keep the shared applied-filter chips, without its redundant list controls. */
-.dq-batch-filter-summary > div:first-child { display: none; }
-.dq-batch-dialog .dq-batch-filter-summary { border: 0; padding: 0; }
-
-.dq-batch-dialog h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; }
-.dq-batch-dialog p { margin: 0.35rem 0; }
-.dq-batch-dialog legend { font-weight: 600; }

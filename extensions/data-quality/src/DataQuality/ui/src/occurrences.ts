@@ -123,6 +123,7 @@ export function occurrenceSceneReview(
           performerOccurrenceTagsCriterion: {
             modifier: settings.condition,
             value: settings.conditionTagIds,
+            depth: settings.includeSubtags === false ? 0 : -1,
           },
         }),
   };
@@ -149,19 +150,21 @@ export function occurrenceSceneReview(
 export function occurrenceMatches(
   settings: OccurrenceReview["occurrence"],
   tagIds: number[],
+  conditionTagGroups: number[][] = settings.conditionTagIds.map((id) => [id]),
 ): boolean {
   const tags = new Set(tagIds);
+  const matchesGroup = (group: number[]) => group.some((id) => tags.has(id));
   switch (settings.condition) {
     case "any":
       return true;
     case "isNull":
       return tags.size === 0;
     case "includes":
-      return settings.conditionTagIds.some((id) => tags.has(id));
+      return conditionTagGroups.some(matchesGroup);
     case "includesAll":
-      return settings.conditionTagIds.every((id) => tags.has(id));
+      return conditionTagGroups.every(matchesGroup);
     case "excludes":
-      return settings.conditionTagIds.every((id) => !tags.has(id));
+      return !conditionTagGroups.some(matchesGroup);
   }
 }
 
@@ -179,6 +182,14 @@ export async function loadOccurrencePage(
     signal,
   );
   const allowed = performerIds === null ? null : new Set(performerIds);
+  // Keep each selected subtree separate: "all" requires a match for each root,
+  // not every descendant. Resolve once per scene page, shared by all performers.
+  const settings = review.occurrence;
+  const conditionTagGroups =
+    result.items.length && settings.includeSubtags !== false &&
+    !["any", "isNull"].includes(settings.condition)
+      ? await Promise.all(settings.conditionTagIds.map((id) => resolveTagTree([id], signal)))
+      : settings.conditionTagIds.map((id) => [id]);
   const items: Occurrence[][] = new Array(result.items.length);
   // Limit concurrent reads. Only the displayed scene page needs occurrence data.
   let next = 0;
@@ -204,6 +215,7 @@ export async function loadOccurrencePage(
             return occurrenceMatches(
               review.occurrence,
               own.map((item) => item.tag.id),
+              conditionTagGroups,
             )
               ? [
                   {

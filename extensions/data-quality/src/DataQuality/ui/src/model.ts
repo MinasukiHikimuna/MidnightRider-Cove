@@ -74,6 +74,7 @@ export interface OccurrenceReview extends ReviewBase {
     performerFilter: Record<string, unknown>;
     condition: "any" | "includes" | "includesAll" | "excludes" | "isNull";
     conditionTagIds: number[];
+    includeSubtags?: boolean;
     tagIds: number[];
     multiple: boolean;
   };
@@ -376,6 +377,7 @@ function validOccurrenceSettings(value: unknown): boolean {
     !!settings.performerFilter && typeof settings.performerFilter === "object" && !Array.isArray(settings.performerFilter) &&
     ["any", "includes", "includesAll", "excludes", "isNull"].includes(settings.condition) &&
     ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
+    (settings.includeSubtags === undefined || typeof settings.includeSubtags === "boolean") &&
     ids(settings.tagIds) && typeof settings.multiple === "boolean";
 }
 

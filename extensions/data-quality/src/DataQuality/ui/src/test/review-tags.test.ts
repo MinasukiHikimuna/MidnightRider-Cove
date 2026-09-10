@@ -1,11 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
 import {
-  checkUndo,
   readTags,
   editTags,
-  undoTags,
-  undoOperation,
   type ReviewItem,
 } from "../reviewTags";
 import type { VideoReview } from "../model";
@@ -29,68 +26,9 @@ const video = {
   updatedAt: "",
 };
 const item: ReviewItem = { key: "1", video };
-const before = { ids: [3], names: ["Before"], absent: [] };
-const after = { ids: [4, 5], names: ["Added", "Added too"], absent: [] };
 const respond = (body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body)));
 beforeEach(() => fetch.mockReset());
-it("undo removes only its multi-tag operation and preserves unrelated tags", async () => {
-  fetch.mockImplementation((_path, init) =>
-    respond(
-      init?.method
-        ? {}
-        : { ...video, tags: [{ id: 4 }, { id: 5 }, { id: 99 }] },
-    ),
-  );
-  await undoTags(rule, undoOperation(item, before, after, [3, 4, 5]));
-  const writes = fetch.mock.calls
-    .filter((call) => call[1]?.method === "POST")
-    .map((call) => JSON.parse(String(call[1]?.body)));
-  expect(writes).toEqual([
-    { ids: [1], tagMode: "ADD", tagIds: [3] },
-    { ids: [1], tagMode: "REMOVE", tagIds: [4, 5] },
-  ]);
-});
-it.each([
-  { ids: [4], names: [], absent: [] },
-  { ids: [3, 4, 5], names: [], absent: [] },
-])("rejects a conflicting undo without writing", async (current) => {
-  fetch.mockImplementation(() =>
-    respond({ ...video, tags: current.ids.map((id) => ({ id })) }),
-  );
-  await expect(
-    undoTags(rule, undoOperation(item, before, after, [3, 4, 5])),
-  ).rejects.toThrow("Undo conflict");
-  expect(fetch.mock.calls.every((call) => !call[1]?.method)).toBe(true);
-});
-it("detects an occurrence application deleted and re-created by another writer", () => {
-  const application = {
-    id: 1,
-    hostType: "video",
-    hostId: 1,
-    contextType: "performer",
-    contextId: 11,
-    tag: { id: 4, name: "Tag" },
-  };
-  const state = {
-    ids: [4],
-    names: ["Tag"],
-    absent: [],
-    applications: [application],
-  };
-  const operation = undoOperation(
-    item,
-    { ...state, ids: [], applications: [] },
-    state,
-    [4],
-  );
-  expect(() =>
-    checkUndo(operation, {
-      ...state,
-      applications: [{ ...application, id: 2 }],
-    }),
-  ).toThrow("Undo conflict");
-});
 it("preserves occurrence context and unrelated applications during ad hoc editing", async () => {
   const application = {
     id: 50,
@@ -141,34 +79,6 @@ it("preserves occurrence context and unrelated applications during ad hoc editin
       .map((call) => call[0]),
   ).toEqual(["/api/tagapplications/50"]);
 });
-it("reads and undoes absence changes using the existing mixed-case field key", async () => {
-  fetch.mockImplementation((_path, init) =>
-    respond(
-      init?.method
-        ? {}
-        : {
-            ...video,
-            tags: [{ id: 99 }],
-            customFields: { Confirmed_Absent_Tags: [4, 98], unrelated: "keep" },
-          },
-    ),
-  );
-  const state = await readTags(item);
-  expect(state.absent).toEqual([4, 98]);
-  const operation = undoOperation(
-    item,
-    { ids: [4], names: [], absent: [] },
-    { ids: [], names: [], absent: [4] },
-    [4],
-  );
-  await undoTags(rule, operation);
-  const put = fetch.mock.calls.find((call) => call[1]?.method === "PUT");
-  expect(JSON.parse(String(put?.[1]?.body))).toEqual({
-    tagIds: [99, 4],
-    customFields: { Confirmed_Absent_Tags: [98], unrelated: "keep" },
-  });
-});
-
 it("uses fresh detail URLs for before/after reads instead of cached tag snapshots", async () => {
   const cache = new Map<string, unknown>();
   let currentIds = [3];

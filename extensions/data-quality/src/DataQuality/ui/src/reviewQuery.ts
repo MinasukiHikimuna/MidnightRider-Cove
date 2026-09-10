@@ -34,6 +34,7 @@ const allScope: PerformerScope = {
   performerFilter: {},
   condition: "any",
   conditionTagIds: [],
+  includeSubtags: true,
 };
 export function defaultQuery(review: MediaReview): ReviewQuery {
   const scope =
@@ -57,6 +58,7 @@ export function defaultQuery(review: MediaReview): ReviewQuery {
             performerFilter: structuredClone(scope.performerFilter),
             condition: scope.condition,
             conditionTagIds: [...scope.conditionTagIds],
+            includeSubtags: scope.includeSubtags ?? true,
           },
         }
       : {}),
@@ -116,6 +118,7 @@ export function readQuery(
       ) ||
       !Array.isArray(performerScope.performerIds) ||
       !Array.isArray(performerScope.conditionTagIds) ||
+      typeof performerScope.includeSubtags !== "boolean" ||
       [...performerScope.performerIds, ...performerScope.conditionTagIds].some(
         (id) => !Number.isSafeInteger(id) || id <= 0,
       ) ||

@@ -71,16 +71,26 @@ export function OccurrenceSettings({
         </select>
       </label>
       {!["any", "isNull"].includes(settings.condition) && (
-        <EntityReferenceMultiSelector
-          entityType="tag"
-          values={settings.conditionTagIds}
-          onChange={(conditionTagIds) => update({ conditionTagIds })}
-          placeholder="Search occurrence condition tags..."
-          allowCreate={false}
-        />
+        <>
+          <EntityReferenceMultiSelector
+            entityType="tag"
+            values={settings.conditionTagIds}
+            onChange={(conditionTagIds) => update({ conditionTagIds })}
+            placeholder="Search occurrence condition tags..."
+            allowCreate={false}
+          />
+          <label className="dq-checkbox">
+            <input
+              type="checkbox"
+              checked={settings.includeSubtags ?? true}
+              onChange={(event) => update({ includeSubtags: event.target.checked })}
+            />
+            Include subtags
+          </label>
+        </>
       )}
       <p>
-        Conditions check exact tags on the same performer’s occurrence,
+        Conditions check tags on the same performer’s occurrence,
         independently of scene tags and the performer’s profile.
       </p>
     </fieldset>

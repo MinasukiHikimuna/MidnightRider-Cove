@@ -235,6 +235,7 @@ it("keeps scene selection separate and binds identity and tag conditions to the 
               performerOccurrenceTagsCriterion: {
                 modifier: "excludes",
                 value: [21],
+                depth: -1,
               },
             },
           },
@@ -274,6 +275,8 @@ it("does not review scene partners just because their scene matched the target",
   fetchMock.mockImplementation((path) =>
     path === "/api/videos/find"
       ? response({ items: [video], totalCount: 1 })
+      : path === "/api/tags/find"
+        ? response({ items: [], totalCount: 0 })
       : response([application(2, 12, 21)]),
   );
   const result = await loadOccurrencePage(occurrenceReview, [11], 1);
@@ -283,6 +286,8 @@ it("filters occurrences individually when all performers are targeted", async ()
   fetchMock.mockImplementation((path) =>
     path === "/api/videos/find"
       ? response({ items: [video], totalCount: 1 })
+      : path === "/api/tags/find"
+        ? response({ items: [], totalCount: 0 })
       : response([application(1, 11, 21)]),
   );
   expect(
@@ -290,6 +295,70 @@ it("filters occurrences individually when all performers are targeted", async ()
       (item) => item.key,
     ),
   ).toEqual(["1:12"]);
+});
+
+it.each([
+  ["includes", [21], [31], ["1:11"]],
+  ["includes", [21], [21], ["1:11"]],
+  ["includesAll", [21, 22], [31], []],
+  ["includesAll", [21, 22], [31, 32], ["1:11"]],
+  ["includesAll", [21, 22], [33], ["1:11"]],
+  ["excludes", [21], [31], ["1:12"]],
+  ["isNull", [], [31], ["1:12"]],
+  ["any", [], [31], ["1:11", "1:12"]],
+] as const)("matches %s against each selected tag's descendants (%j, %j)", async (condition, parents, ownTags, expected) => {
+  const signal = new AbortController().signal;
+  fetchMock.mockImplementation((path, options) => {
+    if (path === "/api/videos/find") return response({ items: [video], totalCount: 1 });
+    if (path === "/api/tags/find") {
+      const query = JSON.parse(String(options?.body));
+      expect(query.objectFilter.parentsCriterion.depth).toBe(-1);
+      expect(options?.signal).toBe(signal);
+      const root = query.objectFilter.parentsCriterion.value[0];
+      return response({ items: (root === 21 ? [31, 33] : [32, 33]).map(id => ({ id })), totalCount: 2 });
+    }
+    if (String(path).startsWith("/api/tags/")) return response({});
+    // The partner has a sibling tag; it must not satisfy either selected subtree.
+    return response([
+      ...ownTags.map((tag, index) => application(index + 1, 11, tag)),
+      ...(condition === "isNull" || condition === "any" ? [] : [application(99, 12, 99)]),
+    ]);
+  });
+  const result = await loadOccurrencePage({
+    ...occurrenceReview,
+    occurrence: { ...occurrenceReview.occurrence, condition, conditionTagIds: [...parents] },
+  }, null, 1, signal);
+  expect(result.items.map(item => item.key)).toEqual(expected);
+  if (condition === "any" || condition === "isNull")
+    expect(fetchMock.mock.calls.some(([path]) => String(path).startsWith("/api/tags/"))).toBe(false);
+});
+
+it("fails the queue load when tag hierarchy resolution fails", async () => {
+  fetchMock.mockImplementation(path => path === "/api/videos/find"
+    ? response({ items: [video], totalCount: 1 })
+    : String(path).startsWith("/api/tags/")
+      ? Promise.resolve(new Response("{}", { status: 500 }))
+      : response([]));
+  await expect(loadOccurrencePage(occurrenceReview, null, 1)).rejects.toThrow();
+});
+
+it.each(["includes", "includesAll", "excludes"] as const)("keeps %s exact when subtags are disabled", async condition => {
+  const rule = { ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, condition, includeSubtags: false } };
+  fetchMock.mockImplementation(path => {
+    if (path === "/api/videos/find") return response({ items: [video], totalCount: 1 });
+    if (String(path).startsWith("/api/tags/")) throw new Error("Exact matching must not resolve descendants");
+    return response([application(1, 11, 31), application(2, 12, 21)]);
+  });
+  expect((await loadOccurrencePage(rule, null, 1)).items.map(item => item.key))
+    .toEqual(condition === "excludes" ? ["1:11"] : ["1:12"]);
+  expect(JSON.stringify(occurrenceSceneReview(rule, null).view.objectFilter)).toContain('"depth":0');
+});
+
+it("preserves the subtag setting in exported reviews and rejects invalid values", () => {
+  const exact = { ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, includeSubtags: false } };
+  expect(parseReviews(JSON.stringify([exact]))).toEqual([exact]);
+  expect(queueSignature(exact)).not.toBe(queueSignature(occurrenceReview));
+  expect(() => parseReviews(JSON.stringify([{ ...exact, occurrence: { ...exact.occurrence, includeSubtags: "false" } }]))).toThrow();
 });
 it("returns no scenes without querying when a performer filter resolves to no targets", async () => {
   expect(await loadOccurrencePage(occurrenceReview, [], 1)).toEqual({
