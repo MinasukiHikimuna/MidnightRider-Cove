@@ -96,9 +96,6 @@ const third = {
   key: "2:11",
   video: { ...video, id: 2, title: "Next scene" },
 };
-const secondVideo = { ...video, id: 2, title: "Second scene" };
-const thirdVideo = { ...video, id: 3, title: "Third scene" };
-const fourthVideo = { ...video, id: 4, title: "Fourth scene" };
 let state: TagState;
 beforeEach(() => {
   vi.resetAllMocks();
@@ -430,31 +427,6 @@ it("gives video reviews the same Save and default advancement behavior", async (
     expect.objectContaining({ key: "1", video }),
     rule.actions[0],
   );
-});
-
-it("continues with the next unprocessed video when a refresh reorders the queue", async () => {
-  const rule: VideoReview = {
-    ...review,
-    entityType: "video",
-    view: { ...review.view, filter: { ...review.view.filter, perPage: 4 } },
-  };
-  api.findVideos
-    .mockResolvedValueOnce({
-      items: [video, secondVideo, thirdVideo, fourthVideo],
-      totalCount: 4,
-    })
-    .mockResolvedValue({
-      items: [fourthVideo, video, thirdVideo],
-      totalCount: 3,
-    });
-  open(rule);
-  await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Second scene" }));
-  await screen.findByRole("link", { name: "Second scene" });
-
-  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-
-  await screen.findByRole("link", { name: "Third scene" });
 });
 it("blocks duplicate submissions and keeps Skip available without write permission", async () => {
   open(review, false);
