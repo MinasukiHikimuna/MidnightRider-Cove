@@ -417,7 +417,7 @@ describe("Data Quality API adapter", () => {
       },
       [4],
     );
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+    expect(fetchMock.mock.calls.map(([path]) => String(path).split("?")[0])).toEqual([
       "/api/custom-fields",
       "/api/tags/10",
       "/api/tags/find",

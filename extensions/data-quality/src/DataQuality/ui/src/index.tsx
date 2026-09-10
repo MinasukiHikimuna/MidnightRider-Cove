@@ -85,8 +85,10 @@ import {
   type OccurrenceReview,
   type ReviewEntityType,
 } from "./model";
-import { OccurrenceSettings, OccurrenceWorkspace } from "./OccurrenceReview";
-import { occurrenceSceneReview } from "./occurrences";
+import { OccurrenceSettings } from "./OccurrenceReview";
+import { ReviewWorkspace } from "./ReviewWorkspace";
+import { queryKeys } from "./reviewQuery";
+import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
 import "./styles.css";
 import {
   usePresentationTags,
@@ -155,6 +157,7 @@ function selectedReviewId() {
 
 function writeSelectedReviewId(reviewId: string) {
   const params = new URLSearchParams(window.location.search);
+  queryKeys.forEach(key => params.delete(key));
   if (reviewId) params.set("review", reviewId);
   else params.delete("review");
   const query = params.toString();
@@ -331,6 +334,11 @@ export function DataQualityPage({
         : savedReview,
     [temporaryReview, activeId, savedReview],
   );
+  useEffect(() => {
+    const restore = () => setActiveId(selectedReviewId());
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
   const entityType = review ? reviewEntityType(review) : "video";
   const videoReview = entityType === "video" ? (review as VideoReview | null) : null;
   const canWriteCurrent = entityType === "tag" ? canWriteTags : canWriteVideos;
@@ -581,7 +589,7 @@ export function DataQualityPage({
     for (const item of reviews) {
       const countRequest =
         item.entityType === "performerOccurrence"
-          ? findVideos(occurrenceSceneReview(item, null), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal)
+          ? resolvePerformers(item, controller.signal).then(ids => ids?.length === 0 ? { items: [], totalCount: 0 } : findVideos(occurrenceSceneReview(item, ids), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal))
           : reviewEntityType(item) === "tag"
           ? findTags(
               item as TagReview,
@@ -713,7 +721,7 @@ export function DataQualityPage({
     setMessage("");
     setActionError("");
     setQueue({ items: [], totalCount: 0 });
-    if (!review || review.entityType === "performerOccurrence") {
+    if (!review || reviewEntityType(review) !== "tag") {
       setQueueLoading(false);
       return;
     }
@@ -1097,6 +1105,7 @@ export function DataQualityPage({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (entityType !== "tag") return;
     if (
       event.defaultPrevented ||
       event.repeat ||
@@ -1196,7 +1205,7 @@ export function DataQualityPage({
     ) {
       if (updated.view.displayMode !== savedReview.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
-      if (updated.entityType !== "performerOccurrence" && queueSignature(updated) !== queueSignature(savedReview)) {
+      if (updated.entityType === "tag" && queueSignature(updated) !== queueSignature(savedReview)) {
         setTemporaryReview(null);
         void resumeQueue(
           updated,
@@ -1372,7 +1381,7 @@ export function DataQualityPage({
           </button>
         </p>
       )}
-      {review && savedReview && review.entityType !== "performerOccurrence" && (
+      {review && savedReview && review.entityType === "tag" && (
         <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
           <div
             className={`dq-native-toolbar-host${
@@ -1609,11 +1618,11 @@ export function DataQualityPage({
             <p>No saved reviews are available in this browser.</p>
           </div>
         )
-      ) : review.entityType === "performerOccurrence" ? (
-        <OccurrenceWorkspace key={review.id} review={review} storageKey={storageKey} canWrite={canWriteTags} onBusy={setPending} />
+      ) : entityType !== "tag" ? (
+        <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} onBusy={setPending} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
       ) : (
         <>
-          {entityType === "video" && presentationTags.error && (
+          {videoReview && presentationTags.error && (
             <p role="alert">{presentationTags.error}</p>
           )}
           {videoReview && (
@@ -2880,7 +2889,7 @@ function ReviewEditor({
     if (entityTypeLocked || next === entityType) return;
     if (next === "performerOccurrence") {
       setDraft({ id: draft.id, entityType: next, name: draft.name, description: draft.description,
-        view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "beginning" },
+        view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "end" },
         actions: [], occurrence: { targetMode: "all", performerIds: [], performerFilter: {}, condition: "any", conditionTagIds: [], tagIds: [], multiple: true },
       });
       return;

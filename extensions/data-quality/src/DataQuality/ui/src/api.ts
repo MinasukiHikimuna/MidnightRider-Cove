@@ -178,6 +178,14 @@ export {
   saveProgress,
 } from "./storage";
 
+// Video detail GETs use Cove's one-second output cache, varied by query.
+// Mutations and conflict checks need fresh membership rather than a cached snapshot.
+const detailReadPrefix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+let detailReadSequence = 0;
+export function readVideo(id: number): Promise<Video> {
+  return request<Video>(`/api/videos/${id}?dqRead=${detailReadPrefix}-${++detailReadSequence}`, { cache: "no-store" });
+}
+
 export async function findVideos(
   review: VideoReview,
   filter: Record<string, unknown>,
@@ -402,7 +410,7 @@ async function runAssessmentAction(
   let completed = 0;
   for (const id of targets) {
     try {
-      const video = await request<Video>(`/api/videos/${id}`);
+      const video = await readVideo(id);
       const originalTagIds = directlyAssignedTagIds(video);
       const originalCustomFields = { ...(video.customFields ?? {}) };
       const rawAbsent = originalCustomFields[fieldKey];

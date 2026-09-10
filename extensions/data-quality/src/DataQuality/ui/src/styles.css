@@ -994,3 +994,42 @@
 .dq-occurrence-list { grid-column: 1 / -1; }
 .dq-occurrence-list > button { display: flex; margin-block: .5rem; text-align: left; }
 @media (max-width: 800px) { .dq-occurrence-content { grid-template-columns: minmax(0, 1fr); } }
+
+/* Media reviews retain usable navigation independently of the player height. */
+.dq-review-workspace { display: grid; gap: .65rem; min-width: 0; }
+.dq-review-filters { display: grid; gap: .5rem; min-width: 0; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem; }
+.dq-review-filters legend { font-size: .8rem; color: var(--color-secondary); }
+.dq-scope-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.dq-scope-controls label { display: flex; align-items: center; gap: .4rem; }
+.dq-scope-controls select { background: var(--color-card); color: var(--color-foreground); border: 1px solid var(--color-border); border-radius: .3rem; padding: .3rem; }
+.dq-review-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(13rem, 19rem); align-items: start; gap: .75rem; }
+.dq-review-inspector { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(15rem, 1fr); gap: .75rem; min-width: 0; }
+.dq-review-media, .dq-review-panel { min-width: 0; overflow-wrap: anywhere; }
+.dq-review-media video { max-height: min(60vh, 38rem); }
+.dq-review-panel { display: grid; align-content: start; gap: .65rem; }
+.dq-review-panel h2 { font-size: 1.2rem; font-weight: 600; }
+.dq-review-panel p { font-size: .875rem; }
+.dq-review-partners, .dq-action-pair, .dq-review-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.dq-review-actions { flex-direction: column; }
+.dq-action-pair > .primary { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.dq-review-queue { position: sticky; top: .5rem; display: flex; flex-direction: column; gap: .5rem; max-height: calc(100dvh - 6rem); min-height: 12rem; min-width: 0; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem; }
+.dq-review-queue > p { font-size: .8rem; }
+/* Keep wrapped labels at their intrinsic height inside the scrollable list. */
+.dq-review-queue-items { display: grid; grid-auto-rows: max-content; align-content: start; gap: .4rem; overflow-y: auto; min-height: 6rem; }
+.dq-review-queue-items button { justify-content: start; text-align: left; overflow-wrap: anywhere; }
+.dq-review-workspace [aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-card); font-weight: 600; }
+.dq-review-workspace :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.dq-tag-editor { display: grid; gap: .6rem; padding: .5rem; border: 1px solid var(--color-border); }
+.dq-review-feedback:empty { display: none; }
+@media (max-width: 1200px) { .dq-review-inspector { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) {
+  .dq-review-layout { grid-template-columns: minmax(0, 1fr); }
+  .dq-review-queue { position: static; max-height: 22rem; }
+  .dq-scope-controls { align-items: stretch; flex-direction: column; }
+}
+.dq-review-action-summary { flex-basis: 100%; color: var(--color-secondary); font-size: .75rem; overflow-wrap: anywhere; }
+.dq-review-workspace .dq-row { padding: 0; }
+/* Only the host's criteria chips are relevant to performer targeting. Its
+   list count and page-size toolbar describe a different, nonexistent list. */
+.dq-performer-criteria > div:first-child { display: none; }
+.dq-review-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }

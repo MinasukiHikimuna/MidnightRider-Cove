@@ -21,3 +21,7 @@ The production UI and package must be rebuilt after changing source. Verificatio
 ## Verified delivery
 
 Final verification records the current automated test totals in the task handoff. The extension production UI build and applicable Cove build gates must pass. The development ZIP is extracted and checked by the package validator, and its JavaScript/CSS are compared byte-for-byte with the current build before installation. Independent code review is required before delivery.
+
+## Filter-driven media workspace
+
+Video and performer occurrence reviews now ignore the legacy progress records described above. Those records remain untouched for compatibility; only tag-group reviews continue to use their progress workflow. Media review queries are serialized completely in the URL, including explicit empty criteria and `performerScope`. Reset reads current review defaults; Save as review defaults explicitly updates review configuration. One-level tag Undo and local tag drafts live only in the open workspace and are never written as progress.

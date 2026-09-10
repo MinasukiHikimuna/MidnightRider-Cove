@@ -2,6 +2,7 @@ import {
   findVideos,
   normalizeCriteria,
   request,
+  readVideo,
   resolveTagTree,
   type Video,
   type Tag,
@@ -74,7 +75,7 @@ export async function resolvePerformers(
   signal?: AbortSignal,
 ): Promise<number[] | null> {
   const settings = review.occurrence;
-  if (settings.targetMode === "all") return null;
+  if (settings.targetMode === "all" || (settings.targetMode === "filter" && Object.keys(settings.performerFilter).length === 0)) return null;
   if (settings.targetMode === "selected") return settings.performerIds;
   const ids = new Set<number>();
   const { _filterExpression: filterExpression, ...objectFilter } =
@@ -232,7 +233,7 @@ export async function saveOccurrenceTags(
   )
     throw new Error("Choose only the configured tags for this review.");
   // Read again before writing, so unrelated changes are preserved and removed links fail safely.
-  const video = await request<Video>(`/api/videos/${occurrence.video.id}`);
+  const video = await readVideo(occurrence.video.id);
   if (
     !video.performers.some(
       (performer) => performer.id === occurrence.performer.id,

@@ -221,7 +221,7 @@ export const VIDEO_CRITERIA = [
     secondaryFilterKey: "remoteIdCriterion",
   },
 ];
-export const VIDEO_SORT_OPTIONS = [{ value: "date", label: "Date" }];
+export const VIDEO_SORT_OPTIONS = [{ value: "date", label: "Date" }, { value: "title", label: "Title" }];
 export const TAG_CRITERIA = [
   {
     id: "tagGroup",
@@ -236,14 +236,18 @@ export const testFilterControls = {
   result: { organized: true } as Record<string, unknown>,
 };
 export function FilterDialog({
+  open,
   onApply,
   onClose,
 }: {
+  open?: boolean;
   onApply(filter: Record<string, unknown>): void;
   onClose(): void;
 }) {
+  if (open === false) return null;
   return (
     <div role="dialog" aria-label="Video filters">
+      <button aria-label="Edit filter: Nested criterion">Nested criterion</button>
       <button onClick={() => (testFilterControls.result = {})}>Clear all</button>
       <button
         aria-label="Dismiss filters"
@@ -532,6 +536,7 @@ export function DetailListPagination({
     1,
     Math.ceil(totalCount / (filter.perPage ?? 24)),
   );
+  React.useEffect(() => { if (totalCount > 0 && page > totalPages) onFilterChange({ ...filter, page: totalPages }); }, [page, totalPages, totalCount]);
   const goTo = (page: number) => onFilterChange({ ...filter, page });
   if (totalPages <= 1) return null;
   return (

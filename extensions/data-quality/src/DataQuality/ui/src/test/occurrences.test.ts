@@ -95,7 +95,7 @@ it("runs ordered actions only on the active occurrence without touching partner 
     application(3, 12, 21),
   ];
   fetchMock.mockImplementation((path) =>
-    path === "/api/videos/1" ? response(video) : response(apps),
+    String(path).split("?")[0] === "/api/videos/1" ? response(video) : response(apps),
   );
   await runOccurrenceAction(occurrenceReview, occurrence, {
     id: "replace",
@@ -121,7 +121,7 @@ it("stops ordered occurrence actions at the first failed step", async () => {
   fetchMock.mockImplementation((path, options) =>
     options?.method === "DELETE"
       ? Promise.resolve(new Response("{}", { status: 500 }))
-      : path === "/api/videos/1"
+      : String(path).split("?")[0] === "/api/videos/1"
         ? response(video)
         : response([application(1, 11, 21)]),
   );
@@ -328,7 +328,7 @@ it("only edits configured tags on the active performer occurrence", async () => 
     { ...application(4, 11, 21), contextType: null },
   ];
   fetchMock.mockImplementation((path) =>
-    path === "/api/videos/1" ? response(video) : response(apps),
+    String(path).split("?")[0] === "/api/videos/1" ? response(video) : response(apps),
   );
   await saveOccurrenceTags(occurrenceReview, occurrence, [22]);
   const writes = fetchMock.mock.calls.filter(([, options]) =>
@@ -368,11 +368,17 @@ it("explains partial failure and can safely retry to finish the desired state", 
   fetchMock.mockImplementation((path, options) =>
     options?.method === "DELETE"
       ? Promise.resolve(new Response("{}", { status: 500 }))
-      : path === "/api/videos/1"
+      : String(path).split("?")[0] === "/api/videos/1"
         ? response(video)
         : response([application(1, 11, 21)]),
   );
   await expect(
     saveOccurrenceTags(occurrenceReview, occurrence, [22]),
   ).rejects.toThrow("some tag changes may have been applied");
+});
+
+it('treats empty performer criteria as all without enumerating the library', async () => {
+  const ids = await resolvePerformers({ ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, targetMode: 'filter', performerFilter: {} } });
+  expect(ids).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
 });

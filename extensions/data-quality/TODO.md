@@ -1,5 +1,7 @@
 # Data Quality review extension
 
+The milestones below record earlier deliveries. Video and occurrence reviews now use the filter-driven workspace described in the README: complete URL queries, cursor-only Skip, local tag editing, and one-level in-memory tag Undo. Legacy media progress is retained but ignored; tag-group review progress remains supported.
+
 Build a dedicated review experience that makes both running a review and adjusting it as you go fluent. Use Culture's data-quality workflow as a reference, including its easy modification of reviews, without treating its behavior as a fixed specification. Reuse Cove's player, filtering, authorization, metadata operations, and UI components where practical.
 
 ## Phase 1 — Define the interaction model
@@ -68,10 +70,10 @@ Exit criterion: the installed extension retains configuration and supports resum
 
 Exit criterion: the extension replaces the prototype with verified workflow coverage and documented remaining limitations.
 
-## Separate backend milestone — Atomic actions and undo
+## Separate backend milestone — Atomic actions and durable undo
 
-- [ ] Design atomic multi-step metadata actions and undo as a separately scoped backend capability.
-- [ ] Until then, preserve explicit partial-failure reporting and avoid implying rollback or undo exists.
+- [ ] Design atomic multi-step metadata actions and durable undo as a separately scoped backend capability.
+- [ ] Preserve explicit partial-failure reporting. The extension supports one-level tag Undo, but cannot provide atomic rollback or durable undo history.
 
 This milestone must not silently expand phases 1–3.
 
@@ -91,4 +93,4 @@ Culture staging was inspected with populated queues and its rich editor. Task-lo
 
 Final verification passed: 81 automated UI tests, production extension UI build, development ZIP validation/installation, live extension verification, and independent final code review. See [storage-and-verification.md](docs/storage-and-verification.md) for the detailed persistence and changing-result contract.
 
-Remaining public-API boundaries: visual-similarity queue evaluation is unavailable; saved-filter writes lack atomic compare-and-swap, so simultaneous cross-browser writes remain a race despite revision checks; metadata actions wait approximately 1.1 seconds before refreshing because Cove caches identical filtered queries for one second and exposes no invalidation hook. Present/absent assessments use sequential read-modify-write requests because the API has no transaction, concurrency token, or field-specific mutation endpoint; other writers can introduce later contradictions, and library-wide contradiction discovery and resolution remain follow-up work. Tag-bin counts cover the loaded page, and resumption uses identity within the saved page or its nearest index rather than scanning the whole library. Registry publication and its post-merge compatibility floor remain deferred. Atomic actions and undo remain the separate backend milestone.
+Remaining public-API boundaries: visual-similarity queue evaluation is unavailable; saved-filter writes lack atomic compare-and-swap, so simultaneous cross-browser writes remain a race despite revision checks; metadata actions wait approximately 1.1 seconds before refreshing because Cove caches identical filtered queries for one second and exposes no invalidation hook. Present/absent assessments use sequential read-modify-write requests because the API has no transaction, concurrency token, or field-specific mutation endpoint; other writers can introduce later contradictions, and library-wide contradiction discovery and resolution remain follow-up work. Tag-bin counts cover the loaded page, and resumption uses identity within the saved page or its nearest index rather than scanning the whole library. Registry publication and its post-merge compatibility floor remain deferred. Atomic actions and durable undo remain a separate backend milestone; the extension provides one-level in-memory tag Undo.
