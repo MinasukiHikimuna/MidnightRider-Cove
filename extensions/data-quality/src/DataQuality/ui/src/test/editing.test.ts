@@ -17,7 +17,7 @@ describe("review editing and resumption", () => {
     expect(steps[0].mode).toBe("ADD");
     expect(moveItem(steps, 0, -1)).toEqual(steps);
   });
-  it("reserves navigation and player keys and rejects duplicate effective shortcuts", () => {
+  it("assigns fixed Q–P shortcuts by action position", () => {
     const base = {
       id: "r",
       name: "Review",
@@ -31,23 +31,10 @@ describe("review editing and resumption", () => {
       actions: [],
     };
     const a = { id: "a", label: "Skip", steps: [] };
-    expect(actionShortcut(a, 0)).toBe("1");
-    expect(actionShortcut(a, 9)).toBe("");
-    expect(
-      reviewValidation({ ...base, actions: [{ ...a, shortcut: "a" }] }),
-    ).toMatch(/shortcut/i);
-    expect(
-      reviewValidation({
-        ...base,
-        actions: [a, { ...a, id: "b", shortcut: "1" }],
-      }),
-    ).toMatch(/shortcut/i);
-    expect(
-      reviewValidation({
-        ...base,
-        actions: [a, { ...a, id: "b", shortcut: "" }],
-      }),
-    ).toBe("");
+    expect(actionShortcut(a, 0)).toBe("q");
+    expect(actionShortcut(a, 9)).toBe("p");
+    expect(actionShortcut(a, 10)).toBe("");
+    expect(reviewValidation({ ...base, actions: [{ ...a, shortcut: "1" }] })).toBe("");
   });
   it("resumes by identity then clamped index when results change", () => {
     expect(resumeFocus([9, 4, 7], 4, 0)).toBe(4);

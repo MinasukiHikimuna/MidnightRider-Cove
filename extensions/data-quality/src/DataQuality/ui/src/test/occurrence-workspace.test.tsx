@@ -175,7 +175,7 @@ it("applies multiple observations and advances to the partner without remounting
   open();
   await ready();
   const player = screen.getByTestId("video-player");
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(api.applyTags).toHaveBeenCalledWith(
     expect.anything(),
@@ -193,7 +193,7 @@ it.each(["shift-click", "stay button", "shift shortcut"])(
     open();
     await ready();
     if (alternative === "shift-click")
-      fireEvent.click(screen.getByRole("button", { name: "1 Observation" }), {
+      fireEvent.click(screen.getByRole("button", { name: "q Observation" }), {
         shiftKey: true,
       });
     else if (alternative === "stay button")
@@ -202,8 +202,8 @@ it.each(["shift-click", "stay button", "shift shortcut"])(
       );
     else
       fireEvent.keyDown(document.body, {
-        key: "!",
-        code: "Digit1",
+        key: "Q",
+        code: "KeyQ",
         shiftKey: true,
       });
     await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
@@ -219,13 +219,13 @@ it("does not execute shortcuts while typing or editing, including browser modifi
   open();
   await ready();
   for (const modifier of ["ctrlKey", "altKey", "metaKey"])
-    fireEvent.keyDown(document.body, { key: "1", [modifier]: true });
+    fireEvent.keyDown(document.body, { key: "q", [modifier]: true });
   fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
   fireEvent.keyDown(
     screen.getByPlaceholderText("Choose tags for this item..."),
-    { key: "1" },
+    { key: "q" },
   );
-  fireEvent.keyDown(document.body, { key: "1" });
+  fireEvent.keyDown(document.body, { key: "q" });
   expect(api.applyTags).not.toHaveBeenCalled();
 });
 it.each(["Save", "Save & next", "Cancel"])(
@@ -315,7 +315,7 @@ it("keeps the current item when queue refresh fails after a confirmed save", asy
     .mockRejectedValue(new Error("Queue unavailable"));
   open();
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByText(
     /Tags saved, but the queue could not advance/,
     {},
@@ -420,7 +420,7 @@ it("gives video reviews the same Save and default advancement behavior", async (
   const rule: VideoReview = { ...review, entityType: "video" };
   open(rule);
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   expect(api.applyTags).toHaveBeenCalledWith(
     expect.anything(),
@@ -431,10 +431,23 @@ it("gives video reviews the same Save and default advancement behavior", async (
 it("blocks duplicate submissions and keeps Skip available without write permission", async () => {
   open(review, false);
   await screen.findByRole("heading", { name: "Reviewing First performer" });
-  expect(screen.getByRole("button", { name: "1 Observation" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "q Observation" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(api.applyTags).not.toHaveBeenCalled();
+});
+it("does not render a shortcut badge after the first ten actions", async () => {
+  open({
+    ...review,
+    actions: Array.from({ length: 11 }, (_, index) => ({
+      id: `action-${index}`,
+      label: `Action ${index + 1}`,
+      steps: [],
+    })),
+  });
+  await ready();
+  expect(screen.getByRole("button", { name: "p Action 10" }).querySelector("kbd")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "Action 11" }).querySelector("kbd")).toBeNull();
 });
 it("preserves legacy choices and clip boundaries", async () => {
   api.loadOccurrencePage.mockResolvedValue({
@@ -516,10 +529,10 @@ it("disables duplicate saves while the first write is pending", async () => {
   );
   open();
   await ready();
-  const action = screen.getByRole("button", { name: "1 Observation" });
+  const action = screen.getByRole("button", { name: "q Observation" });
   fireEvent.click(action);
   fireEvent.click(action);
-  fireEvent.keyDown(document.body, { key: "1" });
+  fireEvent.keyDown(document.body, { key: "q" });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
   expect(action).toBeDisabled();
   finish();
@@ -614,7 +627,7 @@ it("restores browser navigation after a pending write without overwriting its UR
   );
   open();
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await act(async () => {
     window.history.pushState(
@@ -648,7 +661,7 @@ it("does not rewrite a destination URL after the workspace unmounts during savin
   );
   const view = open();
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   view.unmount();
   window.history.pushState(null, "", "/data-quality?review=another");
@@ -708,7 +721,7 @@ it("cancels rule criteria without changing saved defaults or the selected partne
   fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft search" } });
   await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
-  fireEvent.keyDown(document.body, { key: "1", code: "Digit1" });
+  fireEvent.keyDown(document.body, { key: "q", code: "KeyQ" });
   expect(api.applyTags).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
@@ -774,12 +787,12 @@ it("refreshes the queue after each save and removes a scene only after its last 
   open(); await ready();
   const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
   const player = screen.getByTestId("video-player");
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await waitFor(() => expect(queue.queryByRole("button", { name: "First performer — First scene" })).not.toBeInTheDocument(), { timeout: 3000 });
   expect(queue.getByRole("button", { name: "Second performer — First scene" })).toBeInTheDocument();
   expect(screen.getByTestId("video-player")).toBe(player);
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" }, { timeout: 3000 });
   expect(queue.queryByRole("button", { name: /First scene/ })).not.toBeInTheDocument();
 });
@@ -791,7 +804,7 @@ it.each([true, false])("continues playback after applying and advancing only if 
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
   if (!playing) fireEvent.click(screen.getByRole("button", { name: "Pause review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" }, { timeout: 3000 });
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", String(playing));
 });
@@ -826,13 +839,13 @@ it("keeps partners together during a shrinking reverse review and does not revis
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({
     items: page === 1 ? [first] : [partner], totalCount: 3,
   }));
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   await ready();
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({
     items: page === 1 ? [first] : [traversed], totalCount: 2,
   }));
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "First scene" });
   expect(screen.queryByRole("link", { name: "Already traversed" })).not.toBeInTheDocument();
 });
@@ -842,7 +855,7 @@ it("does not carry autoplay into a manually selected video", async () => {
   api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
   open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   await ready();
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
@@ -871,7 +884,7 @@ it("does not restart a paused autoplay video when a query reload returns the sam
   api.loadOccurrencePage.mockResolvedValue({ items: [third], totalCount: 1 });
   open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Pause review video" }));
@@ -935,7 +948,7 @@ it("forgets playing state when manual query navigation remounts a paused player"
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
   fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
 });
@@ -949,7 +962,7 @@ it("forgets earlier playback after manually visiting another scene and returning
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "First performer — First scene" }));
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "1 Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
 });

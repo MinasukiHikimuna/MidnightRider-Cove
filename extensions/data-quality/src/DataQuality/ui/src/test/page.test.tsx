@@ -384,7 +384,7 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
     const first = await screen.findByRole("article", { name: "Tag 11" });
     expect(screen.getByRole("button", { name: /Ungrouped/ })).toBeDisabled();
-    fireEvent.keyDown(first, { key: "1" });
+    fireEvent.keyDown(first, { key: "q" });
     expect(api.runTagReviewAction).not.toHaveBeenCalled();
   });
   it("moves vertically one tag at a time in List view", async () => {
@@ -708,7 +708,7 @@ it("disables competing edits while an import file is being read", async () => {
   );
 });
 
-it("duplicates and reorders actions while rejecting conflicting shortcuts", async () => {
+it("duplicates and reorders actions with fixed positional shortcuts", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
@@ -718,23 +718,11 @@ it("duplicates and reorders actions while rejecting conflicting shortcuts", asyn
     key: "ArrowUp",
     altKey: true,
   });
-  fireEvent.change(screen.getAllByLabelText("Shortcut")[0], {
-    target: { value: "2" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Assign each shortcut",
-  );
-  expect(api.saveReviews).not.toHaveBeenCalled();
-  fireEvent.change(screen.getAllByLabelText("Shortcut")[0], {
-    target: { value: "3" },
-  });
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   const saved = api.saveReviews.mock.calls[0][1][0];
   expect(saved.actions[1].id).toBe("apply");
   expect(saved.actions[0].id).not.toBe("apply");
-  expect(saved.actions[0].shortcut).toBe("3");
   expect(saved.actions[0].steps).toEqual(review.actions[0].steps);
 });
 it("saves explicitly reordered tag operations", async () => {

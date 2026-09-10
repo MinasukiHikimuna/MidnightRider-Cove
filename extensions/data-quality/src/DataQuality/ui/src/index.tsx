@@ -1130,7 +1130,7 @@ export function DataQualityPage({
     }
     const actionIndex =
       review?.actions.findIndex(
-        (action, index) => actionShortcut(action, index) === event.key,
+        (action, index) => actionShortcut(action, index) === event.key.toLowerCase(),
       ) ?? -1;
     if (actionIndex >= 0 && review?.actions[actionIndex]) {
       consumeShortcut(event);
@@ -1835,7 +1835,7 @@ export function DataQualityPage({
                 </p>
               )}
               <p className="dq-shortcuts">
-                ←→↑↓ move · space select · enter {entityType === "tag" ? "open" : "preview"} · 1–9 apply · A toggle
+                ←→↑↓ move · space select · enter {entityType === "tag" ? "open" : "preview"} · Q–P apply · A toggle
                 shown · Esc clear
               </p>
             </aside>
@@ -3079,40 +3079,13 @@ function ReviewEditor({
 
 function ActionIdentityFields({
   action,
-  index,
   onChange,
 }: {
   action: ReviewAction;
-  index: number;
   onChange: (action: ReviewAction) => void;
 }) {
   return (
     <div className="dq-field-grid">
-      <label>
-        Shortcut
-        <select
-          value={action.shortcut ?? "auto"}
-          onChange={(event) =>
-            onChange({
-              ...action,
-              shortcut:
-                event.target.value === "auto"
-                  ? undefined
-                  : event.target.value,
-            })
-          }
-        >
-          <option value="auto">
-            Position ({index < 9 ? index + 1 : "none"})
-          </option>
-          <option value="">None</option>
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => (
-            <option key={number} value={number}>
-              {number}
-            </option>
-          ))}
-        </select>
-      </label>
       <label>
         Button label
         <input
@@ -3190,7 +3163,6 @@ function VideoActionsEditor({
                         ...structuredClone(action),
                         id: crypto.randomUUID(),
                         label: action.label + " copy",
-                        shortcut: "",
                       },
                       ...draft.actions.slice(index + 1),
                     ],
@@ -3202,7 +3174,6 @@ function VideoActionsEditor({
             </div>
             <ActionIdentityFields
               action={action}
-              index={index}
               onChange={(next) =>
                 updateAction(index, next as VideoReviewAction)
               }
@@ -3349,7 +3320,6 @@ function TagActionsEditor({
                         ...structuredClone(action),
                         id: crypto.randomUUID(),
                         label: action.label + " copy",
-                        shortcut: "",
                       },
                       ...draft.actions.slice(index + 1),
                     ],
@@ -3361,7 +3331,6 @@ function TagActionsEditor({
             </div>
             <ActionIdentityFields
               action={action}
-              index={index}
               onChange={(next) => updateAction(index, next as TagReviewAction)}
             />
             <label>

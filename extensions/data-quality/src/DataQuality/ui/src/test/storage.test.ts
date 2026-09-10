@@ -209,7 +209,7 @@ it("migrates browser-only reviews when saved-filter permissions are granted", as
   localStorage.clear();
   expect((await loadReviews()).reviews).toEqual([review]);
 });
-it("does not accept an imported navigation key as an action shortcut", async () => {
+it("preserves legacy action shortcuts without using them", async () => {
   const loaded = await loadReviews();
   expect(() =>
     saveReviews(loaded.storageKey, [
@@ -225,7 +225,7 @@ it("does not accept an imported navigation key as an action shortcut", async () 
         ],
       },
     ]),
-  ).toThrow(/shortcuts/);
+  ).not.toThrow();
 });
 
 it("does not change the account revision when a clean browser only reads it", async () => {

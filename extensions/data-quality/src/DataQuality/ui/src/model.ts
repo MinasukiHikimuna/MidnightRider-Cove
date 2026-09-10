@@ -94,8 +94,8 @@ export function reviewEntityType(review: Review): ReviewEntityType {
 }
 
 export function actionShortcut(action: ReviewAction, index: number): string {
-  const value = action.shortcut ?? (index < 9 ? String(index + 1) : "");
-  return /^[1-9]$/.test(value) ? value : "";
+  void action;
+  return "qwertyuiop"[index] ?? "";
 }
 
 export function moveItem<T>(items: T[], index: number, delta: number): T[] {
@@ -133,17 +133,6 @@ export function reviewValidation(review: Review): string {
     return "Name the review and complete every action step before saving.";
   if (new Set(review.actions.map((a) => a.id)).size !== review.actions.length)
     return "Action IDs must be unique within a review.";
-  const keys = review.actions
-    .map(
-      (action, index) =>
-        action.shortcut ?? (index < 9 ? String(index + 1) : ""),
-    )
-    .filter(Boolean);
-  if (
-    keys.some((key) => !/^[1-9]$/.test(key)) ||
-    new Set(keys).size !== keys.length
-  )
-    return "Assign each shortcut 1–9 only once, or choose None. Navigation and player keys are reserved.";
   return "";
 }
 
@@ -314,7 +303,7 @@ export function parseReviews(raw: string | null): Review[] {
   }
   if ((data as Review[]).some((review) => reviewValidation(review)))
     throw new Error(
-      "Saved reviews contain invalid actions or shortcuts. Existing data has been kept; assign shortcuts 1–9 only once or leave them empty.",
+      "Saved reviews contain invalid actions. Existing data has been kept.",
     );
   if (
     new Set((data as Review[]).map((review) => review.id)).size !==

@@ -142,7 +142,7 @@ export function ReviewActionControls({
             onClick={(event) => onApply(action, event.shiftKey)}
           >
             <span>
-              <kbd>{actionShortcut(action, index)}</kbd> {action.label}
+              {actionShortcut(action, index) && <kbd>{actionShortcut(action, index)}</kbd>} {action.label}
             </span>
           </button>
           {action.steps.length > 0 && (
@@ -663,9 +663,7 @@ export function ReviewWorkspace({
         document.querySelector('[role="dialog"], dialog[open]')
       )
         return;
-      const key = /^Digit[1-9]$/.test(event.code)
-        ? event.code.slice(5)
-        : event.key;
+      const key = event.key.toLowerCase();
       const action = saved.actions.find(
         (action, index) => actionShortcut(action, index) === key,
       );
