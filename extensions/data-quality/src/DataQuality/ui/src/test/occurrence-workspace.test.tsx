@@ -783,3 +783,18 @@ it("retains the outer filter opener when editing chips inside a dialog", async (
   await ready();
   await waitFor(() => expect(trigger).toHaveFocus());
 });
+
+it("labels portrait controls and preserves selection when an image is missing", async () => {
+  open(); await ready();
+  const first = screen.getByRole("button", { name: /^First performer$/ });
+  expect(first).toHaveAttribute("aria-pressed", "true");
+  expect(first).toHaveAttribute("title", "First performer");
+  const portrait = first.querySelector("img")!;
+  fireEvent.error(portrait);
+  expect(portrait).toHaveStyle({ display: "none" });
+  expect(first).toHaveTextContent("FP");
+  expect(screen.queryByText(/· Active/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  expect(first).toHaveAttribute("aria-pressed", "false");
+});

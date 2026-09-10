@@ -39,6 +39,35 @@ import {
   type UndoOperation,
 } from "./reviewTags";
 
+function PerformerAvatar({
+  performer,
+}: {
+  performer: { id: number; name: string };
+}) {
+  return (
+    <span className="dq-performer-avatar" aria-hidden="true">
+      <span>
+        {performer.name
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => part[0])
+          .join("")
+          .toUpperCase() || "?"}
+      </span>
+      <img
+        key={performer.id}
+        src={`/api/performers/${performer.id}/image?max=64`}
+        alt=""
+        loading="lazy"
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+        }}
+      />
+    </span>
+  );
+}
+
 export function orderedItems(items: ReviewItem[], backwards: boolean) {
   if (!backwards) return items;
   const scenes = new Map<number, ReviewItem[]>();
@@ -664,11 +693,26 @@ export function ReviewWorkspace({
       className="dq-review-workspace"
       aria-label={scope ? "Performer occurrence review" : "Video review"}
     >
-      <fieldset className="dq-review-filters" disabled={blocked} onClickCapture={event => {
-        const button = event.target instanceof Element ? event.target.closest('button') : null;
-        const label = button?.getAttribute('aria-label') ?? button?.textContent?.trim() ?? '';
-        if (button && !button.closest('[role="dialog"], dialog') && /^(Filters|Edit filter:|Edit performer criteria)/.test(label)) filterReturnFocus.current = button;
-      }}>
+      <fieldset
+        className="dq-review-filters"
+        disabled={blocked}
+        onClickCapture={(event) => {
+          const button =
+            event.target instanceof Element
+              ? event.target.closest("button")
+              : null;
+          const label =
+            button?.getAttribute("aria-label") ??
+            button?.textContent?.trim() ??
+            "";
+          if (
+            button &&
+            !button.closest('[role="dialog"], dialog') &&
+            /^(Filters|Edit filter:|Edit performer criteria)/.test(label)
+          )
+            filterReturnFocus.current = button;
+        }}
+      >
         <legend>Scene filters</legend>
         <div
           onKeyDownCapture={(event) => {
@@ -956,7 +1000,9 @@ export function ReviewWorkspace({
                       .map((item) => (
                         <button
                           type="button"
-                          className="dq-button"
+                          className="dq-button dq-partner-button"
+                          title={item.occurrence?.performer.name}
+                          aria-label={item.occurrence?.performer.name}
                           disabled={blocked}
                           key={item.key}
                           aria-pressed={item.key === current.key}
@@ -965,8 +1011,11 @@ export function ReviewWorkspace({
                             setError("");
                           }}
                         >
-                          {item.occurrence?.performer.name}
-                          {item.key === current.key ? " · Active" : ""}
+                          {item.occurrence && (
+                            <PerformerAvatar
+                              performer={item.occurrence.performer}
+                            />
+                          )}
                         </button>
                       ))}
                   </div>
@@ -1202,6 +1251,8 @@ export function ReviewWorkspace({
                 type="button"
                 className="dq-button"
                 key={item.key}
+                title={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
+                aria-label={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
                 disabled={blocked}
                 aria-pressed={current?.key === item.key}
                 onClick={() => {
@@ -1210,9 +1261,12 @@ export function ReviewWorkspace({
                   setNotice("");
                 }}
               >
-                {item.occurrence ? `${item.occurrence.performer.name} — ` : ""}
-                {item.video.title || item.video.files[0]?.basename || "Scene"}
-                {item.key === current?.key ? " · Active" : ""}
+                {item.occurrence && (
+                  <PerformerAvatar performer={item.occurrence.performer} />
+                )}
+                <span className="dq-queue-scene-title">
+                  {item.video.title || item.video.files[0]?.basename || "Scene"}
+                </span>
               </button>
             ))}
           </div>

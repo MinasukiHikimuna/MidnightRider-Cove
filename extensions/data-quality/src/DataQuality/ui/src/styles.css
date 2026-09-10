@@ -1033,3 +1033,8 @@
    list count and page-size toolbar describe a different, nonexistent list. */
 .dq-performer-criteria > div:first-child { display: none; }
 .dq-review-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.dq-performer-avatar { position: relative; display: inline-flex; flex: 0 0 2rem; width: 2rem; height: 2rem; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-card); color: var(--color-secondary); font-size: .65rem; }
+.dq-performer-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dq-review-partners .dq-partner-button { border-radius: 50%; padding: .2rem; }
+.dq-review-workspace [aria-pressed="true"] .dq-performer-avatar { border-color: var(--color-accent); }
+.dq-queue-scene-title { min-width: 0; overflow-wrap: anywhere; }
