@@ -559,14 +559,25 @@ export function ReviewWorkspace({
         acceptPage(result, nextPage, current);
         return;
       }
+      const ordered = orderedItems(result.items, direction === -1);
       const candidate =
         direction === -1 && page === 1 && !refresh
           ? undefined
-          : orderedItems(result.items, direction === -1).find(
+          : refresh
+            ? cursor.after
+                .map((key) => ordered.find((item) => item.key === key))
+                .find((item): item is ReviewItem => item !== undefined) ??
+              ordered.find(
+                (item) =>
+                  !loadedKeys.has(item.key) &&
+                  (!(direction === -1 && nextPage === cursor.page) ||
+                    remainingKeys.has(item.key)),
+              )
+            : ordered.find(
               (item) => !loadedKeys.has(item.key) &&
                 // A reverse-page refill comes from scenes already traversed.
                 // Keep remaining partners, then continue on the preceding page.
-                (!(refresh && direction === -1 && nextPage === cursor.page) || remainingKeys.has(item.key)),
+                (!(direction === -1 && nextPage === cursor.page) || remainingKeys.has(item.key)),
             );
       if (candidate || (direction === -1 ? nextPage <= 1 : nextPage >= end)) {
         acceptPage(result, nextPage, candidate ?? null, resumePlayback);
