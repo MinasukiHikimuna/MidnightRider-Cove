@@ -1930,6 +1930,7 @@ function to({
                         audioCodec: (V = f.video.files[0]) == null ? void 0 : V.audioCodec,
                         extensionSurface: q ? "quick-view" : void 0,
                         autostart: q && Ee === f.video.id,
+                        keyboardShortcutsEnabled: q,
                         showAbLoop: q,
                         clip: f.video.parentVideoId != null ? {
                           start: f.video.clipStartSec ?? 0,

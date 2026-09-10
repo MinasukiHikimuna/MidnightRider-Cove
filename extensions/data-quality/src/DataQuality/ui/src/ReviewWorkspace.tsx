@@ -1190,6 +1190,7 @@ export function ReviewWorkspace({
                         audioCodec={playerItem.video.files[0]?.audioCodec}
                         extensionSurface={active ? "quick-view" : undefined}
                         autostart={active && autostartVideoId === playerItem.video.id}
+                        keyboardShortcutsEnabled={active}
                         showAbLoop={active}
                         clip={
                           playerItem.video.parentVideoId != null

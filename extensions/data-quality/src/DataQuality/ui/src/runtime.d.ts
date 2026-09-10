@@ -165,6 +165,7 @@ declare module "@cove/runtime/components" {
     duration: number;
     videoId?: number;
     showAbLoop?: boolean;
+    keyboardShortcutsEnabled?: boolean;
     extensionSurface?: "detail" | "quick-view" | "compilation";
     onPlaybackControlRegister?: (controls: {
       play(): Promise<void>;

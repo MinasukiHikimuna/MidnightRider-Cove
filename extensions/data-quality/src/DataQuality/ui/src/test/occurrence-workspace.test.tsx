@@ -156,6 +156,10 @@ it("preloads the next distinct video in a reusable player", async () => {
     "data-video-id",
     "2",
   );
+  expect(preload?.querySelector('[data-testid="video-player-preload"]')).toHaveAttribute(
+    "data-keyboard-shortcuts-enabled",
+    "false",
+  );
 });
 it("ignores legacy progress and uses saved performer targeting", async () => {
   localStorage.setItem(
