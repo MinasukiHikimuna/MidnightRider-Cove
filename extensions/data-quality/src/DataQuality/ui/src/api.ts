@@ -269,10 +269,10 @@ export function settleReviewWrites(action: ReviewAction): Promise<void> {
     : Promise.resolve();
 }
 
-export async function resolveTagTree(parentIds: number[]): Promise<number[]> {
+export async function resolveTagTree(parentIds: number[], signal?: AbortSignal): Promise<number[]> {
   const ids = new Set<number>();
   for (const parentId of parentIds) {
-    await request(`/api/tags/${parentId}`);
+    await request(`/api/tags/${parentId}`, { signal });
     ids.add(parentId);
     for (let page = 1; ; page++) {
       const result = await request<{
@@ -280,6 +280,7 @@ export async function resolveTagTree(parentIds: number[]): Promise<number[]> {
         totalCount: number;
       }>("/api/tags/find", {
         method: "POST",
+        signal,
         body: JSON.stringify(
           normalizeCriteria({
             findFilter: { page, perPage: 1000, sort: "id", direction: "asc" },

@@ -1,3 +1,4 @@
+import { BatchOccurrenceDialog } from "./BatchOccurrenceDialog";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DetailListToolbar,
@@ -1066,6 +1067,24 @@ export function ReviewWorkspace({
           onApply={(performerFilter) => {
             setPerformerDialog(false);
             updateScope({ performerFilter });
+          }}
+        />
+      )}
+      {review.entityType === "performerOccurrence" && canWrite && (
+        <BatchOccurrenceDialog
+          review={review}
+          hidden={!!ruleDraft}
+          disabled={blocked || !!ruleDraft}
+          onOpen={() => { lock.current = true; setPending(true); }}
+          onWrite={() => { setUndo(null); lastWriteAt.current = Date.now(); }}
+          onClose={(wrote) => {
+            if (wrote) {
+              lastWriteAt.current = Date.now();
+              void new Promise(resolve => window.setTimeout(resolve, 1100)).then(() => {
+                endOperation();
+                if (alive.current) setRevision(value => value + 1);
+              });
+            } else endOperation();
           }}
         />
       )}

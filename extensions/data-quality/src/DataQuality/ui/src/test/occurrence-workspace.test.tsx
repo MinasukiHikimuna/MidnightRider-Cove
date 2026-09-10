@@ -869,3 +869,21 @@ it("allows requested rule editing after an initial queue failure and preserves r
   fireEvent.click(screen.getByRole("button", {name: "Retry queue"}));
   await screen.findByRole("heading", {name: "Reviewing First performer"});
 });
+
+it("retains batch undo when a review editor is opened and cancelled", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  open(); await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
+  await screen.findByText("Preview ready. No tags have been changed.");
+  fireEvent.click(screen.getByRole("button", { name: "Apply batch" }));
+  await screen.findByText(/Batch finished/);
+  expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save as review defaults" })).toBeEnabled(), { timeout: 3000 });
+  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
+  expect(screen.queryByRole("button", { name: "Batch results / undo" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Batch results / undo" }));
+  expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
+});
