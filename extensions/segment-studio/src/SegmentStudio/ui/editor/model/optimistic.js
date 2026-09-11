@@ -15,3 +15,11 @@ export function insertSegmentProjection(detail, segment) {
       .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
   };
 }
+
+export function removeSegmentsProjection(detail, segmentIds) {
+  const ids = new Set(segmentIds || []);
+  return {
+    ...detail,
+    segments: (detail.segments || []).filter((segment) => !ids.has(segment.id)),
+  };
+}

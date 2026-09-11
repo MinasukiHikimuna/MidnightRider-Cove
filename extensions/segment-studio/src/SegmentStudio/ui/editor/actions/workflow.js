@@ -1,4 +1,4 @@
-import { completeOperation, confirmDependencyDeletion, confirmEmptyRecyclingBin, dependencyDeletionAllowed, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestDownload, requestJson } from "../../shared/api.js";
+import { completeOperation, confirmEmptyRecyclingBin, dependencyDeletionAllowed, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestDownload, requestJson } from "../../shared/api.js";
 import { findSegmentByStableIdentity, shouldRestoreTransitionSelection } from "../model/shortcuts.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { segmentsHistoryState } from "../model/history.js";
@@ -6,10 +6,10 @@ import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
-import { patchSegmentProjection } from "../model/optimistic.js";
+import { patchSegmentProjection, removeSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -308,36 +308,62 @@ function createWorkflowActions(context) {
       }
     }
 
-    async function deleteRejectedSegments() {
+    async function deleteRejectedSegments(confirmedPreview = null) {
       const rejectedSegments = segments.filter((segment) => segment.reviewState === "rejected");
       const rejectedCount = rejectedSegments.length;
       const hasProtectedFullExamples = incorrectExamples.some((example) =>
         example.representation === "fullItem");
-      if (rejectedCount === 0 && !hasProtectedFullExamples) {
+      if (confirmedPreview == null && rejectedCount === 0 && !hasProtectedFullExamples) {
         setSaveMessage("There are no rejected segments to delete.");
         return;
       }
-      setSavingSegmentId(-1);
-      setSaveMessage("Preparing deletion summary…");
-      try {
-        const preview = await requestJson(`/videos/${video.id}/rejected/deletion/preview`, { method: "POST" });
-        const deletedCount = Number(preview.deletedSegmentCount) || 0;
-        const deferredCount = Number(preview.deferredRejectedSegmentCount) || 0;
-        const protectedExampleCount = Number(preview.protectedIncorrectExampleCount) || 0;
-        if (deletedCount === 0) {
-          if (deferredCount > 0) {
-            setSaveMessage(
-              `${deferredCount} feedback-protected rejected segment${deferredCount === 1 ? "" : "s"} kept. ${protectedExampleCount} AI feedback example${protectedExampleCount === 1 ? "" : "s"} must be exported before ${deferredCount === 1 ? "this segment can" : "these segments can"} be deleted.`,
-            );
-          } else {
-            setSaveMessage("There are no rejected segments to delete.");
+      if (confirmedPreview == null) {
+        setSavingSegmentId(-1);
+        setSaveMessage("Preparing deletion summary…");
+        try {
+          const preview = await requestJson(`/videos/${video.id}/rejected/deletion/preview`, { method: "POST" });
+          const deletedCount = Number(preview.deletedSegmentCount) || 0;
+          const deferredCount = Number(preview.deferredRejectedSegmentCount) || 0;
+          const protectedExampleCount = Number(preview.protectedIncorrectExampleCount) || 0;
+          if (deletedCount === 0) {
+            if (deferredCount > 0) {
+              setSaveMessage(
+                `${deferredCount} feedback-protected rejected segment${deferredCount === 1 ? "" : "s"} kept. ${protectedExampleCount} AI feedback example${protectedExampleCount === 1 ? "" : "s"} must be exported before ${deferredCount === 1 ? "this segment can" : "these segments can"} be deleted.`,
+              );
+            } else {
+              setSaveMessage("There are no rejected segments to delete.");
+            }
+            return;
           }
-          return;
+          if (!dependencyDeletionAllowed(preview, setSaveMessage)) return;
+          setRejectedDeletionPreview(preview);
+          setSaveMessage("");
+        } catch (error) {
+          setSaveMessage(error.message || "Unable to prepare rejected segment deletion.");
+        } finally {
+          setSavingSegmentId(null);
         }
-        if (!dependencyDeletionAllowed(preview, setSaveMessage)
-            || !confirmDependencyDeletion(preview))
-          return;
-        setSaveMessage("Deleting rejected segments…");
+        return;
+      }
+      const preview = confirmedPreview;
+      const deferredCount = Number(preview.deferredRejectedSegmentCount) || 0;
+      const previousSelectionId = selectedSegmentIdRef.current;
+      const optimisticDetail = removeSegmentsProjection(
+        detail,
+        rejectedSegments.map((segment) => segment.id),
+      );
+      const nextSelectedSegment = optimisticDetail.segments.find((segment) => segment.reviewState === "unreviewed")
+        || optimisticDetail.segments[0]
+        || null;
+      setRejectedDeletionPreview(null);
+      setSavingSegmentId(-1);
+      setSaveMessage("Deleting rejected segments…");
+      onDetailChange(optimisticDetail, video.id);
+      setSelectedSegmentIds(nextSelectedSegment ? [nextSelectedSegment.id] : []);
+      setSelectedSegmentId(nextSelectedSegment?.id ?? null);
+      selectionAnchorIdRef.current = nextSelectedSegment?.id ?? null;
+      selectionRangeBaseIdsRef.current = [];
+      try {
         const operationKey = `rejected-dependency-delete:${video.id}:${preview.fingerprint}`;
         const result = await requestJson(`/videos/${video.id}/rejected/deletion/execute`, {
           method: "POST",
@@ -356,6 +382,11 @@ function createWorkflowActions(context) {
           : "";
         setSaveMessage(`${result.deletedSegmentCount} segment${result.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${retainedMessage}`);
       } catch (error) {
+        onDetailChange(detail, video.id);
+        setSelectedSegmentIds(previousSelectionId == null ? [] : [previousSelectionId]);
+        setSelectedSegmentId(previousSelectionId);
+        selectionAnchorIdRef.current = previousSelectionId;
+        selectionRangeBaseIdsRef.current = [];
         setSaveMessage(error.message || "Unable to delete rejected segments.");
       } finally {
         setSavingSegmentId(null);

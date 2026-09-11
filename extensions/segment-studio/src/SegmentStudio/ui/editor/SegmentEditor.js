@@ -70,6 +70,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [firstSegmentTagOpen, setFirstSegmentTagOpen] = useState(false);
   const mergeSavingRef = useRef(false);
   const [mergeConfirmation, setMergeConfirmation] = useState(null);
+  const [rejectedDeletionPreview, setRejectedDeletionPreview] = useState(null);
   const mergeCancelButtonRef = useRef(null);
   const [publishApprovedOpen, setPublishApprovedOpen] = useState(false);
   const [publishApprovedError, setPublishApprovedError] = useState("");
@@ -649,6 +650,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     acceptHistory,
     compatibilityMode,
     detail,
+    deleteRejectedSegments,
     detailPanelRef,
     historyRef,
     mergeSavingRef,
@@ -716,6 +718,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setMaterializePreview,
     setMaterializing,
     setRemovingExampleId,
+    setRejectedDeletionPreview,
     setSaveMessage,
     setSavingSegmentId,
     setSelectedSegmentGroupKey,
@@ -827,6 +830,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     autoAssigning,
     captureTrainingExport,
     removeIncorrectExample,
+    rejectedDeletionPreview,
     centerTimelineRef,
     closeEditorFilters,
     closeFirstSegmentTagDialog,
@@ -929,6 +933,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setHistoryOpen,
     setIncorrectExamplesOpen,
     setQuickSearchOpen,
+    setRejectedDeletionPreview,
     setRailViewport,
     setSelectedSegmentGroupKey,
     setSelectedSegmentId,

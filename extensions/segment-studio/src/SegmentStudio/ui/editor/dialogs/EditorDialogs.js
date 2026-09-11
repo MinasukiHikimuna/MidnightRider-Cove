@@ -564,6 +564,41 @@ function AutoAssignPerformersDialog({ candidates, processing, error, onConfirm, 
   ]));
 }
 
+function RejectedSegmentsDeletionDialog({ preview, onConfirm, onClose }) {
+  const selected = Number(preview.selectedSegmentCount) || 0;
+  const dependent = Number(preview.dependentSegmentCount) || 0;
+  const total = Number(preview.deletedSegmentCount) || selected + dependent;
+  const retained = Number(preview.retainedSharedSegmentCount) || 0;
+  const deferred = Number(preview.deferredRejectedSegmentCount) || 0;
+  return h("div", {
+    className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
+    onMouseDown: (event) => { if (event.target === event.currentTarget) onClose(); },
+    onKeyDownCapture: (event) => handleModalKey(event, { onCancel: onClose, onConfirm }),
+  }, h("section", {
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-labelledby": "segment-studio-delete-rejected-title",
+    tabIndex: -1,
+    onKeyDownCapture: trapModalFocus,
+    className: "w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
+  }, [
+    h("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
+      h("h2", { key: "title", id: "segment-studio-delete-rejected-title", className: "text-lg font-semibold text-foreground" }, "Permanently delete rejected segments?"),
+      h("p", { key: "summary", className: "mt-1 text-sm text-secondary" },
+        `${selected} rejected segment${selected === 1 ? "" : "s"}${dependent ? ` and ${dependent} dependent derived segment${dependent === 1 ? "" : "s"}` : ""} will be deleted (${total} total).`),
+    ]),
+    h("div", { key: "body", className: "space-y-2 px-5 py-4 text-sm text-secondary" }, [
+      retained ? h("p", { key: "retained" }, `${retained} shared derived segment${retained === 1 ? "" : "s"} will be kept.`) : null,
+      deferred ? h("p", { key: "deferred" }, `${deferred} feedback-protected rejected segment${deferred === 1 ? "" : "s"} will be kept until AI feedback is exported.`) : null,
+      h("p", { key: "warning", className: "font-medium text-foreground" }, "This cannot be undone."),
+    ]),
+    h("footer", { key: "footer", className: "flex justify-end gap-2 border-t border-border px-5 py-4" }, [
+      h("button", { key: "cancel", type: "button", autoFocus: true, onClick: onClose, className: "rounded-md border border-border px-3 py-1.5 text-sm" }, "Cancel"),
+      h("button", { key: "confirm", type: "button", onClick: onConfirm, className: "rounded-md border border-destructive/60 bg-destructive/15 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-destructive/25" }, "Delete permanently"),
+    ]),
+  ]));
+}
+
 function MergeSelectionDialog({
   merge,
   processing,
@@ -637,4 +672,4 @@ function MergeSelectionDialog({
   ]));
 }
 
-export { KeyboardShortcutsDialog, IncorrectExamplesDialog, SegmentQuickSearchDialog, ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, MergeSelectionDialog, groupApprovedDraftsForPublishing };
+export { KeyboardShortcutsDialog, IncorrectExamplesDialog, SegmentQuickSearchDialog, ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, MergeSelectionDialog, RejectedSegmentsDeletionDialog, groupApprovedDraftsForPublishing };

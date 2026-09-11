@@ -461,12 +461,38 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
   assert.match(source, /shortcut\.id === "system\.emptyBin".*emptyRecyclingBin\(\)/);
   assert.match(source, /rejected\/deletion\/preview/);
   assert.match(source, /rejected\/deletion\/execute/);
-  assert.match(source, /confirmDependencyDeletion\(preview\)/);
+  assert.match(source, /function RejectedSegmentsDeletionDialog/);
+  assert.match(source, /rejectedDeletionPreview \? h\(RejectedSegmentsDeletionDialog/);
+  assert.match(source, /role: "dialog"/);
+  assert.match(source, /onKeyDownCapture: trapModalFocus/);
+  const workflow = sourceByModule["editor/actions/workflow.js"];
+  const deleteRejected = workflow.slice(
+    workflow.indexOf("async function deleteRejectedSegments"),
+    workflow.indexOf("async function autoAssignPerformers"),
+  );
+  assert.doesNotMatch(deleteRejected, /confirmDependencyDeletion/);
+  assert.ok(deleteRejected.indexOf("onDetailChange(optimisticDetail") < deleteRejected.indexOf("/rejected/deletion/execute"));
+  assert.match(deleteRejected, /onDetailChange\(detail, video\.id\)/);
   assert.match(source, /preview\.deferredRejectedSegmentCount/);
   assert.match(source, /preview\.protectedIncorrectExampleCount/);
   assert.match(source, /must be exported before/);
   assert.match(source, /feedback-protected rejected segment/);
   assert.match(source, /await onReload\(\)/);
+});
+
+test("optimistic batch deletion removes rejected markers without mutating the source projection", () => {
+  const detail = {
+    segments: [
+      { id: 1, reviewState: "rejected" },
+      { id: 2, reviewState: "approved" },
+      { id: 3, reviewState: "rejected" },
+    ],
+  };
+
+  const optimistic = ui.removeSegmentsProjection(detail, [1, 3]);
+
+  assert.deepEqual(optimistic.segments, [{ id: 2, reviewState: "approved" }]);
+  assert.equal(detail.segments.length, 3);
 });
 
 test("editor previews and confirms bulk performer auto-assignment like Marker Studio", () => {
