@@ -67,7 +67,7 @@ function SegmentActiveEditor({
         onReduceSelection,
         reviewable: compatibilityMode,
         tagEditable,
-        slotsEditable: slotTargets.length > 0,
+        slotsEditable: slotTargets.length > 0 && savingSegmentId == null,
         onEditSlots: () => setSlotsOpen(true),
         slotButtonRef,
         saveMessage,
@@ -282,7 +282,7 @@ function SegmentActiveEditor({
           key: "slots",
           ref: slotButtonRef,
           type: "button",
-          disabled: !performerSlotsAvailable || selectedPerformerSlots.length === 0,
+          disabled: savingSegmentId != null || !performerSlotsAvailable || selectedPerformerSlots.length === 0,
           onClick: () => setSlotsOpen(true),
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50",
           title: !performerSlotsAvailable ? "Performer slot details are unavailable for your current access."
@@ -375,25 +375,32 @@ function SegmentActiveEditor({
                 saved.slots || [],
                 saved.revision,
               ), video.id);
-              setSavingSegmentId(null);
               setSaveMessage("Performer slots saved.");
-              await onRecordHistory(
-                "performer-slots.assign",
-                "Assigned performers",
-                beforeState,
-                afterState,
-              );
-              onSlotsChanged(saved);
+              try {
+                await onRecordHistory(
+                  "performer-slots.assign",
+                  "Assigned performers",
+                  beforeState,
+                  afterState,
+                );
+                await onSlotsChanged(saved);
+              } finally {
+                setSavingSegmentId(null);
+              }
             },
-            onRollback: (originalSlots, error) => {
+            onRollback: async (originalSlots, error) => {
               onDetailChange((current) => patchPerformerSlotProjection(
                 current,
                 selectedSegment.id,
                 originalSlots,
                 detail.performerSlotRevisions?.[selectedSegment.id],
               ), video.id);
-              setSavingSegmentId(null);
               setSaveMessage(error.message || "Unable to save performer slots.");
+              try {
+                if (error.status === 409) await onSlotsChanged();
+              } finally {
+                setSavingSegmentId(null);
+              }
             },
             onConflict: onSlotsChanged,
           })),

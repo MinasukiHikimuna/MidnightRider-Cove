@@ -52,7 +52,7 @@ function LaneReviewCounts({ counts }) {
   }, `${SEGMENT_STATE_PRESENTATION[state].symbol}${counts[state]}`)));
 }
 
-function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revision, performerCandidates, onOptimisticSave = () => {}, onSaved, onRollback = () => {}, onConflict, confirmRef, shortcutRef }) {
+function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revision, performerCandidates, onOptimisticSave = () => {}, onSaved, onRollback = null, onConflict, confirmRef, shortcutRef }) {
   const videoPerformers = videoPerformerOptions(performerCandidates);
   const [assignments, setAssignments] = useState(() => videoPerformerSlotAssignments(slots, videoPerformers));
   const [saving, setSaving] = useState(false);
@@ -104,7 +104,7 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
         }),
       });
       setMessage("Performer slots saved.");
-      onSaved(saved, {
+      await onSaved(saved, {
         beforeState: performerSlotHistoryState([{
           segmentId,
           itemId,
@@ -119,8 +119,11 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
         }]),
       });
     } catch (error) {
-      onRollback(slots, error);
-      if (error.status === 409) { setMessage("Slot definitions or assignments changed; current values were reloaded."); onConflict(); }
+      if (onRollback) await onRollback(slots, error);
+      if (error.status === 409) {
+        setMessage("Slot definitions or assignments changed; current values were reloaded.");
+        if (!onRollback) await onConflict();
+      }
       else setMessage(error.message || "Unable to save performer slots.");
     } finally {
       savingRef.current = false;

@@ -179,6 +179,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       setMaterializeLoading(false);
       return undefined;
     }
+    if (savingSegmentId != null) {
+      setMaterializeLoading(true);
+      return undefined;
+    }
     let active = true;
     setMaterializeLoading(true);
     const timer = setTimeout(() => {
@@ -202,7 +206,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       active = false;
       clearTimeout(timer);
     };
-  }, [compatibilityMode, video.id, materializeInventoryFingerprint, materializeRefreshToken]);
+  }, [compatibilityMode, video.id, materializeInventoryFingerprint, materializeRefreshToken, savingSegmentId]);
   const refreshMaterializationPreview = () =>
     setMaterializeRefreshToken((current) => current + 1);
   const segmentGroups = detail.segmentGroups || EMPTY_EDITOR_COLLECTION;
