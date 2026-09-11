@@ -5,6 +5,7 @@ import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSele
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
+import { patchSegmentProjection } from "../model/optimistic.js";
 
 function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
   return values.tagId !== segment.tagId
@@ -49,12 +50,16 @@ function createPrimarySegmentActions(context) {
       }
     }
 
-    async function mutateSegment(segment, values, recordHistory = true, historyLabel = null) {
+    async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false) {
       if (!segment || savingSegmentId != null) return null;
       const historyReceiptId =
         recordHistory && !compatibilityMode ? crypto.randomUUID() : null;
       setSavingSegmentId(segment.id);
       setSaveMessage(recordHistory ? "Saving directly to Cove…" : "Restoring history…");
+      const optimisticDetail = optimistic
+        ? patchSegmentProjection(detail, [segment.id], values)
+        : null;
+      if (optimisticDetail) onDetailChange(optimisticDetail, video.id);
       try {
         if (compatibilityMode
             && segment.nativeSegmentId == null
@@ -136,6 +141,7 @@ function createPrimarySegmentActions(context) {
         setSaveMessage(recordHistory ? "Saved to Cove" : "History restored");
         return updatedSegment;
       } catch (requestError) {
+        if (optimistic) onDetailChange(detail, video.id);
         if (requestError.status === 409) {
           setSaveMessage("Conflict — loading the latest segment…");
           await onConflict();
@@ -443,7 +449,7 @@ function createPrimarySegmentActions(context) {
         setSaveMessage("Timing is unchanged.");
         return;
       }
-      await mutateSegment(selectedSegment, { startSec, endSec, tagId: selectedSegment.tagId });
+      await mutateSegment(selectedSegment, { startSec, endSec, tagId: selectedSegment.tagId }, true, null, true);
     }
 
     async function applyShortcutTiming(startSec, endSec) {
@@ -457,7 +463,7 @@ function createPrimarySegmentActions(context) {
         setSaveMessage("Timing is unchanged.");
         return;
       }
-      await mutateSegment(selectedSegment, { startSec, endSec, tagId: selectedSegment.tagId });
+      await mutateSegment(selectedSegment, { startSec, endSec, tagId: selectedSegment.tagId }, true, null, true);
     }
 
   return { acceptHistory, recordHistoryAction, mutateSegment, completeReview, createSegment, splitSegment, duplicateSegment, saveTiming, applyShortcutTiming };

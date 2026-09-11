@@ -37,6 +37,23 @@ test("native mutations update the local projection without reloading the editor"
   assert.match(draftUpdate, /onDetailChange\(/);
 });
 
+test("timing edits move segment boundaries optimistically and roll back failed saves", () => {
+  const primaryActions = sourceByModule["editor/actions/primary.js"];
+  const mutate = primaryActions.slice(
+    primaryActions.indexOf("async function mutateSegment"),
+    primaryActions.indexOf("async function completeReview"),
+  );
+  const timing = primaryActions.slice(
+    primaryActions.indexOf("async function saveTiming"),
+    primaryActions.indexOf("return { acceptHistory"),
+  );
+
+  assert.match(mutate, /optimistic = false/);
+  assert.ok(mutate.indexOf("onDetailChange(optimisticDetail") < mutate.indexOf("await requestJson"));
+  assert.match(mutate, /if \(optimistic\) onDetailChange\(detail, video\.id\)/);
+  assert.match(timing, /mutateSegment\(selectedSegment, \{ startSec, endSec, tagId: selectedSegment\.tagId \}, true, null, true\)/);
+});
+
 test("Basic omitted collections use stable fallbacks across renders", () => {
   const controller = sourceByModule["editor/SegmentEditor.js"];
   assert.match(controller, /const EMPTY_EDITOR_COLLECTION = Object\.freeze\(\[\]\)/);
