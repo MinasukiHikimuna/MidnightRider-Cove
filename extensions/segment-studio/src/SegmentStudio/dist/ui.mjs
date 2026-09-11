@@ -2084,12 +2084,12 @@ function $l(e, t) {
   };
 }
 function Tl(e, t) {
-  const r = [...t || []].sort((l, d) => l.startSec - d.startSec || l.id - d.id), o = r[0];
+  const r = [...t || []].sort((s, l) => s.startSec - l.startSec || s.id - l.id), o = r[0];
   if (!o) return e;
-  const i = new Set(r.slice(1).map((l) => l.id)), a = r.map((l) => l.endSec).filter(Number.isFinite), s = {
+  const i = new Set(r.slice(1).map((s) => s.id)), a = {
     ...o,
     startSec: r[0].startSec,
-    endSec: a.length > 0 ? Math.max(...a) : null,
+    endSec: Math.max(...r.map((s) => s.endSec ?? s.startSec)),
     sourceKey: "user",
     sourceRunId: null,
     confidence: null,
@@ -2097,7 +2097,7 @@ function Tl(e, t) {
   };
   return {
     ...e,
-    segments: (e.segments || []).filter((l) => !i.has(l.id)).map((l) => l.id === o.id ? s : l).sort((l, d) => l.startSec - d.startSec || l.id - d.id)
+    segments: (e.segments || []).filter((s) => !i.has(s.id)).map((s) => s.id === o.id ? a : s).sort((s, l) => s.startSec - l.startSec || s.id - l.id)
   };
 }
 function jo(e, t, r) {

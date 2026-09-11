@@ -741,6 +741,15 @@ test("segment merges collapse the local selection before the request settles", (
     { id: 1, startSec: 2, endSec: 9, sourceKey: "user", sourceRunId: null, confidence: null, isDerived: false },
     detail.segments[2],
   ]);
+  assert.equal(ui.mergeSegmentsProjection({
+    segments: [
+      { id: 1, startSec: 2, endSec: 9 },
+      { id: 2, startSec: 10, endSec: null },
+    ],
+  }, [
+    { id: 1, startSec: 2, endSec: 9 },
+    { id: 2, startSec: 10, endSec: null },
+  ]).segments[0].endSec, 10);
   assert.equal(detail.segments.length, 3);
   const reviewActions = sourceByModule["editor/actions/review.js"];
   const merge = reviewActions.slice(

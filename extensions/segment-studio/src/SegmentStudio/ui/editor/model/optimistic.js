@@ -30,11 +30,10 @@ export function mergeSegmentsProjection(detail, mergedSegments) {
   const survivor = ordered[0];
   if (!survivor) return detail;
   const consumedIds = new Set(ordered.slice(1).map((segment) => segment.id));
-  const finiteEnds = ordered.map((segment) => segment.endSec).filter(Number.isFinite);
   const optimisticSurvivor = {
     ...survivor,
     startSec: ordered[0].startSec,
-    endSec: finiteEnds.length > 0 ? Math.max(...finiteEnds) : null,
+    endSec: Math.max(...ordered.map((segment) => segment.endSec ?? segment.startSec)),
     sourceKey: "user",
     sourceRunId: null,
     confidence: null,
