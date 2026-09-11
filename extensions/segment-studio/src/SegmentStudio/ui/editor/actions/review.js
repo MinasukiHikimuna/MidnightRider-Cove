@@ -4,6 +4,7 @@ import { completeOperation, formatTime, operationIdFor, requestJson } from "../.
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
+import { patchSegmentProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
   const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -138,6 +139,12 @@ function createReviewActions(context) {
       reviewSavingRef.current = true;
       setSavingSegmentId(selectedSegment?.id ?? candidates[0].id);
       setSaveMessage(`Updating ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
+      const optimisticDetail = patchSegmentProjection(
+        detail,
+        candidates.map((segment) => segment.id),
+        { reviewState },
+      );
+      onDetailChange(optimisticDetail, video.id);
       try {
         const result = await requestJson(`/videos/${video.id}/segments/review-state`, {
           method: "PUT",
@@ -203,6 +210,7 @@ function createReviewActions(context) {
         restoreSelection(updatedDetail);
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
+        onDetailChange(detail, video.id);
         if (error.status === 409 && error.payload?.currentHistory)
           acceptHistory(error.payload.currentHistory);
         if (error.status === 409)

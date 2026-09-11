@@ -508,6 +508,33 @@ test("selection review shortcuts apply a state and reset only when every segment
   assert.doesNotMatch(handler, /Partially updated/);
 });
 
+test("review decisions update the editor projection before the request settles", () => {
+  const detail = {
+    video: { id: 1 },
+    segments: [
+      { id: 10, reviewState: "unreviewed", startSec: 3 },
+      { id: 11, reviewState: "approved", startSec: 1 },
+      { id: 12, reviewState: "unreviewed", startSec: 2 },
+    ],
+  };
+
+  const optimistic = ui.patchSegmentProjection(detail, [10, 12], { reviewState: "rejected" });
+
+  assert.deepEqual(optimistic.segments.map(({ id, reviewState }) => ({ id, reviewState })), [
+    { id: 11, reviewState: "approved" },
+    { id: 12, reviewState: "rejected" },
+    { id: 10, reviewState: "rejected" },
+  ]);
+  assert.equal(detail.segments[0].reviewState, "unreviewed");
+  const reviewActions = sourceByModule["editor/actions/review.js"];
+  const saveReview = reviewActions.slice(
+    reviewActions.indexOf("async function saveSelectedReviewState"),
+    reviewActions.indexOf("return { closeMergeConfirmation"),
+  );
+  assert.ok(saveReview.indexOf("onDetailChange(optimisticDetail") < saveReview.indexOf("await requestJson"));
+  assert.match(saveReview, /onDetailChange\(detail, video\.id\)/);
+});
+
 test("bulk review patches safe decisions locally and reloads cascading or identity-changing decisions", () => {
   const reviewActions = sourceByModule["editor/actions/review.js"];
   const saveReview = reviewActions.slice(

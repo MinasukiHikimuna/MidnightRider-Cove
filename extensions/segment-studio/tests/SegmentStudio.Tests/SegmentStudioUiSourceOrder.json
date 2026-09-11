@@ -11,6 +11,7 @@
   "editor/model/timeline.js",
   "editor/model/history.js",
   "editor/model/feedback.js",
+  "editor/model/optimistic.js",
   "editor/model/layout.js",
   "editor/PerformerSlotEditors.js",
   "editor/SwimlaneTimeline.js",
