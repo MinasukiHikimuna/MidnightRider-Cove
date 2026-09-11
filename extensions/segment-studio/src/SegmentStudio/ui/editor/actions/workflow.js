@@ -6,7 +6,7 @@ import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
-import { patchSegmentProjection, removeSegmentsProjection } from "../model/optimistic.js";
+import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
   const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -348,21 +348,22 @@ function createWorkflowActions(context) {
       const preview = confirmedPreview;
       const deferredCount = Number(preview.deferredRejectedSegmentCount) || 0;
       const previousSelectionId = selectedSegmentIdRef.current;
-      const optimisticDetail = removeSegmentsProjection(
-        detail,
-        rejectedSegments.map((segment) => segment.id),
-      );
+      const optimisticDetail = deferredCount === 0
+        ? removeSegmentsProjection(detail, rejectedSegments.map((segment) => segment.id))
+        : detail;
       const nextSelectedSegment = optimisticDetail.segments.find((segment) => segment.reviewState === "unreviewed")
         || optimisticDetail.segments[0]
         || null;
       setRejectedDeletionPreview(null);
       setSavingSegmentId(-1);
       setSaveMessage("Deleting rejected segments…");
-      onDetailChange(optimisticDetail, video.id);
-      setSelectedSegmentIds(nextSelectedSegment ? [nextSelectedSegment.id] : []);
-      setSelectedSegmentId(nextSelectedSegment?.id ?? null);
-      selectionAnchorIdRef.current = nextSelectedSegment?.id ?? null;
-      selectionRangeBaseIdsRef.current = [];
+      if (deferredCount === 0) {
+        onDetailChange(optimisticDetail, video.id);
+        setSelectedSegmentIds(nextSelectedSegment ? [nextSelectedSegment.id] : []);
+        setSelectedSegmentId(nextSelectedSegment?.id ?? null);
+        selectionAnchorIdRef.current = nextSelectedSegment?.id ?? null;
+        selectionRangeBaseIdsRef.current = [];
+      }
       try {
         const operationKey = `rejected-dependency-delete:${video.id}:${preview.fingerprint}`;
         const result = await requestJson(`/videos/${video.id}/rejected/deletion/execute`, {
@@ -382,7 +383,10 @@ function createWorkflowActions(context) {
           : "";
         setSaveMessage(`${result.deletedSegmentCount} segment${result.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${retainedMessage}`);
       } catch (error) {
-        onDetailChange(detail, video.id);
+        if (deferredCount === 0) onDetailChange((current) => restoreSegmentsProjection(
+          current,
+          rejectedSegments,
+        ), video.id);
         setSelectedSegmentIds(previousSelectionId == null ? [] : [previousSelectionId]);
         setSelectedSegmentId(previousSelectionId);
         selectionAnchorIdRef.current = previousSelectionId;
@@ -549,7 +553,23 @@ function createWorkflowActions(context) {
           closeTagEditing();
           setSaveMessage(`${candidates.length} selected segment${candidates.length === 1 ? "" : "s"} retagged.`);
         } catch (error) {
-          onDetailChange(detail, video.id);
+          onDetailChange((current) => restoreSegmentFieldsProjection(
+            current,
+            candidates,
+            Object.keys(optimisticValues),
+          ), video.id);
+          const restoredSelection = identities
+            .map((identity) => findSegmentByStableIdentity(detail.segments, identity))
+            .filter(Boolean);
+          const restoredActive = findSegmentByStableIdentity(detail.segments, {
+            id: selectedSegment?.id,
+            itemId: selectedSegment?.itemId,
+            nativeSegmentId: selectedSegment?.nativeSegmentId,
+          }) || restoredSelection[0] || null;
+          setSelectedSegmentIds(restoredSelection.map((segment) => segment.id));
+          setSelectedSegmentId(restoredActive?.id ?? null);
+          selectionAnchorIdRef.current = restoredActive?.id ?? null;
+          selectionRangeBaseIdsRef.current = [];
           if (error.status === 409) await onConflict();
           setSaveMessage(error.message || "Unable to change the selected segment tags.");
         } finally {
@@ -601,7 +621,15 @@ function createWorkflowActions(context) {
           closeTagEditing();
           setSaveMessage(destructive ? "Tag changed and lineage reconciled." : "Tag changed.");
         } catch (error) {
-          onDetailChange(detail, video.id);
+          onDetailChange((current) => restoreSegmentFieldsProjection(
+            current,
+            [selectedSegment],
+            Object.keys(optimisticValues),
+          ), video.id);
+          setSelectedSegmentIds([selectedSegment.id]);
+          setSelectedSegmentId(selectedSegment.id);
+          selectionAnchorIdRef.current = selectedSegment.id;
+          selectionRangeBaseIdsRef.current = [];
           if (error.status === 409) {
             setSaveMessage("Lineage changed — loading the latest segments…");
             await onConflict();

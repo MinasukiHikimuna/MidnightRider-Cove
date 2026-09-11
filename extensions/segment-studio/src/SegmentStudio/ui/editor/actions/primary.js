@@ -5,7 +5,7 @@ import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSele
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
-import { insertSegmentProjection, patchSegmentProjection } from "../model/optimistic.js";
+import { insertSegmentProjection, patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection } from "../model/optimistic.js";
 
 function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
   return values.tagId !== segment.tagId
@@ -52,6 +52,8 @@ function createPrimarySegmentActions(context) {
 
     async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false, optimisticValues = values) {
       if (!segment || savingSegmentId != null) return null;
+      const previousSelectionIds = selectedSegments.map((item) => item.id);
+      const previousActiveId = selectedSegmentIdRef.current;
       const historyReceiptId =
         recordHistory && !compatibilityMode ? crypto.randomUUID() : null;
       setSavingSegmentId(segment.id);
@@ -141,7 +143,17 @@ function createPrimarySegmentActions(context) {
         setSaveMessage(recordHistory ? "Saved to Cove" : "History restored");
         return updatedSegment;
       } catch (requestError) {
-        if (optimistic) onDetailChange(detail, video.id);
+        if (optimistic) {
+          onDetailChange((current) => restoreSegmentFieldsProjection(
+            current,
+            [segment],
+            Object.keys(optimisticValues),
+          ), video.id);
+          setSelectedSegmentIds(previousSelectionIds);
+          setSelectedSegmentId(previousActiveId);
+          selectionAnchorIdRef.current = previousActiveId;
+          selectionRangeBaseIdsRef.current = [];
+        }
         if (requestError.status === 409) {
           setSaveMessage("Conflict — loading the latest segment…");
           await onConflict();
@@ -279,6 +291,15 @@ function createPrimarySegmentActions(context) {
         pendingFirstSegmentStartSecRef.current = null;
         setFirstSegmentTagOpen(false);
         const loaded = await onReload();
+        if (!loaded) {
+          onDetailChange((current) => removeSegmentsProjection(
+            current,
+            [optimisticSegment.id],
+          ), video.id);
+          replaceSegmentSelection(previousSelectionId);
+          setSaveMessage("Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment.");
+          return;
+        }
         const createdSegment = findSegmentByStableIdentity(loaded?.segments, createdIdentity);
         if (createdSegment) {
           if (!compatibilityMode)
@@ -300,7 +321,10 @@ function createPrimarySegmentActions(context) {
           setSaveMessage("Segment created, but it could not be selected.");
         }
       } catch (error) {
-        onDetailChange(detail, video.id);
+        onDetailChange((current) => removeSegmentsProjection(
+          current,
+          [optimisticSegment.id],
+        ), video.id);
         replaceSegmentSelection(previousSelectionId);
         if (requestedTagId != null) setFirstSegmentTagOpen(true);
         setSaveMessage(error.message || "Unable to create the draft.");

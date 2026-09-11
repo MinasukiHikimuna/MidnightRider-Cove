@@ -472,7 +472,8 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
   );
   assert.doesNotMatch(deleteRejected, /confirmDependencyDeletion/);
   assert.ok(deleteRejected.indexOf("onDetailChange(optimisticDetail") < deleteRejected.indexOf("/rejected/deletion/execute"));
-  assert.match(deleteRejected, /onDetailChange\(detail, video\.id\)/);
+  assert.match(deleteRejected, /deferredCount === 0[\s\S]*removeSegmentsProjection/);
+  assert.match(deleteRejected, /restoreSegmentsProjection\([\s\S]*rejectedSegments/);
   const controller = sourceByModule["editor/SegmentEditor.js"];
   const reviewSetup = controller.slice(
     controller.indexOf("createReviewActions"),

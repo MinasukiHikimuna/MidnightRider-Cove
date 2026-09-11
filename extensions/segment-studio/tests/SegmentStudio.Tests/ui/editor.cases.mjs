@@ -50,7 +50,8 @@ test("timing edits move segment boundaries optimistically and roll back failed s
 
   assert.match(mutate, /optimistic = false/);
   assert.ok(mutate.indexOf("onDetailChange(optimisticDetail") < mutate.indexOf("await requestJson"));
-  assert.match(mutate, /if \(optimistic\) onDetailChange\(detail, video\.id\)/);
+  assert.match(mutate, /restoreSegmentFieldsProjection\([\s\S]*Object\.keys\(optimisticValues\)/);
+  assert.match(mutate, /setSelectedSegmentIds\(previousSelectionIds\)/);
   assert.match(timing, /mutateSegment\(selectedSegment, \{ startSec, endSec, tagId: selectedSegment\.tagId \}, true, null, true\)/);
 });
 
@@ -65,7 +66,7 @@ test("tag edits move segments to their new swimlane before persistence completes
   assert.match(saveTag, /async function saveTag\(tagId, tagName = null\)/);
   assert.match(saveTag, /const optimisticValues = \{[\s\S]*tagId,[\s\S]*tagName/);
   assert.ok(saveTag.indexOf("onDetailChange(optimisticDetail") < saveTag.indexOf("await requestJson"));
-  assert.match(saveTag, /onDetailChange\(detail, video\.id\)/);
+  assert.match(saveTag, /restoreSegmentFieldsProjection\([\s\S]*Object\.keys\(optimisticValues\)/);
   assert.match(saveTag, /mutateSegment\(selectedSegment,[\s\S]*true,[\s\S]*optimisticValues/);
   assert.match(activeEditor, /onChange: \(tagId, option\).*saveTag\(tagId, option\?\.label\)/);
 });
@@ -85,8 +86,42 @@ test("segment creation inserts and selects a temporary marker before persistence
   );
   assert.ok(create.indexOf("onDetailChange(optimisticDetail") < create.indexOf("await requestJson"));
   assert.ok(create.indexOf("replaceSegmentSelection(optimisticSegment.id)") < create.indexOf("await requestJson"));
-  assert.match(create, /onDetailChange\(detail, video\.id\)/);
+  assert.match(create, /removeSegmentsProjection\([\s\S]*optimisticSegment\.id/);
+  assert.match(create, /if \(!loaded\)[\s\S]*replaceSegmentSelection\(previousSelectionId\)/);
   assert.match(create, /setFirstSegmentTagOpen\(true\)/);
+});
+
+test("optimistic rollback preserves unrelated refreshed editor data", () => {
+  const original = { id: 1, startSec: 4, endSec: 8, reviewState: "unreviewed", tagId: 2 };
+  const refreshed = {
+    video: { id: 1 },
+    shotBoundaries: [{ id: 90 }],
+    segments: [
+      { ...original, startSec: 6, endSec: 10, reviewState: "approved" },
+      { id: 2, startSec: 12, endSec: 14 },
+    ],
+  };
+
+  const fieldsRestored = ui.restoreSegmentFieldsProjection(
+    refreshed,
+    [original],
+    ["reviewState"],
+  );
+  assert.deepEqual(fieldsRestored.shotBoundaries, refreshed.shotBoundaries);
+  assert.deepEqual(fieldsRestored.segments, [
+    { ...original, startSec: 6, endSec: 10 },
+    refreshed.segments[1],
+  ]);
+
+  const removedRestored = ui.restoreSegmentsProjection(
+    { ...refreshed, segments: [refreshed.segments[1]] },
+    [original],
+  );
+  assert.deepEqual(removedRestored.shotBoundaries, refreshed.shotBoundaries);
+  assert.deepEqual(removedRestored.segments, [original, refreshed.segments[1]]);
+  assert.deepEqual(ui.restoreSegmentsProjection(refreshed, [
+    { ...original, endSec: 99 },
+  ]).segments[0], refreshed.segments[0]);
 });
 
 test("Basic omitted collections use stable fallbacks across renders", () => {
@@ -364,6 +399,8 @@ test("selection lifecycle is explicit for filters, collapse, and atomic review f
   assert.deepEqual(ui.reconcileSelectedSegmentIds([1, 9], [2, 3], null), [2]);
   assert.match(source, /Collapsed Segment groups keep their selected segments/);
   assert.match(source, /Unable to update the selected segments/);
+  assert.match(source, /restoreSelection\(restoredDetail, true\)/);
+  assert.match(source, /setSelectedSegmentIds\(previousSelectionIds\)/);
   assert.doesNotMatch(source, /completedCandidates/);
 });
 
@@ -584,7 +621,8 @@ test("review decisions update the editor projection before the request settles",
     reviewActions.indexOf("return { closeMergeConfirmation"),
   );
   assert.ok(saveReview.indexOf("onDetailChange(optimisticDetail") < saveReview.indexOf("await requestJson"));
-  assert.match(saveReview, /onDetailChange\(detail, video\.id\)/);
+  assert.match(saveReview, /restoreSegmentFieldsProjection\([\s\S]*\["reviewState"\]/);
+  assert.match(saveReview, /restoreSelection\(restoredDetail, true\)/);
 });
 
 test("bulk review patches safe decisions locally and reloads cascading or identity-changing decisions", () => {
@@ -757,7 +795,7 @@ test("segment merges collapse the local selection before the request settles", (
     reviewActions.indexOf("async function saveSelectedReviewState"),
   );
   assert.ok(merge.indexOf("onDetailChange(optimisticDetail") < merge.indexOf("await requestJson"));
-  assert.match(merge, /onDetailChange\(detail, video\.id\)/);
+  assert.match(merge, /restoreSegmentFieldsProjection\([\s\S]*merge\.segments\[0\][\s\S]*merge\.segments\.slice\(1\)/);
 });
 
 test("bulk performer assignment requires every selected segment to share one slot shape", () => {

@@ -4,7 +4,7 @@ import { completeOperation, formatTime, operationIdFor, requestJson } from "../.
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
-import { mergeSegmentsProjection, patchSegmentProjection } from "../model/optimistic.js";
+import { mergeSegmentsProjection, patchSegmentProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
   const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -109,7 +109,12 @@ function createReviewActions(context) {
         revealSegmentGroupForSelection(survivor.id);
         setSaveMessage(`${merge.segments.length} segments merged into ${formatTime(merge.startSec)} – ${endLabel}.`);
       } catch (error) {
-        onDetailChange(detail, video.id);
+        onDetailChange((current) => restoreSegmentsProjection(
+          restoreSegmentFieldsProjection(current, [merge.segments[0]], [
+            "startSec", "endSec", "sourceKey", "sourceRunId", "confidence", "isDerived",
+          ]),
+          merge.segments.slice(1),
+        ), video.id);
         setSelectedSegmentIds(originalSelectionIds);
         setSelectedSegmentId(selectedSegment?.id ?? originalSelectionIds[0] ?? null);
         selectionAnchorIdRef.current = selectedSegment?.id ?? originalSelectionIds[0] ?? null;
@@ -133,9 +138,9 @@ function createReviewActions(context) {
         nativeSegmentId: segment.nativeSegmentId,
       }));
       const activeIdentity = identities.find((identity) => identity.id === selectedSegment?.id) || identities[0];
-      const restoreSelection = (loaded) => {
+      const restoreSelection = (loaded, force = false) => {
         if (!loaded?.segments) return;
-        if (!shouldRestoreTransitionSelection(selectedSegmentIdRef.current, activeIdentity.id))
+        if (!force && !shouldRestoreTransitionSelection(selectedSegmentIdRef.current, activeIdentity.id))
           return;
         const reloadedSelection = identities
           .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
@@ -222,11 +227,15 @@ function createReviewActions(context) {
         restoreSelection(updatedDetail);
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
-        onDetailChange(detail, video.id);
+        onDetailChange((current) => restoreSegmentFieldsProjection(
+          current,
+          candidates,
+          ["reviewState"],
+        ), video.id);
         if (error.status === 409 && error.payload?.currentHistory)
           acceptHistory(error.payload.currentHistory);
-        if (error.status === 409)
-          restoreSelection(await onConflict());
+        const restoredDetail = error.status === 409 ? await onConflict() : detail;
+        restoreSelection(restoredDetail, true);
         setSaveMessage(error.message || "Unable to update the selected segments.");
       } finally {
         reviewSavingRef.current = false;
