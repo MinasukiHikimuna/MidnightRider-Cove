@@ -185,3 +185,9 @@ describe("Data Quality review model", () => {
     ).toMatch(/contradictory/i);
   });
 });
+
+it("round-trips explicit video layouts and card tag parents and rejects unknown layouts", () => {
+  const rule = { id: "layout", name: "Layout", description: "", view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text", reviewMode: "multiple" }, actions: [], presentation: { annotations: ["tags"], annotationParents: [100] } };
+  expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
+  expect(() => parseReviews(JSON.stringify([{ ...rule, view: { ...rule.view, reviewMode: "unknown" } }]))).toThrow(/could not be read/i);
+});

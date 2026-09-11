@@ -6,6 +6,7 @@ export interface ReviewView {
   displayMode: DisplayMode;
   searchMode: string;
   startFrom?: "beginning" | "end";
+  reviewMode?: "single" | "multiple";
 }
 
 export interface ReviewStep {
@@ -264,6 +265,8 @@ export function parseReviews(raw: string | null): Review[] {
         typeof review.view.searchMode === "string" &&
         (review.view.startFrom === undefined ||
           ["beginning", "end"].includes(review.view.startFrom)) &&
+        (review.view.reviewMode === undefined ||
+          ["single", "multiple"].includes(review.view.reviewMode)) &&
         review.view.filter &&
         typeof review.view.filter === "object" &&
         !Array.isArray(review.view.filter) &&

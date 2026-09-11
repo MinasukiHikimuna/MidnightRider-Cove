@@ -159,6 +159,16 @@ export function QueueEditor({
             Choose how {entityType === "tag" ? "tags" : "videos and tags"} appear while reviewing.
           </p>
           <div className="dq-field-grid">
+            {reviewEntityType(draft) === "video" && <label>
+              Preferred review layout
+              <select
+                value={draft.view.reviewMode ?? "single"}
+                onChange={(event) => onChange({ ...draft, view: { ...draft.view, reviewMode: event.target.value as "single" | "multiple" } })}
+              >
+                <option value="single">Single video</option>
+                <option value="multiple">Multiple videos</option>
+              </select>
+            </label>}
             <label>
               Preferred view
               <select
@@ -214,9 +224,11 @@ export function QueueEditor({
           </div>
           {(settings.annotations ?? []).includes("tags") && (
             <>
+              <h4>Card tag bins</h4>
               <p>
                 Choose parent tags. Only their descendant tags appear on the
-                card; no tags appear until a parent is selected.
+                card; no tags appear until a parent is selected. This setting
+                is separate from the queue filters.
               </p>
               <EntityReferenceMultiSelector
                 entityType="tag"
@@ -229,7 +241,7 @@ export function QueueEditor({
               />
             </>
           )}
-          <h4>Tag bins</h4>
+          <h4>Queue tag bins</h4>
           <p>
             Choose parent tags. Their descendants become temporary queue
             filters. Counts describe the loaded page.

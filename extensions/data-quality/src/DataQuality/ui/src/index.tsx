@@ -87,7 +87,7 @@ import {
 } from "./model";
 import { OccurrenceSettings } from "./OccurrenceReview";
 import { ReviewWorkspace } from "./ReviewWorkspace";
-import { queryKeys } from "./reviewQuery";
+import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
 import "./styles.css";
 import {
@@ -331,17 +331,36 @@ export function DataQualityPage({
   const review = useMemo(
     () =>
       temporaryReview?.id === activeId && savedReview
-        ? { ...savedReview, view: temporaryReview.view }
+        ? { ...savedReview, view: {
+            ...savedReview.view,
+            filter: temporaryReview.view.filter,
+            objectFilter: temporaryReview.view.objectFilter,
+            searchMode: temporaryReview.view.searchMode,
+            startFrom: temporaryReview.view.startFrom,
+          } }
         : savedReview,
     [temporaryReview, activeId, savedReview],
   );
-  useEffect(() => {
-    const restore = () => setActiveId(selectedReviewId());
-    window.addEventListener("popstate", restore);
-    return () => window.removeEventListener("popstate", restore);
-  }, []);
   const entityType = review ? reviewEntityType(review) : "video";
   const videoReview = entityType === "video" ? (review as VideoReview | null) : null;
+  const [layoutOverride, setLayoutOverride] = useState<{ id: string; mode: "single" | "multiple" } | null>(null);
+  const reviewMode = layoutOverride?.id === review?.id ? layoutOverride?.mode : review?.view.reviewMode ?? "single";
+  const usesWorkspace = entityType === "performerOccurrence" || (entityType === "video" && reviewMode === "single");
+  const [queryRevision, setQueryRevision] = useState(0);
+  const readyQueryRevision = useRef(-1);
+  const deferredNavigation = useRef(false);
+  useEffect(() => {
+    const restore = () => {
+      if (!usesWorkspace && pendingRef.current) {
+        deferredNavigation.current = true;
+        return;
+      }
+      setActiveId(selectedReviewId());
+      if (!usesWorkspace) setQueryRevision(value => value + 1);
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [usesWorkspace]);
   const canWriteCurrent = entityType === "tag" ? canWriteTags : canWriteVideos;
   const sortedReviews = useMemo(() => {
     const direction = reviewBrowserDirection === "asc" ? 1 : -1;
@@ -380,6 +399,7 @@ export function DataQualityPage({
   const [queue, setQueue] = useState<ReviewPage>({ items: [], totalCount: 0 });
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState("");
+  const [queueUrlError, setQueueUrlError] = useState(false);
   const [queueRetryFromEnd, setQueueRetryFromEnd] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const selectedRef = useRef(selectedIds);
@@ -707,6 +727,7 @@ export function DataQualityPage({
 
   useEffect(() => {
     actionGeneration.current += 1;
+    readyQueryRevision.current = -1;
     loadGeneration.current += 1;
     queueAbort.current?.abort();
     setProgressReady(false);
@@ -722,13 +743,37 @@ export function DataQualityPage({
     setMessage("");
     setActionError("");
     setQueue({ items: [], totalCount: 0 });
-    if (!review || reviewEntityType(review) !== "tag") {
+    setQueueUrlError(false);
+    if (!review || usesWorkspace) {
       setQueueLoading(false);
       return;
     }
     let current = true;
     setQueueLoading(true);
     void (async () => {
+      let target = savedReview ?? review;
+      setTemporaryReview(null);
+      let urlQuery: ReturnType<typeof readQuery> | null = null;
+      const params = new URLSearchParams(window.location.search);
+      if (reviewEntityType(review) === "video" && queryKeys.some(key => params.has(key))) {
+        try {
+          const saved = target as VideoReview;
+          urlQuery = readQuery(saved, params);
+          const adjusted = effectiveReview(saved, urlQuery.query);
+          if (urlQuery.query.startFrom !== (saved.view.startFrom ?? "end") || !objectFiltersEqual(
+            JSON.parse(queueSignature(adjusted)),
+            JSON.parse(queueSignature(effectiveReview(saved, defaultQuery(saved)))),
+          )) {
+            target = adjusted;
+            setTemporaryReview(target);
+          }
+        } catch (error) {
+          setQueueUrlError(true);
+          setQueueError(error instanceof Error ? error.message : "Could not read review URL.");
+          setQueueLoading(false);
+          return;
+        }
+      }
       let progress = null;
       try {
         progress = await loadProgress(storageKey, review.id);
@@ -742,10 +787,10 @@ export function DataQualityPage({
       }
       if (!current) return;
       const resume =
-        progress?.signature === queueSignature(review) ? progress : null;
-      const nextFilter = resume
+        progress?.signature === queueSignature(target) ? progress : null;
+      const nextFilter = urlQuery ? urlQuery.query.filter : resume
         ? boundedFilter(resume.filter)
-        : pageFilter(review.view.filter);
+        : pageFilter(target.view.filter);
       setFilter(nextFilter);
       setDisplayMode(
         resume
@@ -757,9 +802,9 @@ export function DataQualityPage({
       );
       try {
         const result = await fetchQueue(
-          review,
+          target,
           nextFilter,
-          !resume && review.view.startFrom !== "beginning",
+          urlQuery ? urlQuery.startAtEnd : !resume && target.view.startFrom !== "beginning",
         );
         if (!current) return;
         const nextFocus = resumeFocus(
@@ -772,7 +817,10 @@ export function DataQualityPage({
       } catch {
         /* The queue exposes its retry state. */
       }
-      if (current) setProgressReady(true);
+      if (current) {
+        readyQueryRevision.current = queryRevision;
+        setProgressReady(true);
+      }
     })();
     return () => {
       current = false;
@@ -780,7 +828,17 @@ export function DataQualityPage({
       loadGeneration.current++;
       queueAbort.current?.abort();
     };
-  }, [review?.id]);
+  }, [review?.id, usesWorkspace, queryRevision]);
+
+  useEffect(() => {
+    if (!videoReview || usesWorkspace || !progressReady || queueLoading || queueError || pending || deferredNavigation.current || readyQueryRevision.current !== queryRevision) return;
+    writeQuery(videoReview.id, {
+      filter,
+      objectFilter: videoReview.view.objectFilter,
+      searchMode: videoReview.view.searchMode,
+      startFrom: videoReview.view.startFrom ?? "end",
+    });
+  }, [videoReview, usesWorkspace, progressReady, queueLoading, queueError, filter, pending, queryRevision]);
 
   const itemIds = useMemo(
     () => queue.items.map((item) => item.id),
@@ -1078,6 +1136,11 @@ export function DataQualityPage({
           pendingRef.current = false;
           setPending(false);
           setPendingTargetLabel("");
+          if (deferredNavigation.current) {
+            deferredNavigation.current = false;
+            setActiveId(selectedReviewId());
+            setQueryRevision(value => value + 1);
+          }
         }
       }
     },
@@ -1106,7 +1169,7 @@ export function DataQualityPage({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (entityType !== "tag") return;
+    if (usesWorkspace) return;
     if (
       event.defaultPrevented ||
       event.repeat ||
@@ -1177,6 +1240,7 @@ export function DataQualityPage({
   }
 
   function chooseReview(id: string) {
+    setLayoutOverride(null);
     setWorkspaceEditRequest(0);
     setActiveId(id);
     writeSelectedReviewId(id);
@@ -1200,6 +1264,7 @@ export function DataQualityPage({
     if (activeId && !normalized.some((item) => item.id === activeId))
       chooseReview("");
     const updated = normalized.find((item) => item.id === activeId);
+    if (updated) setLayoutOverride(null);
     if (
       updated &&
       savedReview &&
@@ -1207,9 +1272,15 @@ export function DataQualityPage({
     ) {
       if (updated.view.displayMode !== savedReview.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
-      if (updated.entityType === "tag" && queueSignature(updated) !== queueSignature(savedReview)) {
+      if (queueSignature(updated) !== queueSignature(savedReview)) {
         setTemporaryReview(null);
-        void resumeQueue(
+        if (reviewEntityType(updated) === "video") writeQuery(updated.id, {
+          filter: boundedFilter(updated.view.filter),
+          objectFilter: updated.view.objectFilter,
+          searchMode: updated.view.searchMode,
+          startFrom: updated.view.startFrom ?? "end",
+        });
+        if (!usesWorkspace) void resumeQueue(
           updated,
           boundedFilter({ ...updated.view.filter, page: filter.page }),
         );
@@ -1272,7 +1343,7 @@ export function DataQualityPage({
             title="Edit review"
             disabled={pending || queueLoading || !canConfigure}
             onClick={() => {
-              if (review.entityType !== "tag") setWorkspaceEditRequest(value => value + 1);
+              if (usesWorkspace) setWorkspaceEditRequest(value => value + 1);
               else { setEditCurrent(true); setManagerOpen(true); }
             }}
           >
@@ -1383,7 +1454,15 @@ export function DataQualityPage({
           </button>
         </p>
       )}
-      {review && savedReview && review.entityType === "tag" && (
+      {videoReview && <label className="dq-layout-control">
+        Review layout
+        <select aria-label="Review layout" value={reviewMode} disabled={pending || queueLoading || managerOpen}
+          onChange={(event) => setLayoutOverride({ id: videoReview.id, mode: event.target.value as "single" | "multiple" })}>
+          <option value="single">Single video</option>
+          <option value="multiple">Multiple videos</option>
+        </select>
+      </label>}
+      {review && savedReview && !usesWorkspace && (
         <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
           <div
             className={`dq-native-toolbar-host${
@@ -1620,7 +1699,7 @@ export function DataQualityPage({
             <p>No saved reviews are available in this browser.</p>
           </div>
         )
-      ) : entityType !== "tag" ? (
+      ) : usesWorkspace ? (
         <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as VideoReview | OccurrenceReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
       ) : (
         <>
@@ -1667,13 +1746,20 @@ export function DataQualityPage({
               {queueError && !queueLoading && (
                 <ErrorState
                   message={queueError}
-                  onRetry={() =>
+                  retryLabel={queueUrlError ? "Reset to review defaults" : "Retry"}
+                  onRetry={() => {
+                    if (queueUrlError && savedReview && reviewEntityType(savedReview) === "video") {
+                      const defaults = defaultQuery(savedReview as VideoReview);
+                      writeQuery(savedReview.id, { ...defaults, filter: { ...defaults.filter, page: undefined } });
+                      setQueryRevision(value => value + 1);
+                      return;
+                    }
                     void fetchQueue(
                       review,
                       filter,
                       queueRetryFromEnd,
-                    ).catch(() => undefined)
-                  }
+                    ).catch(() => undefined);
+                  }}
                 />
               )}
               {!pending &&
@@ -1880,7 +1966,7 @@ export function DataQualityPage({
           initialEdit={editCurrent}
           onSave={updateReviews}
           onChoose={chooseReview}
-          onEditWorkspace={id => { if (id !== activeId) chooseReview(id); setWorkspaceEditRequest(value => value + 1); setManagerOpen(false); }}
+          onEditWorkspace={id => { if (id !== activeId) chooseReview(id); setLayoutOverride({ id, mode: "single" }); setWorkspaceEditRequest(value => value + 1); setManagerOpen(false); }}
           onClose={() => {
             setManagerOpen(false);
             if (editCurrent) focusCard(focusedRef.current, false);
@@ -2058,6 +2144,7 @@ export function DataQualityPage({
       <ReviewCard
         key={video.id}
         video={presentedVideo(video, videoReview, presentationTags.ids)}
+        showTagBins={videoReview?.presentation?.annotations?.includes("tags") && !!videoReview.presentation.annotationParents?.length}
         displayMode={displayMode}
         focused={video.id === focusedId}
         selected={selectedIds.has(video.id)}
@@ -2175,6 +2262,7 @@ function ReviewTagCard({
 
 function ReviewCard({
   video,
+  showTagBins,
   displayMode,
   focused,
   selected,
@@ -2185,6 +2273,7 @@ function ReviewCard({
   onNavigate,
 }: {
   video: Video;
+  showTagBins?: boolean;
   displayMode: ReviewDisplayMode;
   focused: boolean;
   selected: boolean;
@@ -2266,6 +2355,10 @@ function ReviewCard({
           window.open(`/video/${video.id}`, "_blank", "noopener,noreferrer");
         }}
       />
+      {showTagBins && <section className="dq-card-tag-bins" aria-label="Card tag bins">
+        {video.tags?.map(tag => <span key={tag.id}>{tag.name}</span>)}
+        {!video.tags?.length && <small>No matching tags</small>}
+      </section>}
       {displayMode === "wall" && <WallPreview video={video} />}
     </article>
   );
@@ -2708,7 +2801,7 @@ function ReviewManager({
     setError("");
     try {
       if (!(await onSave(next))) throw new Error("Could not save reviews.");
-      if (saved.entityType !== "tag") onEditWorkspace(saved.id);
+      if (!reviews.some(item => item.id === saved.id) && saved.entityType !== "tag") onEditWorkspace(saved.id);
       else { onChoose(saved.id); onClose(); }
     } catch (error) {
       setError(
@@ -2797,7 +2890,7 @@ function ReviewManager({
         <fieldset disabled={saving} className="dq-manager-content">
           {draft ? (
             <ReviewEditor
-              setup={draft.entityType !== "tag"}
+              setup={draft.entityType !== "tag" && !reviews.some(item => item.id === draft.id)}
               draft={draft}
               entityTypeLocked={entityTypeLocked}
               tagGroups={tagGroups}
@@ -2839,7 +2932,7 @@ function ReviewManager({
                       </div>
                       <p>{review.description || "No description"}</p>
                     </div>
-                    <button type="button" onClick={() => review.entityType === "tag" ? begin(review) : onEditWorkspace(review.id)}>
+                    <button type="button" onClick={() => review.entityType === "tag" || (reviewEntityType(review) === "video" && review.view.reviewMode === "multiple") ? begin(review) : onEditWorkspace(review.id)}>
                       <Pencil /> Edit
                     </button>
                     <button
@@ -2966,7 +3059,7 @@ function ReviewEditor({
     <div className="dq-editor">
       <div className="dq-editor-nav">
         <EntityDetailTabs
-          tabs={(setup ? ["Review"] : workspace ? ["Review", "Actions", ...(entityType === "performerOccurrence" ? ["Tag choices"] : [])] : entityType === "performerOccurrence" ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
+          tabs={(setup ? ["Review"] : workspace ? ["Review", ...(entityType === "video" ? ["Appearance"] : []), "Actions", ...(entityType === "performerOccurrence" ? ["Tag choices"] : [])] : entityType === "performerOccurrence" ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
             key: name,
             label: name,
             count: name === "Actions" ? draft.actions.length : undefined,
@@ -3024,7 +3117,7 @@ function ReviewEditor({
           {draft.entityType === "performerOccurrence" && <OccurrenceSettings review={draft} onChange={setDraft} />}
         </section>}
         {!setup && draft.entityType === "performerOccurrence" && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft} onChange={setDraft} choices /></section>}
-        {!workspace && !setup && <section hidden={section !== "Appearance"} className="dq-editor-section">
+        {!setup && (!workspace || entityType === "video") && <section hidden={section !== "Appearance"} className="dq-editor-section">
             <QueueEditor draft={draft} onChange={setDraft} queue={false} />
         </section>}
         {!setup && <section hidden={section !== "Actions"} className="dq-editor-section">
@@ -3528,16 +3621,18 @@ function CenteredStatus({ label }: { label: string }) {
 function ErrorState({
   message,
   onRetry,
+  retryLabel = "Retry",
 }: {
   message: string;
   onRetry: () => void;
+  retryLabel?: string;
 }) {
   return (
     <div role="alert" className="dq-error">
       <AlertTriangle />
       <p>{message}</p>
       <button className="dq-button" type="button" onClick={onRetry}>
-        Retry
+        {retryLabel}
       </button>
     </div>
   );
