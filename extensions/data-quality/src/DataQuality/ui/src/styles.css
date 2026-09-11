@@ -1006,6 +1006,8 @@
 .dq-review-inspector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 28rem); gap: .75rem; min-width: 0; }
 .dq-review-media, .dq-review-panel { min-width: 0; overflow-wrap: anywhere; }
 .dq-review-media video { width: 100%; max-height: max(18rem, calc(100dvh - 24rem)); object-fit: contain; }
+.dq-review-media :fullscreen video,
+.dq-review-media video:fullscreen { height: 100%; max-height: none; }
 .dq-review-video-preload {
   position: absolute;
   left: -10000px;
@@ -1028,6 +1030,8 @@
 /* Keep wrapped labels at their intrinsic height inside the scrollable list. */
 .dq-review-queue-items { display: grid; grid-auto-rows: max-content; align-content: start; gap: .4rem; overflow-y: auto; min-height: 6rem; }
 .dq-review-queue-items button { justify-content: start; text-align: left; overflow-wrap: anywhere; }
+/* Saving locks navigation without fading the queue as the next video appears. */
+.dq-review-queue-items button:disabled { opacity: 1; }
 .dq-review-workspace [aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-card); font-weight: 600; }
 .dq-review-workspace :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .dq-tag-editor { display: grid; gap: .6rem; padding: .5rem; border: 1px solid var(--color-border); }
