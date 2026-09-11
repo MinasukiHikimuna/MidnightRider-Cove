@@ -161,6 +161,15 @@ it("preloads the next distinct video in a reusable player", async () => {
     "false",
   );
 });
+it("renders Apply and stay as an accessible icon button", async () => {
+  open();
+  await ready();
+
+  const stay = screen.getByRole("button", { name: "Apply & stay: Observation" });
+  expect(stay).toHaveAttribute("title", "Apply & stay: Observation");
+  expect(stay.querySelector("svg")).not.toBeNull();
+  expect(stay).toHaveTextContent("");
+});
 it("ignores legacy progress and uses saved performer targeting", async () => {
   localStorage.setItem(
     "progress:r",

@@ -2042,9 +2042,10 @@ export function DataQualityPage({
             else cardRefs.current.delete(tag.id);
           }}
           onFocus={() => setFocusedId(tag.id)}
-          onToggle={() =>
-            updateSelection((current) => toggleOne(current, tag.id))
-          }
+          onToggle={() => {
+            updateSelection((current) => toggleOne(current, tag.id));
+            focusCard(tag.id, false);
+          }}
           onOpen={() =>
             window.open(`/tag/${tag.id}`, "_blank", "noopener,noreferrer")
           }

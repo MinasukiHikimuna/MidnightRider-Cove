@@ -9,6 +9,7 @@ import {
   VIDEO_SORT_OPTIONS,
   VideoPlayer,
 } from "@cove/runtime/components";
+import { Save } from "@cove/runtime/lucide-react";
 import { findVideos, request, videoCoverUrl, videoStreamUrl } from "./api";
 import {
   reviewValidation,
@@ -148,12 +149,13 @@ export function ReviewActionControls({
           {action.steps.length > 0 && (
             <button
               type="button"
-              className="dq-button"
+              className="dq-button dq-apply-stay-button"
               disabled={disabled || !canWrite}
               aria-label={`Apply & stay: ${action.label}`}
+              title={`Apply & stay: ${action.label}`}
               onClick={() => onApply(action, true)}
             >
-              Apply & stay
+              <Save aria-hidden="true" />
             </button>
           )}
           {action.steps.length > 0 && (

@@ -351,6 +351,53 @@ describe("Data Quality extension page", () => {
     });
     expect(screen.getByLabelText("Tag group action")).toHaveValue("group:8");
   });
+  it("restores tag card focus after mouse selection so action shortcuts work", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "Classify tags",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "list" as const,
+        searchMode: "text",
+      },
+      actions: [
+        {
+          id: "assign",
+          label: "Classify",
+          effect: { mode: "SET_TAG_GROUP" as const, tagGroupId: 8 },
+        },
+      ],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteVideos: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Tag 11" });
+    const selection = screen.getByRole("button", { name: "Select Tag 11" });
+    selection.focus();
+    expect(selection).toHaveFocus();
+    fireEvent.click(selection);
+
+    await waitFor(() => expect(first).toHaveFocus());
+    fireEvent.keyDown(first, { key: "q" });
+
+    await waitFor(() =>
+      expect(api.runTagReviewAction).toHaveBeenCalledWith(
+        tagReview.actions[0],
+        [11],
+      ),
+    );
+  });
   it("blocks tag-group shortcuts when tag groups cannot be resolved", async () => {
     const tagReview = {
       id: "tags",
