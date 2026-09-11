@@ -6,6 +6,7 @@ import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
+import { patchSegmentProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
   const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -438,7 +439,11 @@ function createWorkflowActions(context) {
       setMaterializing(false);
     }
 
-    async function saveTag(tagId) {
+    async function saveTag(tagId, tagName = null) {
+      const optimisticValues = {
+        tagId,
+        ...(tagName ? { tagName } : {}),
+      };
       if (selectedSegments.length > 1) {
         const candidates = selectedSegments.filter((segment) => segment.tagId !== tagId);
         if (candidates.length === 0) {
@@ -457,6 +462,13 @@ function createWorkflowActions(context) {
         const operationKey = `bulk-tag:${video.id}:${tagId}:${signature}`;
         setSavingSegmentId(selectedSegment?.id ?? candidates[0].id);
         setSaveMessage(`Changing tag for ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
+        const optimisticDetail = patchSegmentProjection(
+          detail,
+          candidates.map((segment) => segment.id),
+          optimisticValues,
+        );
+        onDetailChange(optimisticDetail, video.id);
+        closeTagEditing();
         try {
           const historyReceiptId = !compatibilityMode
             ? crypto.randomUUID()
@@ -506,6 +518,7 @@ function createWorkflowActions(context) {
           closeTagEditing();
           setSaveMessage(`${candidates.length} selected segment${candidates.length === 1 ? "" : "s"} retagged.`);
         } catch (error) {
+          onDetailChange(detail, video.id);
           if (error.status === 409) await onConflict();
           setSaveMessage(error.message || "Unable to change the selected segment tags.");
         } finally {
@@ -534,6 +547,13 @@ function createWorkflowActions(context) {
             setSaveMessage("Tag change canceled.");
             return;
           }
+          const optimisticDetail = patchSegmentProjection(
+            detail,
+            [selectedSegment.id],
+            optimisticValues,
+          );
+          onDetailChange(optimisticDetail, video.id);
+          closeTagEditing();
           const operationKey = `tag-change:${selectedSegment.itemId}:${selectedSegment.revision}:${preview.componentFingerprint}:${tagId}`;
           await requestJson(`/items/${selectedSegment.itemId}/tag-change/execute`, {
             method: "POST",
@@ -550,6 +570,7 @@ function createWorkflowActions(context) {
           closeTagEditing();
           setSaveMessage(destructive ? "Tag changed and lineage reconciled." : "Tag changed.");
         } catch (error) {
+          onDetailChange(detail, video.id);
           if (error.status === 409) {
             setSaveMessage("Lineage changed — loading the latest segments…");
             await onConflict();
@@ -561,12 +582,12 @@ function createWorkflowActions(context) {
         }
         return;
       }
+      closeTagEditing();
       await mutateSegment(selectedSegment, {
         startSec: selectedSegment.startSec,
         endSec: selectedSegment.endSec,
         tagId,
-      });
-      closeTagEditing();
+      }, true, null, true, optimisticValues);
     }
 
     async function moveToBin() {

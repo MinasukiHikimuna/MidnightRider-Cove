@@ -54,6 +54,22 @@ test("timing edits move segment boundaries optimistically and roll back failed s
   assert.match(timing, /mutateSegment\(selectedSegment, \{ startSec, endSec, tagId: selectedSegment\.tagId \}, true, null, true\)/);
 });
 
+test("tag edits move segments to their new swimlane before persistence completes", () => {
+  const workflow = sourceByModule["editor/actions/workflow.js"];
+  const saveTag = workflow.slice(
+    workflow.indexOf("async function saveTag"),
+    workflow.indexOf("async function moveToBin"),
+  );
+  const activeEditor = sourceByModule["editor/SegmentActiveEditor.js"];
+
+  assert.match(saveTag, /async function saveTag\(tagId, tagName = null\)/);
+  assert.match(saveTag, /const optimisticValues = \{[\s\S]*tagId,[\s\S]*tagName/);
+  assert.ok(saveTag.indexOf("onDetailChange(optimisticDetail") < saveTag.indexOf("await requestJson"));
+  assert.match(saveTag, /onDetailChange\(detail, video\.id\)/);
+  assert.match(saveTag, /mutateSegment\(selectedSegment,[\s\S]*true,[\s\S]*optimisticValues/);
+  assert.match(activeEditor, /onChange: \(tagId, option\).*saveTag\(tagId, option\?\.label\)/);
+});
+
 test("Basic omitted collections use stable fallbacks across renders", () => {
   const controller = sourceByModule["editor/SegmentEditor.js"];
   assert.match(controller, /const EMPTY_EDITOR_COLLECTION = Object\.freeze\(\[\]\)/);

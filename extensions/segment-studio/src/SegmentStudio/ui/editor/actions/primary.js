@@ -50,14 +50,14 @@ function createPrimarySegmentActions(context) {
       }
     }
 
-    async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false) {
+    async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false, optimisticValues = values) {
       if (!segment || savingSegmentId != null) return null;
       const historyReceiptId =
         recordHistory && !compatibilityMode ? crypto.randomUUID() : null;
       setSavingSegmentId(segment.id);
       setSaveMessage(recordHistory ? "Saving directly to Cove…" : "Restoring history…");
       const optimisticDetail = optimistic
-        ? patchSegmentProjection(detail, [segment.id], values)
+        ? patchSegmentProjection(detail, [segment.id], optimisticValues)
         : null;
       if (optimisticDetail) onDetailChange(optimisticDetail, video.id);
       try {
