@@ -52,7 +52,7 @@ function LaneReviewCounts({ counts }) {
   }, `${SEGMENT_STATE_PRESENTATION[state].symbol}${counts[state]}`)));
 }
 
-function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revision, performerCandidates, onSaved, onConflict, confirmRef, shortcutRef }) {
+function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revision, performerCandidates, onOptimisticSave = () => {}, onSaved, onRollback = () => {}, onConflict, confirmRef, shortcutRef }) {
   const videoPerformers = videoPerformerOptions(performerCandidates);
   const [assignments, setAssignments] = useState(() => videoPerformerSlotAssignments(slots, videoPerformers));
   const [saving, setSaving] = useState(false);
@@ -80,6 +80,19 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
         ...slot,
         performerId: nextAssignments[slot.slotDefinitionId] || null,
       })), videoPerformers);
+      const optimisticSlots = slots.map((slot) => {
+        const performerId = sanitizedAssignments[slot.slotDefinitionId]
+          ? Number(sanitizedAssignments[slot.slotDefinitionId])
+          : null;
+        const performer = videoPerformers.find((candidate) =>
+          String(performerOptionId(candidate)) === String(performerId));
+        return {
+          ...slot,
+          performerId,
+          performerName: performer?.name || null,
+        };
+      });
+      onOptimisticSave(optimisticSlots);
       const saved = await requestJson(itemId != null
         ? `/videos/${videoId}/drafts/${itemId}/slots`
         : `/videos/${videoId}/segments/${segmentId}/slots`, {
@@ -106,6 +119,7 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
         }]),
       });
     } catch (error) {
+      onRollback(slots, error);
       if (error.status === 409) { setMessage("Slot definitions or assignments changed; current values were reloaded."); onConflict(); }
       else setMessage(error.message || "Unable to save performer slots.");
     } finally {

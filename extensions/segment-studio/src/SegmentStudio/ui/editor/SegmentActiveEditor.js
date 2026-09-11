@@ -7,6 +7,7 @@ import { SegmentStateBadge, handleModalKey, shouldAcceptCurrentTagFromEnter } fr
 import { PerformerAssignmentRows } from "./model/swimlanes.js";
 
 import { performerSlotPresentation, sharedTagPerformerSlotShape } from "./model/history.js";
+import { patchPerformerSlotProjection } from "./model/optimistic.js";
 
 import { MultiPerformerSlotAssignmentEditor, PerformerSlotAssignmentEditor, PerformerSlotStatusBadge } from "./PerformerSlotEditors.js";
 
@@ -17,7 +18,7 @@ function SegmentActiveEditor({
   saveTag,
   saveTiming,
   slotStatus, performerSlotsAvailable, selectedPerformerSlots, performerSlots, detail, video, slotButtonRef, tagSearchRef,
-  onSlotsChanged, onRecordHistory, splitSegment, duplicateSegment, provenance, lineage, onNavigateLineageItem,
+  onDetailChange, setSaveMessage, setSavingSegmentId, onSlotsChanged, onRecordHistory, splitSegment, duplicateSegment, provenance, lineage, onNavigateLineageItem,
   tagEditing, onCancelTagEditing, detailPanelRef, onReduceSelection,
 }) {
   const scrollRef = useRef(null);
@@ -357,15 +358,42 @@ function SegmentActiveEditor({
             performerCandidates: detail.performerCandidates || [],
             confirmRef: confirmSlotButtonRef,
             shortcutRef: recommendationShortcutRef,
+            onOptimisticSave: (optimisticSlots) => {
+              onDetailChange((current) => patchPerformerSlotProjection(
+                current,
+                selectedSegment.id,
+                optimisticSlots,
+              ), video.id);
+              setSavingSegmentId(selectedSegment.id);
+              setSaveMessage("Saving performer slots…");
+              closeSlots();
+            },
             onSaved: async (saved, { beforeState, afterState }) => {
+              onDetailChange((current) => patchPerformerSlotProjection(
+                current,
+                selectedSegment.id,
+                saved.slots || [],
+                saved.revision,
+              ), video.id);
+              setSavingSegmentId(null);
+              setSaveMessage("Performer slots saved.");
               await onRecordHistory(
                 "performer-slots.assign",
                 "Assigned performers",
                 beforeState,
                 afterState,
               );
-              closeSlots();
               onSlotsChanged(saved);
+            },
+            onRollback: (originalSlots, error) => {
+              onDetailChange((current) => patchPerformerSlotProjection(
+                current,
+                selectedSegment.id,
+                originalSlots,
+                detail.performerSlotRevisions?.[selectedSegment.id],
+              ), video.id);
+              setSavingSegmentId(null);
+              setSaveMessage(error.message || "Unable to save performer slots.");
             },
             onConflict: onSlotsChanged,
           })),

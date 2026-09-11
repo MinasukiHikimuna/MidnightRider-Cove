@@ -832,6 +832,34 @@ test("bulk performer assignment requires every selected segment to share one slo
   assert.match(activeEditor, /multiRecommendationShortcutRef[\s\S]*\^\[1-9\]\$[\s\S]*Number\(event\.key\) - 1/);
 });
 
+test("individual performer assignment updates its local slot projection before saving", () => {
+  assert.equal(typeof ui.patchPerformerSlotProjection, "function");
+  const detail = {
+    performerSlots: [
+      { segmentId: 1, slotDefinitionId: 10, performerId: null },
+      { segmentId: 2, slotDefinitionId: 10, performerId: 8 },
+    ],
+    performerSlotRevisions: { 1: 3, 2: 4 },
+  };
+  const updated = ui.patchPerformerSlotProjection(detail, 1, [
+    { slotDefinitionId: 10, performerId: 7, performerName: "Candidate" },
+  ], 5);
+  assert.deepEqual(updated.performerSlots, [
+    { slotDefinitionId: 10, performerId: 7, performerName: "Candidate", segmentId: 1 },
+    detail.performerSlots[1],
+  ]);
+  assert.deepEqual(updated.performerSlotRevisions, { 1: 5, 2: 4 });
+  assert.deepEqual(detail.performerSlots[0], { segmentId: 1, slotDefinitionId: 10, performerId: null });
+
+  const editors = sourceByModule["editor/PerformerSlotEditors.js"];
+  const individual = editors.slice(
+    editors.indexOf("function PerformerSlotAssignmentEditor"),
+    editors.indexOf("function MultiPerformerSlotAssignmentEditor"),
+  );
+  assert.ok(individual.indexOf("onOptimisticSave(optimisticSlots)") < individual.indexOf("await requestJson"));
+  assert.match(individual, /onRollback\(slots, error\)/);
+});
+
 test("selected segment details mirror segment groups and swimlanes", () => {
   const lanes = [
     {

@@ -48,6 +48,21 @@ export function restoreSegmentsProjection(detail, originalSegments) {
   };
 }
 
+export function patchPerformerSlotProjection(detail, segmentId, slots, revision) {
+  const replacements = (slots || []).map((slot) => ({ ...slot, segmentId }));
+  const currentSlots = detail.performerSlots || [];
+  const firstIndex = currentSlots.findIndex((slot) => slot.segmentId === segmentId);
+  const remaining = currentSlots.filter((slot) => slot.segmentId !== segmentId);
+  remaining.splice(firstIndex < 0 ? remaining.length : firstIndex, 0, ...replacements);
+  return {
+    ...detail,
+    performerSlots: remaining,
+    performerSlotRevisions: revision == null
+      ? detail.performerSlotRevisions
+      : { ...(detail.performerSlotRevisions || {}), [segmentId]: revision },
+  };
+}
+
 export function mergeSegmentsProjection(detail, mergedSegments) {
   const ordered = [...(mergedSegments || [])]
     .sort((left, right) => left.startSec - right.startSec || left.id - right.id);
