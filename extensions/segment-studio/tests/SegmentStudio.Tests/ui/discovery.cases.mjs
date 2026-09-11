@@ -203,14 +203,6 @@ test("derived segments can be hidden with a persistent accessible editor control
   ];
   assert.deepEqual(ui.filterDerivedSegments(segments, false), segments);
   assert.deepEqual(ui.filterDerivedSegments(segments, true).map((segment) => segment.id), [1, 3]);
-  assert.equal(ui.resolveVisibleSelectedSegment(segments, 2)?.id, 2);
-  assert.equal(ui.resolveVisibleSelectedSegment(ui.filterDerivedSegments(segments, true), 2)?.id, 1);
-  assert.equal(ui.resolveVisibleSelectedSegment([], 2), null);
-  assert.equal(ui.reconcileFilteredSelectedSegmentId(segments, [segments[0], segments[2]], 2), 1);
-  assert.equal(ui.reconcileFilteredSelectedSegmentId(segments, [], 2), null);
-  assert.equal(ui.reconcileFilteredSelectedSegmentId(segments, segments, 2), 2);
-  assert.equal(ui.reconcileFilteredSelectedSegmentId(segments, segments, null), null);
-  assert.equal(ui.reconcileFilteredSelectedSegmentId(segments, segments, 99), 99);
   assert.equal(ui.parseHideDerivedSegmentsPreference("true"), true);
   assert.equal(ui.parseHideDerivedSegmentsPreference("false"), false);
   assert.equal(ui.parseHideDerivedSegmentsPreference("anything-else"), false);

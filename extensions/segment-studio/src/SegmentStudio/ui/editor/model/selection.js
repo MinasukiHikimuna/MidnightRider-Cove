@@ -1,4 +1,5 @@
 import { HIDE_DERIVED_SEGMENTS_STORAGE_KEY, MERGE_CONFIRMATION_STORAGE_KEY, REVIEW_STATES } from "../../shared/constants.js";
+import { findInitialSegmentSelection } from "./timeline.js";
 
 export const CLEARED_SEGMENT_SELECTION_ID = "__segment-studio-cleared-selection__";
 
@@ -192,17 +193,16 @@ export function updateDualRangeValues(minimum, maximum, kind, value) {
   };
 }
 
-export function resolveVisibleSelectedSegment(segments, selectedSegmentId) {
+export function resolveEditorSegmentSelection(
+  lanes,
+  selectedSegmentId,
+  initialSegmentId = null,
+) {
   if (selectedSegmentId === CLEARED_SEGMENT_SELECTION_ID) return null;
-  return segments.find((segment) => segment.id === selectedSegmentId) || segments[0] || null;
-}
-
-export function reconcileFilteredSelectedSegmentId(allSegments, visibleSegments, selectedSegmentId) {
-  if (selectedSegmentId == null || !allSegments.some((segment) => segment.id === selectedSegmentId))
-    return selectedSegmentId;
-  if (visibleSegments.some((segment) => segment.id === selectedSegmentId))
-    return selectedSegmentId;
-  return visibleSegments[0]?.id ?? null;
+  return findInitialSegmentSelection(
+    lanes,
+    selectedSegmentId ?? initialSegmentId,
+  );
 }
 
 export function updateSegmentSelection(selectedSegmentIds, activeSegmentId, targetSegmentId, additive = false) {

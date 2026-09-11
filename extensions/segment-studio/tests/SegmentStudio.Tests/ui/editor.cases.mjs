@@ -364,8 +364,8 @@ test("collecting AI feedback advances to the next unreviewed segment below the s
   assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3], 2)?.id, 5);
   assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3, 5], 2)?.id, 6);
   assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3, 5, 6], 2), null);
-  assert.equal(ui.resolveVisibleSelectedSegment(
-    lanes.flatMap((lane) => lane.markers.map(({ segment }) => segment)),
+  assert.equal(ui.resolveEditorSegmentSelection(
+    lanes,
     ui.CLEARED_SEGMENT_SELECTION_ID,
   ), null);
   assert.match(source, /nextUnreviewedAfterRemoval\(\s*allSwimlanes, completedIds, activeIdentity\.id\)/);

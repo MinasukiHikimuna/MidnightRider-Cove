@@ -2,7 +2,7 @@ import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 test("UI imports only components available in the declared Cove runtime", () => {
   assert.equal(manifest.id, "com.midnightrider.segment-studio");
-  assert.equal(manifest.version, "0.1.1");
+  assert.equal(manifest.version, "0.1.3");
   assert.equal(manifest.minCoveVersion, "1.4.0-rc.1");
   assert.match(source, /from "@cove\/runtime\/api"/);
   assert.doesNotMatch(source, /EntityTileFrame/);
@@ -467,24 +467,6 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
   assert.match(source, /must be exported before/);
   assert.match(source, /feedback-protected rejected segment/);
   assert.match(source, /await onReload\(\)/);
-  const lanes = ui.groupSegmentsIntoSwimlanes([
-    { id: 1, tagId: 10, tagName: "First", startSec: 1, reviewState: "approved" },
-    { id: 2, tagId: 10, tagName: "First", startSec: 2, reviewState: "rejected" },
-    { id: 3, tagId: 10, tagName: "First", startSec: 3, reviewState: "unreviewed" },
-    { id: 4, tagId: 20, tagName: "Second", startSec: 1, reviewState: "unreviewed" },
-    { id: 5, tagId: 30, tagName: "Third", startSec: 1, reviewState: "rejected" },
-    { id: 6, tagId: 30, tagName: "Third", startSec: 2, reviewState: "unreviewed" },
-  ], [
-    { id: "group", name: "Group", sortOrder: 0, tags: [
-      { tagId: 10, sortOrder: 0 },
-      { tagId: 20, sortOrder: 1 },
-      { tagId: 30, sortOrder: 2 },
-    ] },
-  ], []);
-  assert.equal(ui.nextUnapprovedAfterRejectedDeletion(lanes, new Set([2, 5])).id, 3);
-  assert.equal(ui.nextUnapprovedAfterRejectedDeletion(lanes, new Set([2, 3, 5])).id, 4);
-  assert.equal(ui.nextUnapprovedAfterRejectedDeletion(lanes, new Set([2, 3, 4, 5])).id, 6);
-  assert.equal(ui.nextUnapprovedAfterRejectedDeletion(lanes, new Set([99])), null);
 });
 
 test("editor previews and confirms bulk performer auto-assignment like Marker Studio", () => {

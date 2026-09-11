@@ -141,24 +141,6 @@ export function performerSlotStatusFromSegmentSlots(segmentSlots) {
   return filled === segmentSlots.length ? "complete" : "partial";
 }
 
-export function nextUnapprovedAfterRejectedDeletion(lanes, deletedSegmentIds) {
-  const deleted = deletedSegmentIds instanceof Set
-    ? deletedSegmentIds
-    : new Set(deletedSegmentIds || []);
-  const orderedLanes = lanes || [];
-  const firstAffectedLane = orderedLanes.findIndex((lane) =>
-    (lane.markers || []).some((marker) => deleted.has(marker.segment.id)));
-  if (firstAffectedLane < 0)
-    return null;
-  for (const lane of orderedLanes.slice(firstAffectedLane)) {
-    const candidate = (lane.markers || []).find((marker) =>
-      !deleted.has(marker.segment.id) && marker.segment.reviewState === "unreviewed");
-    if (candidate)
-      return candidate.segment;
-  }
-  return null;
-}
-
 export function sharedPerformerSlotShape(slots, segments) {
   const sets = (segments || []).map((segment) => performerSlotsForSegment(slots, segment.id));
   if (sets.length === 0 || sets.some((set) => set.length === 0)) return null;

@@ -610,6 +610,44 @@ test("initial selection follows visible swimlane priority and skips processed se
 });
 
 
+test("invalidated selections fall back through the common swimlane-priority selector", () => {
+  const segments = [
+    { id: 1, tagId: 10, tagName: "Priority", startSec: 30, reviewState: "approved" },
+    { id: 2, tagId: 10, tagName: "Priority", startSec: 60, reviewState: "unreviewed" },
+    { id: 3, tagId: 20, tagName: "Earlier", startSec: 1, reviewState: "unreviewed" },
+    { id: 4, tagId: 30, tagName: "Invalidated", startSec: 10, reviewState: "unreviewed", isDerived: true },
+  ];
+  const groups = [{ id: "group", name: "Group", sortOrder: 0, tags: [
+    { tagId: 10, sortOrder: 0 },
+    { tagId: 20, sortOrder: 1 },
+    { tagId: 30, sortOrder: 2 },
+  ] }];
+  const lanes = ui.groupSegmentsIntoSwimlanes(segments, groups, []);
+  assert.equal(ui.resolveEditorSegmentSelection(lanes, 99)?.id, 2);
+  assert.equal(ui.resolveEditorSegmentSelection(lanes, 1)?.id, 1);
+  const derivedFilteredLanes = ui.groupSegmentsIntoSwimlanes(
+    ui.filterDerivedSegments(segments, true), groups, []);
+  assert.equal(ui.resolveEditorSegmentSelection(derivedFilteredLanes, 4)?.id, 2);
+  const transitionedSegments = segments.map((segment) =>
+    segment.id === 4 ? { ...segment, reviewState: "approved" } : segment);
+  const reviewFilteredLanes = ui.groupSegmentsIntoSwimlanes(
+    ui.filterEditorSegments(
+      transitionedSegments, [], { reviewStates: ["unreviewed"] }, false, groups),
+    groups,
+    [],
+  );
+  assert.equal(ui.resolveEditorSegmentSelection(reviewFilteredLanes, 4)?.id, 2);
+  assert.equal(ui.resolveEditorSegmentSelection(
+    lanes, ui.CLEARED_SEGMENT_SELECTION_ID), null);
+  assert.equal(ui.resolveEditorSegmentSelection([], 99), null);
+
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  assert.match(controller, /resolveEditorSegmentSelection\(\s*allSwimlanes,\s*selectedSegmentId,\s*initialSegmentId/);
+  assert.doesNotMatch(controller, /resolveVisibleSelectedSegment/);
+  assert.doesNotMatch(controller, /reconcileFilteredSelectedSegmentId/);
+});
+
+
 test("initialization resets prior filters before resolving an explicit segment", () => {
   const controller = sourceByModule["editor/SegmentEditor.js"];
   const start = controller.indexOf("    const initialSwimlanes =");

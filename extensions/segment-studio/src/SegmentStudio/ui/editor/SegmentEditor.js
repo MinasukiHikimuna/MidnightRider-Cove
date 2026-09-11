@@ -2,7 +2,7 @@ import { h, useEffect, useMemo, useRef, useRegisterExtensionKeyboardActions, use
 
 import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 
-import { activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileFilteredSelectedSegmentId, reconcileSelectedSegmentIds, resolveSelectedSegments, resolveVisibleSelectedSegment, writeHideDerivedSegmentsPreference } from "./model/selection.js";
+import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
 import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
@@ -409,9 +409,11 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     () => groupSegmentsIntoSwimlanes(visibleSegments, segmentGroups, performerSlots),
     [visibleSegments, segmentGroups, performerSlots],
   );
-  const selectedSegment = selectedSegmentId == null
-    ? findInitialSegmentSelection(allSwimlanes, initialSegmentId)
-    : resolveVisibleSelectedSegment(visibleSegments, selectedSegmentId);
+  const selectedSegment = resolveEditorSegmentSelection(
+    allSwimlanes,
+    selectedSegmentId,
+    initialSegmentId,
+  );
   const selectedSegments = resolveSelectedSegments(visibleSegments, selectedSegmentIds);
   const canMoveSelectionToBin = !compatibilityMode
     && selectedSegments.length > 0
@@ -455,10 +457,12 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const playbackShortcutConfig = readPlaybackShortcutConfig();
 
   useEffect(() => {
-    const reconciledId = reconcileFilteredSelectedSegmentId(segments, visibleSegments, selectedSegmentId);
+    const reconciledId = selectedSegmentId === CLEARED_SEGMENT_SELECTION_ID
+      ? selectedSegmentId
+      : selectedSegment?.id ?? null;
     if (reconciledId !== selectedSegmentId)
       setSelectedSegmentId(reconciledId);
-  }, [segments, visibleSegments, selectedSegmentId]);
+  }, [selectedSegment, selectedSegmentId]);
 
   useEffect(() => {
     setSelectedSegmentIds((current) => {
