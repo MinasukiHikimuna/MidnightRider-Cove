@@ -5,7 +5,7 @@ import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSele
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
-import { patchSegmentProjection } from "../model/optimistic.js";
+import { insertSegmentProjection, patchSegmentProjection } from "../model/optimistic.js";
 
 function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
   return values.tagId !== segment.tagId
@@ -13,7 +13,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, startInput, timelineDuration, video } = context;
+  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, startInput, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -199,7 +199,7 @@ function createPrimarySegmentActions(context) {
       }
     }
 
-    async function createSegment(requestedTagId = null) {
+    async function createSegment(requestedTagId = null, requestedTagName = null) {
       if (savingSegmentId != null) return;
       const pendingStartSec = requestedTagId != null ? pendingFirstSegmentStartSecRef.current : null;
       const startSec = Number.isFinite(pendingStartSec) ? pendingStartSec : currentTime;
@@ -224,7 +224,35 @@ function createPrimarySegmentActions(context) {
       const historyReceiptId = !compatibilityMode
         ? crypto.randomUUID()
         : null;
+      const previousSelectionId = selectedSegmentIdRef.current;
+      const optimisticSegment = {
+        ...(selectedSegment || {}),
+        id: optimisticSegmentIdRef.current--,
+        itemId: null,
+        nativeSegmentId: null,
+        published: false,
+        tagId,
+        tagName: requestedTagName || selectedSegment?.tagName || "Tag segment",
+        tagSortName: tagId === selectedSegment?.tagId ? selectedSegment?.tagSortName || null : null,
+        startSec,
+        endSec,
+        reviewState: "unreviewed",
+        revision: 0,
+        updatedAt: null,
+        sourceKey: "user",
+        sourceRunId: null,
+        confidence: null,
+        isDerived: false,
+      };
+      const optimisticDetail = insertSegmentProjection(detail, optimisticSegment);
       setSavingSegmentId(-1);
+      setFirstSegmentTagOpen(false);
+      onDetailChange(optimisticDetail, video.id);
+      replaceSegmentSelection(optimisticSegment.id);
+      setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
+        groupSegmentsIntoSwimlanes(optimisticDetail.segments, optimisticDetail.segmentGroups || [], optimisticDetail.performerSlots || []),
+        optimisticSegment.id,
+      ));
       try {
         let createdIdentity;
         if (compatibilityMode) {
@@ -272,6 +300,9 @@ function createPrimarySegmentActions(context) {
           setSaveMessage("Segment created, but it could not be selected.");
         }
       } catch (error) {
+        onDetailChange(detail, video.id);
+        replaceSegmentSelection(previousSelectionId);
+        if (requestedTagId != null) setFirstSegmentTagOpen(true);
         setSaveMessage(error.message || "Unable to create the draft.");
       } finally {
         setSavingSegmentId(null);

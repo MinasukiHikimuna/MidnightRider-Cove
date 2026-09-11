@@ -7,3 +7,11 @@ export function patchSegmentProjection(detail, segmentIds, values) {
       .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
   };
 }
+
+export function insertSegmentProjection(detail, segment) {
+  return {
+    ...detail,
+    segments: [...(detail.segments || []), segment]
+      .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
+  };
+}

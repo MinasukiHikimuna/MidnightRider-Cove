@@ -375,7 +375,7 @@ function SegmentEditorView(props) {
         key: "first-segment-tag-dialog",
         saving: savingSegmentId != null,
         error: saveMessage,
-        onSelect: (tagId) => createSegment(tagId),
+        onSelect: (tagId, tagName) => createSegment(tagId, tagName),
         onClose: closeFirstSegmentTagDialog,
       }) : null,
       quickSearchOpen ? h(SegmentQuickSearchDialog, {

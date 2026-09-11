@@ -128,6 +128,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const tagSearchRef = useRef(null);
   const pendingTagEditSegmentIdRef = useRef(null);
   const pendingFirstSegmentStartSecRef = useRef(null);
+  const optimisticSegmentIdRef = useRef(-1_000_000_000_000);
   const pendingDuplicateRef = useRef(null);
   const savingShotRef = useRef(false);
   const railScrollRef = useRef(null);
@@ -587,6 +588,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onConflict,
     onDetailChange,
     onReload,
+    optimisticSegmentIdRef,
     pendingDuplicateRef,
     pendingFirstSegmentStartSecRef,
     pendingTagEditSegmentIdRef,

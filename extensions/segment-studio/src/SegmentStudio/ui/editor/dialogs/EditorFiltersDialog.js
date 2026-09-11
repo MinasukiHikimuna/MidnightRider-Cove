@@ -124,7 +124,7 @@ function FirstSegmentTagDialog({ saving, error, onSelect, onClose }) {
       value: null,
       selectedDisplay: "input",
       selectedLabel: "",
-      onChange: (tagId) => { if (tagId != null) onSelect(tagId); },
+      onChange: (tagId, option) => { if (tagId != null) onSelect(tagId, option?.label); },
       disabled: saving,
       placeholder: "Find a tag…",
       inputClassName: "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground",

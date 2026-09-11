@@ -500,7 +500,7 @@ test("empty videos choose a tag before creating their first swimlane", () => {
   assert.match(firstSegmentDialog, /role: "dialog"/);
   assert.match(firstSegmentDialog, /onKeyDownCapture: trapModalFocus/);
   assert.match(editor, /firstSegmentTagOpen \? h\(FirstSegmentTagDialog/);
-  assert.match(editor, /onSelect: \(tagId\) => createSegment\(tagId\)/);
+  assert.match(editor, /onSelect: \(tagId, tagName\) => createSegment\(tagId, tagName\)/);
   assert.match(editor, /if \(creation\.kind === "choose-tag"\)/);
   assert.match(editor, /pendingFirstSegmentStartSecRef\.current = startSec/);
   assert.match(editor, /Number\.isFinite\(pendingStartSec\) \? pendingStartSec : currentTime/);

@@ -70,6 +70,25 @@ test("tag edits move segments to their new swimlane before persistence completes
   assert.match(activeEditor, /onChange: \(tagId, option\).*saveTag\(tagId, option\?\.label\)/);
 });
 
+test("segment creation inserts and selects a temporary marker before persistence", () => {
+  const detail = { video: { id: 1 }, segments: [{ id: 1, startSec: 8 }] };
+  const temporary = { id: -1000, tagId: 4, tagName: "Example", startSec: 3, endSec: 6 };
+
+  const optimistic = ui.insertSegmentProjection(detail, temporary);
+
+  assert.deepEqual(optimistic.segments, [temporary, detail.segments[0]]);
+  assert.deepEqual(detail.segments, [{ id: 1, startSec: 8 }]);
+  const primaryActions = sourceByModule["editor/actions/primary.js"];
+  const create = primaryActions.slice(
+    primaryActions.indexOf("async function createSegment"),
+    primaryActions.indexOf("async function splitSegment"),
+  );
+  assert.ok(create.indexOf("onDetailChange(optimisticDetail") < create.indexOf("await requestJson"));
+  assert.ok(create.indexOf("replaceSegmentSelection(optimisticSegment.id)") < create.indexOf("await requestJson"));
+  assert.match(create, /onDetailChange\(detail, video\.id\)/);
+  assert.match(create, /setFirstSegmentTagOpen\(true\)/);
+});
+
 test("Basic omitted collections use stable fallbacks across renders", () => {
   const controller = sourceByModule["editor/SegmentEditor.js"];
   assert.match(controller, /const EMPTY_EDITOR_COLLECTION = Object\.freeze\(\[\]\)/);
