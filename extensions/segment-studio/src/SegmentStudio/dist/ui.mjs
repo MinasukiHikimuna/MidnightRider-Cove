@@ -1,38 +1,38 @@
-import Fr from "@cove/runtime/react";
-import { createPortal as Ri } from "@cove/runtime/react-dom";
-import { extensionFetch as Qo } from "@cove/runtime/api";
-import { formatDuration as Ei, EntityReferenceSelector as In, useExtensionKeyboardBindings as Di, VideoPlayer as Xo, useRegisterExtensionKeyboardActions as ea, getDefaultFilter as ta, useListUrlState as na, ListPage as ra } from "@cove/runtime/components";
-import { ChevronDown as Oi, Loader2 as Pi } from "@cove/runtime/lucide-react";
-const jr = "com.midnightrider.segment-studio", oa = "segment-studio.layout.v1", Lt = "segment-studio.operations.v1", aa = "segment-studio.collapsed-segment-groups.v1", ia = "segment-studio.playback-shortcuts.v1", sa = "segment-studio.timing-clipboard.v1", la = "segment-studio.hide-derived-segments.v1", da = "segment-studio.merge-confirmation.v1", Xe = ["unreviewed", "approved", "rejected"], Li = ["MALE", "FEMALE", "TRANSGENDER_MALE", "TRANSGENDER_FEMALE"], yo = "(min-width: 1024px) and (min-height: 640px)", bo = "(min-width: 1024px) and (min-height: 900px)", Cn = 1e-3, ho = 15, Fi = 30, ca = 12, rt = {
+import jr from "@cove/runtime/react";
+import { createPortal as Di } from "@cove/runtime/react-dom";
+import { extensionFetch as ea } from "@cove/runtime/api";
+import { formatDuration as Oi, EntityReferenceSelector as In, useExtensionKeyboardBindings as Pi, VideoPlayer as ta, useRegisterExtensionKeyboardActions as na, getDefaultFilter as ra, useListUrlState as oa, ListPage as aa } from "@cove/runtime/components";
+import { ChevronDown as Li, Loader2 as Fi } from "@cove/runtime/lucide-react";
+const Br = "com.midnightrider.segment-studio", ia = "segment-studio.layout.v1", Ft = "segment-studio.operations.v1", sa = "segment-studio.collapsed-segment-groups.v1", la = "segment-studio.playback-shortcuts.v1", da = "segment-studio.timing-clipboard.v1", ca = "segment-studio.hide-derived-segments.v1", ua = "segment-studio.merge-confirmation.v1", Xe = ["unreviewed", "approved", "rejected"], ji = ["MALE", "FEMALE", "TRANSGENDER_MALE", "TRANSGENDER_FEMALE"], ho = "(min-width: 1024px) and (min-height: 640px)", vo = "(min-width: 1024px) and (min-height: 900px)", Cn = 1e-3, xo = 15, Bi = 30, ma = 12, rt = {
   timelineRatio: 0.45,
   markerRailOpen: !0,
   detailWidth: 352,
   markerRailWidth: 352,
   swimlaneTitleWidth: 256
-}, Br = {
+}, Gr = {
   smallSeekTime: 5,
   mediumSeekTime: 10,
   longSeekTime: 30,
   smallFrameStep: 1,
   mediumFrameStep: 10,
   longFrameStep: 30
-}, kt = {
+}, St = {
   revision: 0,
   cursorSequence: 0,
   baselineSequence: 0,
   actions: []
 };
-function vo(e, t, r) {
+function So(e, t, r) {
   if (!Number.isFinite(e) || t != null && !Number.isFinite(t))
     return { error: "Enter finite start and end times." };
   const o = Number.isFinite(r) && r > 0;
   return e < 0 || o && e > r || t != null && (t < 0 || o && t > r) ? { error: "Timing must stay within the video." } : t != null && t < e ? { error: "End time cannot be before start time." } : { startSec: e, endSec: t };
 }
-function ua(e, t = null) {
+function ga(e, t = null) {
   const r = e.flatMap((o) => o.markers.map((i) => i.segment));
-  return r.find((o) => o.id === t) ?? ma(e, null, 1, !0) ?? r[0] ?? null;
+  return r.find((o) => o.id === t) ?? pa(e, null, 1, !0) ?? r[0] ?? null;
 }
-function ma(e, t, r, o = !1) {
+function pa(e, t, r, o = !1) {
   var g;
   const i = e.findIndex((m) => m.markers.some((u) => u.segment.id === t));
   if (i < 0) {
@@ -46,13 +46,13 @@ function ma(e, t, r, o = !1) {
   const l = e.flatMap((m) => m.markers.map((u) => u.segment)), d = l.findIndex((m) => m.id === t);
   return (r < 0 ? l.slice(0, d).reverse() : l.slice(d + 1)).find((m) => m.reviewState === "unreviewed") ?? null;
 }
-function ji(e, t, r, o = null) {
+function Gi(e, t, r, o = null) {
   var d, c;
   const i = Number(t);
   if (!Number.isFinite(i)) return null;
   const a = e.flatMap((g, m) => g.markers.filter(({ segment: u }) => {
-    const y = Number(u.startSec), p = u.endSec == null ? y + Fi : Number(u.endSec);
-    return Number.isFinite(y) && Number.isFinite(p) && p >= y && y <= i + ho + Cn && p >= i - ho - Cn;
+    const y = Number(u.startSec), p = u.endSec == null ? y + Bi : Number(u.endSec);
+    return Number.isFinite(y) && Number.isFinite(p) && p >= y && y <= i + xo + Cn && p >= i - xo - Cn;
   }).map(({ segment: u }) => ({ segment: u, laneIndex: m }))).sort((g, m) => g.laneIndex - m.laneIndex || Math.abs(g.segment.startSec - i) - Math.abs(m.segment.startSec - i) || g.segment.id - m.segment.id);
   if (a.length === 0) return null;
   const s = e.findIndex((g) => g.markers.some((m) => m.segment.id === o));
@@ -60,7 +60,7 @@ function ji(e, t, r, o = null) {
   const l = a.filter((g) => g.laneIndex !== s);
   return l.length === 0 ? r < 0 ? a.at(-1).segment : a[0].segment : r < 0 ? ((d = l.findLast((g) => g.laneIndex < s)) == null ? void 0 : d.segment) ?? l.at(-1).segment : ((c = l.find((g) => g.laneIndex > s)) == null ? void 0 : c.segment) ?? l[0].segment;
 }
-function Bi(e, t, r) {
+function Ki(e, t, r) {
   var a;
   const o = Number(r);
   if (!Number.isFinite(o) || t == null) return null;
@@ -76,50 +76,50 @@ function Bi(e, t, r) {
 function Xn(e) {
   return Math.min(8, Math.max(1, Math.round(Number(e) * 4) / 4));
 }
-function Jd(e, t = 6) {
+function tc(e, t = 6) {
   if (!Number.isFinite(e) || e <= 0) return [0];
   const r = Math.max(2, Math.floor(t));
   return Array.from({ length: r }, (o, i) => e * i / (r - 1));
 }
-function Gi(e) {
+function Ui(e) {
   return !Number.isFinite(e) || e <= 0 ? [0] : Array.from({ length: Math.floor(e / 60) + 1 }, (t, r) => r * 60);
 }
-function Yd(e, t = 1, r = 48) {
+function nc(e, t = 1, r = 48) {
   return !Number.isFinite(e) || e <= 0 ? Math.max(1, r) : Math.ceil(e / 60) * Math.max(1, r) * Math.max(1, t);
 }
-function Ki(e, t, r = 1, o = 48) {
+function zi(e, t, r = 1, o = 48) {
   const i = Math.max(1, Math.ceil((Number(e) || 0) / 60)), a = Math.max(1, Number(t) || 0) * Math.max(1, Number(r) || 1);
   return Math.max(1, Math.ceil(i * Math.max(1, o) / a));
 }
-function Ui(e, t, r = null) {
+function _i(e, t, r = null) {
   return e <= 0 || e >= t - 1 && (r == null || r >= 100) ? "translate-x-0" : "-translate-x-1/2";
 }
-function zi(e, t, r) {
+function Hi(e, t, r) {
   return t <= 1 ? { left: "0%" } : e >= t - 1 && r >= 100 ? { right: "0" } : { left: `${r}%` };
 }
-function _i(e, t, r, o, i = 160, a = 0) {
+function qi(e, t, r, o, i = 160, a = 0) {
   if (!(t > 0) || !(r > o)) return 0;
   const s = Math.max(0, r - i - Math.max(0, Number(a) || 0)), l = i + Math.min(1, Math.max(0, e / t)) * s;
   return Math.min(r - o, Math.max(0, l - o / 2));
 }
-function Tr(e, t) {
+function Rr(e, t) {
   const r = Number(e);
   return t > 0 && Number.isFinite(r) ? Math.min(1, Math.max(0, r / t)) * 100 : 0;
 }
-function Hi(e, t, r = 10) {
-  const o = Tr(e, t), i = o / 100;
+function Wi(e, t, r = 10) {
+  const o = Rr(e, t), i = o / 100;
   return {
     percent: o,
     labelOffsetRem: Math.max(0, Number(r) || 0) * (1 - i)
   };
 }
-function xo(e, t = !1) {
+function ko(e, t = !1) {
   return {
     left: t ? `calc(${e.labelOffsetRem}rem + ${e.percent}%)` : `${e.percent}%`,
     transform: "translateX(-50%)"
   };
 }
-function qi(e, t = ca) {
+function Vi(e, t = ma) {
   return {
     width: `${e * 100}%`,
     minWidth: "100%",
@@ -127,7 +127,7 @@ function qi(e, t = ca) {
     paddingRight: `${Math.max(0, Number(t) || 0)}px`
   };
 }
-function ga(e) {
+function fa(e) {
   const t = Number(e);
   return Number.isFinite(t) ? Math.min(0.7, Math.max(0.25, t)) : rt.timelineRatio;
 }
@@ -135,78 +135,78 @@ function Mr(e, t) {
   const r = Number(e) - Number(t);
   return Math.min(560, Math.max(240, Number.isFinite(r) ? r : 560));
 }
-function Ot(e, t = 560) {
+function Pt(e, t = 560) {
   return typeof e != "number" || !Number.isFinite(e) ? rt.detailWidth : Math.min(Mr(t, 0), Math.max(240, e));
 }
-function Zn(e, t = 400) {
+function Qn(e, t = 400) {
   return typeof e != "number" || !Number.isFinite(e) ? rt.swimlaneTitleWidth : Math.min(Math.max(160, t), Math.max(160, e));
 }
-function Wi(e) {
+function Ji(e) {
   return e > 0 ? Math.min(400, Math.max(160, e - 320)) : 400;
 }
-function Gr(e) {
+function Kr(e) {
   const t = Math.max(1, Number(e) - 12);
   if (t < 480) return { minimum: rt.timelineRatio, maximum: rt.timelineRatio };
   const r = Math.max(0.25, 224 / t), o = Math.min(0.7, 1 - 256 / t);
   return { minimum: r, maximum: Math.max(r, o) };
 }
-function Kr(e, t) {
-  const r = ga(e);
+function Ur(e, t) {
+  const r = fa(e);
   if (!(t > 0)) return r;
-  const o = Gr(t);
+  const o = Kr(t);
   return Math.min(o.maximum, Math.max(o.minimum, r));
 }
-function Vi(e) {
+function Yi(e) {
   if (!e) return { ...rt };
   try {
     const t = JSON.parse(e), r = t == null ? void 0 : t.timelineRatio;
     return {
-      timelineRatio: typeof r == "number" && Number.isFinite(r) ? ga(r) : rt.timelineRatio,
+      timelineRatio: typeof r == "number" && Number.isFinite(r) ? fa(r) : rt.timelineRatio,
       markerRailOpen: typeof (t == null ? void 0 : t.markerRailOpen) == "boolean" ? t.markerRailOpen : !0,
-      detailWidth: Ot(t == null ? void 0 : t.detailWidth),
-      markerRailWidth: Ot(t == null ? void 0 : t.markerRailWidth),
-      swimlaneTitleWidth: Zn(t == null ? void 0 : t.swimlaneTitleWidth)
+      detailWidth: Pt(t == null ? void 0 : t.detailWidth),
+      markerRailWidth: Pt(t == null ? void 0 : t.markerRailWidth),
+      swimlaneTitleWidth: Qn(t == null ? void 0 : t.swimlaneTitleWidth)
     };
   } catch {
     return { ...rt };
   }
 }
-function Ji(e, t, r) {
-  return r > 0 ? Kr((t + r - e) / r, r) : rt.timelineRatio;
+function Qi(e, t, r) {
+  return r > 0 ? Ur((t + r - e) / r, r) : rt.timelineRatio;
 }
-function Zd(e, t, r, o, i = 2) {
+function rc(e, t, r, o, i = 2) {
   const a = Math.max(0, Number(i) || 0);
   return e < r + a ? e - r - a : t > o - a ? t - o + a : 0;
 }
-function Yi(e, t, r, o = null) {
+function Zi(e, t, r, o = null) {
   var d;
   const i = [...e].sort((c, g) => c.startSec - g.startSec || c.id - g.id), a = i.findIndex((c) => c.id === o), s = Number((d = i[a]) == null ? void 0 : d.startSec), l = Number(t);
   return a >= 0 && Number.isFinite(s) && Number.isFinite(l) && Math.abs(s - l) <= Cn ? i[a + (r < 0 ? -1 : 1)] ?? null : r < 0 ? i.findLast((c) => c.startSec < l) ?? null : i.find((c) => c.startSec > l) ?? null;
 }
-function Dt(e, t, r, o) {
+function Ot(e, t, r, o) {
   return e === t && r === o;
 }
 const er = "__segment-studio-cleared-selection__";
-function Zi(e) {
+function Xi(e) {
   return e === "true";
 }
-function Qi(e) {
+function es(e) {
   return e !== "false";
 }
-function pa() {
+function ya() {
   try {
-    return Qi(window.localStorage.getItem(da));
+    return es(window.localStorage.getItem(ua));
   } catch {
     return !0;
   }
 }
-function fa(e) {
+function ba(e) {
   try {
-    window.localStorage.setItem(da, String(!!e));
+    window.localStorage.setItem(ua, String(!!e));
   } catch {
   }
 }
-function Xi(e, t) {
+function ts(e, t) {
   return t ? e.filter((r) => !r.isDerived) : e;
 }
 function dt(e = {}) {
@@ -225,16 +225,16 @@ function dt(e = {}) {
     includeUnscored: e.includeUnscored !== !1
   };
 }
-function kr(e, t, r, o = !1, i = []) {
+function wr(e, t, r, o = !1, i = []) {
   var c, g;
   const a = dt(r), s = a.performerId == null ? null : new Set((t || []).filter((m) => Number(m.performerId) === a.performerId).map((m) => m.segmentId)), l = new Set((i || []).flatMap((m) => m.tags || []).map((m) => Number(m.tagId))), d = a.segmentGroupId == null || a.segmentGroupId === "ungrouped" ? null : new Set(((g = (c = (i || []).find((m) => Number(m.id) === a.segmentGroupId)) == null ? void 0 : c.tags) == null ? void 0 : g.map((m) => Number(m.tagId))) || []);
-  return Xi(e || [], o).filter((m) => {
+  return ts(e || [], o).filter((m) => {
     if (m.reviewState != null && !a.reviewStates.includes(m.reviewState) || s && !s.has(m.id) || a.tagId != null && Number(m.tagId) !== a.tagId || d && !d.has(Number(m.tagId)) || a.segmentGroupId === "ungrouped" && l.has(Number(m.tagId)) || a.sourceKey != null && m.sourceKey !== a.sourceKey) return !1;
     const u = Number(m.confidence);
     return m.confidence == null || !Number.isFinite(u) ? a.includeUnscored : u >= a.confidenceMin && u <= a.confidenceMax;
   });
 }
-function es(e, t, r, o = !1, i = []) {
+function ns(e, t, r, o = !1, i = []) {
   var l;
   const a = dt(r);
   if (!e) return { filters: a, hideDerivedSegments: o };
@@ -257,15 +257,15 @@ function es(e, t, r, o = !1, i = []) {
     hideDerivedSegments: o && !e.isDerived
   };
 }
-function ts(e, t = !1) {
+function rs(e, t = !1) {
   const r = dt(e);
   return +(r.reviewStates.length !== Xe.length) + +(r.performerId != null) + +(r.tagId != null) + +(r.segmentGroupId != null) + +(r.sourceKey != null) + +(r.confidenceMin > 0 || r.confidenceMax < 1) + +!r.includeUnscored + Number(t);
 }
-function ns(e, t, r) {
+function os(e, t, r) {
   const o = Number(e), i = Number(t), a = Number(r);
   return !Number.isFinite(o) || !Number.isFinite(i) || !(a > 0) ? 0 : Math.round(Math.min(1, Math.max(0, (o - i) / a)) * 100) / 100;
 }
-function rs(e, t, r, o) {
+function as(e, t, r, o) {
   const i = Math.round(Math.min(1, Math.max(0, Number(o))) * 100) / 100;
   if (r === "minimum") {
     const s = Math.min(i, t);
@@ -282,13 +282,13 @@ function rs(e, t, r, o) {
     coincidentTop: a === e ? "minimum" : "maximum"
   };
 }
-function os(e, t, r = null) {
-  return t === er ? null : ua(
+function is(e, t, r = null) {
+  return t === er ? null : ga(
     e,
     t ?? r
   );
 }
-function ya(e, t, r, o = !1) {
+function ha(e, t, r, o = !1) {
   const i = [...new Set((e || []).filter((s) => s != null))];
   if (!o) return { selectedSegmentIds: [r], activeSegmentId: r };
   if (!i.includes(r))
@@ -299,7 +299,7 @@ function ya(e, t, r, o = !1) {
     activeSegmentId: r === t ? a.at(-1) ?? null : t
   };
 }
-function as(e, t, r) {
+function ss(e, t, r) {
   const o = [...new Set((e || []).filter((s) => s != null))], i = [...new Set((r || []).filter((s) => s != null))];
   if (i.length === 0)
     return { selectedSegmentIds: o, activeSegmentId: t };
@@ -316,17 +316,17 @@ function as(e, t, r) {
     activeSegmentId: i[0]
   };
 }
-function is(e, t, r, o, i = !1) {
+function ls(e, t, r, o, i = !1) {
   const a = [...new Set((o || []).filter((c) => c != null))], s = a.indexOf(t), l = a.indexOf(r);
   if (s < 0 || l < 0)
-    return ya(e, t, r, i);
+    return ha(e, t, r, i);
   const d = a.slice(Math.min(s, l), Math.max(s, l) + 1);
   return {
     selectedSegmentIds: i ? [.../* @__PURE__ */ new Set([...e || [], ...d])] : d,
     activeSegmentId: r
   };
 }
-function ss(e, t, r = null, o = !1) {
+function ds(e, t, r = null, o = !1) {
   const i = (e == null ? void 0 : e.selectedSegmentIds) || [], a = (e == null ? void 0 : e.activeSegmentId) ?? null, s = (e == null ? void 0 : e.anchorSegmentId) ?? a, l = (e == null ? void 0 : e.rangeBaseSegmentIds) || [];
   if (r) {
     const g = [...new Set(r)];
@@ -339,12 +339,12 @@ function ss(e, t, r = null, o = !1) {
       };
     const m = o ? [.../* @__PURE__ */ new Set([...l, ...i])] : l;
     return {
-      ...is(m, s, t, g, !0),
+      ...ls(m, s, t, g, !0),
       anchorSegmentId: s,
       rangeBaseSegmentIds: m
     };
   }
-  const d = ya(i, a, t, o);
+  const d = ha(i, a, t, o);
   if (!o)
     return {
       ...d,
@@ -358,21 +358,21 @@ function ss(e, t, r = null, o = !1) {
     rangeBaseSegmentIds: d.selectedSegmentIds.filter((g) => g !== c)
   };
 }
-function ls(e, t, r) {
+function cs(e, t, r) {
   const o = [...new Set((t || []).filter((s) => s != null))], i = new Set(o), a = [...new Set((e || []).filter((s) => i.has(s)))];
   return r != null && i.has(r) && !a.includes(r) && a.push(r), a.length === 0 && (e || []).length > 0 && o.length > 0 && a.push(o[0]), a;
 }
-function ds(e) {
+function us(e) {
   return [...new Set((e || []).map((t) => t.id).filter((t) => t != null))];
 }
-function So(e, t) {
+function wo(e, t) {
   const r = Number(e == null ? void 0 : e.startSec) || 0, o = Math.max(r, Number((e == null ? void 0 : e.endSec) ?? r) || r), i = Number(t == null ? void 0 : t.startSec) || 0, a = Math.max(i, Number((t == null ? void 0 : t.endSec) ?? i) || i);
   return a < r ? r - a : i > o ? i - o : 0;
 }
-function ko(e, t, r) {
-  return (e || []).map((o) => o.segment).filter((o) => o && !r.has(o.id)).sort((o, i) => So(t, o) - So(t, i) || Math.abs(Number(o.startSec) - Number(t.startSec)) - Math.abs(Number(i.startSec) - Number(t.startSec)) || Number(o.startSec) - Number(i.startSec) || Number(o.id) - Number(i.id))[0] ?? null;
+function No(e, t, r) {
+  return (e || []).map((o) => o.segment).filter((o) => o && !r.has(o.id)).sort((o, i) => wo(t, o) - wo(t, i) || Math.abs(Number(o.startSec) - Number(t.startSec)) - Math.abs(Number(i.startSec) - Number(t.startSec)) || Number(o.startSec) - Number(i.startSec) || Number(o.id) - Number(i.id))[0] ?? null;
 }
-function cs(e, t, r) {
+function ms(e, t, r) {
   var c, g;
   const o = e || [], i = new Set(t || []), a = o.findIndex((m) => (m.markers || []).some(({ segment: u }) => u.id === r)), s = a < 0 ? null : (c = o[a].markers.find(({ segment: m }) => m.id === r)) == null ? void 0 : c.segment;
   if (!s) {
@@ -382,41 +382,41 @@ function cs(e, t, r) {
     }
     return null;
   }
-  const l = ko(
+  const l = No(
     o[a].markers,
     s,
     i
   );
   if (l) return l;
   const d = (g = o.map((m, u) => ({ lane: m, index: u })).filter(({ lane: m }) => (m.markers || []).some(({ segment: u }) => !i.has(u.id))).sort((m, u) => Math.abs(m.index - a) - Math.abs(u.index - a) || +(m.index < a) - +(u.index < a) || m.index - u.index)[0]) == null ? void 0 : g.lane;
-  return ko(d == null ? void 0 : d.markers, s, i);
+  return No(d == null ? void 0 : d.markers, s, i);
 }
-function us(e, t, r) {
+function gs(e, t, r) {
   const o = new Set(t || []), i = (e || []).flatMap((l) => (l.markers || []).map(({ segment: d }) => d).filter(Boolean)), a = i.findIndex((l) => l.id === r);
   return (a < 0 ? i : i.slice(a + 1)).find((l) => !o.has(l.id) && l.reviewState === "unreviewed") ?? null;
 }
-function ms(e, t) {
+function ps(e, t) {
   const r = Math.max(0, Number(e) || 0), o = Math.min(9, Math.max(0, Math.trunc(Number(t) || 0)));
   return r * o / 10;
 }
-function gs(e, t) {
+function fs(e, t) {
   const r = new Map((e || []).map((o) => [o.id, o]));
   return [...new Set(t || [])].map((o) => r.get(o)).filter(Boolean);
 }
-function ps() {
+function ys() {
   try {
-    return Zi(window.localStorage.getItem(la));
+    return Xi(window.localStorage.getItem(ca));
   } catch {
     return !1;
   }
 }
-function fs(e) {
+function bs(e) {
   try {
-    window.localStorage.setItem(la, String(!!e));
+    window.localStorage.setItem(ca, String(!!e));
   } catch {
   }
 }
-const An = [
+const Mn = [
   { id: "video.playPause", category: "Playback", bindings: [{ key: " " }, { key: "k" }], description: "Play or pause" },
   { id: "video.seekSmallBackward", category: "Playback", bindings: [{ key: "j" }], description: "Seek backward by the small interval" },
   { id: "video.seekSmallForward", category: "Playback", bindings: [{ key: "l" }], description: "Seek forward by the small interval" },
@@ -495,7 +495,7 @@ const An = [
   { id: "system.publishApproved", category: "Review", bindings: [{ key: "z", shift: !0 }], description: "Preview approved draft publishing", reviewOnly: !0 },
   { id: "marker.reject", category: "Review", bindings: [{ key: "x" }], description: "Reject or unreject segment", reviewOnly: !0 },
   { id: "system.deleteRejected", category: "Review", bindings: [{ key: "x", shift: !0 }], description: "Delete all rejected segments", reviewOnly: !0 }
-], ys = /* @__PURE__ */ new Set([
+], hs = /* @__PURE__ */ new Set([
   "video.playSelected",
   "video.jumpToSegmentStart",
   "video.jumpToSegmentEnd",
@@ -507,10 +507,10 @@ const An = [
   "marker.copyTiming",
   "marker.pasteTiming"
 ]);
-function bs(e) {
-  return ys.has(e);
+function vs(e) {
+  return hs.has(e);
 }
-function ba(e) {
+function va(e) {
   if (!e || typeof e != "object" || typeof e.key != "string") return null;
   const t = e.key === " " ? " " : e.key.trim(), r = typeof e.code == "string" ? e.code.trim() : "", o = ["Comma", "Period"].includes(r) ? r : "";
   return !t || t.length > 32 || ["Control", "Shift", "Alt", "Meta"].includes(t) ? null : {
@@ -523,24 +523,24 @@ function ba(e) {
     ...e.platform ? { platform: !0 } : {}
   };
 }
-function hs(e) {
+function xs(e) {
   try {
     const t = typeof e == "string" ? JSON.parse(e || "{}") : e;
     if (!t || typeof t != "object" || Array.isArray(t)) return {};
-    const r = new Set(An.map((o) => o.id));
-    return Object.fromEntries(Object.entries(t).filter(([o, i]) => r.has(o) && Array.isArray(i)).map(([o, i]) => [o, i.slice(0, 4).map(ba).filter(Boolean)]));
+    const r = new Set(Mn.map((o) => o.id));
+    return Object.fromEntries(Object.entries(t).filter(([o, i]) => r.has(o) && Array.isArray(i)).map(([o, i]) => [o, i.slice(0, 4).map(va).filter(Boolean)]));
   } catch {
     return {};
   }
 }
-function vs(e = {}) {
-  const t = hs(e);
-  return An.map((r) => ({
+function Ss(e = {}) {
+  const t = xs(e);
+  return Mn.map((r) => ({
     ...r,
     bindings: Object.hasOwn(t, r.id) ? t[r.id] : r.bindings
   }));
 }
-function wo(e, t = 2) {
+function Io(e, t = 2) {
   const o = [...new Set(e.map((s) => s.category))].map((s, l) => ({
     category: s,
     index: l,
@@ -551,9 +551,9 @@ function wo(e, t = 2) {
     l.groups.push(s), l.weight += s.shortcuts.length + 2;
   }), a.map((s) => s.groups.sort((l, d) => l.index - d.index));
 }
-function Qd(e) {
+function oc(e) {
   const t = String(e.key || "");
-  return !t || ["Control", "Shift", "Alt", "Meta", "Escape"].includes(t) ? null : ba({
+  return !t || ["Control", "Shift", "Alt", "Meta", "Escape"].includes(t) ? null : va({
     key: t,
     code: e.code,
     ctrl: e.ctrlKey,
@@ -562,7 +562,7 @@ function Qd(e) {
     meta: e.metaKey
   });
 }
-function Xd(e) {
+function ac(e) {
   return e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey;
 }
 function Ar(e, t) {
@@ -571,16 +571,16 @@ function Ar(e, t) {
   const a = "+_?:<>".includes(t.key);
   return (t.platform ? !!e.ctrlKey != !!e.metaKey : !!e.ctrlKey == !!t.ctrl && !!e.metaKey == !!t.meta) && !!e.altKey == !!t.alt && (a && !t.shift ? !0 : !!e.shiftKey == !!t.shift);
 }
-function No(e, t) {
+function Co(e, t) {
   const r = {
     comma: [",", "<"],
     period: [".", ">"]
   }[String(e || "").toLowerCase()];
   return !!(r != null && r.includes(String(t || "").toLowerCase()));
 }
-function ec(e, t) {
+function ic(e, t) {
   if (!e || !t) return !1;
-  const r = String(e.key).toLowerCase() === String(t.key).toLowerCase(), o = e.code && t.code && String(e.code).toLowerCase() === String(t.code).toLowerCase(), i = No(e.code, t.key), a = No(t.code, e.key);
+  const r = String(e.key).toLowerCase() === String(t.key).toLowerCase(), o = e.code && t.code && String(e.code).toLowerCase() === String(t.code).toLowerCase(), i = Co(e.code, t.key), a = Co(t.code, e.key);
   if (!r && !o && !i && !a) return !1;
   const s = i ? t.key : e.key, l = i ? e.code : a ? t.code : o ? e.code : e.code || t.code;
   for (const d of [!1, !0])
@@ -599,16 +599,16 @@ function ec(e, t) {
         }
   return !1;
 }
-function Zt(e, t = !1) {
+function Qt(e, t = !1) {
   return (!e.reviewOnly || t) && (!e.basicOnly || !t);
 }
-function tc(e, t) {
-  return [!1, !0].some((r) => Zt(e, r) && Zt(t, r));
+function sc(e, t) {
+  return [!1, !0].some((r) => Qt(e, r) && Qt(t, r));
 }
-function xs(e, t = !1, r = {}) {
-  return vs(r).find((o) => Zt(o, t) && o.bindings.some((i) => Ar(e, i))) || null;
+function ks(e, t = !1, r = {}) {
+  return Ss(r).find((o) => Qt(o, t) && o.bindings.some((i) => Ar(e, i))) || null;
 }
-function ha(e) {
+function xa(e) {
   return e.label ? e.label : [
     e.platform ? "Ctrl/Cmd" : e.ctrl ? "Ctrl" : null,
     e.alt ? "Alt" : null,
@@ -617,27 +617,51 @@ function ha(e) {
     e.key === " " ? "Space" : e.key
   ].filter(Boolean).join("+");
 }
-function Ss(e, t = !1) {
-  return t ? "Press keys…" : e.bindings.length ? e.bindings.map(ha).join(" / ") : "Unassigned";
+function ws(e, t = !1) {
+  return t ? "Press keys…" : e.bindings.length ? e.bindings.map(xa).join(" / ") : "Unassigned";
 }
-function nc(e, t) {
+function lc(e, t) {
   const r = String(t || "").trim().toLowerCase();
-  return r ? e.filter((o) => [o.description, o.category, Ss(o)].some((i) => String(i || "").toLowerCase().includes(r))) : e;
+  return r ? e.filter((o) => [o.description, o.category, ws(o)].some((i) => String(i || "").toLowerCase().includes(r))) : e;
 }
-function rc(e) {
+function dc(e) {
   return e === "review" ? "review" : "editor";
 }
-function We(e, { itemId: t = null, nativeSegmentId: r = null } = {}) {
+function He(e, { itemId: t = null, nativeSegmentId: r = null } = {}) {
   if (t != null) {
     const o = (e || []).find((i) => i.itemId === t);
     if (o) return o;
   }
   return r == null ? null : (e || []).find((o) => o.nativeSegmentId === r) || null;
 }
-function ks(e, t) {
+function Ns(e, t) {
   return (e || []).length > 0 && e.every((r) => r.reviewState === t) ? "unreviewed" : t;
 }
-function Io(e, t) {
+function Is(e, t, r) {
+  const o = t.map(({ id: a, itemId: s, nativeSegmentId: l }) => ({
+    id: a,
+    itemId: s,
+    nativeSegmentId: l
+  })), i = o.find((a) => a.id === (r == null ? void 0 : r.id)) || o[0] || null;
+  return { requestedState: e, identities: o, activeIdentity: i };
+}
+function Cs(e, t) {
+  var o;
+  if (!((o = e == null ? void 0 : e.identities) != null && o.length)) return null;
+  const r = e.identities.map((i) => He(t, i)).filter(Boolean);
+  return r.length === 0 ? null : {
+    requestedState: e.requestedState,
+    selectedSegments: r,
+    selectedSegment: He(t, e.activeIdentity) || r[0]
+  };
+}
+function $s(e, t) {
+  return (e == null ? void 0 : e.itemId) != null && (t == null ? void 0 : t.itemId) != null ? e.itemId === t.itemId : (e == null ? void 0 : e.nativeSegmentId) != null && (t == null ? void 0 : t.nativeSegmentId) != null ? e.nativeSegmentId === t.nativeSegmentId : (e == null ? void 0 : e.id) != null && (t == null ? void 0 : t.id) != null && e.id === t.id;
+}
+function Ts(e, t) {
+  return (e || []).filter((r) => !r.identities.some((o) => (t || []).some((i) => $s(o, i))));
+}
+function $o(e, t) {
   var o;
   if (e) {
     const i = (t == null ? void 0 : t.nativeSegmentId) ?? (t == null ? void 0 : t.id) ?? null;
@@ -648,32 +672,32 @@ function Io(e, t) {
   if (r == null) throw new Error("Duplicate response did not include a stable item identity.");
   return { itemId: r };
 }
-function ws(e, t, r, o) {
+function Rs(e, t, r, o) {
   const i = r ? o : "in-place";
   return t != null && t.published ? `duplicate-native:${e}:${t.nativeSegmentId ?? t.id}:${t.updatedAt}:${i}` : `duplicate-draft:${e}:${t == null ? void 0 : t.itemId}:${t == null ? void 0 : t.revision}:${i}`;
 }
-function Ns(e, t, r = null) {
+function Ms(e, t, r = null) {
   const o = Number(r);
   if (r != null && Number.isInteger(o) && o > 0)
     return { kind: "create", tagId: o, openTagEditor: !1 };
   const i = Number(t == null ? void 0 : t.tagId);
   return Number.isInteger(i) && i > 0 ? { kind: "create", tagId: i, openTagEditor: !0 } : (e || []).length === 0 ? { kind: "choose-tag" } : { kind: "invalid-selection" };
 }
-function Rr(e, t) {
+function Er(e, t) {
   return e === t;
 }
-function Is(e, t, r) {
+function As(e, t, r) {
   const o = (e || []).find((i) => i.id === t);
   return (o == null ? void 0 : o.itemId) == null ? null : (r || []).find((i) => i.itemId === o.itemId) || null;
 }
-function Cs(e, t, r) {
+function Es(e, t, r) {
   const o = [...e || []].sort((i, a) => i.startSec - a.startSec || i.id - a.id);
   return r < 0 ? o.filter((i) => i.startSec < t - Cn).at(-1) || null : o.find((i) => i.startSec > t + Cn) || null;
 }
-function Qn(e) {
+function Zn(e) {
   return [...e || []].sort((t, r) => t.startSec - r.startSec || t.id - r.id).map((t) => `${t.id}:${t.revision}`).join(",");
 }
-function Co(e) {
+function To(e) {
   const t = e && typeof e == "object" ? e : {};
   return {
     query: typeof t.query == "string" ? t.query : "",
@@ -684,15 +708,15 @@ function Co(e) {
     perPage: Math.min(100, Math.max(1, Number(t.perPage) || 24))
   };
 }
-function oc(e, t = null, r = !1) {
-  const o = Co(r ? {} : e);
+function cc(e, t = null, r = !1) {
+  const o = To(r ? {} : e);
   return t ? { ...o, videoId: t } : o;
 }
 function Jt(e, t, r, o) {
   const i = Number(e);
   return Number.isFinite(i) ? Math.min(o, Math.max(r, i)) : t;
 }
-function va(e) {
+function Sa(e) {
   try {
     const t = e ? JSON.parse(e) : {};
     return {
@@ -704,29 +728,29 @@ function va(e) {
       longFrameStep: Math.round(Jt(t.longFrameStep, 30, 1, 300))
     };
   } catch {
-    return { ...Br };
+    return { ...Gr };
   }
 }
-function $s(e, t = 30) {
+function Ds(e, t = 30) {
   const r = Number(t);
   return Number(e) / (Number.isFinite(r) && r > 0 ? r : 30);
 }
-function xa() {
+function ka() {
   try {
-    return va(window.localStorage.getItem(ia));
+    return Sa(window.localStorage.getItem(la));
   } catch {
-    return { ...Br };
+    return { ...Gr };
   }
 }
-function $o(e) {
-  const t = va(JSON.stringify(e));
+function Ro(e) {
+  const t = Sa(JSON.stringify(e));
   try {
-    window.localStorage.setItem(ia, JSON.stringify(t));
+    window.localStorage.setItem(la, JSON.stringify(t));
   } catch {
   }
   return t;
 }
-const wt = Object.freeze({
+const kt = Object.freeze({
   navigationVideos: "navigation.videos",
   navigationSegmentInventory: "navigation.segmentInventory",
   settingsGeneral: "settings.general",
@@ -759,47 +783,47 @@ const wt = Object.freeze({
   segmentGroupsManage: "segmentGroups.manage",
   feedbackManage: "feedback.manage"
 });
-function Er(e) {
+function Dr(e) {
   return e === "full" || e === "review" ? "full" : "basic";
 }
-function Sa(e) {
+function wa(e) {
   const t = (e == null ? void 0 : e.schemaVersion) === 1, r = (e == null ? void 0 : e.requestedMode) === "basic" || (e == null ? void 0 : e.requestedMode) === "full" || (e == null ? void 0 : e.requestedMode) === "editor" || (e == null ? void 0 : e.requestedMode) === "review", o = (e == null ? void 0 : e.effectiveMode) === "basic" || (e == null ? void 0 : e.effectiveMode) === "full" || (e == null ? void 0 : e.effectiveMode) === "editor" || (e == null ? void 0 : e.effectiveMode) === "review", i = t && r && o;
   return {
     schemaVersion: i ? 1 : 0,
-    requestedMode: i ? Er(e.requestedMode) : "basic",
-    effectiveMode: i ? Er(e.effectiveMode) : "basic",
+    requestedMode: i ? Dr(e.requestedMode) : "basic",
+    effectiveMode: i ? Dr(e.effectiveMode) : "basic",
     legacyCompatibilityRequired: i && e.legacyCompatibilityRequired === !0,
     capabilities: i && Array.isArray(e.capabilities) ? [...new Set(e.capabilities.filter((a) => typeof a == "string"))] : []
   };
 }
-function Qt(e, t) {
+function Zt(e, t) {
   return Array.isArray(e == null ? void 0 : e.capabilities) && e.capabilities.includes(t);
 }
-function Ts(e) {
+function Os(e) {
   return (e == null ? void 0 : e.effectiveMode) === "full" ? "review" : "editor";
 }
-function Ms(e) {
+function Ps(e) {
   const t = [];
-  return Qt(e, wt.navigationVideos) && t.push({ key: "videos", label: "Videos", href: "/segment-studio", route: { page: "segment-studio" } }), Qt(e, wt.navigationSegmentInventory) && t.push({ key: "segments", label: "Segments", href: "/segment-studio/segments", route: { page: "segment-studio", slug: "segments" } }), t;
+  return Zt(e, kt.navigationVideos) && t.push({ key: "videos", label: "Videos", href: "/segment-studio", route: { page: "segment-studio" } }), Zt(e, kt.navigationSegmentInventory) && t.push({ key: "segments", label: "Segments", href: "/segment-studio/segments", route: { page: "segment-studio", slug: "segments" } }), t;
 }
-function As(e) {
+function Ls(e) {
   return [
-    ["general", "General", wt.settingsGeneral],
-    ["shortcuts", "Shortcuts", wt.settingsShortcuts],
-    ["performer-slots", "Performer slots", wt.settingsPerformerSlots],
-    ["derivation", "Derivation", wt.settingsDerivation]
-  ].filter(([, , r]) => Qt(e, r)).map(([r, o]) => [r, o]);
+    ["general", "General", kt.settingsGeneral],
+    ["shortcuts", "Shortcuts", kt.settingsShortcuts],
+    ["performer-slots", "Performer slots", kt.settingsPerformerSlots],
+    ["derivation", "Derivation", kt.settingsDerivation]
+  ].filter(([, , r]) => Zt(e, r)).map(([r, o]) => [r, o]);
 }
-function Rs(e, t) {
-  return e === "segments" && !Qt(
+function Fs(e, t) {
+  return e === "segments" && !Zt(
     t,
-    wt.navigationSegmentInventory
-  ) || e === "bin" && !Qt(
+    kt.navigationSegmentInventory
+  ) || e === "bin" && !Zt(
     t,
-    wt.recyclingBinView
+    kt.recyclingBinView
   ) ? "videos" : e;
 }
-function Es(e) {
+function js(e) {
   const t = Number(e), r = Number.isFinite(t) && t >= 0 ? Math.trunc(t) : 0;
   if (r === 0)
     return `Basic mode hides Full-only expanded metadata, including review, lineage, derivation, and performer slots.
@@ -810,7 +834,7 @@ Nothing will be deleted. Hidden metadata will reappear when you return to Full m
 
 Full-only expanded metadata, including review, lineage, derivation, and performer slots, will also be hidden. Nothing will be deleted. The hidden ${o ? "segment" : "segments"} and metadata will reappear when you return to Full mode.`;
 }
-function Ds(e, t = 0) {
+function Bs(e, t = 0) {
   const r = Number(e), o = Number.isFinite(r) && r >= 0 ? Math.trunc(r) : 0, i = Number(t), a = Number.isFinite(i) && i >= 0 ? Math.trunc(i) : 0, s = a > 0 ? `
 
 ${a} collected incorrect ${a === 1 ? "example remains" : "examples remain"} protected and manageable after the switch.` : "";
@@ -820,25 +844,25 @@ Switch to Full mode and clear Basic undo history?` : `The recycling bin contains
 
 Remove the unprotected ${o === 1 ? "segment" : "segments"}, clear Basic undo history, and switch to Full mode? This cannot be undone.`;
 }
-const wr = {
+const Nr = {
   resetKey: "segment-studio-browse",
   defaultFilter: { page: 1, perPage: 24, sort: "default", direction: "desc" },
   defaultObjectFilter: {},
   defaultDisplayMode: "grid",
   allowedDisplayModes: ["grid"]
-}, To = [
+}, Mo = [
   { id: "activities", label: "Tags", type: "multiId", entityType: "tags", filterKey: "activitiesCriterion", modifiers: ["INCLUDES"] },
   { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion", modifiers: ["INCLUDES"] },
   { id: "reviewState", label: "Review State", type: "enum", filterKey: "reviewStateCriterion", modifiers: ["EQUALS"], options: Xe.map((e) => ({ value: e, label: e[0].toUpperCase() + e.slice(1) })) }
 ];
-function Os(e) {
+function Gs(e) {
   const t = String(e || "").split(",").filter((r) => Xe.includes(r));
   return t.length === 0 ? [...Xe] : [...new Set(t)];
 }
 function Yt(e) {
-  return ka(e).values;
+  return Na(e).values;
 }
-function ka(e) {
+function Na(e) {
   if (!e) return { activityTagId: null, values: {} };
   try {
     const t = JSON.parse(String(e));
@@ -852,12 +876,12 @@ function ka(e) {
     return { activityTagId: null, values: {} };
   }
 }
-function Nr(e, t) {
+function Ir(e, t) {
   return Object.keys(t || {}).length ? JSON.stringify({ activityTagId: e, values: t }) : void 0;
 }
-function Mo(e, t) {
+function Ao(e, t) {
   var l;
-  const r = Ao(t.activitiesCriterion, t.activityId), o = Ao(t.performersCriterion, t.performerId), i = r.length === 1 ? r[0] : null, a = ka(t.slots), s = i && (a.activityTagId == null || a.activityTagId === i) ? Object.entries(a.values).map(([d, c]) => ({
+  const r = Eo(t.activitiesCriterion, t.activityId), o = Eo(t.performersCriterion, t.performerId), i = r.length === 1 ? r[0] : null, a = Na(t.slots), s = i && (a.activityTagId == null || a.activityTagId === i) ? Object.entries(a.values).map(([d, c]) => ({
     slotDefinitionId: d,
     performerId: Number(c)
   })) : [];
@@ -866,7 +890,7 @@ function Mo(e, t) {
     activityTagId: i,
     activityTagIds: r,
     includeActivitySubtags: ((l = t.activitiesCriterion) == null ? void 0 : l.depth) === -1,
-    reviewStates: Ps(t.reviewStateCriterion, t.states),
+    reviewStates: Ks(t.reviewStateCriterion, t.states),
     slotAssignments: s,
     page: Math.max(1, Number(e.page) || 1),
     perPage: Math.max(1, Number(e.perPage) || 24),
@@ -875,32 +899,32 @@ function Mo(e, t) {
     performerIds: o
   };
 }
-function Ao(e, t) {
+function Eo(e, t) {
   const r = Array.isArray(e == null ? void 0 : e.value) ? e.value : [t];
   return [...new Set(r.map(Number).filter((o) => Number.isInteger(o) && o > 0))];
 }
-function Ps(e, t) {
-  return Xe.includes(e == null ? void 0 : e.value) ? [e.value] : Os(t);
+function Ks(e, t) {
+  return Xe.includes(e == null ? void 0 : e.value) ? [e.value] : Gs(t);
 }
-function wa(e) {
+function Ia(e) {
   return e.published === !1 && e.itemId != null ? `/segment-studio/${e.videoId}?item=${encodeURIComponent(e.itemId)}` : `/segment-studio/${e.videoId}?segment=${encodeURIComponent(e.segmentId ?? e.id)}`;
 }
-function Ls(e) {
+function Us(e) {
   var i;
   const t = Number(e.startSec) || 0, r = Number(e.endSec);
   if (e.endSec != null && Number.isFinite(r)) return Math.max(t, r);
   const o = Number((i = e.videoFile) == null ? void 0 : i.duration);
   return Number.isFinite(o) && o > t ? o : t + 1e-3;
 }
-function Fs(e = typeof window > "u" ? "" : window.location.search) {
+function zs(e = typeof window > "u" ? "" : window.location.search) {
   const t = Number(new URLSearchParams(e).get("segment"));
   return Number.isInteger(t) && t > 0 ? t : null;
 }
-function Ro(e = typeof window > "u" ? "" : window.location.search) {
+function Do(e = typeof window > "u" ? "" : window.location.search) {
   const t = Number(new URLSearchParams(e).get("item"));
   return Number.isInteger(t) && t > 0 ? t : null;
 }
-function js(e, t, r) {
+function _s(e, t, r) {
   if (typeof r != "function" || e == null) return !1;
   const o = (t || []).find((i) => i.id === e);
   return o ? (r(o.startSec, !1), !0) : !1;
@@ -908,23 +932,23 @@ function js(e, t, r) {
 function Ve(e) {
   return (e == null ? void 0 : e.id) ?? (e == null ? void 0 : e.performerId);
 }
-function Ur(e) {
+function zr(e) {
   return (e || []).filter((t) => t.isVideoPerformer);
 }
-function Ir(e, t) {
-  const r = new Set(Ur(t).map((o) => String(Ve(o))));
+function Cr(e, t) {
+  const r = new Set(zr(t).map((o) => String(Ve(o))));
   return Object.fromEntries((e || []).map((o) => [
     o.slotDefinitionId,
     o.performerId != null && r.has(String(o.performerId)) ? String(o.performerId) : ""
   ]));
 }
-function Ct(e) {
+function $t(e) {
   return String(e || "").toLowerCase().replaceAll(/[^a-z]/g, "");
 }
-function Eo(e) {
-  return `${String(e.label || "").trim()}|${(e.genderHints || []).map(Ct).sort().join(",")}`;
+function Oo(e) {
+  return `${String(e.label || "").trim()}|${(e.genderHints || []).map($t).sort().join(",")}`;
 }
-function Na(e, t, r = 9) {
+function Ca(e, t, r = 9) {
   if (!(e != null && e.length) || !(t != null && t.length)) return [];
   const o = e.filter((y) => String(y.label || "").trim());
   if (o.length > 0 && o.length < e.length) return [];
@@ -934,42 +958,42 @@ function Na(e, t, r = 9) {
     var p;
     return !((p = y.genderHints) != null && p.length);
   }) && e.length === t.length && !i) {
-    const y = [...e].sort((b, f) => String(b.slotDefinitionId).localeCompare(String(f.slotDefinitionId))), p = [...t].sort((b, f) => String(b.name).localeCompare(String(f.name)) || Number(Ve(b)) - Number(Ve(f)));
+    const y = [...e].sort((h, f) => String(h.slotDefinitionId).localeCompare(String(f.slotDefinitionId))), p = [...t].sort((h, f) => String(h.name).localeCompare(String(f.name)) || Number(Ve(h)) - Number(Ve(f)));
     return [{
-      assignments: Object.fromEntries(y.map((b, f) => [String(b.slotDefinitionId), String(Ve(p[f]))])),
-      description: p.map((b) => b.name).join(", ")
+      assignments: Object.fromEntries(y.map((h, f) => [String(h.slotDefinitionId), String(Ve(p[f]))])),
+      description: p.map((h) => h.name).join(", ")
     }];
   }
-  const s = [], l = /* @__PURE__ */ new Set(), d = [], c = e.map((y) => t.map((p, b) => ({ performer: p, index: b })).filter(({ performer: p }) => {
-    var b;
-    return !((b = y.genderHints) != null && b.length) || y.genderHints.some((f) => Ct(f) === Ct(p.gender || p.genderIdentity));
-  }).map(({ index: p }) => p)), g = i ? c.filter((y) => y.length > 0).length : Do(c, t.length);
+  const s = [], l = /* @__PURE__ */ new Set(), d = [], c = e.map((y) => t.map((p, h) => ({ performer: p, index: h })).filter(({ performer: p }) => {
+    var h;
+    return !((h = y.genderHints) != null && h.length) || y.genderHints.some((f) => $t(f) === $t(p.gender || p.genderIdentity));
+  }).map(({ index: p }) => p)), g = i ? c.filter((y) => y.length > 0).length : Po(c, t.length);
   if (g === 0) return [];
   const m = new Map(t.map((y, p) => [String(Ve(y)), p]));
-  function u(y, p, b) {
+  function u(y, p, h) {
     if (s.length >= a) return;
-    const f = c.slice(y), w = i ? f.filter((R) => R.length > 0).length : Do(f.map((R) => R.filter((_) => !p.has(String(Ve(t[_]))))), t.length);
-    if (b + w < g) return;
+    const f = c.slice(y), w = i ? f.filter((j) => j.length > 0).length : Po(f.map((j) => j.filter((F) => !p.has(String(Ve(t[F]))))), t.length);
+    if (h + w < g) return;
     if (y === e.length) {
-      if (b !== g) return;
-      const R = Object.fromEntries(d.map(({ slot: A, performer: $ }) => [String(A.slotDefinitionId), $ ? String(Ve($)) : ""])), _ = o.length === 0 ? Object.values(R).sort().join(",") : [...new Set(e.map((A) => String(A.label || "")))].map((A) => `${A}:${d.filter(({ slot: $ }) => String($.label || "") === A).map(({ performer: $ }) => $ ? String(Ve($)) : "").sort().join(",")}`).join("|");
-      !l.has(_) && s.length < a && (l.add(_), s.push({
-        assignments: R,
-        description: d.map(({ slot: A, performer: $ }) => o.length ? `${A.label}: ${($ == null ? void 0 : $.name) || "Unassigned"}` : ($ == null ? void 0 : $.name) || "Unassigned").join(", ")
+      if (h !== g) return;
+      const j = Object.fromEntries(d.map(({ slot: T, performer: M }) => [String(T.slotDefinitionId), M ? String(Ve(M)) : ""])), F = o.length === 0 ? Object.values(j).sort().join(",") : [...new Set(e.map((T) => String(T.label || "")))].map((T) => `${T}:${d.filter(({ slot: M }) => String(M.label || "") === T).map(({ performer: M }) => M ? String(Ve(M)) : "").sort().join(",")}`).join("|");
+      !l.has(F) && s.length < a && (l.add(F), s.push({
+        assignments: j,
+        description: d.map(({ slot: T, performer: M }) => o.length ? `${T.label}: ${(M == null ? void 0 : M.name) || "Unassigned"}` : (M == null ? void 0 : M.name) || "Unassigned").join(", ")
       }));
       return;
     }
-    const v = e[y], N = [...d].reverse().find(({ slot: R }) => Eo(R) === Eo(v)), W = N ? m.get(String(Ve(N.performer))) : -1;
-    for (const R of c[y]) {
-      const _ = t[R], A = Ve(_);
-      if (!(R < W) && !(A == null || !i && p.has(String(A))) && (d.push({ slot: v, performer: _ }), i || p.add(String(A)), u(y + 1, p, b + 1), i || p.delete(String(A)), d.pop(), s.length >= a))
+    const v = e[y], N = [...d].reverse().find(({ slot: j }) => Oo(j) === Oo(v)), W = N ? m.get(String(Ve(N.performer))) : -1;
+    for (const j of c[y]) {
+      const F = t[j], T = Ve(F);
+      if (!(j < W) && !(T == null || !i && p.has(String(T))) && (d.push({ slot: v, performer: F }), i || p.add(String(T)), u(y + 1, p, h + 1), i || p.delete(String(T)), d.pop(), s.length >= a))
         return;
     }
-    d.push({ slot: v, performer: null }), u(y + 1, p, b), d.pop();
+    d.push({ slot: v, performer: null }), u(y + 1, p, h), d.pop();
   }
   return u(0, /* @__PURE__ */ new Set(), 0), s;
 }
-function Do(e, t) {
+function Po(e, t) {
   const r = Array(t).fill(-1);
   function o(i, a) {
     for (const s of e[i])
@@ -979,7 +1003,7 @@ function Do(e, t) {
   }
   return e.reduce((i, a, s) => i + (o(s, /* @__PURE__ */ new Set()) ? 1 : 0), 0);
 }
-function Bs(e, t) {
+function Hs(e, t) {
   if (!(e != null && e.length) || !(t != null && t.length)) return null;
   const r = e.some((l) => String(l.label || "").trim());
   if (r && e.some((l) => !String(l.label || "").trim())) return null;
@@ -1002,11 +1026,11 @@ function Bs(e, t) {
     }
     const c = e[l];
     for (const m of t)
-      !o && d.has(m.performerId) || (g = c.genderHints) != null && g.length && !c.genderHints.some((u) => Ct(u) === Ct(m.gender)) || (a.push({ slot: c, performer: m }), o || d.add(m.performerId), s(l + 1, d), o || d.delete(m.performerId), a.pop());
+      !o && d.has(m.performerId) || (g = c.genderHints) != null && g.length && !c.genderHints.some((u) => $t(u) === $t(m.gender)) || (a.push({ slot: c, performer: m }), o || d.add(m.performerId), s(l + 1, d), o || d.delete(m.performerId), a.pop());
   }
   return s(0, /* @__PURE__ */ new Set()), i.size === 1 ? [...i.values()][0] : null;
 }
-function Gs(e) {
+function qs(e) {
   const t = /* @__PURE__ */ new Map();
   for (const r of e || []) {
     const o = r.assignment || [], i = o.map(({ slot: l, performer: d }) => `${l.slotDefinitionId}:${d.performerId}`).join("|"), a = `${r.tagId}:${i}`;
@@ -1025,7 +1049,7 @@ function Gs(e) {
     candidates: [...r.candidates].sort((o, i) => o.startSec - i.startSec || (o.endSec ?? o.startSec) - (i.endSec ?? i.startSec) || o.id - i.id)
   }));
 }
-function Ks(e, t, r = 20) {
+function Ws(e, t, r = 20) {
   const o = String(t || "").trim().toLocaleLowerCase(), i = (a) => {
     var d;
     if (!o) return !0;
@@ -1041,7 +1065,7 @@ function Ks(e, t, r = 20) {
   };
   return (e || []).filter(i).slice(0, Math.max(1, Number(r) || 20));
 }
-function Us(e) {
+function Vs(e) {
   return (e || []).flatMap((t) => t.markers.map((r) => ({
     segment: r.segment,
     laneKey: t.key,
@@ -1051,58 +1075,58 @@ function Us(e) {
     performerAssignments: t.performerAssignments || []
   })));
 }
-function zs(e) {
+function Js(e) {
   return new Set((e || []).map((t) => t.groupKey)).size > 1;
 }
-function Ia(e, t, r) {
-  const o = Ve, i = new Set((t || []).map(o)), a = new Set((r || []).map(Ct));
+function $a(e, t, r) {
+  const o = Ve, i = new Set((t || []).map(o)), a = new Set((r || []).map($t));
   return [...new Map([...t || [], ...e || []].map((l) => [o(l), l])).values()].sort((l, d) => {
     const c = l.isVideoPerformer ?? i.has(o(l)), g = d.isVideoPerformer ?? i.has(o(d));
     if (c !== g) return g - c;
-    const m = Ct(l.gender || l.genderIdentity), u = Ct(d.gender || d.genderIdentity), y = l.matchesGenderHint ?? a.has(m);
+    const m = $t(l.gender || l.genderIdentity), u = $t(d.gender || d.genderIdentity), y = l.matchesGenderHint ?? a.has(m);
     return (d.matchesGenderHint ?? a.has(u)) - y || String(l.name).localeCompare(String(d.name)) || o(l) - o(d);
   });
 }
-const { useEffect: ye, useId: Ca, useMemo: Be, useRef: pe, useState: j } = Fr, n = Fr.createElement, $a = "/api/plugins/segment-studio";
-function Re(e) {
+const { useEffect: fe, useId: Ta, useMemo: Ge, useRef: pe, useState: L } = jr, n = jr.createElement, Ra = "/api/plugins/segment-studio";
+function Le(e) {
   try {
-    const t = JSON.parse(window.localStorage.getItem(Lt) || "{}");
+    const t = JSON.parse(window.localStorage.getItem(Ft) || "{}");
     if (typeof t[e] == "string" && t[e]) return t[e];
-    const r = Dr();
-    return t[e] = r, window.localStorage.setItem(Lt, JSON.stringify(t)), r;
+    const r = Or();
+    return t[e] = r, window.localStorage.setItem(Ft, JSON.stringify(t)), r;
   } catch {
-    return Dr();
+    return Or();
   }
 }
-function Oe(e) {
+function Fe(e) {
   try {
-    const t = JSON.parse(window.localStorage.getItem(Lt) || "{}");
-    delete t[e], delete t[`${e}:discardMissingImage`], window.localStorage.setItem(Lt, JSON.stringify(t));
+    const t = JSON.parse(window.localStorage.getItem(Ft) || "{}");
+    delete t[e], delete t[`${e}:discardMissingImage`], window.localStorage.setItem(Ft, JSON.stringify(t));
   } catch {
-  }
-}
-function zr(e) {
-  try {
-    return JSON.parse(window.localStorage.getItem(Lt) || "{}")[`${e}:discardMissingImage`] === !0;
-  } catch {
-    return !1;
   }
 }
 function _r(e) {
   try {
-    const t = JSON.parse(window.localStorage.getItem(Lt) || "{}");
-    t[`${e}:discardMissingImage`] = !0, window.localStorage.setItem(Lt, JSON.stringify(t));
+    return JSON.parse(window.localStorage.getItem(Ft) || "{}")[`${e}:discardMissingImage`] === !0;
+  } catch {
+    return !1;
+  }
+}
+function Hr(e) {
+  try {
+    const t = JSON.parse(window.localStorage.getItem(Ft) || "{}");
+    t[`${e}:discardMissingImage`] = !0, window.localStorage.setItem(Ft, JSON.stringify(t));
   } catch {
   }
 }
-function _s(e) {
+function Ys(e) {
   try {
     return { parsed: !0, value: JSON.parse(e) };
   } catch {
     return { parsed: !1, value: null };
   }
 }
-function Hs(e, t) {
+function Qs(e, t) {
   return t != null && t.aborted ? Promise.reject(new DOMException("The request was aborted.", "AbortError")) : new Promise((r, o) => {
     const i = setTimeout(r, e);
     t == null || t.addEventListener("abort", () => {
@@ -1112,33 +1136,33 @@ function Hs(e, t) {
 }
 async function Z(e, t, r = 0) {
   var d;
-  const o = await Qo(`${$a}${e}`, t);
+  const o = await ea(`${Ra}${e}`, t);
   if (o.status === 204) return null;
-  const i = await o.text(), a = _s(i);
+  const i = await o.text(), a = Ys(i);
   if (!o.ok) {
     const c = new Error(((d = a.value) == null ? void 0 : d.error) || "Unable to load Segment Studio.");
     throw c.status = o.status, c.payload = a.value, c;
   }
   if (a.parsed) return a.value;
   if (String((t == null ? void 0 : t.method) || "GET").toUpperCase() === "GET" && r < 2)
-    return await Hs(250 * (r + 1), t == null ? void 0 : t.signal), Z(e, t, r + 1);
+    return await Qs(250 * (r + 1), t == null ? void 0 : t.signal), Z(e, t, r + 1);
   const l = new Error("Segment Studio received an unexpected response. Reload and try again.");
   throw l.status = o.status, l;
 }
-async function qs(e, t) {
-  const r = String(e).startsWith("/api/") ? e : `${$a}${e}`, o = await Qo(r, t);
+async function Zs(e, t) {
+  const r = String(e).startsWith("/api/") ? e : `${Ra}${e}`, o = await ea(r, t);
   if (!o.ok) {
     const i = await o.json().catch(() => null);
     throw new Error((i == null ? void 0 : i.error) || "Unable to download the Segment Studio artifact.");
   }
   return {
     blob: await o.blob(),
-    fileName: Ws(
+    fileName: Xs(
       o.headers.get("Content-Disposition")
     )
   };
 }
-function Ws(e, t = "segment-studio-ai-feedback.zip") {
+function Xs(e, t = "segment-studio-ai-feedback.zip") {
   var s, l, d;
   const r = String(e || ""), o = (s = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(r)) == null ? void 0 : s[1];
   let i = null;
@@ -1154,56 +1178,56 @@ function Ws(e, t = "segment-studio-ai-feedback.zip") {
   }
   return ((d = i == null ? void 0 : i.split(/[\\/]/).pop()) == null ? void 0 : d.replace(/[\u0000-\u001f\u007f]/g, "").trim()) || t;
 }
-function Ie(e) {
+function $e(e) {
   if (e == null) return "—";
   const t = e < 0 ? "−" : "", r = Math.abs(e), o = Math.floor(r), i = Math.floor(o / 3600), a = Math.floor(o % 3600 / 60), s = o % 60, l = i > 0 ? `${i}:${String(a).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${a}:${String(s).padStart(2, "0")}`, d = Math.round((r - o) * 1e3);
   return `${t}${d > 0 ? `${l}.${String(d).padStart(3, "0")}` : l}`;
 }
-function Dr() {
+function Or() {
   var e, t;
   return ((t = (e = globalThis.crypto) == null ? void 0 : e.randomUUID) == null ? void 0 : t.call(e)) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
-function Ta(e, t) {
+function Ma(e, t) {
   return e.permissionFailureCount > 0 ? (t("You do not have permission to delete every affected segment."), !1) : (e.integrityWarnings || []).length > 0 ? (t("Repair the affected derivation data before deleting these segments."), !1) : !0;
 }
-function Vs(e) {
+function el(e) {
   const t = Number(e.selectedSegmentCount) || 0, r = Number(e.dependentSegmentCount) || 0, o = Number(e.deletedSegmentCount) || t + r, i = Number(e.retainedSharedSegmentCount) || 0, a = Number(e.deferredRejectedSegmentCount) || 0, s = `${t} selected segment${t === 1 ? "" : "s"}`, l = r > 0 ? ` and ${r} dependent derived segment${r === 1 ? "" : "s"}` : "", d = i > 0 ? ` ${i} shared derived segment${i === 1 ? "" : "s"} will be kept.` : "", c = a > 0 ? ` ${a} feedback-protected rejected segment${a === 1 ? "" : "s"} will be kept until ${a === 1 ? "its" : "their"} AI feedback is exported.` : "";
   return !!window.confirm(
     `Permanently delete ${s}${l} (${o} total)?${d}${c} This cannot be undone.`
   );
 }
-function Ma(e, t) {
+function Aa(e, t) {
   const r = Array.isArray(e) ? e : [], o = Number(t), i = Number.isFinite(o) && o >= 0 ? Math.trunc(o) : r.length;
   return { sceneCount: new Set(r.map((s) => s == null ? void 0 : s.videoId).filter((s) => s != null)).size, segmentCount: i };
 }
-function Js(e, t) {
-  const { sceneCount: r, segmentCount: o } = Ma(e, t);
+function tl(e, t) {
+  const { sceneCount: r, segmentCount: o } = Aa(e, t);
   return `Permanently delete ${o} segment${o === 1 ? "" : "s"} from ${r} scene${r === 1 ? "" : "s"} in the recycling bin? This cannot be undone.`;
 }
-async function Aa(e, t) {
-  const r = (e == null ? void 0 : e.items) || [], o = Ma(r, e == null ? void 0 : e.totalCount);
+async function Ea(e, t) {
+  const r = (e == null ? void 0 : e.items) || [], o = Aa(r, e == null ? void 0 : e.totalCount);
   if (o.segmentCount === 0)
     return { status: "empty", ...o };
   if (!(e != null && e.fingerprint))
     throw new Error("The recycling-bin fingerprint is unavailable. Reload and try again.");
-  if (!window.confirm(Js(r, o.segmentCount)))
+  if (!window.confirm(tl(r, o.segmentCount)))
     return { status: "canceled", ...o };
   t == null || t();
   const i = `bin-empty:${e.fingerprint}`, a = await Z("/bin/empty", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      operationId: Re(i),
+      operationId: Le(i),
       expectedFingerprint: e.fingerprint
     })
   });
-  return Oe(i), {
+  return Fe(i), {
     status: "emptied",
     sceneCount: Array.isArray(a.videoIds) ? a.videoIds.length : o.sceneCount,
     segmentCount: Number(a.deletedCount) || o.segmentCount
   };
 }
-function Oo({ children: e }) {
+function Lo({ children: e }) {
   return n("span", {
     className: "inline-flex rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-secondary"
   }, e);
@@ -1246,28 +1270,28 @@ const mt = {
     }
   }
 };
-function ac(e, t) {
+function uc(e, t) {
   return {
     ...(mt[e] || mt.unreviewed).row,
     ...t ? { outline: "2px solid var(--color-accent)", outlineOffset: "-2px" } : {}
   };
 }
-function Ra(e) {
+function Da(e) {
   return { ...(mt[e] || mt.unreviewed).badge };
 }
-function Ea(e, t = !1) {
+function Oa(e, t = !1) {
   return {
     backgroundColor: "var(--color-card)",
     ...e ? { outline: "2px solid var(--color-accent)", outlineOffset: "-2px" } : {},
     ...t ? { outline: "3px solid var(--color-accent)", outlineOffset: "1px", zIndex: 30 } : {}
   };
 }
-const Da = {
+const Pa = {
   complete: { label: "Slots filled", color: "rgb(34, 211, 238)", backgroundColor: "rgba(34, 211, 238, 0.14)" },
   partial: { label: "Slots partially filled", color: "rgb(192, 132, 252)", backgroundColor: "rgba(192, 132, 252, 0.14)" },
   empty: { label: "Slots empty", color: "rgb(251, 146, 60)", backgroundColor: "rgba(251, 146, 60, 0.14)" }
 };
-function Ys(e, t, r = "not-applicable", o = !1) {
+function nl(e, t, r = "not-applicable", o = !1) {
   const i = mt[e] || mt.unreviewed, a = e === "approved" ? "rgb(22, 163, 74)" : e === "rejected" ? "rgb(220, 38, 38)" : "rgb(234, 179, 8)", s = e !== "rejected" && (r === "empty" || r === "partial");
   return {
     borderColor: i.row.borderLeftColor,
@@ -1277,7 +1301,7 @@ function Ys(e, t, r = "not-applicable", o = !1) {
     ...o ? { outline: "3px solid var(--color-accent)", outlineOffset: "1px", zIndex: 25 } : {}
   };
 }
-function Zs(e, t = !1) {
+function rl(e, t = !1) {
   const r = "rgb(20, 184, 166)";
   return {
     borderColor: r,
@@ -1286,13 +1310,13 @@ function Zs(e, t = !1) {
     ...t ? { outline: "3px solid var(--color-accent)", outlineOffset: "1px", zIndex: 25 } : {}
   };
 }
-function Qs(e, t) {
+function ol(e, t) {
   return e == null ? "4px" : `${Math.max(0, Number(t) || 0)}%`;
 }
-function Xs(e) {
+function al(e) {
   return e % 2 === 0 ? "var(--color-surface)" : "color-mix(in srgb, var(--color-muted) 14%, var(--color-surface))";
 }
-function el(e, t) {
+function il(e, t) {
   return {
     backgroundColor: t,
     ...e ? {
@@ -1303,18 +1327,18 @@ function el(e, t) {
 function or(e = !1) {
   return `color-mix(in srgb, var(--color-accent) ${e ? 14 : 8}%, var(--color-surface))`;
 }
-function tl(e) {
+function sl(e) {
   return 0.34375 + Math.max(0, Number(e) || 0) * 1.25;
 }
-function Ft({ state: e, includeLabel: t = !0 }) {
+function jt({ state: e, includeLabel: t = !0 }) {
   const r = mt[e] || mt.unreviewed;
   return n("span", {
     "aria-label": `Review state: ${e}`,
     className: "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold",
-    style: Ra(e)
+    style: Da(e)
   }, t ? `${r.symbol} ${e}` : r.symbol);
 }
-function nl(e, t = null) {
+function ll(e, t = null) {
   if (!(e instanceof Element) || t === "Enter" && e.closest("[data-selected-segment-shortcut-target='true']")) return !1;
   if (e.closest("[data-segment-player]"))
     return !!(t === "Tab" || e.closest("button, a[href]") && ["Enter", " "].includes(t) || e.closest("[role='slider'], video") && ["ArrowLeft", "ArrowRight", "PageDown", "PageUp", "Home", "End"].includes(t));
@@ -1329,17 +1353,17 @@ function nl(e, t = null) {
   const r = e.closest("[role='separator']");
   return r ? t == null || ["Home", "End", "Tab"].includes(t) ? !0 : r.getAttribute("aria-orientation") === "horizontal" ? ["ArrowUp", "ArrowDown"].includes(t) : ["ArrowLeft", "ArrowRight"].includes(t) : !1;
 }
-function ic(e, t) {
+function mc(e, t) {
   var a, s, l;
   if (!t) return !1;
   const r = e.target, o = ((a = e.view) == null ? void 0 : a.document) ?? (r == null ? void 0 : r.ownerDocument), i = o == null ? void 0 : o.activeElement;
   return r === t || ((s = t.contains) == null ? void 0 : s.call(t, r)) || i === t || ((l = t.contains) == null ? void 0 : l.call(t, i)) || r === (o == null ? void 0 : o.body) && i === o.body;
 }
-function rl(e, t = document) {
-  return !(e.defaultPrevented || nl(e.target, e.key) || t.querySelector("[role='dialog'], [role='listbox'], [role='menu'], [aria-modal='true']"));
+function dl(e, t = document) {
+  return !(e.defaultPrevented || ll(e.target, e.key) || t.querySelector("[role='dialog'], [role='listbox'], [role='menu'], [aria-modal='true']"));
 }
-function sc(e, t = document, r = !1, o = {}) {
-  return rl(e, t) ? xs(e, r, o) != null : !1;
+function gc(e, t = document, r = !1, o = {}) {
+  return dl(e, t) ? ks(e, r, o) != null : !1;
 }
 function ot(e, { onCancel: t, onConfirm: r } = {}) {
   var s, l;
@@ -1349,7 +1373,7 @@ function ot(e, { onCancel: t, onConfirm: r } = {}) {
   const a = e.key === "Escape" ? t : e.key === "Enter" ? r : null;
   return a ? (e.preventDefault(), e.stopPropagation(), a(), !0) : !1;
 }
-function ol(e, t) {
+function cl(e, t) {
   var o, i, a, s, l, d;
   if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || (o = e.nativeEvent) != null && o.isComposing || e.keyCode === 229)
     return !1;
@@ -1359,7 +1383,7 @@ function ol(e, t) {
     '[role="option"][aria-selected="true"], [role="option"][data-active="true"], [role="option"][data-highlighted="true"]'
   ));
 }
-function bt(e) {
+function yt(e) {
   var a;
   if (e.key !== "Tab") return !1;
   const t = [...e.currentTarget.querySelectorAll(
@@ -1370,11 +1394,11 @@ function bt(e) {
   const r = t[0], o = t[t.length - 1], i = (a = e.currentTarget.ownerDocument) == null ? void 0 : a.activeElement;
   return !t.includes(i) || !e.shiftKey && i === o || e.shiftKey && i === r ? (e.preventDefault(), (e.shiftKey ? o : r).focus(), !0) : !1;
 }
-function al(e, t) {
+function ul(e, t) {
   const r = Number(e == null ? void 0 : e.cursorSequence) || 0, o = Number(t) || 0, i = [...(e == null ? void 0 : e.actions) || []];
   return o < r ? i.filter((a) => a.sequence > o && a.sequence <= r).sort((a, s) => s.sequence - a.sequence).map((a) => ({ action: a, direction: "backward", state: a.beforeState })) : i.filter((a) => a.sequence > r && a.sequence <= o).sort((a, s) => a.sequence - s.sequence).map((a) => ({ action: a, direction: "forward", state: a.afterState }));
 }
-function Oa(e, t = !0) {
+function La(e, t = !0) {
   const r = (e == null ? void 0 : e.nativeSegmentId) ?? (e != null && e.published ? (e == null ? void 0 : e.id) ?? null : null);
   return t ? {
     itemId: (e == null ? void 0 : e.itemId) ?? null,
@@ -1391,7 +1415,7 @@ function Oa(e, t = !0) {
 function Vn(e, t = !0) {
   return {
     type: "segment",
-    identity: Oa(e, t),
+    identity: La(e, t),
     values: {
       startSec: e.startSec,
       endSec: e.endSec ?? null,
@@ -1417,7 +1441,7 @@ function lt(e, t = !0) {
   return {
     type: "segments",
     segments: (e || []).map((r) => ({
-      identity: Oa(r, t),
+      identity: La(r, t),
       values: {
         startSec: r.startSec,
         endSec: r.endSec ?? null,
@@ -1456,10 +1480,10 @@ function tr(e) {
     }))
   };
 }
-function Pa(e, t) {
+function Fa(e, t) {
   return (e || []).filter((r) => r.segmentId === t).sort((r, o) => r.sortOrder - o.sortOrder || String(r.slotDefinitionId).localeCompare(String(o.slotDefinitionId)));
 }
-function La(e) {
+function ja(e) {
   const t = /* @__PURE__ */ new Map();
   for (const r of e || []) {
     const o = t.get(r.segmentId);
@@ -1469,13 +1493,13 @@ function La(e) {
     r.sort((o, i) => o.sortOrder - i.sortOrder || String(o.slotDefinitionId).localeCompare(String(i.slotDefinitionId)));
   return t;
 }
-function Hr(e) {
+function qr(e) {
   if (!(e != null && e.length)) return "not-applicable";
   const t = e.filter((r) => Number(r.performerId) > 0).length;
   return t === 0 ? "empty" : t === e.length ? "complete" : "partial";
 }
-function il(e, t) {
-  const r = (t || []).map((i) => Pa(e, i.id));
+function ml(e, t) {
+  const r = (t || []).map((i) => Fa(e, i.id));
   if (r.length === 0 || r.some((i) => i.length === 0)) return null;
   const o = (i) => i.map((a) => JSON.stringify({
     label: et(a),
@@ -1484,10 +1508,10 @@ function il(e, t) {
   })).join("|");
   return r.every((i) => o(i) === o(r[0])) ? r : null;
 }
-function sl(e, t) {
-  return new Set((t || []).map((r) => r.tagId)).size !== 1 ? null : il(e, t);
+function gl(e, t) {
+  return new Set((t || []).map((r) => r.tagId)).size !== 1 ? null : ml(e, t);
 }
-function ll({ mergeable: e, reviewable: t, tagEditable: r = !1, slotsEditable: o }) {
+function pl({ mergeable: e, reviewable: t, tagEditable: r = !1, slotsEditable: o }) {
   const i = [
     e ? "merged (R)" : null,
     r ? "retagged (Q)" : null,
@@ -1497,13 +1521,13 @@ function ll({ mergeable: e, reviewable: t, tagEditable: r = !1, slotsEditable: o
   ].filter(Boolean);
   return i.length === 0 ? "Choose one segment to edit it." : i.length === 1 ? `Selected segments can be ${i[0]}.` : `Selected segments can be ${i.slice(0, -1).join(", ")} or ${i.at(-1)}.`;
 }
-function lc(e, t) {
-  return Hr(Pa(e, t));
+function pc(e, t) {
+  return qr(Fa(e, t));
 }
 function et(e) {
   return String((e == null ? void 0 : e.label) || "").trim() || `Slot ${Math.max(0, Number(e == null ? void 0 : e.sortOrder) || 0) + 1}`;
 }
-function dl(e, t) {
+function fl(e, t) {
   const r = (d) => et(d).trim().toLocaleLowerCase().replaceAll(/\s+/g, " "), o = (d, c) => (Number(d.sortOrder) || 0) - (Number(c.sortOrder) || 0) || String(d.id).localeCompare(String(c.id)), i = (d) => {
     const c = /* @__PURE__ */ new Map();
     for (const g of d || []) {
@@ -1524,13 +1548,13 @@ function dl(e, t) {
   }
   return l;
 }
-function cl(e, t, r) {
+function yl(e, t, r) {
   if (!e || e.ruleId != null || (e.slotMappings || []).length > 0)
     return e;
-  const o = dl(t, r);
+  const o = fl(t, r);
   return o.length === 0 ? e : { ...e, slotMappings: o, slotMappingsSuggested: !0 };
 }
-function ul(e) {
+function bl(e) {
   const t = et(e), r = Number(e == null ? void 0 : e.performerId), o = r > 0, i = String((e == null ? void 0 : e.performerName) || "").trim(), a = o ? i || `Performer ${r}` : "Unfilled", s = ((e == null ? void 0 : e.genderHints) || []).map(ar).filter(Boolean);
   return {
     label: t,
@@ -1549,7 +1573,7 @@ function nr(e) {
     Object.hasOwn(t, r.reviewState) && (t[r.reviewState] += 1);
   return t;
 }
-function Po(e) {
+function Fo(e) {
   const t = [], r = [...e.segments].sort((a, s) => a.startSec - s.startSec || a.id - s.id).map((a) => {
     const s = Number(a.startSec) || 0, l = a.endSec == null ? s : Number(a.endSec), d = Number.isFinite(l) ? Math.max(s, l) : s;
     let c = t.findIndex((g) => g.end <= s && g.start !== s);
@@ -1562,7 +1586,7 @@ function Po(e) {
     trackCount: Math.max(1, t.length)
   };
 }
-function ml(e) {
+function hl(e) {
   const t = e.map(et), r = /* @__PURE__ */ new Map();
   for (const i of t) r.set(i, (r.get(i) || 0) + 1);
   const o = /* @__PURE__ */ new Map();
@@ -1571,13 +1595,13 @@ function ml(e) {
     return o.set(s, l), [String(i.slotDefinitionId), r.get(s) > 1 ? `${s} ${l}` : s];
   }));
 }
-function gl(e, t) {
+function vl(e, t) {
   const r = e.segments.map((l) => {
     const d = t.get(l.id) || [], g = d.length > 0 && d.every((m) => Number(m.performerId) > 0) ? d.map((m) => `${m.slotDefinitionId}:${Number(m.performerId)}`).join("|") : null;
     return { segment: l, slots: d, signature: g };
   }), o = [...new Set(r.map((l) => l.signature).filter(Boolean))];
   if (o.length === 0)
-    return [Po({ ...e, performerLabel: null, performers: [], performerAssignments: [] })];
+    return [Fo({ ...e, performerLabel: null, performers: [], performerAssignments: [] })];
   const i = o.map((l) => r.find((d) => d.signature === l).slots), a = new Set((i[0] || []).filter((l) => i.every((d) => d.some((c) => String(c.slotDefinitionId) === String(l.slotDefinitionId) && Number(c.performerId) === Number(l.performerId)))).map((l) => String(l.slotDefinitionId))), s = /* @__PURE__ */ new Map();
   for (const l of r) {
     const d = l.signature || "unfilled";
@@ -1592,15 +1616,15 @@ function gl(e, t) {
           segments: []
         });
       else {
-        const c = ml(l.slots), g = l.slots.filter((b) => !a.has(String(b.slotDefinitionId))), m = o.length === 1 ? l.slots : g, u = m.map((b) => `${c.get(String(b.slotDefinitionId))} · ${b.performerName || `Performer ${b.performerId}`}`).join(" · "), y = [...new Map(m.map((b) => [
-          Number(b.performerId),
-          { id: Number(b.performerId), name: b.performerName || `Performer ${b.performerId}` }
-        ])).values()], p = l.slots.map((b) => ({
-          slotDefinitionId: String(b.slotDefinitionId),
-          label: c.get(String(b.slotDefinitionId)),
+        const c = hl(l.slots), g = l.slots.filter((h) => !a.has(String(h.slotDefinitionId))), m = o.length === 1 ? l.slots : g, u = m.map((h) => `${c.get(String(h.slotDefinitionId))} · ${h.performerName || `Performer ${h.performerId}`}`).join(" · "), y = [...new Map(m.map((h) => [
+          Number(h.performerId),
+          { id: Number(h.performerId), name: h.performerName || `Performer ${h.performerId}` }
+        ])).values()], p = l.slots.map((h) => ({
+          slotDefinitionId: String(h.slotDefinitionId),
+          label: c.get(String(h.slotDefinitionId)),
           performer: {
-            id: Number(b.performerId),
-            name: b.performerName || `Performer ${b.performerId}`
+            id: Number(h.performerId),
+            name: h.performerName || `Performer ${h.performerId}`
           }
         }));
         s.set(d, {
@@ -1614,9 +1638,9 @@ function gl(e, t) {
       }
     s.get(d).segments.push(l.segment);
   }
-  return [...s.values()].sort((l, d) => +(l.performerLabel === "Unfilled performer slots") - +(d.performerLabel === "Unfilled performer slots") || l.performerLabel.localeCompare(d.performerLabel) || l.key.localeCompare(d.key)).map(Po);
+  return [...s.values()].sort((l, d) => +(l.performerLabel === "Unfilled performer slots") - +(d.performerLabel === "Unfilled performer slots") || l.performerLabel.localeCompare(d.performerLabel) || l.key.localeCompare(d.key)).map(Fo);
 }
-function Pt(e, t = [], r = []) {
+function Lt(e, t = [], r = []) {
   const o = /* @__PURE__ */ new Map();
   for (const [s, l] of t.entries())
     for (const d of l.tags || [])
@@ -1650,9 +1674,9 @@ function Pt(e, t = [], r = []) {
     s.sort((l, d) => l.sortOrder - d.sortOrder || String(l.slotDefinitionId).localeCompare(String(d.slotDefinitionId)));
   return [...i.values()].sort((s, l) => s.segmentGroupSortOrder - l.segmentGroupSortOrder || s.segmentGroupTagSortOrder - l.segmentGroupTagSortOrder || (s.tagSortName || s.label).localeCompare(l.tagSortName || l.label, void 0, {
     sensitivity: "base"
-  }) || s.key.localeCompare(l.key)).flatMap((s) => gl(s, a));
+  }) || s.key.localeCompare(l.key)).flatMap((s) => vl(s, a));
 }
-function qr(e) {
+function Wr(e) {
   var r;
   const t = [];
   for (const o of e) {
@@ -1670,16 +1694,16 @@ function qr(e) {
   }
   return t;
 }
-const pl = {
+const xl = {
   group: 38,
   lane: 33,
   segment: 41
 };
-function fl(e, t = []) {
+function Sl(e, t = []) {
   const r = new Set(t || []), o = [];
   let i = 0;
   const a = (s) => {
-    const l = pl[s.kind];
+    const l = xl[s.kind];
     o.push({ ...s, top: i, height: l }), i += l;
   };
   for (const s of e || [])
@@ -1691,11 +1715,11 @@ function fl(e, t = []) {
       }
   return { rows: o, height: i };
 }
-function Fa(e, t, r, o = 240) {
+function Ba(e, t, r, o = 240) {
   const i = Math.max(0, Number(t) - o), a = Math.max(i, Number(t) + Math.max(0, Number(r)) + o);
   return (e || []).filter((s) => s.top + s.height >= i && s.top <= a);
 }
-function yl(e, t = [], r = !0) {
+function kl(e, t = [], r = !0) {
   const o = new Set(t || []), i = [];
   let a = 0;
   const s = (l, d) => {
@@ -1709,7 +1733,7 @@ function yl(e, t = [], r = !0) {
       }
   return { rows: i, height: a };
 }
-function bl(e, t) {
+function wl(e, t) {
   const r = new Set(t || []), o = (e || []).map((i) => {
     const a = (i.markers || []).filter(({ segment: s }) => r.has(s.id));
     return a.length === 0 ? null : {
@@ -1719,7 +1743,7 @@ function bl(e, t) {
       markers: a
     };
   }).filter(Boolean);
-  return qr(o).map((i) => {
+  return Wr(o).map((i) => {
     const a = i.lanes.flatMap((s) => s.markers.map(({ segment: l }) => l));
     return {
       ...i,
@@ -1728,7 +1752,7 @@ function bl(e, t) {
     };
   });
 }
-function ja(e, { nativeOnly: t = !1 } = {}) {
+function Ga(e, { nativeOnly: t = !1 } = {}) {
   const r = (e || []).flatMap((i) => i.lanes || []);
   if (r.length !== 1 || (r[0].markers || []).length < 2) return null;
   const o = r[0].markers.map(({ segment: i }) => i).sort((i, a) => i.startSec - a.startSec || (i.nativeSegmentId ?? i.itemId ?? i.id) - (a.nativeSegmentId ?? a.itemId ?? a.id));
@@ -1739,7 +1763,7 @@ function ja(e, { nativeOnly: t = !1 } = {}) {
     endSec: Math.max(...o.map((i) => i.endSec ?? i.startSec))
   };
 }
-function Lo(e, t) {
+function jo(e, t) {
   const r = new Set(t.removedSegmentIds || []), o = new Set(t.removedItemIds || []), i = t.survivor, a = (e.segments || []).filter((c) => !r.has(c.id)).map((c) => c.id === i.id ? { ...c, ...i } : c);
   a.some((c) => c.id === i.id) || a.push(i);
   const s = t.performerSlots == null ? e.performerSlots : (e.performerSlots || []).filter((c) => c.segmentId !== i.id && !r.has(c.segmentId)).concat(t.performerSlots), l = { ...e.performerSlotRevisions || {} };
@@ -1754,13 +1778,13 @@ function Lo(e, t) {
     approvedSetVersion: t.approvedSetVersion ?? e.approvedSetVersion
   };
 }
-function Tt(e) {
+function Rt(e) {
   return Array.isArray(e) ? [...new Set(e.filter((t) => t === "ungrouped" || /^group:\d+$/.test(t)))] : [];
 }
 function $n(e) {
   return e.performerLabel && e.performerLabel !== "Unfilled performer slots" ? `${e.label} · ${e.performerLabel}` : e.label;
 }
-function hl(e) {
+function Nl(e) {
   return String(e || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((t) => {
     var r;
     return (r = t[0]) == null ? void 0 : r.toUpperCase();
@@ -1777,7 +1801,7 @@ function Tn({ performer: e, compact: t = !1, tooltip: r = null }) {
       key: "fallback",
       "aria-hidden": "true",
       className: "flex h-full w-full items-center justify-center"
-    }, o ? hl(e.name) : "—"),
+    }, o ? Nl(e.name) : "—"),
     o ? n("img", {
       key: "image",
       src: `/api/performers/${e.id}/image?max=64`,
@@ -1790,7 +1814,7 @@ function Tn({ performer: e, compact: t = !1, tooltip: r = null }) {
     }) : null
   ]);
 }
-function Ba({ assignments: e, className: t = "" }) {
+function Ka({ assignments: e, className: t = "" }) {
   return n("span", {
     className: `grid items-center gap-x-3 gap-y-1.5 ${t}`,
     style: { gridTemplateColumns: "minmax(4.5rem, auto) minmax(0, 1fr) 1.5rem" }
@@ -1815,7 +1839,7 @@ function Ba({ assignments: e, className: t = "" }) {
   }));
 }
 function ir({ performers: e, performerAssignments: t, interactive: r = !0 }) {
-  const o = pe(null), i = `performer-slots-${Ca()}`, [a, s] = j(null);
+  const o = pe(null), i = `performer-slots-${Ta()}`, [a, s] = L(null);
   function l() {
     var y;
     const c = (y = o.current) == null ? void 0 : y.getBoundingClientRect();
@@ -1827,7 +1851,7 @@ function ir({ performers: e, performerAssignments: t, interactive: r = !0 }) {
       width: g
     });
   }
-  ye(() => {
+  fe(() => {
     if (a)
       return window.addEventListener("scroll", l, !0), window.addEventListener("resize", l), () => {
         window.removeEventListener("scroll", l, !0), window.removeEventListener("resize", l);
@@ -1853,12 +1877,12 @@ function ir({ performers: e, performerAssignments: t, interactive: r = !0 }) {
       performer: c,
       compact: !0
     })),
-    a ? Ri(n("span", {
+    a ? Di(n("span", {
       id: i,
       role: "tooltip",
       className: "pointer-events-none fixed z-[100] overflow-y-auto rounded-md border border-border bg-card p-2 text-left shadow-xl",
       style: { ...a, maxHeight: "calc(100vh - 1rem)" }
-    }, n(Ba, {
+    }, n(Ka, {
       assignments: (t || []).map((c) => ({
         ...c,
         key: c.slotDefinitionId
@@ -1874,22 +1898,22 @@ function ir({ performers: e, performerAssignments: t, interactive: r = !0 }) {
     compact: !0
   })));
 }
-function vl(e, t) {
-  const r = new Set(Tt(t));
+function Il(e, t) {
+  const r = new Set(Rt(t));
   return (e || []).filter((o) => !r.has(o.segmentGroupId == null ? "ungrouped" : `group:${o.segmentGroupId}`));
 }
-function Ga(e, t) {
-  return t ? Tt(e).filter((r) => r !== t) : Tt(e);
+function Ua(e, t) {
+  return t ? Rt(e).filter((r) => r !== t) : Rt(e);
 }
-function xl(e, t) {
-  const r = Tt(t), o = new Set(Tt(e));
+function Cl(e, t) {
+  const r = Rt(t), o = new Set(Rt(e));
   return r.length > 0 && r.every((i) => o.has(i)) ? [] : r;
 }
 function ut(e, t) {
   const r = (e || []).find((o) => o.markers.some((i) => i.segment.id === t));
   return r ? r.segmentGroupId == null ? "ungrouped" : `group:${r.segmentGroupId}` : null;
 }
-function Fo(e, t, r) {
+function Bo(e, t, r) {
   const o = Number(r);
   if (!Number.isFinite(o)) return 0;
   const i = (l) => {
@@ -1898,12 +1922,12 @@ function Fo(e, t, r) {
   }, a = i(e), s = i(t);
   return Number(s.contains) - Number(a.contains) || (a.contains && s.contains ? s.duration - a.duration : a.distance - s.distance) || a.start - s.start || e.segment.id - t.segment.id;
 }
-function Or(e, t, r, o = null) {
-  var g, m, u, y, p, b;
+function Pr(e, t, r, o = null) {
+  var g, m, u, y, p, h;
   const i = e.findIndex((f) => f.markers.some((w) => w.segment.id === t));
   if (i < 0) {
     const f = [...((g = e[0]) == null ? void 0 : g.markers) || []];
-    return o != null && Number.isFinite(Number(o)) && f.sort((w, v) => Fo(w, v, o)), ((m = f[0]) == null ? void 0 : m.segment) ?? null;
+    return o != null && Number.isFinite(Number(o)) && f.sort((w, v) => Bo(w, v, o)), ((m = f[0]) == null ? void 0 : m.segment) ?? null;
   }
   const a = e[i], s = a.markers.findIndex((f) => f.segment.id === t);
   if (r === "left" || r === "right") {
@@ -1911,31 +1935,31 @@ function Or(e, t, r, o = null) {
     return ((u = a.markers[w]) == null ? void 0 : u.segment) ?? null;
   }
   const l = Math.min(e.length - 1, Math.max(0, i + (r === "up" ? -1 : 1))), d = Number((y = a.markers[s]) == null ? void 0 : y.segment.startSec) || 0, c = o != null && Number.isFinite(Number(o));
-  return l === i ? ((p = a.markers[s]) == null ? void 0 : p.segment) ?? null : ((b = [...e[l].markers].sort(c ? (f, w) => Fo(f, w, Number(o)) : (f, w) => Math.abs(f.segment.startSec - d) - Math.abs(w.segment.startSec - d) || f.segment.startSec - w.segment.startSec || f.segment.id - w.segment.id)[0]) == null ? void 0 : b.segment) ?? null;
+  return l === i ? ((p = a.markers[s]) == null ? void 0 : p.segment) ?? null : ((h = [...e[l].markers].sort(c ? (f, w) => Bo(f, w, Number(o)) : (f, w) => Math.abs(f.segment.startSec - d) - Math.abs(w.segment.startSec - d) || f.segment.startSec - w.segment.startSec || f.segment.id - w.segment.id)[0]) == null ? void 0 : h.segment) ?? null;
 }
-function Sl(e, t, r) {
+function $l(e, t, r) {
   const o = (e || []).find((a) => a.markers.some((s) => s.segment.id === t));
   if (!o) return null;
-  const i = Or([o], t, r);
+  const i = Pr([o], t, r);
   return i ? { segment: i, segmentIds: o.markers.map((a) => a.segment.id) } : null;
 }
-function kl(e, t, r) {
+function Tl(e, t, r) {
   if (!Array.isArray(e) || e.length === 0) return null;
   const o = e.indexOf(t);
   return o < 0 ? e[0] : e[Math.min(e.length - 1, Math.max(0, o + r))];
 }
-function wl(e, t, r) {
+function Rl(e, t, r) {
   return !Array.isArray(e) || e.length === 0 ? null : e.includes(t) ? t : e.includes(r) ? r : e[0];
 }
-function Nl(e, t) {
+function Ml(e, t) {
   const r = Number(e);
   if (!Number.isFinite(r)) return [];
   const o = t == null ? null : Number(t);
-  if (!Number.isFinite(o) || o <= r) return [Ko(r)];
+  if (!Number.isFinite(o) || o <= r) return [zo(r)];
   const i = o - r, a = i < 30 ? [4] : i < 60 ? [4, 20] : i < 120 ? [4, 20, 50] : [4, 20, 50, 100], s = Math.max(r, o - 1e-3);
-  return [...new Set(a.map((l) => Ko(Math.min(s, r + l))))];
+  return [...new Set(a.map((l) => zo(Math.min(s, r + l))))];
 }
-function Il(e, t) {
+function Al(e, t) {
   const r = Array.isArray(e) ? e.filter(Boolean) : [], o = new Set(
     (Array.isArray(t) ? t : []).map((s) => s == null ? void 0 : s.itemId).filter((s) => s != null)
   ), i = (s) => (s == null ? void 0 : s.itemId) != null && o.has(s.itemId);
@@ -1944,10 +1968,10 @@ function Il(e, t) {
     segments: r
   };
 }
-function Cl(e, t) {
+function El(e, t) {
   return (t == null ? void 0 : t.collected) === (e === "collect");
 }
-function jo(e, t) {
+function Go(e, t) {
   if (!e || !t) return e;
   const r = new Set(t.removedSegmentIds || []), o = new Map(
     (t.identityChanges || []).map((c) => [c.previousId, c.currentId])
@@ -1972,7 +1996,7 @@ function jo(e, t) {
     performerSlotRevisions: d
   };
 }
-function Bo(e, t, r) {
+function Ko(e, t, r) {
   const o = Array.isArray(e) ? e : [];
   if (!r) return o;
   const i = new Set(
@@ -1980,7 +2004,7 @@ function Bo(e, t, r) {
   );
   return i.size === 0 ? o : o.filter((a) => (a == null ? void 0 : a.itemId) == null || !i.has(a.itemId));
 }
-function $l(e) {
+function Dl(e) {
   if (!Array.isArray(e)) return [];
   const t = [], r = /* @__PURE__ */ new Map();
   for (const o of e) {
@@ -1991,13 +2015,13 @@ function $l(e) {
   }
   return t;
 }
-async function Tl(e, t) {
+async function Ol(e, t) {
   if (!Array.isArray(t) || t.length === 0)
     throw new Error("Collect at least one incorrect example before exporting.");
   const r = document.createElement("video");
   r.preload = "auto", r.muted = !0, r.playsInline = !0, r.style.cssText = "position:fixed;width:1px;height:1px;left:-10000px;top:-10000px;opacity:0;pointer-events:none", document.body.append(r);
   try {
-    if (r.src = `/api/stream/video/${encodeURIComponent(e)}`, await Go(r, "loadeddata"), !r.videoWidth || !r.videoHeight)
+    if (r.src = `/api/stream/video/${encodeURIComponent(e)}`, await Uo(r, "loadeddata"), !r.videoWidth || !r.videoHeight)
       throw new Error("The video has no decodable image frames.");
     const o = document.createElement("canvas");
     o.width = r.videoWidth, o.height = r.videoHeight;
@@ -2006,13 +2030,13 @@ async function Tl(e, t) {
       throw new Error("This browser cannot capture video frames.");
     const a = [], s = [];
     for (const [l, d] of t.entries()) {
-      const c = [], g = Nl(
+      const c = [], g = Ml(
         d.startSec,
         d.endSec
       );
       for (const [m, u] of g.entries()) {
-        Math.abs(r.currentTime - u) > 5e-4 && (r.currentTime = u, await Go(r, "seeked")), i.drawImage(r, 0, 0, o.width, o.height);
-        const y = await Ml(o), p = `example-${l + 1}-frame-${m + 1}`;
+        Math.abs(r.currentTime - u) > 5e-4 && (r.currentTime = u, await Uo(r, "seeked")), i.drawImage(r, 0, 0, o.width, o.height);
+        const y = await Pl(o), p = `example-${l + 1}-frame-${m + 1}`;
         c.push({ fieldName: p, timestampSec: u }), s.push({
           fieldName: p,
           file: new File(
@@ -2034,7 +2058,7 @@ async function Tl(e, t) {
     r.pause(), r.removeAttribute("src"), r.load(), r.remove();
   }
 }
-function Go(e, t) {
+function Uo(e, t) {
   return t === "loadedmetadata" && e.readyState >= 1 || t === "loadeddata" && e.readyState >= 2 ? Promise.resolve() : new Promise((r, o) => {
     const i = setTimeout(
       () => l(
@@ -2051,7 +2075,7 @@ function Go(e, t) {
     e.addEventListener(t, a, { once: !0 }), e.addEventListener("error", s, { once: !0 });
   });
 }
-function Ml(e) {
+function Pl(e) {
   return new Promise((t, r) => {
     e.toBlob(
       (o) => o ? t(o) : r(new Error("The browser could not encode a JPEG frame.")),
@@ -2060,7 +2084,7 @@ function Ml(e) {
     );
   });
 }
-function Ko(e) {
+function zo(e) {
   return Math.round(e * 1e3) / 1e3;
 }
 function rr(e, t, r) {
@@ -2070,20 +2094,20 @@ function rr(e, t, r) {
     segments: (e.segments || []).map((i) => o.has(i.id) ? { ...i, ...r } : i).sort((i, a) => i.startSec - a.startSec || i.id - a.id)
   };
 }
-function Al(e, t) {
+function Ll(e, t) {
   return {
     ...e,
     segments: [...e.segments || [], t].sort((r, o) => r.startSec - o.startSec || r.id - o.id)
   };
 }
-function Pr(e, t) {
+function Lr(e, t) {
   const r = new Set(t || []);
   return {
     ...e,
     segments: (e.segments || []).filter((o) => !r.has(o.id))
   };
 }
-function Mn(e, t, r) {
+function Rn(e, t, r) {
   const o = new Map((t || []).map((i) => [i.id, i]));
   return {
     ...e,
@@ -2093,7 +2117,7 @@ function Mn(e, t, r) {
     }).sort((i, a) => i.startSec - a.startSec || i.id - a.id)
   };
 }
-function Ka(e, t) {
+function za(e, t) {
   const r = t || [], o = new Set((e.segments || []).map((i) => i.id));
   return {
     ...e,
@@ -2103,7 +2127,7 @@ function Ka(e, t) {
     ].sort((i, a) => i.startSec - a.startSec || i.id - a.id)
   };
 }
-function Cr(e, t, r, o) {
+function $r(e, t, r, o) {
   const i = (r || []).map((d) => ({ ...d, segmentId: t })), a = e.performerSlots || [], s = a.findIndex((d) => d.segmentId === t), l = a.filter((d) => d.segmentId !== t);
   return l.splice(s < 0 ? l.length : s, 0, ...i), {
     ...e,
@@ -2111,7 +2135,7 @@ function Cr(e, t, r, o) {
     performerSlotRevisions: o == null ? e.performerSlotRevisions : { ...e.performerSlotRevisions || {}, [t]: o }
   };
 }
-function Rl(e, t) {
+function Fl(e, t) {
   const r = [...t || []].sort((s, l) => s.startSec - l.startSec || s.id - l.id), o = r[0];
   if (!o) return e;
   const i = new Set(r.slice(1).map((s) => s.id)), a = {
@@ -2128,27 +2152,27 @@ function Rl(e, t) {
     segments: (e.segments || []).filter((s) => !i.has(s.id)).map((s) => s.id === o.id ? a : s).sort((s, l) => s.startSec - l.startSec || s.id - l.id)
   };
 }
-function Uo(e, t, r) {
+function _o(e, t, r) {
   return t.tagId !== e.tagId || t.reviewState != null && t.reviewState !== e.reviewState;
 }
-function El(e) {
-  const { compatibilityMode: t, currentTime: r, detail: o, editorFilters: i, endInput: a, hideDerivedSegments: s, historyRef: l, mediaDuration: d, onConflict: c, onDetailChange: g, onReload: m, optimisticSegmentIdRef: u, pendingDuplicateRef: y, pendingFirstSegmentStartSecRef: p, pendingTagEditSegmentIdRef: b, replaceSegmentSelection: f, savingSegmentId: w, segments: v, selectedSegment: N, selectedSegmentIdRef: W, selectedSegments: R, selectionAnchorIdRef: _, selectionRangeBaseIdsRef: A, setEditorFilters: $, setFirstSegmentTagOpen: O, setHideDerivedSegments: D, setHistory: U, setHistoryOpen: P, setPublishApprovedError: V, setSaveMessage: I, setSavingSegmentId: C, setSelectedSegmentGroupKey: F, setSelectedSegmentId: re, setSelectedSegmentIds: ee, startInput: we, timelineDuration: ce, video: T } = e;
-  function Q(h) {
-    l.current = h || kt, U(l.current);
+function jl(e) {
+  const { compatibilityMode: t, currentTime: r, detail: o, editorFilters: i, endInput: a, hideDerivedSegments: s, historyRef: l, mediaDuration: d, onConflict: c, onDetailChange: g, onReload: m, optimisticSegmentIdRef: u, pendingDuplicateRef: y, pendingFirstSegmentStartSecRef: p, pendingTagEditSegmentIdRef: h, replaceSegmentSelection: f, savingSegmentId: w, segments: v, selectedSegment: N, selectedSegmentIdRef: W, selectedSegments: j, selectionAnchorIdRef: F, selectionRangeBaseIdsRef: T, setEditorFilters: M, setFirstSegmentTagOpen: E, setHideDerivedSegments: R, setHistory: U, setHistoryOpen: D, setPublishApprovedError: V, setSaveMessage: I, setSavingSegmentId: $, setSelectedSegmentGroupKey: P, setSelectedSegmentId: J, setSelectedSegmentIds: se, startInput: me, timelineDuration: ge, video: B } = e;
+  function Q(b) {
+    l.current = b || St, U(l.current);
   }
-  async function oe(h, K, M, x, E = null) {
+  async function de(b, K, C, x, A = null) {
     var S;
     try {
-      const k = await Z(`/videos/${T.id}/history/actions`, {
+      const k = await Z(`/videos/${B.id}/history/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedRevision: l.current.revision,
-          kind: h,
+          kind: b,
           label: K,
-          beforeState: M,
+          beforeState: C,
           afterState: x,
-          receiptId: E
+          receiptId: A
         })
       });
       return Q(k), !0;
@@ -2156,128 +2180,128 @@ function El(e) {
       return k.status === 409 && ((S = k.payload) != null && S.current) && Q(k.payload.current), I("The change saved, but editor history could not be updated."), !1;
     }
   }
-  async function fe(h, K, M = !0, x = null, E = !1, S = K) {
-    var te;
-    if (!h || w != null) return null;
-    const k = R.map((xe) => xe.id), H = W.current, le = M && !t ? crypto.randomUUID() : null;
-    C(h.id), I(M ? "Saving directly to Cove…" : "Restoring history…");
-    const se = E ? rr(o, [h.id], S) : null;
-    se && g(se, T.id);
+  async function oe(b, K, C = !0, x = null, A = !1, S = K) {
+    var re;
+    if (!b || w != null) return null;
+    const k = j.map((Se) => Se.id), q = W.current, ue = C && !t ? crypto.randomUUID() : null;
+    $(b.id), I(C ? "Saving directly to Cove…" : "Restoring history…");
+    const ae = A ? rr(o, [b.id], S) : null;
+    ae && g(ae, B.id);
     try {
-      if (t && h.nativeSegmentId == null && h.itemId != null) {
-        const J = `draft-update:${T.id}:${h.itemId}:${h.revision}:${K.tagId}:${K.startSec}:${K.endSec ?? "open"}:${K.reviewState ?? h.reviewState}`, L = await Z(`/videos/${T.id}/drafts/${h.itemId}`, {
+      if (t && b.nativeSegmentId == null && b.itemId != null) {
+        const Y = `draft-update:${B.id}:${b.itemId}:${b.revision}:${K.tagId}:${K.startSec}:${K.endSec ?? "open"}:${K.reviewState ?? b.reviewState}`, O = await Z(`/videos/${B.id}/drafts/${b.itemId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            operationId: Re(J),
-            expectedRevision: h.revision,
+            operationId: Le(Y),
+            expectedRevision: b.revision,
             startSec: K.startSec,
             endSec: K.endSec,
             tagId: K.tagId,
             reviewState: K.reviewState
           })
         });
-        Oe(J);
+        Fe(Y);
         const ne = {
-          ...h,
-          ...L.draft,
-          id: h.id,
-          itemId: h.itemId
+          ...b,
+          ...O.draft,
+          id: b.id,
+          itemId: b.itemId
         };
-        return M && await oe(
+        return C && await de(
           "segment.update",
           x || "Changed segment",
-          Vn(h, t),
+          Vn(b, t),
           Vn(
             ne,
             t
           )
-        ), Uo(h, K, t) ? await m() : g({
+        ), _o(b, K, t) ? await m() : g({
           ...o,
-          approvedSetVersion: L.approvedSetVersion || o.approvedSetVersion,
-          segments: v.map((me) => me.id === h.id ? ne : me).sort((me, he) => me.startSec - he.startSec || me.id - he.id)
-        }, T.id), I(((te = L.draft) == null ? void 0 : te.reviewState) === "approved" ? "Approved draft saved" : "Draft saved"), ne;
+          approvedSetVersion: O.approvedSetVersion || o.approvedSetVersion,
+          segments: v.map((ye) => ye.id === b.id ? ne : ye).sort((ye, be) => ye.startSec - be.startSec || ye.id - be.id)
+        }, B.id), I(((re = O.draft) == null ? void 0 : re.reviewState) === "approved" ? "Approved draft saved" : "Draft saved"), ne;
       }
-      const xe = await Z(`/videos/${T.id}/segments/${h.id}`, {
+      const Se = await Z(`/videos/${B.id}/segments/${b.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...K,
-          expectedUpdatedAt: h.updatedAt,
-          historyReceiptId: le
+          expectedUpdatedAt: b.updatedAt,
+          historyReceiptId: ue
         })
-      }), q = {
-        ...h,
-        ...xe,
-        reviewState: K.reviewState ?? h.reviewState
-      }, X = v.map((J) => J.id === h.id ? q : J).sort((J, L) => J.startSec - L.startSec || J.id - L.id);
-      return Uo(h, K, t) ? await m() : g({ ...o, segments: X }, T.id), M && await oe(
+      }), H = {
+        ...b,
+        ...Se,
+        reviewState: K.reviewState ?? b.reviewState
+      }, ee = v.map((Y) => Y.id === b.id ? H : Y).sort((Y, O) => Y.startSec - O.startSec || Y.id - O.id);
+      return _o(b, K, t) ? await m() : g({ ...o, segments: ee }, B.id), C && await de(
         "segment.update",
         x || "Changed segment",
-        Vn(h, t),
+        Vn(b, t),
         Vn(
-          q,
+          H,
           t
         ),
-        le
-      ), I(M ? "Saved to Cove" : "History restored"), q;
-    } catch (xe) {
-      return E && (g((q) => Mn(
-        q,
-        [h],
+        ue
+      ), I(C ? "Saved to Cove" : "History restored"), H;
+    } catch (Se) {
+      return A && (g((H) => Rn(
+        H,
+        [b],
         Object.keys(S)
-      ), T.id), ee(k), re(H), _.current = H, A.current = []), xe.status === 409 ? (I("Conflict — loading the latest segment…"), await c()) : I(xe.message || "Unable to save the segment."), null;
+      ), B.id), se(k), J(q), F.current = q, T.current = []), Se.status === 409 ? (I("Conflict — loading the latest segment…"), await c()) : I(Se.message || "Unable to save the segment."), null;
     } finally {
-      C(null);
+      $(null);
     }
   }
-  async function ie() {
+  async function xe() {
     if (!t) return !1;
-    const h = v.filter((M) => !M.published && M.reviewState === "approved").length;
-    if (h === 0 || w != null) return !1;
-    const K = `complete-review:${T.id}:${o.approvedSetVersion}`;
-    V(""), C(-1), I(`Publishing ${h} Approved draft${h === 1 ? "" : "s"}…`);
+    const b = v.filter((C) => !C.published && C.reviewState === "approved").length;
+    if (b === 0 || w != null) return !1;
+    const K = `complete-review:${B.id}:${o.approvedSetVersion}`;
+    V(""), $(-1), I(`Publishing ${b} Approved draft${b === 1 ? "" : "s"}…`);
     try {
-      const M = await Z(`/videos/${T.id}/complete-review`, {
+      const C = await Z(`/videos/${B.id}/complete-review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(K),
+          operationId: Le(K),
           expectedApprovedSetVersion: o.approvedSetVersion
         })
       });
-      Oe(K), Q(kt), P(!1);
-      const x = await m(), E = Is(
+      Fe(K), Q(St), D(!1);
+      const x = await m(), A = As(
         v,
         W.current,
-        M.published
-      ), S = E ? We(x == null ? void 0 : x.segments, E) : null;
-      return S && re(S.id), I(`${M.published.length} Approved draft${M.published.length === 1 ? "" : "s"} published to Cove.`), !0;
-    } catch (M) {
-      const x = M.status === 409 ? "The approved drafts changed. Review the updated list and try again." : M.message || "Unable to publish the approved drafts.";
-      return M.status === 409 && await c(), V(x), I(x), !1;
+        C.published
+      ), S = A ? He(x == null ? void 0 : x.segments, A) : null;
+      return S && J(S.id), I(`${C.published.length} Approved draft${C.published.length === 1 ? "" : "s"} published to Cove.`), !0;
+    } catch (C) {
+      const x = C.status === 409 ? "The approved drafts changed. Review the updated list and try again." : C.message || "Unable to publish the approved drafts.";
+      return C.status === 409 && await c(), V(x), I(x), !1;
     } finally {
-      C(null);
+      $(null);
     }
   }
-  async function B(h = null, K = null) {
-    var q;
+  async function ke(b = null, K = null) {
+    var H;
     if (w != null) return;
-    const M = h != null ? p.current : null, x = Number.isFinite(M) ? M : r, E = Math.min(ce, x + 20);
-    if (E <= x) {
+    const C = b != null ? p.current : null, x = Number.isFinite(C) ? C : r, A = Math.min(ge, x + 20);
+    if (A <= x) {
       I("Move the playhead before the end of the video to create a segment.");
       return;
     }
-    const S = Ns(v, N, h);
+    const S = Ms(v, N, b);
     if (S.kind === "choose-tag") {
-      p.current = x, I(""), O(!0);
+      p.current = x, I(""), E(!0);
       return;
     }
     if (S.kind === "invalid-selection") {
       I("Select a swimlane before creating a segment.");
       return;
     }
-    const { tagId: k } = S, H = `create-draft:${T.id}:${k}:${x}`, le = t ? null : crypto.randomUUID(), se = W.current, te = {
+    const { tagId: k } = S, q = `create-draft:${B.id}:${k}:${x}`, ue = t ? null : crypto.randomUUID(), ae = W.current, re = {
       ...N || {},
       id: u.current--,
       itemId: null,
@@ -2287,7 +2311,7 @@ function El(e) {
       tagName: K || (N == null ? void 0 : N.tagName) || "Tag segment",
       tagSortName: k === (N == null ? void 0 : N.tagId) && (N == null ? void 0 : N.tagSortName) || null,
       startSec: x,
-      endSec: E,
+      endSec: A,
       reviewState: "unreviewed",
       revision: 0,
       updatedAt: null,
@@ -2295,254 +2319,254 @@ function El(e) {
       sourceRunId: null,
       confidence: null,
       isDerived: !1
-    }, xe = Al(o, te);
-    C(-1), O(!1), g(xe, T.id), f(te.id), F(ut(
-      Pt(xe.segments, xe.segmentGroups || [], xe.performerSlots || []),
-      te.id
+    }, Se = Ll(o, re);
+    $(-1), E(!1), g(Se, B.id), f(re.id), P(ut(
+      Lt(Se.segments, Se.segmentGroups || [], Se.performerSlots || []),
+      re.id
     ));
     try {
-      let X;
+      let ee;
       if (t) {
-        const ne = await Z(`/videos/${T.id}/drafts`, {
+        const ne = await Z(`/videos/${B.id}/drafts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ operationId: Re(H), tagId: k, startSec: x, endSec: E })
+          body: JSON.stringify({ operationId: Le(q), tagId: k, startSec: x, endSec: A })
         });
-        Oe(H), X = { itemId: (q = ne.draft) == null ? void 0 : q.itemId };
+        Fe(q), ee = { itemId: (H = ne.draft) == null ? void 0 : H.itemId };
       } else
-        X = { nativeSegmentId: (await Z(`/videos/${T.id}/segments`, {
+        ee = { nativeSegmentId: (await Z(`/videos/${B.id}/segments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             tagId: k,
             startSec: x,
-            endSec: E,
-            historyReceiptId: le
+            endSec: A,
+            historyReceiptId: ue
           })
         })).id };
-      p.current = null, O(!1);
-      const J = await m();
-      if (!J) {
-        g((ne) => Pr(
+      p.current = null, E(!1);
+      const Y = await m();
+      if (!Y) {
+        g((ne) => Lr(
           ne,
-          [te.id]
-        ), T.id), f(se), I("Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment.");
+          [re.id]
+        ), B.id), f(ae), I("Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment.");
         return;
       }
-      const L = We(J == null ? void 0 : J.segments, X);
-      L ? (t || await oe(
+      const O = He(Y == null ? void 0 : Y.segments, ee);
+      O ? (t || await de(
         "segment.create",
         "Created segment",
         lt([], !1),
-        lt([L], !1),
-        le
-      ), S.openTagEditor && (b.current = L.id), f(L.id), F(ut(
-        Pt(J.segments || [], J.segmentGroups || [], J.performerSlots || []),
-        L.id
+        lt([O], !1),
+        ue
+      ), S.openTagEditor && (h.current = O.id), f(O.id), P(ut(
+        Lt(Y.segments || [], Y.segmentGroups || [], Y.performerSlots || []),
+        O.id
       ))) : I("Segment created, but it could not be selected.");
-    } catch (X) {
-      g((J) => Pr(
-        J,
-        [te.id]
-      ), T.id), f(se), h != null && O(!0), I(X.message || "Unable to create the draft.");
+    } catch (ee) {
+      g((Y) => Lr(
+        Y,
+        [re.id]
+      ), B.id), f(ae), b != null && E(!0), I(ee.message || "Unable to create the draft.");
     } finally {
-      C(null);
+      $(null);
     }
   }
-  async function ue() {
-    if (R.length !== 1 || !N || w != null) return;
-    const h = r;
-    if (h <= N.startSec || N.endSec != null && h >= N.endSec) {
+  async function z() {
+    if (j.length !== 1 || !N || w != null) return;
+    const b = r;
+    if (b <= N.startSec || N.endSec != null && b >= N.endSec) {
       I("Move the playhead inside the selected segment before splitting.");
       return;
     }
-    const K = `split-draft:${N.itemId}:${N.revision}:${h}`, M = t ? null : lt([N], !1), x = t ? null : crypto.randomUUID();
-    C(N.id);
+    const K = `split-draft:${N.itemId}:${N.revision}:${b}`, C = t ? null : lt([N], !1), x = t ? null : crypto.randomUUID();
+    $(N.id);
     try {
-      let E = null;
-      t && N.nativeSegmentId == null ? (await Z(`/videos/${T.id}/drafts/${N.itemId}/split`, {
+      let A = null;
+      t && N.nativeSegmentId == null ? (await Z(`/videos/${B.id}/drafts/${N.itemId}/split`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(K),
+          operationId: Le(K),
           expectedRevision: N.revision,
-          splitSec: h
+          splitSec: b
         })
-      }), Oe(K)) : E = { nativeSegmentId: (await Z(`/videos/${T.id}/segments/${N.id}/split`, {
+      }), Fe(K)) : A = { nativeSegmentId: (await Z(`/videos/${B.id}/segments/${N.id}/split`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedUpdatedAt: N.updatedAt,
-          splitSec: h,
+          splitSec: b,
           historyReceiptId: x
         })
       })).id };
       const S = await m();
       if (!t) {
         const k = [
-          We(S == null ? void 0 : S.segments, {
+          He(S == null ? void 0 : S.segments, {
             nativeSegmentId: N.nativeSegmentId ?? N.id
           }),
-          We(
+          He(
             S == null ? void 0 : S.segments,
-            E
+            A
           )
         ].filter(Boolean);
-        await oe(
+        await de(
           "segment.split",
           "Split segment",
-          M,
+          C,
           lt(k, !1),
           x
         );
       }
       I(t ? `Segment split; both ranges remain ${N.reviewState}.` : "Segment split.");
-    } catch (E) {
-      E.status === 409 ? await c() : I(E.message || "Unable to split the draft.");
+    } catch (A) {
+      A.status === 409 ? await c() : I(A.message || "Unable to split the draft.");
     } finally {
-      C(null);
+      $(null);
     }
   }
-  async function Me(h = !1) {
-    var E, S;
-    if (R.length !== 1 || !N || w != null) return;
-    const K = h ? r : N.startSec, M = ws(T.id, N, h, K), x = t ? null : crypto.randomUUID();
-    C(N.id);
+  async function te(b = !1) {
+    var A, S;
+    if (j.length !== 1 || !N || w != null) return;
+    const K = b ? r : N.startSec, C = Rs(B.id, N, b, K), x = t ? null : crypto.randomUUID();
+    $(N.id);
     try {
-      const k = ((E = y.current) == null ? void 0 : E.operationKey) === M ? y.current : null;
-      let H = (k == null ? void 0 : k.duplicateIdentity) ?? null;
-      if (H == null && t && N.nativeSegmentId == null) {
-        const te = await Z(`/videos/${T.id}/drafts/${N.itemId}/duplicate`, {
+      const k = ((A = y.current) == null ? void 0 : A.operationKey) === C ? y.current : null;
+      let q = (k == null ? void 0 : k.duplicateIdentity) ?? null;
+      if (q == null && t && N.nativeSegmentId == null) {
+        const re = await Z(`/videos/${B.id}/drafts/${N.itemId}/duplicate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            operationId: Re(M),
+            operationId: Le(C),
             expectedRevision: N.revision,
-            startSec: h ? K : null
+            startSec: b ? K : null
           })
         });
-        H = Io(!1, te), y.current = { operationKey: M, duplicateIdentity: H };
-      } else if (H == null) {
-        const te = await Z(`/videos/${T.id}/segments/${N.id}/duplicate`, {
+        q = $o(!1, re), y.current = { operationKey: C, duplicateIdentity: q };
+      } else if (q == null) {
+        const re = await Z(`/videos/${B.id}/segments/${N.id}/duplicate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             expectedUpdatedAt: N.updatedAt,
-            startSec: h ? K : null,
+            startSec: b ? K : null,
             historyReceiptId: x
           })
         });
-        H = Io(!0, te), y.current = { operationKey: M, duplicateIdentity: H };
+        q = $o(!0, re), y.current = { operationKey: C, duplicateIdentity: q };
       }
-      const le = await m(), se = We(le == null ? void 0 : le.segments, H);
-      if (se) {
-        t || await oe(
+      const ue = await m(), ae = He(ue == null ? void 0 : ue.segments, q);
+      if (ae) {
+        t || await de(
           "segment.duplicate",
           "Duplicated segment",
           lt([], !1),
-          lt([se], !1),
+          lt([ae], !1),
           x
         );
-        const te = es(
-          se,
-          le.performerSlots || [],
+        const re = ns(
+          ae,
+          ue.performerSlots || [],
           i,
           s,
-          le.segmentGroups || []
+          ue.segmentGroups || []
         );
-        $(te.filters), D(te.hideDerivedSegments), ee([se.id]), re(se.id), _.current = se.id, A.current = [], F(ut(
-          Pt(le.segments || [], le.segmentGroups || [], le.performerSlots || []),
-          se.id
-        )), t && N.nativeSegmentId == null && Oe(M), y.current = null, I(h ? "Duplicate created at the playhead." : "Duplicate created in place.");
+        M(re.filters), R(re.hideDerivedSegments), se([ae.id]), J(ae.id), F.current = ae.id, T.current = [], P(ut(
+          Lt(ue.segments || [], ue.segmentGroups || [], ue.performerSlots || []),
+          ae.id
+        )), t && N.nativeSegmentId == null && Fe(C), y.current = null, I(b ? "Duplicate created at the playhead." : "Duplicate created in place.");
       } else
         I("Duplicate created, but it could not be selected; repeat the duplicate shortcut to retry selection.");
     } catch (k) {
-      ((S = y.current) == null ? void 0 : S.operationKey) === M ? I("Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection.") : k.status === 409 ? await c() : I(k.message || "Unable to duplicate the draft.");
+      ((S = y.current) == null ? void 0 : S.operationKey) === C ? I("Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection.") : k.status === 409 ? await c() : I(k.message || "Unable to duplicate the draft.");
     } finally {
-      C(null);
+      $(null);
     }
   }
-  async function Y() {
-    if (R.length !== 1 || !N) return;
-    const h = Number(we), K = a.trim() === "" ? null : Number(a), M = vo(h, K, d);
-    if (M.error) {
-      I(M.error);
+  async function X() {
+    if (j.length !== 1 || !N) return;
+    const b = Number(me), K = a.trim() === "" ? null : Number(a), C = So(b, K, d);
+    if (C.error) {
+      I(C.error);
       return;
     }
-    if (h === N.startSec && K === N.endSec) {
+    if (b === N.startSec && K === N.endSec) {
       I("Timing is unchanged.");
       return;
     }
-    await fe(N, { startSec: h, endSec: K, tagId: N.tagId }, !0, null, !0);
+    await oe(N, { startSec: b, endSec: K, tagId: N.tagId }, !0, null, !0);
   }
-  async function Se(h, K) {
-    if (R.length !== 1 || !N) return;
-    const M = vo(h, K, d);
-    if (M.error) {
-      I(M.error);
+  async function le(b, K) {
+    if (j.length !== 1 || !N) return;
+    const C = So(b, K, d);
+    if (C.error) {
+      I(C.error);
       return;
     }
-    if (h === N.startSec && K === N.endSec) {
+    if (b === N.startSec && K === N.endSec) {
       I("Timing is unchanged.");
       return;
     }
-    await fe(N, { startSec: h, endSec: K, tagId: N.tagId }, !0, null, !0);
+    await oe(N, { startSec: b, endSec: K, tagId: N.tagId }, !0, null, !0);
   }
-  return { acceptHistory: Q, recordHistoryAction: oe, mutateSegment: fe, completeReview: ie, createSegment: B, splitSegment: ue, duplicateSegment: Me, saveTiming: Y, applyShortcutTiming: Se };
+  return { acceptHistory: Q, recordHistoryAction: de, mutateSegment: oe, completeReview: xe, createSegment: ke, splitSegment: z, duplicateSegment: te, saveTiming: X, applyShortcutTiming: le };
 }
-function Dl() {
-  const [e, t] = j(() => typeof window < "u" && window.matchMedia(yo).matches);
-  return ye(() => {
+function Bl() {
+  const [e, t] = L(() => typeof window < "u" && window.matchMedia(ho).matches);
+  return fe(() => {
     if (typeof window > "u") return;
-    const r = window.matchMedia(yo), o = () => t(r.matches);
+    const r = window.matchMedia(ho), o = () => t(r.matches);
     return o(), r.addEventListener("change", o), () => r.removeEventListener("change", o);
   }, []), e;
 }
-function Ol() {
-  const [e, t] = j(() => typeof window < "u" && window.matchMedia(bo).matches);
-  return ye(() => {
+function Gl() {
+  const [e, t] = L(() => typeof window < "u" && window.matchMedia(vo).matches);
+  return fe(() => {
     if (typeof window > "u") return;
-    const r = window.matchMedia(bo), o = () => t(r.matches);
+    const r = window.matchMedia(vo), o = () => t(r.matches);
     return o(), r.addEventListener("change", o), () => r.removeEventListener("change", o);
   }, []), e;
 }
-function Pl() {
+function Kl() {
   try {
-    return Vi(window.localStorage.getItem(oa));
+    return Yi(window.localStorage.getItem(ia));
   } catch {
     return { ...rt };
   }
 }
-function Ll() {
+function Ul() {
   try {
-    return Tt(JSON.parse(window.localStorage.getItem(aa) || "[]"));
+    return Rt(JSON.parse(window.localStorage.getItem(sa) || "[]"));
   } catch {
     return [];
   }
 }
-function Fl(e) {
+function zl(e) {
   try {
-    window.localStorage.setItem(aa, JSON.stringify(Tt(e)));
+    window.localStorage.setItem(sa, JSON.stringify(Rt(e)));
   } catch {
   }
 }
-function jl(e) {
+function _l(e) {
   try {
-    window.localStorage.setItem(oa, JSON.stringify(e));
+    window.localStorage.setItem(ia, JSON.stringify(e));
   } catch {
   }
 }
-function Bl() {
+function Hl() {
   try {
-    const e = JSON.parse(window.localStorage.getItem(sa) || "null");
+    const e = JSON.parse(window.localStorage.getItem(da) || "null");
     return e && Number.isFinite(e.startSec) && (e.endSec == null || Number.isFinite(e.endSec)) ? e : null;
   } catch {
     return null;
   }
 }
-function Gl(e) {
+function ql(e) {
   try {
-    return window.localStorage.setItem(sa, JSON.stringify({
+    return window.localStorage.setItem(da, JSON.stringify({
       startSec: e.startSec,
       endSec: e.endSec
     })), !0;
@@ -2550,8 +2574,8 @@ function Gl(e) {
     return !1;
   }
 }
-function Kl({ status: e }) {
-  const t = Da[e];
+function Wl({ status: e }) {
+  const t = Pa[e];
   return t ? n("span", {
     "aria-label": `Slot status: ${e}`,
     className: "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
@@ -2562,7 +2586,7 @@ function Kl({ status: e }) {
     }
   }, "Slots unfilled") : null;
 }
-function $t({ counts: e }) {
+function Tt({ counts: e }) {
   return n("span", {
     role: "img",
     "aria-label": `${e.unreviewed} unreviewed, ${e.approved} approved, ${e.rejected} rejected`,
@@ -2571,37 +2595,37 @@ function $t({ counts: e }) {
     key: t,
     className: "rounded px-1 py-0.5",
     style: {
-      ...Ra(t),
+      ...Da(t),
       filter: e[t] > 0 ? "saturate(1)" : "saturate(0.25)"
     },
     title: `${e[t]} ${t}`
   }, `${mt[t].symbol}${e[t]}`)));
 }
-function Ul({ videoId: e, segmentId: t, itemId: r, slots: o, revision: i, performerCandidates: a, onOptimisticSave: s = () => {
+function Vl({ videoId: e, segmentId: t, itemId: r, slots: o, revision: i, performerCandidates: a, onOptimisticSave: s = () => {
 }, onSaved: l, onRollback: d = null, onConflict: c, confirmRef: g, shortcutRef: m }) {
-  const u = Ur(a), [y, p] = j(() => Ir(o, u)), [b, f] = j(!1), [w, v] = j(""), N = pe(!1), W = o.map((D) => `${D.slotDefinitionId}:${D.performerId || ""}`).join("|"), R = u.map((D) => Ve(D)).join("|"), _ = Na(
+  const u = zr(a), [y, p] = L(() => Cr(o, u)), [h, f] = L(!1), [w, v] = L(""), N = pe(!1), W = o.map((R) => `${R.slotDefinitionId}:${R.performerId || ""}`).join("|"), j = u.map((R) => Ve(R)).join("|"), F = Ca(
     o,
     u
   );
-  ye(() => {
-    p(Ir(o, u)), v("");
-  }, [t, r, W, R]);
-  async function A(D = y) {
+  fe(() => {
+    p(Cr(o, u)), v("");
+  }, [t, r, W, j]);
+  async function T(R = y) {
     if (!N.current) {
       N.current = !0, f(!0), v("Saving performer slots…");
       try {
-        const U = Ir(o.map((I) => ({
+        const U = Cr(o.map((I) => ({
           ...I,
-          performerId: D[I.slotDefinitionId] || null
-        })), u), P = o.map((I) => {
-          const C = U[I.slotDefinitionId] ? Number(U[I.slotDefinitionId]) : null, F = u.find((re) => String(Ve(re)) === String(C));
+          performerId: R[I.slotDefinitionId] || null
+        })), u), D = o.map((I) => {
+          const $ = U[I.slotDefinitionId] ? Number(U[I.slotDefinitionId]) : null, P = u.find((J) => String(Ve(J)) === String($));
           return {
             ...I,
-            performerId: C,
-            performerName: (F == null ? void 0 : F.name) || null
+            performerId: $,
+            performerName: (P == null ? void 0 : P.name) || null
           };
         });
-        s(P);
+        s(D);
         const V = await Z(r != null ? `/videos/${e}/drafts/${r}/slots` : `/videos/${e}/segments/${t}/slots`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -2631,105 +2655,105 @@ function Ul({ videoId: e, segmentId: t, itemId: r, slots: o, revision: i, perfor
       }
     }
   }
-  function $(D, U) {
-    v(`Option ${U + 1} applied; save to confirm.`), p({ ...y, ...D.assignments });
+  function M(R, U) {
+    v(`Option ${U + 1} applied; save to confirm.`), p({ ...y, ...R.assignments });
   }
-  async function O(D) {
-    const U = { ...y, ...D.assignments };
-    p(U), await A(U);
+  async function E(R) {
+    const U = { ...y, ...R.assignments };
+    p(U), await T(U);
   }
-  return ye(() => {
+  return fe(() => {
     if (m)
-      return m.current = (D) => N.current || !_[D] ? !1 : (O(_[D]), !0), () => {
+      return m.current = (R) => N.current || !F[R] ? !1 : (E(F[R]), !0), () => {
         m.current = null;
       };
   }), n("div", { className: "space-y-2" }, [
-    _.length ? n("section", { key: "recommendations", className: "rounded-md bg-surface p-3", "aria-label": "Auto-assignment options" }, [
+    F.length ? n("section", { key: "recommendations", className: "rounded-md bg-surface p-3", "aria-label": "Auto-assignment options" }, [
       n("h3", { key: "heading", className: "mb-2 text-sm font-semibold text-green-400" }, "Auto-assignment options"),
-      n("div", { key: "options", className: "space-y-2" }, _.map((D, U) => n("button", {
+      n("div", { key: "options", className: "space-y-2" }, F.map((R, U) => n("button", {
         key: U,
         type: "button",
-        disabled: b,
-        onClick: () => $(D, U),
+        disabled: h,
+        onClick: () => M(R, U),
         className: "flex w-full items-center rounded-md bg-muted/40 px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted/70 disabled:opacity-50",
-        "aria-label": `Apply option ${U + 1}: ${D.description}`
+        "aria-label": `Apply option ${U + 1}: ${R.description}`
       }, [
         n("span", { key: "number", className: "mr-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-green-600 text-[10px] font-bold text-white" }, U + 1),
-        n("span", { key: "description" }, D.description)
+        n("span", { key: "description" }, R.description)
       ]))),
-      n("p", { key: "hint", className: "mt-2 text-xs text-secondary" }, `Press number keys 1-${_.length} to apply and save`)
+      n("p", { key: "hint", className: "mt-2 text-xs text-secondary" }, `Press number keys 1-${F.length} to apply and save`)
     ]) : null,
-    n("div", { key: "slots", className: "grid gap-2" }, o.map((D) => n("label", { key: D.slotDefinitionId, className: "space-y-1 rounded-md border border-border bg-surface p-2 text-xs text-secondary" }, [
-      n("span", { key: "label", className: "font-semibold uppercase tracking-wide" }, et(D)),
-      (D.genderHints || []).length ? n("span", { key: "hints", className: "block text-[10px]" }, `Hint: ${(D.genderHints || []).map(ar).join(" · ")}`) : null,
-      n("select", { key: "select", value: y[D.slotDefinitionId] || "", disabled: b, onChange: (U) => p({ ...y, [D.slotDefinitionId]: U.target.value }), className: "w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground" }, [
+    n("div", { key: "slots", className: "grid gap-2" }, o.map((R) => n("label", { key: R.slotDefinitionId, className: "space-y-1 rounded-md border border-border bg-surface p-2 text-xs text-secondary" }, [
+      n("span", { key: "label", className: "font-semibold uppercase tracking-wide" }, et(R)),
+      (R.genderHints || []).length ? n("span", { key: "hints", className: "block text-[10px]" }, `Hint: ${(R.genderHints || []).map(ar).join(" · ")}`) : null,
+      n("select", { key: "select", value: y[R.slotDefinitionId] || "", disabled: h, onChange: (U) => p({ ...y, [R.slotDefinitionId]: U.target.value }), className: "w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground" }, [
         n("option", { key: "clear", value: "" }, "No performer assigned"),
-        ...Ia(u, u, D.genderHints).map((U) => n("option", { key: Ve(U), value: Ve(U) }, U.name))
+        ...$a(u, u, R.genderHints).map((U) => n("option", { key: Ve(U), value: Ve(U) }, U.name))
       ])
     ]))),
-    n("div", { key: "actions", className: "flex items-center gap-3" }, [n("button", { key: "save", ref: g, type: "button", disabled: b, onClick: () => A(), className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50" }, "Save performer slots"), n("span", { key: "message", role: "status", className: "text-xs text-secondary" }, w)])
+    n("div", { key: "actions", className: "flex items-center gap-3" }, [n("button", { key: "save", ref: g, type: "button", disabled: h, onClick: () => T(), className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50" }, "Save performer slots"), n("span", { key: "message", role: "status", className: "text-xs text-secondary" }, w)])
   ]);
 }
-function zl({ videoId: e, targets: t, performerCandidates: r, onSaved: o, onConflict: i, shortcutRef: a }) {
-  var _;
-  const s = ((_ = t[0]) == null ? void 0 : _.slots) || [], l = Ur(r), d = Na(
+function Jl({ videoId: e, targets: t, performerCandidates: r, onSaved: o, onConflict: i, shortcutRef: a }) {
+  var F;
+  const s = ((F = t[0]) == null ? void 0 : F.slots) || [], l = zr(r), d = Ca(
     s,
     l
-  ), c = "__mixed__", g = () => Object.fromEntries(s.map((A, $) => {
-    const O = t.map((D) => {
+  ), c = "__mixed__", g = () => Object.fromEntries(s.map((T, M) => {
+    const E = t.map((R) => {
       var U;
-      return String(((U = D.slots[$]) == null ? void 0 : U.performerId) || "");
+      return String(((U = R.slots[M]) == null ? void 0 : U.performerId) || "");
     });
-    return [A.slotDefinitionId, O.every((D) => D === O[0]) ? O[0] : c];
-  })), [m, u] = j(g), [y, p] = j(!1), [b, f] = j(""), w = pe(!1), v = t.map((A) => `${A.itemId ?? `native:${A.segmentId}`}:${A.revision}:${A.slots.map(($) => `${$.slotDefinitionId}:${$.performerId || ""}`).join(",")}`).join("|");
-  ye(() => {
+    return [T.slotDefinitionId, E.every((R) => R === E[0]) ? E[0] : c];
+  })), [m, u] = L(g), [y, p] = L(!1), [h, f] = L(""), w = pe(!1), v = t.map((T) => `${T.itemId ?? `native:${T.segmentId}`}:${T.revision}:${T.slots.map((M) => `${M.slotDefinitionId}:${M.performerId || ""}`).join(",")}`).join("|");
+  fe(() => {
     u(g());
   }, [v]);
-  async function N(A = m) {
+  async function N(T = m) {
     if (w.current) return;
     w.current = !0, p(!0), f(`Saving performer slots for ${t.length} segments…`);
-    const $ = [];
+    const M = [];
     try {
-      for (const O of t) {
-        const D = O.slots.map((P, V) => {
-          const I = A[s[V].slotDefinitionId];
+      for (const E of t) {
+        const R = E.slots.map((D, V) => {
+          const I = T[s[V].slotDefinitionId];
           return {
-            slotDefinitionId: P.slotDefinitionId,
-            performerId: I === c ? P.performerId || null : I ? Number(I) : null
+            slotDefinitionId: D.slotDefinitionId,
+            performerId: I === c ? D.performerId || null : I ? Number(I) : null
           };
-        }), U = await Z(O.itemId != null ? `/videos/${e}/drafts/${O.itemId}/slots` : `/videos/${e}/segments/${O.segmentId}/slots`, {
+        }), U = await Z(E.itemId != null ? `/videos/${e}/drafts/${E.itemId}/slots` : `/videos/${e}/segments/${E.segmentId}/slots`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ revision: O.revision, assignments: D })
+          body: JSON.stringify({ revision: E.revision, assignments: R })
         });
-        $.push({
-          segmentId: O.segmentId,
-          itemId: O.itemId,
+        M.push({
+          segmentId: E.segmentId,
+          itemId: E.itemId,
           revision: U.revision,
           slots: U.slots || []
         });
       }
       f("Performer slots saved."), o({
         beforeState: tr(t),
-        afterState: tr($)
+        afterState: tr(M)
       });
-    } catch (O) {
-      const D = await i();
-      O.status === 409 ? f(D ? "Slot definitions or assignments changed; current values were reloaded." : "Slot definitions or assignments changed, but the latest values could not be reloaded.") : f(O.message || (D ? "The completed assignments were reloaded after a partial save." : "Some assignments may have saved, but the latest values could not be reloaded."));
+    } catch (E) {
+      const R = await i();
+      E.status === 409 ? f(R ? "Slot definitions or assignments changed; current values were reloaded." : "Slot definitions or assignments changed, but the latest values could not be reloaded.") : f(E.message || (R ? "The completed assignments were reloaded after a partial save." : "Some assignments may have saved, but the latest values could not be reloaded."));
     } finally {
       w.current = !1, p(!1);
     }
   }
-  function W(A, $) {
-    f(`Option ${$ + 1} applied; save to confirm.`), u({ ...m, ...A.assignments });
+  function W(T, M) {
+    f(`Option ${M + 1} applied; save to confirm.`), u({ ...m, ...T.assignments });
   }
-  async function R(A) {
-    const $ = { ...m, ...A.assignments };
-    u($), await N($);
+  async function j(T) {
+    const M = { ...m, ...T.assignments };
+    u(M), await N(M);
   }
-  return ye(() => {
+  return fe(() => {
     if (a)
-      return a.current = (A) => w.current || !d[A] ? !1 : (R(d[A]), !0), () => {
+      return a.current = (T) => w.current || !d[T] ? !1 : (j(d[T]), !0), () => {
         a.current = null;
       };
   }), n("div", { className: "space-y-3" }, [
@@ -2740,37 +2764,37 @@ function zl({ videoId: e, targets: t, performerCandidates: r, onSaved: o, onConf
     ),
     d.length ? n("section", { key: "recommendations", className: "rounded-md bg-surface p-3", "aria-label": "Auto-assignment options" }, [
       n("h3", { key: "heading", className: "mb-2 text-sm font-semibold text-green-400" }, "Auto-assignment options"),
-      n("div", { key: "options", className: "space-y-2" }, d.map((A, $) => n("button", {
-        key: $,
+      n("div", { key: "options", className: "space-y-2" }, d.map((T, M) => n("button", {
+        key: M,
         type: "button",
         disabled: y,
-        onClick: () => W(A, $),
+        onClick: () => W(T, M),
         className: "flex w-full items-center rounded-md bg-muted/40 px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted/70 disabled:opacity-50",
-        "aria-label": `Apply option ${$ + 1} to all selected segments: ${A.description}`
+        "aria-label": `Apply option ${M + 1} to all selected segments: ${T.description}`
       }, [
-        n("span", { key: "number", className: "mr-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-green-600 text-[10px] font-bold text-white" }, $ + 1),
-        n("span", { key: "description" }, A.description)
+        n("span", { key: "number", className: "mr-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-green-600 text-[10px] font-bold text-white" }, M + 1),
+        n("span", { key: "description" }, T.description)
       ]))),
       n("p", { key: "hint", className: "mt-2 text-xs text-secondary" }, `Press number keys 1-${d.length} to apply and save across the selection`)
     ]) : null,
-    n("div", { key: "slots", className: "grid gap-2" }, s.map((A) => n("label", {
-      key: A.slotDefinitionId,
+    n("div", { key: "slots", className: "grid gap-2" }, s.map((T) => n("label", {
+      key: T.slotDefinitionId,
       className: "space-y-1 rounded-md border border-border bg-surface p-2 text-xs text-secondary"
     }, [
-      n("span", { key: "label", className: "font-semibold uppercase tracking-wide" }, et(A)),
+      n("span", { key: "label", className: "font-semibold uppercase tracking-wide" }, et(T)),
       n("select", {
         key: "select",
-        value: m[A.slotDefinitionId] || "",
+        value: m[T.slotDefinitionId] || "",
         disabled: y,
-        onChange: ($) => u({ ...m, [A.slotDefinitionId]: $.target.value }),
+        onChange: (M) => u({ ...m, [T.slotDefinitionId]: M.target.value }),
         className: "w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground"
       }, [
-        m[A.slotDefinitionId] === c ? n("option", { key: "mixed", value: c }, "Mixed — leave unchanged") : null,
+        m[T.slotDefinitionId] === c ? n("option", { key: "mixed", value: c }, "Mixed — leave unchanged") : null,
         n("option", { key: "clear", value: "" }, "No performer assigned"),
-        ...Ia(l, l, A.genderHints).map(($) => n("option", {
-          key: Ve($),
-          value: Ve($)
-        }, $.name))
+        ...$a(l, l, T.genderHints).map((M) => n("option", {
+          key: Ve(M),
+          value: Ve(M)
+        }, M.name))
       ])
     ]))),
     n("div", { key: "actions", className: "flex items-center gap-3" }, [
@@ -2781,7 +2805,7 @@ function zl({ videoId: e, targets: t, performerCandidates: r, onSaved: o, onConf
         onClick: () => N(),
         className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
       }, "Save performer slots"),
-      n("span", { key: "message", role: "status", className: "text-xs text-secondary" }, b)
+      n("span", { key: "message", role: "status", className: "text-xs text-secondary" }, h)
     ])
   ]);
 }
@@ -2789,7 +2813,7 @@ function gt(e, t = null) {
   const r = String(e || "").trim().toLowerCase();
   return r === "ext:segment-studio:stash-marker-studio" || r === "stash-marker-studio" || r === "stash-marker-studio:manual" ? "Stash Marker Studio · legacy" : r === "stash-marker-studio:skier-ai" ? "Stash Marker Studio AI · legacy" : r === "segment-studio/user" || r === "user" ? "Manual" : r === "ext:ai.tagging" ? "Cove AI Tagging" : t != null && t.trim() ? t.trim() : r === "tpdb" ? "TPDB" : r ? r.split(/[:/._-]+/).filter(Boolean).slice(-2).map((o) => o.charAt(0).toUpperCase() + o.slice(1)).join(" ") : "Origin unavailable";
 }
-function _l(e, t) {
+function Yl(e, t) {
   if (e != null && e.loading) return "Loading origin…";
   const r = Array.isArray(e == null ? void 0 : e.items) ? e.items : [];
   if (r.length === 0) return gt(t);
@@ -2831,7 +2855,7 @@ function Jn({ name: e }) {
     className: "h-3.5 w-3.5 shrink-0"
   }, t[e] || null);
 }
-function Hl({ hidden: e }) {
+function Ql({ hidden: e }) {
   return n("span", { className: "flex items-center gap-0.5", "aria-hidden": "true" }, [
     n("svg", {
       key: "eye",
@@ -2848,9 +2872,9 @@ function Hl({ hidden: e }) {
     n(sr, { key: "derived" })
   ]);
 }
-function ql({ segment: e, provenance: t }) {
+function Zl({ segment: e, provenance: t }) {
   var g;
-  const [r, o] = j(!1), i = e.itemId != null ? `item:${e.itemId}` : e.nativeSegmentId != null ? `native:${e.nativeSegmentId}` : null, a = t.key === i ? t : { loading: !0, error: null, items: [] }, s = Array.isArray(a.items) ? a.items : [], l = `segment-provenance-${e.id}`, d = _l(a, e.sourceKey), c = e.confidence == null ? "" : ` · ${Math.round(e.confidence * 100)}%`;
+  const [r, o] = L(!1), i = e.itemId != null ? `item:${e.itemId}` : e.nativeSegmentId != null ? `native:${e.nativeSegmentId}` : null, a = t.key === i ? t : { loading: !0, error: null, items: [] }, s = Array.isArray(a.items) ? a.items : [], l = `segment-provenance-${e.id}`, d = Yl(a, e.sourceKey), c = e.confidence == null ? "" : ` · ${Math.round(e.confidence * 100)}%`;
   return n("section", { "aria-label": "Segment provenance", className: "rounded-md border border-border bg-surface" }, [
     n("button", {
       key: "toggle",
@@ -2906,7 +2930,7 @@ function ql({ segment: e, provenance: t }) {
     ) : null
   ]);
 }
-function Wl({
+function Xl({
   selectedGroups: e,
   selectedSegments: t,
   activeSegmentId: r,
@@ -2919,12 +2943,12 @@ function Wl({
   slotButtonRef: c,
   saveMessage: g
 }) {
-  const [m, u] = j([]), y = e.flatMap((w) => w.lanes.map((v) => v.key)), p = y.join("|");
-  ye(() => {
+  const [m, u] = L([]), y = e.flatMap((w) => w.lanes.map((v) => v.key)), p = y.join("|");
+  fe(() => {
     const w = new Set(y);
     u((v) => v.filter((N) => w.has(N)));
   }, [p]);
-  const b = nr(t), f = !!ja(
+  const h = nr(t), f = !!Ga(
     e,
     { nativeOnly: !a }
   );
@@ -2945,12 +2969,12 @@ function Wl({
         { key: "scope", className: "text-xs text-secondary" },
         `${y.length} swimlane${y.length === 1 ? "" : "s"} · ${e.length} group${e.length === 1 ? "" : "s"}`
       ),
-      a ? n($t, { key: "counts", counts: b }) : null
+      a ? n(Tt, { key: "counts", counts: h }) : null
     ]),
     n(
       "p",
       { key: "actions", className: "rounded-md border border-border bg-surface px-3 py-2 text-xs text-secondary" },
-      ll({ mergeable: f, reviewable: a, tagEditable: s, slotsEditable: l })
+      pl({ mergeable: f, reviewable: a, tagEditable: s, slotsEditable: l })
     ),
     l ? n("button", {
       key: "slots",
@@ -2975,7 +2999,7 @@ function Wl({
         n("span", { key: "count", className: "shrink-0 text-[10px] text-secondary" }, `${w.selectedCount} selected`)
       ]),
       ...w.lanes.map((v) => {
-        const N = m.includes(v.key), W = v.markers.some(({ segment: _ }) => _.id === r), R = `selected-segment-lane-${v.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        const N = m.includes(v.key), W = v.markers.some(({ segment: F }) => F.id === r), j = `selected-segment-lane-${v.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
         return n("div", {
           key: v.key,
           "data-selected-segment-lane": v.key,
@@ -2985,41 +3009,41 @@ function Wl({
             key: "toggle",
             type: "button",
             "aria-expanded": N,
-            "aria-controls": R,
+            "aria-controls": j,
             "aria-current": W ? "true" : void 0,
-            onClick: () => u((_) => N ? _.filter((A) => A !== v.key) : [..._, v.key]),
+            onClick: () => u((F) => N ? F.filter((T) => T !== v.key) : [...F, v.key]),
             className: "flex w-full items-center gap-2 px-2 py-2 text-left"
           }, [
             n("span", { key: "indicator", "aria-hidden": "true", className: "text-xs text-secondary" }, N ? "▾" : "▸"),
             n("span", { key: "label", className: "min-w-0 flex-1 truncate text-xs font-semibold text-foreground" }, $n(v)),
             n("span", { key: "count", className: "shrink-0 text-[10px] text-secondary" }, String(v.selectedCount)),
-            a ? n($t, { key: "states", counts: v.counts }) : null
+            a ? n(Tt, { key: "states", counts: v.counts }) : null
           ]),
           N ? n("div", {
             key: "segments",
-            id: R,
+            id: j,
             className: "space-y-1 border-t border-border p-1.5"
-          }, v.markers.map(({ segment: _ }) => {
-            const A = _.endSec == null ? Ie(_.startSec) : `${Ie(_.startSec)} – ${Ie(_.endSec)}`;
+          }, v.markers.map(({ segment: F }) => {
+            const T = F.endSec == null ? $e(F.startSec) : `${$e(F.startSec)} – ${$e(F.endSec)}`;
             return n("button", {
-              key: _.id,
+              key: F.id,
               type: "button",
-              onClick: () => i(_),
-              className: `flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent ${_.id === r ? "bg-accent/15" : ""}`,
-              "aria-label": a ? `${_.tagName || "Segment"}, ${_.reviewState}, ${A}` : `${_.tagName || "Segment"}, ${A}`,
-              "aria-current": _.id === r ? "true" : void 0
+              onClick: () => i(F),
+              className: `flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent ${F.id === r ? "bg-accent/15" : ""}`,
+              "aria-label": a ? `${F.tagName || "Segment"}, ${F.reviewState}, ${T}` : `${F.tagName || "Segment"}, ${T}`,
+              "aria-current": F.id === r ? "true" : void 0
             }, [
-              a ? n(Ft, {
+              a ? n(jt, {
                 key: "state",
-                state: _.reviewState,
+                state: F.reviewState,
                 includeLabel: !1
               }) : null,
-              _.isDerived ? n(sr, { key: "derived" }) : null,
-              n("span", { key: "time", className: "shrink-0 font-mono text-[10px] text-foreground" }, A),
+              F.isDerived ? n(sr, { key: "derived" }) : null,
+              n("span", { key: "time", className: "shrink-0 font-mono text-[10px] text-foreground" }, T),
               n(
                 "span",
                 { key: "source", className: "min-w-0 flex-1 truncate text-right text-[10px] text-secondary" },
-                gt(_.sourceKey)
+                gt(F.sourceKey)
               )
             ]);
           })) : null
@@ -3034,13 +3058,13 @@ const kn = {
   defaultObjectFilter: {},
   defaultDisplayMode: "grid",
   allowedDisplayModes: ["grid", "list"]
-}, zo = [
+}, Ho = [
   { value: "title", label: "Title" },
   { value: "updated_at", label: "Updated" },
   { value: "created_at", label: "Created" },
   { value: "segment_count", label: "Segment count" },
   { value: "random", label: "Random" }
-], _o = [
+], qo = [
   { id: "hasSegments", label: "Has Segments", type: "bool", filterKey: "hasSegmentsCriterion" },
   { id: "reviewState", label: "Review State", type: "enum", filterKey: "reviewStateCriterion", modifiers: ["EQUALS"], options: [
     { value: "unreviewed", label: "Has unreviewed" },
@@ -3053,22 +3077,22 @@ const kn = {
   { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion" },
   { id: "studios", label: "Studios", type: "multiId", entityType: "studios", filterKey: "studiosCriterion", hierarchyToggleLabel: "Include sub-studios" }
 ];
-function Rn(e, t, r) {
+function An(e, t, r) {
   e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || (e.preventDefault(), t(r));
 }
-function Ua(e, t, r) {
+function _a(e, t, r) {
   e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || (e.preventDefault(), window.history.length > 1 ? window.history.back() : t(r));
 }
-function Ho(e, t = "value") {
+function Wo(e, t = "value") {
   return Array.isArray(e == null ? void 0 : e[t]) ? [...new Set(e[t].map(Number).filter((r) => Number.isInteger(r) && r > 0))] : [];
 }
 function Yn(e, t, r, o = null) {
-  const i = Ho(t), a = Ho(t, "excludes");
+  const i = Wo(t), a = Wo(t, "excludes");
   i.forEach((l) => e.append(r, String(l))), a.forEach((l) => e.append(`exclude${r[0].toUpperCase()}${r.slice(1)}`, String(l)));
   const s = { INCLUDES_ALL: "all", IS_NULL: "null", NOT_NULL: "not-null" }[t == null ? void 0 : t.modifier];
   s && e.set(`${r}Mode`, s), o && (t == null ? void 0 : t.depth) === -1 && (i.length > 0 || a.length > 0) && e.set(o, "true");
 }
-function Vl(e, t, r = null) {
+function ed(e, t, r = null) {
   var m, u, y;
   const o = new URLSearchParams();
   e.q && o.set("q", e.q), e.page && o.set("page", String(e.page)), e.perPage && o.set("perPage", String(e.perPage)), e.sort && o.set("sort", e.sort), e.direction && o.set("direction", e.direction), e.sort === "random" && Number.isInteger(e.seed) && e.seed > 0 && o.set("seed", String(e.seed));
@@ -3076,9 +3100,9 @@ function Vl(e, t, r = null) {
   typeof i == "boolean" ? o.set("hasSegments", String(i)) : t.segments === "has" ? o.set("hasSegments", "true") : t.segments === "none" && o.set("hasSegments", "false"), Yn(o, t.segmentTagsCriterion, "segmentTag", "includeSegmentSubtags"), Yn(o, t.tagsCriterion, "videoTag", "includeVideoSubtags"), Yn(o, t.performersCriterion, "performer"), Yn(o, t.studiosCriterion, "studio", "includeSubstudios");
   const a = Number(t.segmentTagId ?? t.tagId) || null;
   a && !o.has("segmentTag") && o.set("segmentTagId", String(a));
-  const s = qo(t.videoTagIds);
+  const s = Vo(t.videoTagIds);
   s.length > 0 && !o.has("videoTag") && o.set("videoTagIds", s.join(","));
-  const l = qo(t.performerIds);
+  const l = Vo(t.performerIds);
   l.length > 0 && !o.has("performer") && o.set("performerIds", l.join(","));
   const d = Number(t.studioId) || null;
   d && !o.has("studio") && o.set("studioId", String(d));
@@ -3087,12 +3111,12 @@ function Vl(e, t, r = null) {
   const g = (y = t.shotBoundariesCriterion) == null ? void 0 : y.value;
   return r && typeof g == "boolean" ? o.set("hasShotBoundaries", String(g)) : r && t.shotBoundaries === "has" ? o.set("hasShotBoundaries", "true") : r && t.shotBoundaries === "none" && o.set("hasShotBoundaries", "false"), o;
 }
-function qo(e) {
+function Vo(e) {
   const t = Array.isArray(e) ? e : String(e || "").split(",");
   return [...new Set(t.map(Number).filter((r) => Number.isInteger(r) && r > 0))];
 }
-function za({ item: e, showReviewStates: t = !1 }) {
-  return e.segmentCount === 0 ? n("div", { className: "text-[11px]" }, n(Oo, null, "No tag segments")) : t ? n("div", { className: "flex flex-wrap items-center gap-1 text-[11px]" }, Xe.flatMap((r) => {
+function Ha({ item: e, showReviewStates: t = !1 }) {
+  return e.segmentCount === 0 ? n("div", { className: "text-[11px]" }, n(Lo, null, "No tag segments")) : t ? n("div", { className: "flex flex-wrap items-center gap-1 text-[11px]" }, Xe.flatMap((r) => {
     const o = Number(e[`${r}Count`]) || 0;
     if (o === 0) return [];
     const i = mt[r];
@@ -3105,22 +3129,22 @@ function za({ item: e, showReviewStates: t = !1 }) {
   })) : n(
     "div",
     { className: "text-[11px]" },
-    n(Oo, null, `${e.segmentCount} tag segment${e.segmentCount === 1 ? "" : "s"}`)
+    n(Lo, null, `${e.segmentCount} tag segment${e.segmentCount === 1 ? "" : "s"}`)
   );
 }
-function Jl({ item: e, onNavigate: t, showReviewStates: r = !1 }) {
+function td({ item: e, onNavigate: t, showReviewStates: r = !1 }) {
   const o = { page: "segment-studio", id: e.videoId };
   return n("article", { className: "group relative flex min-h-full flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm transition-colors hover:border-accent/60" }, [
     n("a", {
       key: "link",
       href: `/segment-studio/${e.videoId}`,
-      onClick: (i) => Rn(i, t, o),
+      onClick: (i) => An(i, t, o),
       className: "absolute inset-0 z-[1] rounded-md focus:outline-none focus:ring-2 focus:ring-accent",
       "aria-label": `Open segment editor for ${e.title}`
     }),
     n("div", { key: "media", className: "relative aspect-video bg-black" }, [
       n("img", { key: "image", src: `/api/videos/${e.videoId}/image?maxDimension=640&v=${encodeURIComponent(e.updatedAt)}`, alt: "", loading: "lazy", className: "h-full w-full object-cover" }),
-      e.duration > 0 ? n("span", { key: "duration", className: "absolute bottom-1 right-1 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white" }, Ei(e.duration)) : null
+      e.duration > 0 ? n("span", { key: "duration", className: "absolute bottom-1 right-1 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white" }, Oi(e.duration)) : null
     ]),
     n("div", { key: "body", className: "flex flex-1 flex-col gap-1.5 p-2.5" }, [
       n("div", { key: "title", className: "line-clamp-2 text-sm font-semibold leading-snug text-foreground" }, e.title),
@@ -3129,57 +3153,57 @@ function Jl({ item: e, onNavigate: t, showReviewStates: r = !1 }) {
         e.organized ? n("span", { key: "organized" }, "Organized") : null,
         e.isVr ? n("span", { key: "vr" }, "VR") : null
       ]),
-      n("div", { key: "segments", className: "mt-auto border-t border-border/50 pt-1.5" }, n(za, { item: e, showReviewStates: r }))
+      n("div", { key: "segments", className: "mt-auto border-t border-border/50 pt-1.5" }, n(Ha, { item: e, showReviewStates: r }))
     ])
   ]);
 }
-function Yl({ item: e, onNavigate: t, showReviewStates: r = !1 }) {
+function nd({ item: e, onNavigate: t, showReviewStates: r = !1 }) {
   const o = { page: "segment-studio", id: e.videoId };
   return n("article", { className: "overflow-hidden rounded-md border border-border bg-card" }, n("a", {
     href: `/segment-studio/${e.videoId}`,
-    onClick: (i) => Rn(i, t, o),
+    onClick: (i) => An(i, t, o),
     className: "flex items-center gap-3 text-left hover:bg-muted/20 focus:outline-none focus:ring-2 focus:ring-accent",
     "aria-label": `Open segment editor for ${e.title}`
   }, [
     n("img", { key: "image", src: `/api/videos/${e.videoId}/image?maxDimension=320&v=${encodeURIComponent(e.updatedAt)}`, alt: "", loading: "lazy", className: "aspect-video h-20 shrink-0 bg-black object-cover" }),
     n("div", { key: "copy", className: "min-w-0 flex-1 py-2" }, [
       n("div", { key: "title", className: "truncate text-sm font-semibold text-foreground" }, e.title),
-      n(za, { key: "segments", item: e, showReviewStates: r })
+      n(Ha, { key: "segments", item: e, showReviewStates: r })
     ]),
     n("span", { key: "action", "aria-hidden": "true", className: "shrink-0 px-3 text-secondary" }, "›")
   ]));
 }
-function Wr({ active: e, onNavigate: t, showBin: r = !1, profile: o }) {
-  const i = Ms(o);
+function Vr({ active: e, onNavigate: t, showBin: r = !1, profile: o }) {
+  const i = Ps(o);
   return n("nav", { "aria-label": "Segment Studio", className: "flex items-end justify-between gap-3 border-b border-border" }, [
     n("div", { key: "tabs", className: "flex gap-1" }, i.map((a) => n("a", {
       key: a.key,
       href: a.href,
-      onClick: (s) => Rn(s, t, a.route),
+      onClick: (s) => An(s, t, a.route),
       "aria-current": e === a.key ? "page" : void 0,
       className: `border-b-2 px-4 py-2 text-sm font-semibold ${e === a.key ? "border-accent text-foreground" : "border-transparent text-secondary hover:text-foreground"}`
     }, a.label))),
     n("div", { key: "actions", className: "mb-1 flex items-center gap-2" }, [
-      r && Qt(
+      r && Zt(
         o,
-        wt.recyclingBinView
-      ) ? n(_a, { key: "bin", onNavigate: t }) : null,
-      n(Ha, { key: "settings", onNavigate: t })
+        kt.recyclingBinView
+      ) ? n(qa, { key: "bin", onNavigate: t }) : null,
+      n(Wa, { key: "settings", onNavigate: t })
     ])
   ]);
 }
-const Lr = "segment-studio:recycling-bin-changed";
-function Zl(e) {
+const Fr = "segment-studio:recycling-bin-changed";
+function rd(e) {
   if (e == null) return "Recycling bin";
   const t = Number(e);
   return !Number.isFinite(t) || t < 0 ? "Recycling bin" : `Recycling bin (${Math.trunc(t)})`;
 }
 function Nn() {
-  window.dispatchEvent(new CustomEvent(Lr));
+  window.dispatchEvent(new CustomEvent(Fr));
 }
-function _a({ onNavigate: e, compact: t = !1 }) {
-  const [r, o] = j(null);
-  ye(() => {
+function qa({ onNavigate: e, compact: t = !1 }) {
+  const [r, o] = L(null);
+  fe(() => {
     let a = !1, s = 0;
     const l = async () => {
       const c = ++s;
@@ -3192,29 +3216,29 @@ function _a({ onNavigate: e, compact: t = !1 }) {
     }, d = () => {
       l();
     };
-    return l(), window.addEventListener(Lr, d), window.addEventListener("focus", d), () => {
-      a = !0, window.removeEventListener(Lr, d), window.removeEventListener("focus", d);
+    return l(), window.addEventListener(Fr, d), window.addEventListener("focus", d), () => {
+      a = !0, window.removeEventListener(Fr, d), window.removeEventListener("focus", d);
     };
   }, []);
-  const i = Zl(r);
+  const i = rd(r);
   return n("a", {
     href: "/segment-studio/bin",
-    onClick: (a) => Rn(a, e, { page: "segment-studio", slug: "bin" }),
+    onClick: (a) => An(a, e, { page: "segment-studio", slug: "bin" }),
     "aria-label": r == null ? "Open recycling bin" : `Open recycling bin, ${r} item${r === 1 ? "" : "s"}`,
     className: `inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 ${t ? "text-xs" : "text-sm"} font-medium text-foreground hover:border-accent/60 hover:bg-muted/40`
   }, [n("span", { key: "icon", "aria-hidden": "true" }, "♲"), n("span", { key: "label" }, i)]);
 }
-function Ha({ onNavigate: e, compact: t = !1 }) {
+function Wa({ onNavigate: e, compact: t = !1 }) {
   return n("a", {
     href: "/segment-studio/settings",
-    onClick: (r) => Rn(r, e, { page: "segment-studio", slug: "settings" }),
+    onClick: (r) => An(r, e, { page: "segment-studio", slug: "settings" }),
     "aria-label": "Segment Studio settings",
     className: `inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 ${t ? "text-xs" : "text-sm"} font-medium text-foreground hover:border-accent/60 hover:bg-muted/40`
   }, [n("span", { key: "icon", "aria-hidden": "true" }, "⚙"), n("span", { key: "label" }, "Settings")]);
 }
-function Ql({ mode: e, onModeChange: t, disabled: r = !1 }) {
+function od({ mode: e, onModeChange: t, disabled: r = !1 }) {
   function o(i) {
-    const a = Er(i.target.value);
+    const a = Dr(i.target.value);
     t == null || t(a);
   }
   return n("label", { className: "block space-y-1 text-xs text-secondary" }, [
@@ -3232,24 +3256,24 @@ function Ql({ mode: e, onModeChange: t, disabled: r = !1 }) {
     n("span", { key: "help", className: "block max-w-sm" }, "Mode is saved to your Cove user account and applies across browsers.")
   ]);
 }
-function Xl({ minimum: e, maximum: t, onChange: r }) {
-  const o = pe(null), [i, a] = j("maximum"), s = (u, y) => {
-    const p = rs(e, t, u, y);
+function ad({ minimum: e, maximum: t, onChange: r }) {
+  const o = pe(null), [i, a] = L("maximum"), s = (u, y) => {
+    const p = as(e, t, u, y);
     a(p.coincidentTop), r({ minimum: p.minimum, maximum: p.maximum });
   }, l = (u, y) => {
-    var b;
-    const p = (b = o.current) == null ? void 0 : b.getBoundingClientRect();
-    p && s(u, ns(y.clientX, p.left, p.width));
+    var h;
+    const p = (h = o.current) == null ? void 0 : h.getBoundingClientRect();
+    p && s(u, os(y.clientX, p.left, p.width));
   }, d = (u, y) => {
-    var p, b;
-    y.preventDefault(), (b = (p = y.currentTarget).setPointerCapture) == null || b.call(p, y.pointerId), l(u, y);
+    var p, h;
+    y.preventDefault(), (h = (p = y.currentTarget).setPointerCapture) == null || h.call(p, y.pointerId), l(u, y);
   }, c = (u, y) => {
-    var p, b;
-    (b = (p = y.currentTarget).hasPointerCapture) != null && b.call(p, y.pointerId) && l(u, y);
+    var p, h;
+    (h = (p = y.currentTarget).hasPointerCapture) != null && h.call(p, y.pointerId) && l(u, y);
   }, g = (u, y) => {
-    const p = u === "minimum" ? e : t, b = u === "minimum" ? 0 : e, f = u === "minimum" ? t : 1, w = y.shiftKey ? 0.1 : 0.01;
+    const p = u === "minimum" ? e : t, h = u === "minimum" ? 0 : e, f = u === "minimum" ? t : 1, w = y.shiftKey ? 0.1 : 0.01;
     let v = null;
-    ["ArrowLeft", "ArrowDown"].includes(y.key) && (v = p - w), ["ArrowRight", "ArrowUp"].includes(y.key) && (v = p + w), y.key === "PageDown" && (v = p - 0.1), y.key === "PageUp" && (v = p + 0.1), y.key === "Home" && (v = b), y.key === "End" && (v = f), v != null && (y.preventDefault(), s(u, Math.min(f, Math.max(b, v))));
+    ["ArrowLeft", "ArrowDown"].includes(y.key) && (v = p - w), ["ArrowRight", "ArrowUp"].includes(y.key) && (v = p + w), y.key === "PageDown" && (v = p - 0.1), y.key === "PageUp" && (v = p + 0.1), y.key === "Home" && (v = h), y.key === "End" && (v = f), v != null && (y.preventDefault(), s(u, Math.min(f, Math.max(h, v))));
   }, m = (u, y) => n("span", {
     key: u,
     role: "slider",
@@ -3293,9 +3317,9 @@ function Xl({ minimum: e, maximum: t, onChange: r }) {
     )
   ]);
 }
-function ed({ saving: e, error: t, onSelect: r, onClose: o }) {
+function id({ saving: e, error: t, onSelect: r, onClose: o }) {
   const i = pe(null);
-  ye(() => {
+  fe(() => {
     var l;
     const s = (l = i.current) == null ? void 0 : l.querySelector("input");
     s == null || s.focus({ preventScroll: !0 });
@@ -3315,7 +3339,7 @@ function ed({ saving: e, error: t, onSelect: r, onClose: o }) {
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-first-segment-tag-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "w-full max-w-lg space-y-4 rounded-lg border border-border bg-card p-5 shadow-2xl"
   }, [
     n("header", { key: "header", className: "space-y-1" }, [
@@ -3354,7 +3378,7 @@ function ed({ saving: e, error: t, onSelect: r, onClose: o }) {
     }, e ? "Creating…" : "Cancel"))
   ]));
 }
-function td({
+function sd({
   filters: e,
   hideDerivedSegments: t,
   performers: r,
@@ -3372,7 +3396,7 @@ function td({
     f.tagName || `Tag ${f.tagId}`
   ])).entries()].sort((f, w) => f[1].localeCompare(w[1]) || f[0] - w[0]), y = (f) => d(dt({ ...m, ...f })), p = (f) => y({
     reviewStates: m.reviewStates.includes(f) ? m.reviewStates.filter((w) => w !== f) : [...m.reviewStates, f]
-  }), b = (f) => `rounded-md border px-2.5 py-1.5 text-xs font-medium ${f ? "border-accent bg-accent/20 text-foreground" : "border-border bg-card text-secondary hover:bg-muted/40"}`;
+  }), h = (f) => `rounded-md border px-2.5 py-1.5 text-xs font-medium ${f ? "border-accent bg-accent/20 text-foreground" : "border-border bg-card text-secondary hover:bg-muted/40"}`;
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
     onMouseDown: (f) => {
@@ -3384,7 +3408,7 @@ function td({
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-editor-filters-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
   }, [
     n("header", { key: "header", className: "flex items-start justify-between gap-4 border-b border-border px-5 py-4" }, [
@@ -3415,7 +3439,7 @@ function td({
             type: "button",
             onClick: () => p(f),
             "aria-pressed": w,
-            className: b(w)
+            className: h(w)
           }, `${v.symbol} ${f} (${i[f] || 0})`);
         }))
       ]) : null,
@@ -3428,7 +3452,7 @@ function td({
             type: "button",
             onClick: () => y({ performerId: null }),
             "aria-pressed": m.performerId == null,
-            className: b(m.performerId == null)
+            className: h(m.performerId == null)
           }, "All performers"),
           ...r.map((f) => {
             const w = Number(Ve(f));
@@ -3437,7 +3461,7 @@ function td({
               type: "button",
               onClick: () => y({ performerId: w }),
               "aria-pressed": m.performerId === w,
-              className: b(m.performerId === w)
+              className: h(m.performerId === w)
             }, f.name);
           })
         ])
@@ -3484,7 +3508,7 @@ function td({
             type: "button",
             onClick: () => y({ sourceKey: null }),
             "aria-pressed": m.sourceKey == null,
-            className: b(m.sourceKey == null)
+            className: h(m.sourceKey == null)
           }, "All provenance"),
           ...o.map((f) => n("button", {
             key: f,
@@ -3492,7 +3516,7 @@ function td({
             onClick: () => y({ sourceKey: f }),
             "aria-pressed": m.sourceKey === f,
             title: f,
-            className: b(m.sourceKey === f)
+            className: h(m.sourceKey === f)
           }, gt(f)))
         ])
       ]),
@@ -3503,7 +3527,7 @@ function td({
           { className: "text-xs text-secondary" },
           "The confidence range applies only to AI segments that record confidence; manual and unscored segments remain visible."
         ),
-        n(Xl, {
+        n(ad, {
           minimum: m.confidenceMin,
           maximum: m.confidenceMax,
           onChange: ({ minimum: f, maximum: w }) => y({
@@ -3535,7 +3559,7 @@ function td({
           onChange: (f) => c(f.target.checked),
           className: "h-4 w-4 accent-[var(--color-accent)]"
         }),
-        n(Hl, { key: "icon", hidden: t }),
+        n(Ql, { key: "icon", hidden: t }),
         n("span", { key: "label" }, "Hide derived segments")
       ]) : null
     ]),
@@ -3557,14 +3581,14 @@ function td({
     ])
   ]));
 }
-function nd({ reviewMode: e, bindings: t, onClose: r }) {
-  const o = An.filter((l) => Zt(l, e)), i = wo(o, 1)[0], a = wo(o), s = ({ category: l, shortcuts: d }) => {
+function ld({ reviewMode: e, bindings: t, onClose: r }) {
+  const o = Mn.filter((l) => Qt(l, e)), i = Io(o, 1)[0], a = Io(o), s = ({ category: l, shortcuts: d }) => {
     const c = d.map((g) => n("div", { key: g.id, className: "flex items-center justify-between text-sm" }, [
       n("span", { key: "description", className: "min-w-0 flex-1 text-foreground" }, g.description),
       n(
         "span",
         { key: "bindings", className: "ml-4 flex shrink-0 flex-wrap justify-end gap-2" },
-        (t[g.id] ? t[g.id].length > 0 ? t[g.id] : ["Unassigned"] : g.bindings.map(ha)).map((m, u) => n("kbd", { key: `${g.id}:${u}`, className: "rounded bg-surface px-2 py-0.5 font-mono text-xs text-foreground" }, m))
+        (t[g.id] ? t[g.id].length > 0 ? t[g.id] : ["Unassigned"] : g.bindings.map(xa)).map((m, u) => n("kbd", { key: `${g.id}:${u}`, className: "rounded bg-surface px-2 py-0.5 font-mono text-xs text-foreground" }, m))
       )
     ]));
     return n("section", { key: l, className: "space-y-2", "aria-label": `${l} shortcuts` }, [
@@ -3598,7 +3622,7 @@ function nd({ reviewMode: e, bindings: t, onClose: r }) {
     ])
   ]));
 }
-function rd({
+function dd({
   examples: e,
   exporting: t,
   removingExampleId: r,
@@ -3606,8 +3630,8 @@ function rd({
   onRemove: i,
   onClose: a
 }) {
-  const s = $l(e), [l, d] = j([]), c = s.map((g) => g.tagName).join("|");
-  return ye(() => {
+  const s = Dl(e), [l, d] = L([]), c = s.map((g) => g.tagName).join("|");
+  return fe(() => {
     const g = new Set(s.map((m) => m.tagName));
     d((m) => m.filter((u) => g.has(u)));
   }, [c]), n("div", {
@@ -3623,7 +3647,7 @@ function rd({
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-examples-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
     style: { maxHeight: "calc(100dvh - 2rem)" }
   }, [
@@ -3643,7 +3667,7 @@ function rd({
             type: "button",
             "aria-expanded": u,
             "aria-controls": y,
-            onClick: () => d((p) => u ? p.filter((b) => b !== g.tagName) : [...p, g.tagName]),
+            onClick: () => d((p) => u ? p.filter((h) => h !== g.tagName) : [...p, g.tagName]),
             className: "flex w-full items-center gap-2 px-3 py-2 text-left",
             style: { background: or(!1) }
           }, [
@@ -3668,7 +3692,7 @@ function rd({
             id: y,
             className: "divide-y divide-border border-t border-border"
           }, g.examples.map((p) => {
-            const b = `${Ie(p.startSec)}${p.endSec == null ? "" : ` – ${Ie(p.endSec)}`}`, f = r === p.id;
+            const h = `${$e(p.startSec)}${p.endSec == null ? "" : ` – ${$e(p.endSec)}`}`, f = r === p.id;
             return n("div", {
               key: p.id,
               className: "flex items-center justify-between gap-3 px-3 py-2 text-sm"
@@ -3676,14 +3700,14 @@ function rd({
               n(
                 "span",
                 { key: "time", className: "font-mono text-xs text-secondary" },
-                b
+                h
               ),
               n("button", {
                 key: "remove",
                 type: "button",
                 disabled: t || r != null,
                 onClick: () => i(p),
-                "aria-label": `${f ? "Restoring" : "Restore to review"} ${g.tagName} example at ${b}`,
+                "aria-label": `${f ? "Restoring" : "Restore to review"} ${g.tagName} example at ${h}`,
                 className: "rounded border border-border px-2 py-1 text-xs font-medium disabled:opacity-50"
               }, f ? "Restoring…" : "Restore to review")
             ]);
@@ -3715,9 +3739,9 @@ function rd({
     ])
   ]));
 }
-function od({ segments: e, onSelect: t, onClose: r }) {
-  const [o, i] = j(""), [a, s] = j(0), l = pe(null), d = Be(() => Ks(e, o), [e, o]), c = Math.min(a, Math.max(0, d.length - 1)), g = zs(d);
-  ye(() => {
+function cd({ segments: e, onSelect: t, onClose: r }) {
+  const [o, i] = L(""), [a, s] = L(0), l = pe(null), d = Ge(() => Ws(e, o), [e, o]), c = Math.min(a, Math.max(0, d.length - 1)), g = Js(d);
+  fe(() => {
     var u;
     (u = l.current) == null || u.scrollIntoView({ block: "nearest" });
   }, [c, o]);
@@ -3739,13 +3763,13 @@ function od({ segments: e, onSelect: t, onClose: r }) {
     onKeyDownCapture: (u) => {
       var y;
       if (u.key === "Tab")
-        bt(u);
+        yt(u);
       else if (u.key === "Escape")
         u.preventDefault(), u.stopPropagation(), r();
       else if (u.key === "ArrowDown" || u.key === "ArrowUp") {
         u.preventDefault(), u.stopPropagation();
         const p = u.key === "ArrowDown" ? 1 : -1;
-        s((b) => d.length ? (b + p + d.length) % d.length : 0);
+        s((h) => d.length ? (h + p + d.length) % d.length : 0);
       } else u.key === "Enter" && !((y = u.nativeEvent) != null && y.isComposing) && (u.preventDefault(), u.stopPropagation(), m());
     }
   }, [
@@ -3777,8 +3801,8 @@ function od({ segments: e, onSelect: t, onClose: r }) {
       "aria-label": "Matching segments",
       className: "min-h-0 flex-1 overflow-y-auto p-2"
     }, d.length ? d.flatMap((u, y) => {
-      var R;
-      const p = u.segment || u, b = p.endSec == null ? Ie(p.startSec) : `${Ie(p.startSec)} – ${Ie(p.endSec)}`, f = `${gt(p.sourceKey)}${p.confidence == null ? "" : ` · ${Math.round(p.confidence * 100)}%`}`, w = y === c, v = y > 0 ? d[y - 1].groupKey : null, N = g && u.groupKey !== v ? n("div", {
+      var j;
+      const p = u.segment || u, h = p.endSec == null ? $e(p.startSec) : `${$e(p.startSec)} – ${$e(p.endSec)}`, f = `${gt(p.sourceKey)}${p.confidence == null ? "" : ` · ${Math.round(p.confidence * 100)}%`}`, w = y === c, v = y > 0 ? d[y - 1].groupKey : null, N = g && u.groupKey !== v ? n("div", {
         key: `group:${u.groupKey}`,
         role: "presentation",
         className: "mb-1 mt-2 rounded-md border border-border bg-muted/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-secondary first:mt-0"
@@ -3794,13 +3818,13 @@ function od({ segments: e, onSelect: t, onClose: r }) {
         className: `mb-1 flex w-full min-w-0 items-center gap-1.5 rounded-md border px-2 py-1.5 text-left last:mb-0 ${w ? "border-accent bg-accent/15" : "border-border bg-surface hover:bg-muted/40"}`
       }, [
         g ? n("span", { key: "group", className: "sr-only" }, `${u.groupName} group`) : null,
-        n(Ft, { key: "review", state: p.reviewState, includeLabel: !1 }),
+        n(jt, { key: "review", state: p.reviewState, includeLabel: !1 }),
         n(
           "span",
           { key: "tag", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" },
           p.tagName || "Tag segment"
         ),
-        (R = u.performers) != null && R.length ? n(ir, {
+        (j = u.performers) != null && j.length ? n(ir, {
           key: "performers",
           performers: u.performers,
           performerAssignments: u.performerAssignments
@@ -3808,7 +3832,7 @@ function od({ segments: e, onSelect: t, onClose: r }) {
         n(
           "span",
           { key: "time", className: "shrink-0 whitespace-nowrap font-mono text-[10px] text-secondary" },
-          b
+          h
         ),
         n("span", {
           key: "provenance",
@@ -3820,7 +3844,7 @@ function od({ segments: e, onSelect: t, onClose: r }) {
     }) : n("p", { className: "p-6 text-center text-sm text-secondary" }, "No visible segments match that search."))
   ]));
 }
-function ad(e) {
+function ud(e) {
   const t = /* @__PURE__ */ new Map();
   for (const r of e || []) {
     if (r.published || r.reviewState !== "approved") continue;
@@ -3836,7 +3860,7 @@ function ad(e) {
     drafts: r.drafts.sort((o, i) => o.startSec - i.startSec || String(o.id).localeCompare(String(i.id)))
   })).sort((r, o) => r.tagName.localeCompare(o.tagName) || r.key.localeCompare(o.key));
 }
-function id({
+function md({
   drafts: e,
   processing: t,
   error: r,
@@ -3844,7 +3868,7 @@ function id({
   onConfirm: i,
   onClose: a
 }) {
-  const s = Be(() => ad(e), [e]), [l, d] = j([]), c = s.reduce((u, y) => u + y.drafts.length, 0), g = (u) => d((y) => y.includes(u) ? y.filter((p) => p !== u) : [...y, u]), m = (u) => `segment-studio-publish-approved-${u.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const s = Ge(() => ud(e), [e]), [l, d] = L([]), c = s.reduce((u, y) => u + y.drafts.length, 0), g = (u) => d((y) => y.includes(u) ? y.filter((p) => p !== u) : [...y, u]), m = (u) => `segment-studio-publish-approved-${u.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
     onMouseDown: (u) => {
@@ -3859,7 +3883,7 @@ function id({
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-publish-approved-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
     style: { maxHeight: "calc(100dvh - 2rem)" }
   }, [
@@ -3909,10 +3933,10 @@ function id({
             id: m(u),
             className: "divide-y divide-border border-t border-border"
           }, u.drafts.map((p) => {
-            const b = p.endSec == null ? Ie(p.startSec) : `${Ie(p.startSec)} – ${Ie(p.endSec)}`, f = `${gt(p.sourceKey)}${p.confidence == null ? "" : ` · ${Math.round(p.confidence * 100)}%`}`;
+            const h = p.endSec == null ? $e(p.startSec) : `${$e(p.startSec)} – ${$e(p.endSec)}`, f = `${gt(p.sourceKey)}${p.confidence == null ? "" : ` · ${Math.round(p.confidence * 100)}%`}`;
             return n("div", { key: p.id, className: "flex min-w-0 items-center gap-1.5 bg-card px-2 py-1.5" }, [
-              n(Ft, { key: "review", state: p.reviewState, includeLabel: !1 }),
-              n("span", { key: "time", className: "min-w-0 flex-1 whitespace-nowrap font-mono text-xs text-foreground" }, b),
+              n(jt, { key: "review", state: p.reviewState, includeLabel: !1 }),
+              n("span", { key: "time", className: "min-w-0 flex-1 whitespace-nowrap font-mono text-xs text-foreground" }, h),
               n("span", {
                 key: "provenance",
                 className: "max-w-36 shrink truncate text-right text-[10px] text-secondary",
@@ -3948,21 +3972,21 @@ function id({
     ])
   ]));
 }
-function sd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }) {
-  const a = Gs(e), [s, l] = j(() => /* @__PURE__ */ new Set()), [d, c] = j(() => new Set(a.map((b) => b.key))), g = a.flatMap((b) => d.has(b.key) ? b.candidates : []), m = (b) => l((f) => {
+function gd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }) {
+  const a = qs(e), [s, l] = L(() => /* @__PURE__ */ new Set()), [d, c] = L(() => new Set(a.map((h) => h.key))), g = a.flatMap((h) => d.has(h.key) ? h.candidates : []), m = (h) => l((f) => {
     const w = new Set(f);
-    return w.has(b) ? w.delete(b) : w.add(b), w;
-  }), u = (b) => c((f) => {
+    return w.has(h) ? w.delete(h) : w.add(h), w;
+  }), u = (h) => c((f) => {
     const w = new Set(f);
-    return w.has(b) ? w.delete(b) : w.add(b), w;
-  }), y = (b) => b.assignment.map(({ slot: f, performer: w }) => `${f.label || `Slot ${f.sortOrder + 1}`}: ${w.name}`).join(", "), p = (b) => `segment-studio-auto-assign-${b.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    return w.has(h) ? w.delete(h) : w.add(h), w;
+  }), y = (h) => h.assignment.map(({ slot: f, performer: w }) => `${f.label || `Slot ${f.sortOrder + 1}`}: ${w.name}`).join(", "), p = (h) => `segment-studio-auto-assign-${h.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
-    onMouseDown: (b) => {
-      b.target === b.currentTarget && !t && i();
+    onMouseDown: (h) => {
+      h.target === h.currentTarget && !t && i();
     },
-    onKeyDownCapture: (b) => {
-      b.key === "Enter" && b.target instanceof HTMLInputElement || ot(b, {
+    onKeyDownCapture: (h) => {
+      h.key === "Enter" && h.target instanceof HTMLInputElement || ot(h, {
         onCancel: t ? void 0 : i,
         onConfirm: g.length && !t ? () => o(g) : void 0
       });
@@ -3972,7 +3996,7 @@ function sd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-auto-assign-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
   }, [
     n("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
@@ -3986,7 +4010,7 @@ function sd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }
     n(
       "div",
       { key: "body", className: "min-h-0 flex-1 overflow-y-auto p-5" },
-      e.length ? n("div", { className: "space-y-3" }, a.map((b) => n("section", { key: b.key, className: "overflow-hidden rounded-md border border-border bg-surface" }, [
+      e.length ? n("div", { className: "space-y-3" }, a.map((h) => n("section", { key: h.key, className: "overflow-hidden rounded-md border border-border bg-surface" }, [
         n("header", {
           key: "header",
           className: "flex min-w-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2",
@@ -3995,31 +4019,31 @@ function sd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }
           n("input", {
             key: "selected",
             type: "checkbox",
-            checked: d.has(b.key),
+            checked: d.has(h.key),
             disabled: t,
-            onChange: () => u(b.key),
-            "aria-label": `Include ${b.tagName} assignment: ${y(b)}`,
+            onChange: () => u(h.key),
+            "aria-label": `Include ${h.tagName} assignment: ${y(h)}`,
             className: "h-4 w-4 shrink-0 accent-violet-500"
           }),
           n("button", {
             key: "toggle",
             type: "button",
             disabled: t,
-            "aria-expanded": s.has(b.key),
-            "aria-controls": p(b),
-            "aria-label": `${s.has(b.key) ? "Collapse" : "Expand"} ${b.tagName} assignment: ${y(b)}`,
-            onClick: () => m(b.key),
+            "aria-expanded": s.has(h.key),
+            "aria-controls": p(h),
+            "aria-label": `${s.has(h.key) ? "Collapse" : "Expand"} ${h.tagName} assignment: ${y(h)}`,
+            onClick: () => m(h.key),
             className: "shrink-0 rounded px-1 text-sm text-secondary hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
-          }, s.has(b.key) ? "▾" : "▸"),
+          }, s.has(h.key) ? "▾" : "▸"),
           n(
             "span",
             { key: "tag", className: "min-w-24 flex-1 truncate text-sm font-semibold text-foreground" },
-            b.tagName
+            h.tagName
           ),
           n(
             "span",
             { key: "performers", className: "flex min-w-0 flex-wrap items-center gap-2" },
-            b.assignment.map(({ slot: f, performer: w }) => {
+            h.assignment.map(({ slot: f, performer: w }) => {
               const v = f.label || `Slot ${f.sortOrder + 1}`;
               return n("span", {
                 key: f.slotDefinitionId,
@@ -4040,26 +4064,26 @@ function sd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }
               ]);
             })
           ),
-          n($t, { key: "states", counts: b.counts }),
+          n(Tt, { key: "states", counts: h.counts }),
           n("button", {
             key: "assign-group",
             type: "button",
             disabled: t,
-            onClick: () => o(b.candidates),
-            "aria-label": `Auto-Assign ${b.tagName}: ${y(b)}`,
+            onClick: () => o(h.candidates),
+            "aria-label": `Auto-Assign ${h.tagName}: ${y(h)}`,
             className: "shrink-0 rounded-md border border-violet-400/60 bg-violet-500/15 px-2 py-1 text-[10px] font-medium text-foreground hover:bg-violet-500/25 disabled:opacity-50"
-          }, `Auto-Assign (${b.candidates.length})`)
+          }, `Auto-Assign (${h.candidates.length})`)
         ]),
-        s.has(b.key) ? n(
+        s.has(h.key) ? n(
           "div",
-          { key: "segments", id: p(b), className: "divide-y divide-border/70" },
-          b.candidates.map((f) => {
-            const w = f.endSec == null ? Ie(f.startSec) : `${Ie(f.startSec)} – ${Ie(f.endSec)}`, v = `${gt(f.sourceKey)}${f.confidence == null ? "" : ` · ${Math.round(f.confidence * 100)}%`}`;
+          { key: "segments", id: p(h), className: "divide-y divide-border/70" },
+          h.candidates.map((f) => {
+            const w = f.endSec == null ? $e(f.startSec) : `${$e(f.startSec)} – ${$e(f.endSec)}`, v = `${gt(f.sourceKey)}${f.confidence == null ? "" : ` · ${Math.round(f.confidence * 100)}%`}`;
             return n("div", {
               key: f.id,
               className: "flex min-w-0 items-center gap-1.5 bg-card px-2 py-1.5"
             }, [
-              n(Ft, { key: "review", state: f.reviewState, includeLabel: !1 }),
+              n(jt, { key: "review", state: f.reviewState, includeLabel: !1 }),
               n(
                 "span",
                 { key: "tag", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" },
@@ -4098,7 +4122,7 @@ function sd({ candidates: e, processing: t, error: r, onConfirm: o, onClose: i }
     ])
   ]));
 }
-function ld({ preview: e, onConfirm: t, onClose: r }) {
+function pd({ preview: e, onConfirm: t, onClose: r }) {
   const o = Number(e.selectedSegmentCount) || 0, i = Number(e.dependentSegmentCount) || 0, a = Number(e.deletedSegmentCount) || o + i, s = Number(e.retainedSharedSegmentCount) || 0, l = Number(e.deferredRejectedSegmentCount) || 0;
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
@@ -4111,7 +4135,7 @@ function ld({ preview: e, onConfirm: t, onClose: r }) {
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-delete-rejected-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
   }, [
     n("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
@@ -4133,7 +4157,7 @@ function ld({ preview: e, onConfirm: t, onClose: r }) {
     ])
   ]));
 }
-function dd({
+function fd({
   merge: e,
   processing: t,
   undoable: r = !1,
@@ -4141,9 +4165,9 @@ function dd({
   onConfirm: i,
   onClose: a
 }) {
-  const [s, l] = j(!1);
+  const [s, l] = L(!1);
   if (!e) return null;
-  const d = e.endSec == null ? "open end" : Ie(e.endSec);
+  const d = e.endSec == null ? "open end" : $e(e.endSec);
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
     onMouseDown: (c) => {
@@ -4158,7 +4182,7 @@ function dd({
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-merge-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "w-full max-w-lg rounded-lg border border-border bg-card shadow-2xl"
   }, [
     n("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
@@ -4170,7 +4194,7 @@ function dd({
       n(
         "p",
         { key: "range", className: "mt-1 font-mono text-xs text-secondary" },
-        `${Ie(e.startSec)} – ${d}`
+        `${$e(e.startSec)} – ${d}`
       )
     ]),
     n("div", { key: "body", className: "space-y-3 px-5 py-4 text-sm text-secondary" }, [
@@ -4215,7 +4239,7 @@ function dd({
     ])
   ]));
 }
-function cd(e) {
+function yd(e) {
   const t = /* @__PURE__ */ new Map();
   for (const r of e || []) {
     const o = String(r.rootItemId || `${r.rootTagName}:${r.rootStartSec}`);
@@ -4228,9 +4252,9 @@ function cd(e) {
   }
   return [...t.values()];
 }
-function ud({ preview: e, loading: t, processing: r, error: o, cancelButtonRef: i, onConfirm: a, onClose: s }) {
+function bd({ preview: e, loading: t, processing: r, error: o, cancelButtonRef: i, onConfirm: a, onClose: s }) {
   var g, m;
-  const l = e ? e.createCount + e.linkCount : 0, d = ((g = e == null ? void 0 : e.outputs) == null ? void 0 : g.slice(0, 200)) || [], c = cd(d);
+  const l = e ? e.createCount + e.linkCount : 0, d = ((g = e == null ? void 0 : e.outputs) == null ? void 0 : g.slice(0, 200)) || [], c = yd(d);
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
     onMouseDown: (u) => {
@@ -4245,7 +4269,7 @@ function ud({ preview: e, loading: t, processing: r, error: o, cancelButtonRef: 
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-materialize-derived-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl",
     style: { maxHeight: "calc(100dvh - 2rem)" }
   }, [
@@ -4285,7 +4309,7 @@ function ud({ preview: e, loading: t, processing: r, error: o, cancelButtonRef: 
               n(
                 "span",
                 { key: "tag", className: "min-w-0 flex-1 truncate text-sm font-semibold text-foreground" },
-                `${u.rootTagName} @ ${Ie(u.rootStartSec)}`
+                `${u.rootTagName} @ ${$e(u.rootStartSec)}`
               ),
               n(
                 "span",
@@ -4341,7 +4365,7 @@ function ud({ preview: e, loading: t, processing: r, error: o, cancelButtonRef: 
     ])
   ]));
 }
-function md({
+function hd({
   compatibilityMode: e,
   selectedSegment: t,
   selectedSegments: r = [],
@@ -4357,71 +4381,72 @@ function md({
   detail: u,
   video: y,
   slotButtonRef: p,
-  tagSearchRef: b,
+  tagSearchRef: h,
   onDetailChange: f,
   setSaveMessage: w,
   setSavingSegmentId: v,
   onSlotsChanged: N,
   onRecordHistory: W,
-  splitSegment: R,
-  duplicateSegment: _,
-  provenance: A,
-  lineage: $,
-  onNavigateLineageItem: O,
-  tagEditing: D,
-  onCancelTagEditing: U,
-  detailPanelRef: P,
-  onReduceSelection: V
+  onCancelQueuedReview: j,
+  splitSegment: F,
+  duplicateSegment: T,
+  provenance: M,
+  lineage: E,
+  onNavigateLineageItem: R,
+  tagEditing: U,
+  onCancelTagEditing: D,
+  detailPanelRef: V,
+  onReduceSelection: I
 }) {
-  var Q, oe, fe, ie;
-  const I = pe(null), C = pe(null), F = pe(null), re = pe(null), ee = pe(null), [we, ce] = j(!1);
-  ye(() => {
-    I.current && (I.current.scrollTop = 0), ce(!1);
-  }, [t == null ? void 0 : t.id]), ye(() => {
-    var B, ue;
-    we && ((ue = (B = C.current) == null ? void 0 : B.querySelector("input, select, button")) == null || ue.focus({ preventScroll: !0 }));
-  }, [we]);
-  function T() {
-    ce(!1), requestAnimationFrame(() => {
-      var B;
-      return (B = p.current) == null ? void 0 : B.focus({ preventScroll: !0 });
+  var de, oe, xe, ke;
+  const $ = pe(null), P = pe(null), J = pe(null), se = pe(null), me = pe(null), [ge, B] = L(!1);
+  fe(() => {
+    $.current && ($.current.scrollTop = 0), B(!1);
+  }, [t == null ? void 0 : t.id]), fe(() => {
+    var z, te;
+    ge && ((te = (z = P.current) == null ? void 0 : z.querySelector("input, select, button")) == null || te.focus({ preventScroll: !0 }));
+  }, [ge]);
+  function Q() {
+    B(!1), requestAnimationFrame(() => {
+      var z;
+      return (z = p.current) == null ? void 0 : z.focus({ preventScroll: !0 });
     });
   }
   if (r.length > 1) {
-    const B = !r.some((Y) => Y.isDerived), ue = e && c ? sl(m, r) : null, Me = (ue == null ? void 0 : ue.map((Y, Se) => {
-      var K;
-      const h = r[Se];
+    const z = !r.some((le) => le.isDerived), te = e && c ? gl(m, r) : null, X = (te == null ? void 0 : te.map((le, b) => {
+      var C;
+      const K = r[b];
       return {
-        segmentId: h.nativeSegmentId,
-        itemId: h.published ? null : h.itemId,
-        revision: (K = u.performerSlotRevisions) == null ? void 0 : K[h.id],
-        slots: Y
+        segmentId: K.nativeSegmentId,
+        itemId: K.published ? null : K.itemId,
+        revision: (C = u.performerSlotRevisions) == null ? void 0 : C[K.id],
+        slots: le
       };
     })) || [];
-    return n(Fr.Fragment, null, [
-      n(Wl, {
+    return n(jr.Fragment, null, [
+      n(Xl, {
         key: "details",
         selectedGroups: o,
         selectedSegments: r,
         activeSegmentId: t == null ? void 0 : t.id,
-        detailPanelRef: P,
-        onReduceSelection: V,
+        detailPanelRef: V,
+        onReduceSelection: I,
         reviewable: e,
-        tagEditable: B,
-        slotsEditable: Me.length > 0 && a == null,
-        onEditSlots: () => ce(!0),
+        tagEditable: z,
+        slotsEditable: X.length > 0 && a == null,
+        onEditSlots: () => B(!0),
         slotButtonRef: p,
         saveMessage: i
       }),
-      D && B ? n("div", {
+      U && z ? n("div", {
         key: "multi-tag-dialog-overlay",
         className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
-        onMouseDown: (Y) => {
-          Y.target === Y.currentTarget && U();
+        onMouseDown: (le) => {
+          le.target === le.currentTarget && D();
         },
-        onKeyDownCapture: (Y) => ot(Y, { onCancel: U })
+        onKeyDownCapture: (le) => ot(le, { onCancel: D })
       }, n("section", {
-        ref: b,
+        ref: h,
         role: "dialog",
         "aria-modal": "true",
         "aria-labelledby": "segment-studio-multi-tag-dialog-title",
@@ -4445,7 +4470,7 @@ function md({
           value: null,
           selectedDisplay: "input",
           selectedLabel: "",
-          onChange: (Y, Se) => Y == null ? U() : s(Y, Se == null ? void 0 : Se.label),
+          onChange: (le, b) => le == null ? D() : s(le, b == null ? void 0 : b.label),
           disabled: a != null,
           placeholder: "Find a tag…",
           inputClassName: "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground",
@@ -4455,26 +4480,26 @@ function md({
         n("button", {
           key: "cancel",
           type: "button",
-          onClick: U,
+          onClick: D,
           className: "rounded-md border border-border px-3 py-1.5 text-sm text-secondary hover:bg-muted/40"
         }, "Cancel")
       ])) : null,
-      we && Me.length > 0 ? n("div", {
+      ge && X.length > 0 ? n("div", {
         key: "performer-slot-dialog-overlay",
         className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
-        onMouseDown: (Y) => {
-          Y.target === Y.currentTarget && T();
+        onMouseDown: (le) => {
+          le.target === le.currentTarget && Q();
         },
-        onKeyDownCapture: (Y) => {
-          var h, K;
-          if (!(typeof ((h = Y.target) == null ? void 0 : h.closest) == "function" ? Y.target.closest("input, textarea, select, [contenteditable='true']") : null) && !Y.repeat && !Y.ctrlKey && !Y.altKey && !Y.metaKey && !Y.shiftKey && /^[1-9]$/.test(Y.key) && ((K = ee.current) != null && K.call(ee, Number(Y.key) - 1))) {
-            Y.preventDefault(), Y.stopPropagation();
+        onKeyDownCapture: (le) => {
+          var K, C;
+          if (!(typeof ((K = le.target) == null ? void 0 : K.closest) == "function" ? le.target.closest("input, textarea, select, [contenteditable='true']") : null) && !le.repeat && !le.ctrlKey && !le.altKey && !le.metaKey && !le.shiftKey && /^[1-9]$/.test(le.key) && ((C = me.current) != null && C.call(me, Number(le.key) - 1))) {
+            le.preventDefault(), le.stopPropagation();
             return;
           }
-          ot(Y, { onCancel: T });
+          ot(le, { onCancel: Q });
         }
       }, n("section", {
-        ref: C,
+        ref: P,
         role: "dialog",
         "aria-modal": "true",
         "aria-labelledby": "segment-studio-multi-slot-dialog-title",
@@ -4486,20 +4511,20 @@ function md({
             n("h2", { key: "title", id: "segment-studio-multi-slot-dialog-title", className: "text-base font-semibold text-foreground" }, "Performer slots"),
             n("p", { key: "description", className: "mt-0.5 text-xs text-secondary" }, "Assign the shared performer-slot shape across the selection.")
           ]),
-          n("button", { key: "close", type: "button", onClick: T, className: "rounded-md border border-border px-2 py-1 text-sm text-secondary hover:bg-muted/40", "aria-label": "Close performer slots" }, "×")
+          n("button", { key: "close", type: "button", onClick: Q, className: "rounded-md border border-border px-2 py-1 text-sm text-secondary hover:bg-muted/40", "aria-label": "Close performer slots" }, "×")
         ]),
-        n("div", { key: "body", className: "min-h-0 overflow-y-auto p-4" }, n(zl, {
+        n("div", { key: "body", className: "min-h-0 overflow-y-auto p-4" }, n(Jl, {
           videoId: y.id,
-          targets: Me,
+          targets: X,
           performerCandidates: u.performerCandidates || [],
-          shortcutRef: ee,
-          onSaved: async ({ beforeState: Y, afterState: Se }) => {
+          shortcutRef: me,
+          onSaved: async ({ beforeState: le, afterState: b }) => {
             await W(
               "performer-slots.assign",
-              `Assigned performers to ${Me.length} segments`,
-              Y,
-              Se
-            ), T(), N();
+              `Assigned performers to ${X.length} segments`,
+              le,
+              b
+            ), Q(), N();
           },
           onConflict: N
         }))
@@ -4507,8 +4532,8 @@ function md({
     ]);
   }
   return n("div", {
-    ref: (B) => {
-      I.current = B, P && (P.current = B);
+    ref: (z) => {
+      $.current = z, V && (V.current = z);
     },
     tabIndex: -1,
     role: "region",
@@ -4518,25 +4543,25 @@ function md({
   }, [
     n("div", { key: "selected-header", className: "min-w-0 space-y-1.5" }, [
       n("div", { key: "title-row", className: "flex min-w-0 items-center gap-1.5" }, [
-        e && t ? n(Ft, { key: "state", state: t.reviewState, includeLabel: !1 }) : null,
+        e && t ? n(jt, { key: "state", state: t.reviewState, includeLabel: !1 }) : null,
         t != null && t.isDerived ? n(sr, { key: "derived" }) : null,
-        t && D ? n("div", {
+        t && U ? n("div", {
           key: "tag-editor",
-          ref: b,
+          ref: h,
           className: "min-w-0 flex-1",
-          onKeyDownCapture: (B) => {
-            B.key === "Escape" && (B.preventDefault(), B.stopPropagation(), U());
+          onKeyDownCapture: (z) => {
+            z.key === "Escape" && (z.preventDefault(), z.stopPropagation(), D());
           },
-          onKeyDown: (B) => {
-            ol(B, t.tagName) && (B.preventDefault(), B.stopPropagation(), s(t.tagId));
+          onKeyDown: (z) => {
+            cl(z, t.tagName) && (z.preventDefault(), z.stopPropagation(), s(t.tagId));
           }
         }, n(In, {
           entityType: "tag",
           value: t.tagId,
           selectedDisplay: "input",
           selectedLabel: t.tagName,
-          onChange: (B, ue) => B == null ? U() : s(B, ue == null ? void 0 : ue.label),
-          disabled: a != null || ((Q = $.data) == null ? void 0 : Q.tagReadOnly) === !0,
+          onChange: (z, te) => z == null ? D() : s(z, te == null ? void 0 : te.label),
+          disabled: a != null || ((de = E.data) == null ? void 0 : de.tagReadOnly) === !0,
           placeholder: "Find a tag…",
           inputClassName: "w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground",
           creatable: !1,
@@ -4544,53 +4569,53 @@ function md({
         })) : t ? n("div", { key: "selected", className: "min-w-0 flex-1 truncate text-sm font-semibold text-foreground" }, t.tagName || "Tag segment") : n("div", { key: "none", className: "text-sm text-secondary" }, "No segment selected")
       ]),
       t ? n("div", { key: "timing-row", className: "flex items-center gap-2 font-mono text-xs text-secondary" }, [
-        n("span", { key: "start" }, Ie(t.startSec)),
+        n("span", { key: "start" }, $e(t.startSec)),
         t.endSec == null ? null : n("span", { key: "time-separator" }, "–"),
-        t.endSec == null ? null : n("span", { key: "end" }, Ie(t.endSec))
+        t.endSec == null ? null : n("span", { key: "end" }, $e(t.endSec))
       ]) : null,
-      e && t && (d === "empty" || d === "partial") ? n("div", { key: "slots-row" }, n(Kl, { status: d })) : null,
+      e && t && (d === "empty" || d === "partial") ? n("div", { key: "slots-row" }, n(Wl, { status: d })) : null,
       t && c && g.length > 0 ? n("div", {
         key: "slot-assignments",
         role: "group",
         "aria-label": "Performer slots",
         className: "rounded-md border border-border bg-surface p-2"
-      }, n(Ba, {
-        assignments: g.map((B) => {
-          const ue = ul(B);
+      }, n(Ka, {
+        assignments: g.map((z) => {
+          const te = bl(z);
           return {
-            key: String(B.slotDefinitionId),
-            label: ue.label,
-            performer: ue.filled ? { id: Number(B.performerId), name: ue.performer } : null,
-            title: ue.title
+            key: String(z.slotDefinitionId),
+            label: te.label,
+            performer: te.filled ? { id: Number(z.performerId), name: te.performer } : null,
+            title: te.title
           };
         })
       })) : null,
       i ? n("span", { key: "save", role: "status", "aria-live": "polite", className: "block text-xs text-secondary" }, i) : null
     ]),
-    t ? n(ql, {
+    t ? n(Zl, {
       key: `provenance:${t.id}`,
       segment: t,
-      provenance: A
+      provenance: M
     }) : null,
     t ? n("div", { key: "controls", hidden: !0 }, [
       n("section", { key: "lineage", "aria-label": "Segment lineage", className: "rounded-md border border-border bg-surface p-2" }, [
         n("h3", { key: "heading", className: "text-[11px] font-semibold uppercase tracking-wide text-secondary" }, "Lineage"),
-        $.loading ? n("p", { key: "loading", className: "mt-1 text-xs text-secondary" }, "Loading lineage…") : $.error ? n("p", { key: "error", className: "mt-1 text-xs text-secondary" }, $.error) : $.data ? n("div", { key: "details", className: "mt-1 space-y-1 text-xs text-secondary" }, [
+        E.loading ? n("p", { key: "loading", className: "mt-1 text-xs text-secondary" }, "Loading lineage…") : E.error ? n("p", { key: "error", className: "mt-1 text-xs text-secondary" }, E.error) : E.data ? n("div", { key: "details", className: "mt-1 space-y-1 text-xs text-secondary" }, [
           n(
             "p",
             { key: "summary" },
-            `${$.data.derived ? "Derived segment" : "Root segment"} · ${$.data.componentSize} segment${$.data.componentSize === 1 ? "" : "s"} · ${$.data.integrityState}`
+            `${E.data.derived ? "Derived segment" : "Root segment"} · ${E.data.componentSize} segment${E.data.componentSize === 1 ? "" : "s"} · ${E.data.integrityState}`
           ),
-          (oe = $.data.parents) != null && oe.length ? n("div", { key: "parents" }, [
+          (oe = E.data.parents) != null && oe.length ? n("div", { key: "parents" }, [
             n("span", { key: "label" }, "Parents: "),
-            ...$.data.parents.map((B) => n("button", {
-              key: B.nodeId,
+            ...E.data.parents.map((z) => n("button", {
+              key: z.nodeId,
               type: "button",
-              onClick: () => O(B.itemId),
+              onClick: () => R(z.itemId),
               className: "mr-1 underline decoration-dotted hover:text-foreground"
-            }, `${B.ruleKey} ${B.ruleVersion}`))
+            }, `${z.ruleKey} ${z.ruleVersion}`))
           ]) : null,
-          (fe = $.data.children) != null && fe.length ? n("p", { key: "children" }, `Children: ${$.data.children.length}`) : null
+          (xe = E.data.children) != null && xe.length ? n("p", { key: "children" }, `Children: ${E.data.children.length}`) : null
         ]) : n("p", { key: "empty", className: "mt-1 text-xs text-secondary" }, "No lineage recorded.")
       ]),
       n("div", { key: "actions", className: "flex flex-wrap items-center gap-2" }, [
@@ -4600,7 +4625,7 @@ function md({
           ref: p,
           type: "button",
           disabled: a != null || !c || g.length === 0,
-          onClick: () => ce(!0),
+          onClick: () => B(!0),
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50",
           title: c ? g.length === 0 ? "No performer slots are defined for this segment tag." : "Assign performers; candidates matching each slot's gender hints are ranked first." : "Performer slot details are unavailable for your current access."
         }, g.length === 0 ? "No performer slots" : "Edit performer slots") : null,
@@ -4608,47 +4633,47 @@ function md({
           key: "split",
           type: "button",
           disabled: a != null,
-          onClick: R,
+          onClick: F,
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50"
         }, "Split at playhead"),
         n("button", {
           key: "duplicate",
           type: "button",
           disabled: a != null,
-          onClick: () => _(!1),
+          onClick: () => T(!1),
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50"
         }, "Duplicate in place"),
         n("button", {
           key: "duplicate-at-playhead",
           type: "button",
           disabled: a != null,
-          onClick: () => _(!0),
+          onClick: () => T(!0),
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50"
         }, "Duplicate at playhead")
       ])
     ]) : null,
-    we && e && t && c && g.length > 0 ? n("div", {
+    ge && e && t && c && g.length > 0 ? n("div", {
       key: "performer-slot-dialog-overlay",
       className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
-      onMouseDown: (B) => {
-        B.target === B.currentTarget && T();
+      onMouseDown: (z) => {
+        z.target === z.currentTarget && Q();
       },
-      onKeyDownCapture: (B) => {
-        var Me, Y;
-        if (!(typeof ((Me = B.target) == null ? void 0 : Me.closest) == "function" ? B.target.closest("input, textarea, select, [contenteditable='true']") : null) && !B.repeat && !B.ctrlKey && !B.altKey && !B.metaKey && !B.shiftKey && /^[1-9]$/.test(B.key) && ((Y = re.current) != null && Y.call(re, Number(B.key) - 1))) {
-          B.preventDefault(), B.stopPropagation();
+      onKeyDownCapture: (z) => {
+        var X, le;
+        if (!(typeof ((X = z.target) == null ? void 0 : X.closest) == "function" ? z.target.closest("input, textarea, select, [contenteditable='true']") : null) && !z.repeat && !z.ctrlKey && !z.altKey && !z.metaKey && !z.shiftKey && /^[1-9]$/.test(z.key) && ((le = se.current) != null && le.call(se, Number(z.key) - 1))) {
+          z.preventDefault(), z.stopPropagation();
           return;
         }
-        ot(B, {
-          onCancel: T,
+        ot(z, {
+          onCancel: Q,
           onConfirm: () => {
-            var Se;
-            return (Se = F.current) == null ? void 0 : Se.click();
+            var b;
+            return (b = J.current) == null ? void 0 : b.click();
           }
         });
       }
     }, n("section", {
-      ref: C,
+      ref: P,
       role: "dialog",
       "aria-modal": "true",
       "aria-labelledby": "segment-studio-slot-dialog-title",
@@ -4660,55 +4685,55 @@ function md({
           n("h2", { key: "title", id: "segment-studio-slot-dialog-title", className: "text-base font-semibold text-foreground" }, "Performer slots"),
           n("p", { key: "description", className: "mt-0.5 text-xs text-secondary" }, "Candidates matching each slot's gender hints are ranked first.")
         ]),
-        n("button", { key: "close", type: "button", onClick: T, className: "rounded-md border border-border px-2 py-1 text-sm text-secondary hover:bg-muted/40", "aria-label": "Close performer slots" }, "×")
+        n("button", { key: "close", type: "button", onClick: Q, className: "rounded-md border border-border px-2 py-1 text-sm text-secondary hover:bg-muted/40", "aria-label": "Close performer slots" }, "×")
       ]),
-      n("div", { key: "body", className: "min-h-0 overflow-y-auto p-4" }, n(Ul, {
+      n("div", { key: "body", className: "min-h-0 overflow-y-auto p-4" }, n(Vl, {
         key: `${t.id}:${u.performerSlotsRevision || u.slotRevision || ""}`,
         videoId: y.id,
         segmentId: t.nativeSegmentId,
         itemId: t.published ? null : t.itemId,
         slots: g,
-        revision: (ie = u.performerSlotRevisions) == null ? void 0 : ie[t.id],
+        revision: (ke = u.performerSlotRevisions) == null ? void 0 : ke[t.id],
         performerCandidates: u.performerCandidates || [],
-        confirmRef: F,
-        shortcutRef: re,
-        onOptimisticSave: (B) => {
-          f((ue) => Cr(
-            ue,
+        confirmRef: J,
+        shortcutRef: se,
+        onOptimisticSave: (z) => {
+          f((te) => $r(
+            te,
             t.id,
-            B
-          ), y.id), v(t.id), w("Saving performer slots…"), T();
+            z
+          ), y.id), v(t.id), w("Saving performer slots…"), Q();
         },
-        onSaved: async (B, { beforeState: ue, afterState: Me }) => {
-          f((Y) => Cr(
-            Y,
+        onSaved: async (z, { beforeState: te, afterState: X }) => {
+          f((le) => $r(
+            le,
             t.id,
-            B.slots || [],
-            B.revision
+            z.slots || [],
+            z.revision
           ), y.id), w("Performer slots saved.");
           try {
             await W(
               "performer-slots.assign",
               "Assigned performers",
-              ue,
-              Me
-            ), await N(B);
+              te,
+              X
+            ), await N(z) || j([t]);
           } finally {
             v(null);
           }
         },
-        onRollback: async (B, ue) => {
-          f((Me) => {
-            var Y;
-            return Cr(
-              Me,
+        onRollback: async (z, te) => {
+          j([t]), f((X) => {
+            var le;
+            return $r(
+              X,
               t.id,
-              B,
-              (Y = u.performerSlotRevisions) == null ? void 0 : Y[t.id]
+              z,
+              (le = u.performerSlotRevisions) == null ? void 0 : le[t.id]
             );
-          }, y.id), w(ue.message || "Unable to save performer slots.");
+          }, y.id), w(te.message || "Unable to save performer slots.");
           try {
-            ue.status === 409 && await N();
+            te.status === 409 && await N();
           } finally {
             v(null);
           }
@@ -4718,61 +4743,61 @@ function md({
     ])) : null
   ]);
 }
-function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSlots: o = [], collapsedGroupKeys: i = [], selectedGroupKey: a, selectedSegmentId: s, selectedSegmentIds: l = [], duration: d, currentTime: c, zoom: g, onZoomChange: m, onSelectGroup: u, onToggleGroup: y, onSelect: p, onSelectSegments: b, onSelectAll: f, onConfigureTag: w, onSeekTime: v, centerRef: N, showReviewState: W = !0, swimlaneTitleWidth: R, onSwimlaneTitleWidthChange: _ }) {
-  const A = pe(null), $ = pe(null), [O, D] = j(0), [U, P] = j({ scrollTop: 0, height: 320 }), [V, I] = j(null), C = Be(
-    () => Pt(e, r, o),
+function vd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSlots: o = [], collapsedGroupKeys: i = [], selectedGroupKey: a, selectedSegmentId: s, selectedSegmentIds: l = [], duration: d, currentTime: c, zoom: g, onZoomChange: m, onSelectGroup: u, onToggleGroup: y, onSelect: p, onSelectSegments: h, onSelectAll: f, onConfigureTag: w, onSeekTime: v, centerRef: N, showReviewState: W = !0, swimlaneTitleWidth: j, onSwimlaneTitleWidthChange: F }) {
+  const T = pe(null), M = pe(null), [E, R] = L(0), [U, D] = L({ scrollTop: 0, height: 320 }), [V, I] = L(null), $ = Ge(
+    () => Lt(e, r, o),
     [e, r, o]
-  ), F = Be(
-    () => La(o),
+  ), P = Ge(
+    () => ja(o),
     [o]
-  ), re = Be(() => qr(C), [C]), ee = Be(
-    () => yl(re, i, r.length > 0),
-    [re, i, r.length]
-  ), we = Be(
-    () => Fa(ee.rows, Math.max(0, U.scrollTop - 24), U.height),
-    [ee, U]
-  ), ce = Math.max(0, Number(d) || 0), T = Wi(O), Q = Zn(R, T), oe = Q / 16, fe = Hi(c, ce, oe), ie = Gi(ce), B = Ki(ce, Math.max(1, O - oe * 16), g), ue = ie.filter((S, k) => k === 0 || k % B === 0), Me = Be(() => C.map((S) => `${S.key}:${S.trackCount}:${S.markers.map(({ segment: k, track: H }) => `${k.id}:${k.startSec}:${k.endSec ?? ""}:${H}`).join(",")}`).join("|"), [C]);
-  function Y() {
-    const S = $.current;
+  ), J = Ge(() => Wr($), [$]), se = Ge(
+    () => kl(J, i, r.length > 0),
+    [J, i, r.length]
+  ), me = Ge(
+    () => Ba(se.rows, Math.max(0, U.scrollTop - 24), U.height),
+    [se, U]
+  ), ge = Math.max(0, Number(d) || 0), B = Ji(E), Q = Qn(j, B), de = Q / 16, oe = Wi(c, ge, de), xe = Ui(ge), ke = zi(ge, Math.max(1, E - de * 16), g), z = xe.filter((S, k) => k === 0 || k % ke === 0), te = Ge(() => $.map((S) => `${S.key}:${S.trackCount}:${S.markers.map(({ segment: k, track: q }) => `${k.id}:${k.startSec}:${k.endSec ?? ""}:${q}`).join(",")}`).join("|"), [$]);
+  function X() {
+    const S = M.current;
     if (!S) return;
-    const k = S.querySelector("[data-timeline-track]"), H = S.firstElementChild, le = k == null ? void 0 : k.getBoundingClientRect(), se = H == null ? void 0 : H.getBoundingClientRect(), te = le && se ? Math.max(0, le.left - se.left) : oe * 16, xe = (se == null ? void 0 : se.width) ?? S.scrollWidth;
+    const k = S.querySelector("[data-timeline-track]"), q = S.firstElementChild, ue = k == null ? void 0 : k.getBoundingClientRect(), ae = q == null ? void 0 : q.getBoundingClientRect(), re = ue && ae ? Math.max(0, ue.left - ae.left) : de * 16, Se = (ae == null ? void 0 : ae.width) ?? S.scrollWidth;
     S.scrollTo({
-      left: _i(c, ce, xe, S.clientWidth, te, ca),
+      left: qi(c, ge, Se, S.clientWidth, re, ma),
       behavior: "smooth"
     });
   }
-  ye(() => (N.current = Y, () => {
-    N.current === Y && (N.current = null);
-  })), ye(() => {
-    Y();
+  fe(() => (N.current = X, () => {
+    N.current === X && (N.current = null);
+  })), fe(() => {
+    X();
   }, [g]);
-  function Se() {
-    const S = $.current, k = ee.rows.find((xe) => xe.kind === "lane" && xe.lane.markers.some(({ segment: q }) => q.id === s));
+  function le() {
+    const S = M.current, k = se.rows.find((Se) => Se.kind === "lane" && Se.lane.markers.some(({ segment: H }) => H.id === s));
     if (!S || !k) return;
-    const H = 24, le = k.top + H, se = le + k.height;
-    let te = S.scrollTop;
-    le < S.scrollTop + H ? te = Math.max(0, le - H) : se > S.scrollTop + S.clientHeight && (te = Math.max(0, se - S.clientHeight)), te !== S.scrollTop && (S.scrollTop = te), P({ scrollTop: te, height: S.clientHeight });
+    const q = 24, ue = k.top + q, ae = ue + k.height;
+    let re = S.scrollTop;
+    ue < S.scrollTop + q ? re = Math.max(0, ue - q) : ae > S.scrollTop + S.clientHeight && (re = Math.max(0, ae - S.clientHeight)), re !== S.scrollTop && (S.scrollTop = re), D({ scrollTop: re, height: S.clientHeight });
   }
-  ye(() => {
-    Se();
-  }, [s, Me, ee]), ye(() => {
-    const S = $.current, k = ee.rows.find((xe) => xe.kind === "group" && xe.group.key === a);
+  fe(() => {
+    le();
+  }, [s, te, se]), fe(() => {
+    const S = M.current, k = se.rows.find((Se) => Se.kind === "group" && Se.group.key === a);
     if (!S || !k) return;
-    const H = 24, le = k.top + H, se = le + k.height;
-    let te = S.scrollTop;
-    le < S.scrollTop + H ? te = Math.max(0, le - H) : se > S.scrollTop + S.clientHeight && (te = Math.max(0, se - S.clientHeight)), te !== S.scrollTop && (S.scrollTop = te), P({ scrollTop: te, height: S.clientHeight });
-  }, [a, ee]), ye(() => {
-    const S = $.current;
+    const q = 24, ue = k.top + q, ae = ue + k.height;
+    let re = S.scrollTop;
+    ue < S.scrollTop + q ? re = Math.max(0, ue - q) : ae > S.scrollTop + S.clientHeight && (re = Math.max(0, ae - S.clientHeight)), re !== S.scrollTop && (S.scrollTop = re), D({ scrollTop: re, height: S.clientHeight });
+  }, [a, se]), fe(() => {
+    const S = M.current;
     if (!S || typeof ResizeObserver > "u") return;
     const k = () => {
-      D(S.clientWidth), P({ scrollTop: S.scrollTop, height: S.clientHeight }), Se();
-    }, H = new ResizeObserver(k);
-    return H.observe(S), k(), () => H.disconnect();
-  }, [s, Me, ee]);
-  function h(S) {
-    if (!(ce > 0)) return;
-    const k = S.currentTarget.getBoundingClientRect(), H = Math.min(1, Math.max(0, (S.clientX - k.left) / k.width));
-    v(H * ce);
+      R(S.clientWidth), D({ scrollTop: S.scrollTop, height: S.clientHeight }), le();
+    }, q = new ResizeObserver(k);
+    return q.observe(S), k(), () => q.disconnect();
+  }, [s, te, se]);
+  function b(S) {
+    if (!(ge > 0)) return;
+    const k = S.currentTarget.getBoundingClientRect(), q = Math.min(1, Math.max(0, (S.clientX - k.left) / k.width));
+    v(q * ge);
   }
   function K(S) {
     const k = {
@@ -4783,22 +4808,22 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
       PageDown: -10,
       PageUp: 10
     };
-    let H = null;
-    Object.hasOwn(k, S.key) && (H = c + k[S.key]), S.key === "Home" && (H = 0), S.key === "End" && (H = ce), H != null && (S.preventDefault(), S.stopPropagation(), v(Math.min(ce, Math.max(0, H))));
+    let q = null;
+    Object.hasOwn(k, S.key) && (q = c + k[S.key]), S.key === "Home" && (q = 0), S.key === "End" && (q = ge), q != null && (S.preventDefault(), S.stopPropagation(), v(Math.min(ge, Math.max(0, q))));
   }
-  function M(S) {
-    var H;
-    const k = (H = A.current) == null ? void 0 : H.getBoundingClientRect();
-    k && _(Zn(S.clientX - k.left, T));
+  function C(S) {
+    var q;
+    const k = (q = T.current) == null ? void 0 : q.getBoundingClientRect();
+    k && F(Qn(S.clientX - k.left, B));
   }
   function x(S) {
     const k = S.shiftKey ? 40 : 16;
-    let H = null;
-    S.key === "ArrowLeft" && (H = Q - k), S.key === "ArrowRight" && (H = Q + k), S.key === "Home" && (H = 160), S.key === "End" && (H = T), H != null && (S.preventDefault(), S.stopPropagation(), _(Zn(H, T)));
+    let q = null;
+    S.key === "ArrowLeft" && (q = Q - k), S.key === "ArrowRight" && (q = Q + k), S.key === "Home" && (q = 160), S.key === "End" && (q = B), q != null && (S.preventDefault(), S.stopPropagation(), F(Qn(q, B)));
   }
-  const E = "rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50";
+  const A = "rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50";
   return n("section", {
-    ref: A,
+    ref: T,
     "aria-label": "Segment swimlane timeline",
     className: "relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface"
   }, [
@@ -4816,10 +4841,10 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
         "aria-label": "Swimlanes; Command or Control click, Enter, or Space selects every segment",
         className: "mr-auto text-xs font-semibold text-foreground hover:underline focus:outline-none focus:underline"
       }, "Swimlanes"),
-      n("button", { key: "out", type: "button", className: E, disabled: g <= 1, onClick: () => m(Xn(g - 0.5)), "aria-label": "Zoom out", title: "Zoom out (-)" }, "−"),
-      n("button", { key: "fit", type: "button", className: E, disabled: g === 1, onClick: () => m(1), "aria-label": "Fit timeline", title: "Fit timeline (0)" }, `${Math.round(g * 100)}%`),
-      n("button", { key: "in", type: "button", className: E, disabled: g >= 8, onClick: () => m(Xn(g + 0.5)), "aria-label": "Zoom in", title: "Zoom in (+)" }, "+"),
-      n("button", { key: "center", type: "button", className: E, onClick: Y, "aria-label": "Center playhead", title: "Center playhead (H)" }, "◎")
+      n("button", { key: "out", type: "button", className: A, disabled: g <= 1, onClick: () => m(Xn(g - 0.5)), "aria-label": "Zoom out", title: "Zoom out (-)" }, "−"),
+      n("button", { key: "fit", type: "button", className: A, disabled: g === 1, onClick: () => m(1), "aria-label": "Fit timeline", title: "Fit timeline (0)" }, `${Math.round(g * 100)}%`),
+      n("button", { key: "in", type: "button", className: A, disabled: g >= 8, onClick: () => m(Xn(g + 0.5)), "aria-label": "Zoom in", title: "Zoom in (+)" }, "+"),
+      n("button", { key: "center", type: "button", className: A, onClick: X, "aria-label": "Center playhead", title: "Center playhead (H)" }, "◎")
     ]),
     n("div", {
       key: "title-separator",
@@ -4828,31 +4853,31 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
       "aria-label": "Resize swimlane titles",
       "aria-orientation": "vertical",
       "aria-valuemin": 160,
-      "aria-valuemax": Math.round(T),
+      "aria-valuemax": Math.round(B),
       "aria-valuenow": Math.round(Q),
       "aria-valuetext": `${Math.round(Q)} pixels wide`,
       title: "Drag or use Left/Right to resize · Shift for larger steps · double-click to reset",
       onPointerDown: (S) => {
-        S.currentTarget.setPointerCapture(S.pointerId), M(S);
+        S.currentTarget.setPointerCapture(S.pointerId), C(S);
       },
       onPointerMove: (S) => {
-        S.currentTarget.hasPointerCapture(S.pointerId) && M(S);
+        S.currentTarget.hasPointerCapture(S.pointerId) && C(S);
       },
       onKeyDown: x,
-      onDoubleClick: () => _(rt.swimlaneTitleWidth),
+      onDoubleClick: () => F(rt.swimlaneTitleWidth),
       className: "absolute bottom-0 z-50 flex w-2 items-center justify-center hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-accent",
       style: { top: "2.25rem", left: `${Q - 4}px`, touchAction: "none", cursor: "col-resize" }
     }, n("span", { className: "h-16 w-1 rounded-full bg-border" })),
     n("div", {
       key: "scroll",
-      ref: $,
-      onScroll: (S) => P({
+      ref: M,
+      onScroll: (S) => D({
         scrollTop: S.currentTarget.scrollTop,
         height: S.currentTarget.clientHeight
       }),
       className: "min-h-0 flex-1 overflow-x-auto overflow-y-auto"
-    }, n("div", { style: qi(g) }, [
-      n("div", { key: "axis", "data-timeline-axis": "true", className: "sticky top-0 z-30 grid border-b border-border bg-surface", style: { gridTemplateColumns: `${oe}rem minmax(0,1fr)`, height: "1.5rem" } }, [
+    }, n("div", { style: Vi(g) }, [
+      n("div", { key: "axis", "data-timeline-axis": "true", className: "sticky top-0 z-30 grid border-b border-border bg-surface", style: { gridTemplateColumns: `${de}rem minmax(0,1fr)`, height: "1.5rem" } }, [
         n("div", { key: "axis-label", "data-timeline-label-gutter": "true", "aria-hidden": "true", className: "sticky left-0 z-40 border-r border-border", style: { backgroundColor: "var(--color-surface)" } }),
         n("div", {
           key: "ticks",
@@ -4862,28 +4887,28 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
           "data-timeline-track": "true",
           "aria-label": "Timeline seek",
           "aria-valuemin": 0,
-          "aria-valuemax": ce,
-          "aria-valuenow": Math.min(ce, Math.max(0, c)),
-          "aria-valuetext": Ie(c),
+          "aria-valuemax": ge,
+          "aria-valuenow": Math.min(ge, Math.max(0, c)),
+          "aria-valuetext": $e(c),
           className: "relative cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent",
-          onClick: h,
+          onClick: b,
           onKeyDown: K
-        }, ue.map((S, k) => n("span", {
+        }, z.map((S, k) => n("span", {
           key: S,
-          className: `absolute top-0 ${Ui(k, ue.length, ce > 0 ? S / ce * 100 : 0)} font-mono text-[10px] text-secondary`,
-          style: zi(k, ue.length, ce > 0 ? S / ce * 100 : 0)
-        }, Ie(S))).concat(t.map((S) => {
-          const k = ce > 0 ? S.startSec / ce * 100 : 0;
+          className: `absolute top-0 ${_i(k, z.length, ge > 0 ? S / ge * 100 : 0)} font-mono text-[10px] text-secondary`,
+          style: Hi(k, z.length, ge > 0 ? S / ge * 100 : 0)
+        }, $e(S))).concat(t.map((S) => {
+          const k = ge > 0 ? S.startSec / ge * 100 : 0;
           return n("button", {
             key: `shot-boundary:${S.id}`,
             type: "button",
             "data-shot-boundary-marker": "true",
-            "aria-label": `Shot ${Ie(S.startSec)} – ${Ie(S.endSec)}`,
-            title: `Shot boundary · ${S.source || "manual"} · ${Ie(S.startSec)} – ${Ie(S.endSec)}`,
+            "aria-label": `Shot ${$e(S.startSec)} – ${$e(S.endSec)}`,
+            title: `Shot boundary · ${S.source || "manual"} · ${$e(S.startSec)} – ${$e(S.endSec)}`,
             className: "group absolute top-0 z-10 h-full cursor-pointer border-0 bg-transparent p-0",
             style: { left: `${k}%`, width: "2px" },
-            onClick: (H) => {
-              H.stopPropagation(), v(S.startSec);
+            onClick: (q) => {
+              q.stopPropagation(), v(S.startSec);
             }
           }, [
             n("span", {
@@ -4903,7 +4928,7 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
           "aria-hidden": "true",
           className: "pointer-events-none absolute top-0 z-20",
           style: {
-            ...xo(fe),
+            ...ko(oe),
             width: "2px",
             height: "calc(100% + 2px)",
             backgroundColor: "var(--color-accent)"
@@ -4914,30 +4939,30 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
         key: "body",
         "data-timeline-body": "true",
         className: "relative",
-        style: C.length > 0 ? { height: ee.height } : void 0
+        style: $.length > 0 ? { height: se.height } : void 0
       }, [
-        C.length > 0 ? n("span", {
+        $.length > 0 ? n("span", {
           key: "playhead",
           "data-timeline-playhead": "body",
           "aria-hidden": "true",
           className: "pointer-events-none absolute inset-y-0 z-30",
           style: {
-            ...xo(fe, !0),
+            ...ko(oe, !0),
             width: "2px",
             backgroundColor: "var(--color-accent)"
           }
         }) : null,
-        C.length === 0 ? n("p", { key: "empty", className: "px-3 py-4 text-xs text-secondary" }, "No segments match the current filter.") : we.map((S) => {
-          var X;
-          const k = S.group, H = i.includes(k.key), le = a === k.key, se = or(le);
+        $.length === 0 ? n("p", { key: "empty", className: "px-3 py-4 text-xs text-secondary" }, "No segments match the current filter.") : me.map((S) => {
+          var ee;
+          const k = S.group, q = i.includes(k.key), ue = a === k.key, ae = or(ue);
           if (S.kind === "group") return n("div", {
             key: S.key,
             "data-segment-group": k.key,
-            "data-segment-group-collapsed": H ? "true" : "false",
+            "data-segment-group-collapsed": q ? "true" : "false",
             className: "absolute left-0 right-0 grid border-b border-border",
             style: {
-              gridTemplateColumns: `${oe}rem minmax(0,1fr)`,
-              backgroundColor: se,
+              gridTemplateColumns: `${de}rem minmax(0,1fr)`,
+              backgroundColor: ae,
               top: S.top,
               height: S.height
             }
@@ -4945,109 +4970,109 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
             n("button", {
               key: "name",
               type: "button",
-              onClick: (J) => {
-                if (J.metaKey || J.ctrlKey) {
-                  b(k.lanes.flatMap((L) => L.markers.map((ne) => ne.segment.id)));
+              onClick: (Y) => {
+                if (Y.metaKey || Y.ctrlKey) {
+                  h(k.lanes.flatMap((O) => O.markers.map((ne) => ne.segment.id)));
                   return;
                 }
                 u(k.key), y(k.key);
               },
-              "aria-expanded": !H,
-              "aria-current": le ? "true" : void 0,
-              "data-selected-timeline-group": le ? "true" : "false",
+              "aria-expanded": !q,
+              "aria-current": ue ? "true" : void 0,
+              "data-selected-timeline-group": ue ? "true" : "false",
               className: "sticky left-0 z-40 flex min-w-0 items-center gap-1.5 border-l-4 border-r border-border px-2 text-left hover:ring-1 hover:ring-inset hover:ring-accent/50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent",
               style: {
                 borderLeftColor: k.id == null ? "var(--color-border)" : "var(--color-accent)",
-                backgroundColor: se
+                backgroundColor: ae
               },
-              title: `${H ? "Expand" : "Collapse"} ${k.name}`
+              title: `${q ? "Expand" : "Collapse"} ${k.name}`
             }, [
-              n("span", { key: "chevron", "aria-hidden": "true", className: "shrink-0 text-[10px] text-secondary" }, H ? "▶" : "▼"),
+              n("span", { key: "chevron", "aria-hidden": "true", className: "shrink-0 text-[10px] text-secondary" }, q ? "▶" : "▼"),
               n("span", { key: "label", className: "truncate text-xs font-semibold capitalize text-foreground" }, k.name)
             ]),
             n(
               "div",
               { key: "summary", className: "flex min-w-0 items-center justify-between gap-2 px-2" },
-              H ? [
+              q ? [
                 n(
                   "span",
                   { key: "lanes", className: "truncate rounded-full bg-card px-2 py-0.5 text-[10px] text-secondary" },
                   `${k.lanes.length} swimlane${k.lanes.length === 1 ? "" : "s"} hidden`
                 ),
-                W ? n($t, { key: "states", counts: k.counts }) : null
+                W ? n(Tt, { key: "states", counts: k.counts }) : null
               ] : null
             )
           ]);
-          const te = S.lane, xe = Xs(S.laneIndex), q = te.markers.some(({ segment: J }) => J.id === s);
+          const re = S.lane, Se = al(S.laneIndex), H = re.markers.some(({ segment: Y }) => Y.id === s);
           return n("div", {
             key: S.key,
             "data-grouped-swimlane": k.key,
             className: "absolute left-0 right-0 grid border-b border-border",
             style: {
-              gridTemplateColumns: `${oe}rem minmax(0,1fr)`,
+              gridTemplateColumns: `${de}rem minmax(0,1fr)`,
               top: S.top,
               height: S.height,
-              backgroundColor: xe
+              backgroundColor: Se
             }
           }, [
             n("div", {
               key: "label",
               "data-timeline-label-gutter": "true",
-              "data-active-swimlane": q ? "true" : void 0,
+              "data-active-swimlane": H ? "true" : void 0,
               className: "sticky left-0 z-40 flex min-w-0 items-center gap-2 border-r border-border px-3 pl-5",
-              style: el(q, xe),
-              title: `${$n(te)} · Cmd/Ctrl+click to toggle all segments`,
-              "aria-label": $n(te),
-              onClick: (J) => {
-                (J.metaKey || J.ctrlKey) && b(te.markers.map((L) => L.segment.id));
+              style: il(H, Se),
+              title: `${$n(re)} · Cmd/Ctrl+click to toggle all segments`,
+              "aria-label": $n(re),
+              onClick: (Y) => {
+                (Y.metaKey || Y.ctrlKey) && h(re.markers.map((O) => O.segment.id));
               },
-              onMouseEnter: () => I(te.key),
-              onMouseLeave: () => I((J) => J === te.key ? null : J)
+              onMouseEnter: () => I(re.key),
+              onMouseLeave: () => I((Y) => Y === re.key ? null : Y)
             }, [
-              te.tagId != null ? n("button", {
+              re.tagId != null ? n("button", {
                 key: "configure",
                 type: "button",
-                onClick: (J) => {
-                  J.stopPropagation(), w({ tagId: te.tagId, tagName: te.label, trigger: J.currentTarget });
+                onClick: (Y) => {
+                  Y.stopPropagation(), w({ tagId: re.tagId, tagName: re.label, trigger: Y.currentTarget });
                 },
-                "aria-label": `Configure ${te.label}`,
+                "aria-label": `Configure ${re.label}`,
                 title: "Configure tag",
                 className: "absolute left-0.5 flex items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-muted/60 hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-accent",
-                style: { width: "1.125rem", height: "1.125rem", fontSize: "1rem", lineHeight: 1, opacity: V === te.key ? 1 : void 0 }
+                style: { width: "1.125rem", height: "1.125rem", fontSize: "1rem", lineHeight: 1, opacity: V === re.key ? 1 : void 0 }
               }, "⚙") : null,
-              n("span", { key: "name", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" }, te.label),
-              (X = te.performers) != null && X.length ? n(ir, {
+              n("span", { key: "name", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" }, re.label),
+              (ee = re.performers) != null && ee.length ? n(ir, {
                 key: "performers",
-                performers: te.performers,
-                performerAssignments: te.performerAssignments
+                performers: re.performers,
+                performerAssignments: re.performerAssignments
               }) : null,
-              W ? n($t, { key: "counts", counts: te.counts }) : null
+              W ? n(Tt, { key: "counts", counts: re.counts }) : null
             ]),
-            n("div", { key: "track", className: "relative" }, te.markers.map(({ segment: J, track: L }) => {
-              var $e;
-              const ne = Tr(J.startSec, ce), me = J.endSec == null ? J.startSec : Math.max(J.startSec, J.endSec), he = Math.max(0, Tr(me, ce) - ne), be = l.includes(J.id), Ee = J.id === s, Pe = Hr(F.get(J.id)), ve = J.endSec == null ? Ie(J.startSec) : `${Ie(J.startSec)} – ${Ie(J.endSec)}`, Ce = ($e = Da[Pe]) == null ? void 0 : $e.label;
+            n("div", { key: "track", className: "relative" }, re.markers.map(({ segment: Y, track: O }) => {
+              var Ce;
+              const ne = Rr(Y.startSec, ge), ye = Y.endSec == null ? Y.startSec : Math.max(Y.startSec, Y.endSec), be = Math.max(0, Rr(ye, ge) - ne), he = l.includes(Y.id), Ae = Y.id === s, Ee = qr(P.get(Y.id)), Ne = Y.endSec == null ? $e(Y.startSec) : `${$e(Y.startSec)} – ${$e(Y.endSec)}`, Ie = (Ce = Pa[Ee]) == null ? void 0 : Ce.label;
               return n("button", {
-                key: J.id,
+                key: Y.id,
                 type: "button",
-                onClick: (ge) => {
-                  ge.stopPropagation(), p(J, {
-                    additive: ge.metaKey || ge.ctrlKey,
-                    rangeSegmentIds: ge.shiftKey ? te.markers.map((Ge) => Ge.segment.id) : null
+                onClick: (ve) => {
+                  ve.stopPropagation(), p(Y, {
+                    additive: ve.metaKey || ve.ctrlKey,
+                    rangeSegmentIds: ve.shiftKey ? re.markers.map((Oe) => Oe.segment.id) : null
                   });
                 },
-                "aria-pressed": be,
-                "aria-current": Ee ? "true" : void 0,
-                "data-selected-timeline-marker": Ee ? "true" : void 0,
-                "data-selected-segment-shortcut-target": Ee ? "true" : void 0,
-                "aria-label": W ? `${J.tagName || "Tag segment"}${te.performerLabel ? `, ${te.performerLabel}` : ""}, ${J.reviewState}${Ce ? `, ${Ce}` : ""}, ${ve}` : `${J.tagName || "Tag segment"}${te.performerLabel ? `, ${te.performerLabel}` : ""}, ${ve}`,
-                title: W ? `${J.tagName || "Tag segment"}${te.performerLabel ? ` · ${te.performerLabel}` : ""} · ${J.reviewState}${Ce ? ` · ${Ce}` : ""} · ${ve}` : `${J.tagName || "Tag segment"}${te.performerLabel ? ` · ${te.performerLabel}` : ""} · ${ve}`,
+                "aria-pressed": he,
+                "aria-current": Ae ? "true" : void 0,
+                "data-selected-timeline-marker": Ae ? "true" : void 0,
+                "data-selected-segment-shortcut-target": Ae ? "true" : void 0,
+                "aria-label": W ? `${Y.tagName || "Tag segment"}${re.performerLabel ? `, ${re.performerLabel}` : ""}, ${Y.reviewState}${Ie ? `, ${Ie}` : ""}, ${Ne}` : `${Y.tagName || "Tag segment"}${re.performerLabel ? `, ${re.performerLabel}` : ""}, ${Ne}`,
+                title: W ? `${Y.tagName || "Tag segment"}${re.performerLabel ? ` · ${re.performerLabel}` : ""} · ${Y.reviewState}${Ie ? ` · ${Ie}` : ""} · ${Ne}` : `${Y.tagName || "Tag segment"}${re.performerLabel ? ` · ${re.performerLabel}` : ""} · ${Ne}`,
                 className: "absolute rounded-sm border",
                 style: {
                   borderColor: "var(--color-border)",
-                  ...W ? Ys(J.reviewState, be, Pe, Ee) : Zs(be, Ee),
+                  ...W ? nl(Y.reviewState, he, Ee, Ae) : rl(he, Ae),
                   left: `${ne}%`,
-                  top: `${tl(L)}rem`,
-                  width: Qs(J.endSec, he),
+                  top: `${sl(O)}rem`,
+                  width: ol(Y.endSec, be),
                   height: "1rem"
                 }
               });
@@ -5058,57 +5083,57 @@ function gd({ segments: e, shotBoundaries: t = [], segmentGroups: r, performerSl
     ]))
   ]);
 }
-function Vr({
+function Jr({
   tagId: e,
   tagName: t,
   performerSlotsEnabled: r = !1,
   onSaved: o,
   onClose: i
 }) {
-  const [a, s] = j(null), [l, d] = j([]), [c, g] = j(null), [m, u] = j(""), [y, p] = j(!0), [b, f] = j(null), [w, v] = j(""), [N, W] = j(!1), R = pe(null), _ = pe(0);
-  ye(() => {
+  const [a, s] = L(null), [l, d] = L([]), [c, g] = L(null), [m, u] = L(""), [y, p] = L(!0), [h, f] = L(null), [w, v] = L(""), [N, W] = L(!1), j = pe(null), F = pe(0);
+  fe(() => {
     const V = requestAnimationFrame(() => {
       var I;
-      return (I = R.current) == null ? void 0 : I.focus({ preventScroll: !0 });
+      return (I = j.current) == null ? void 0 : I.focus({ preventScroll: !0 });
     });
     return () => cancelAnimationFrame(V);
-  }, [e]), ye(() => {
+  }, [e]), fe(() => {
     const V = new AbortController();
     return p(!0), v(""), Promise.all([
       r ? Z(`/slot-definitions/${e}`, { signal: V.signal }) : Promise.resolve(null),
       Z("/segment-groups", { signal: V.signal })
-    ]).then(([I, C]) => {
-      const F = C.find((re) => (re.tags || []).some((ee) => Number(ee.tagId) === Number(e)));
-      s(I), d(C), g((F == null ? void 0 : F.id) ?? null), u(F == null ? "" : String(F.id)), W(!1);
+    ]).then(([I, $]) => {
+      const P = $.find((J) => (J.tags || []).some((se) => Number(se.tagId) === Number(e)));
+      s(I), d($), g((P == null ? void 0 : P.id) ?? null), u(P == null ? "" : String(P.id)), W(!1);
     }).catch((I) => {
       I.name !== "AbortError" && v(I.message || "Unable to load tag configuration.");
     }).finally(() => {
       V.signal.aborted || p(!1);
     }), () => V.abort();
   }, [r, e]);
-  function A(V, I) {
+  function T(V, I) {
     s({
       ...a,
-      definitions: a.definitions.map((C, F) => F === V ? { ...C, ...I } : C)
+      definitions: a.definitions.map(($, P) => P === V ? { ...$, ...I } : $)
     });
   }
-  function $(V, I) {
-    const C = V + I;
-    if (C < 0 || C >= a.definitions.length) return;
-    const F = [...a.definitions];
-    [F[V], F[C]] = [F[C], F[V]], s({
+  function M(V, I) {
+    const $ = V + I;
+    if ($ < 0 || $ >= a.definitions.length) return;
+    const P = [...a.definitions];
+    [P[V], P[$]] = [P[$], P[V]], s({
       ...a,
-      definitions: F.map((re, ee) => ({ ...re, sortOrder: ee }))
+      definitions: P.map((J, se) => ({ ...J, sortOrder: se }))
     });
   }
-  function O(V) {
-    const I = a.definitions[V], C = Number(I.assignmentCount) || 0, F = C === 0 ? "" : ` and its ${C} assignment${C === 1 ? "" : "s"}`;
-    window.confirm(`Delete “${et(I)}”${F}?`) && (C > 0 && W(!0), s({
+  function E(V) {
+    const I = a.definitions[V], $ = Number(I.assignmentCount) || 0, P = $ === 0 ? "" : ` and its ${$} assignment${$ === 1 ? "" : "s"}`;
+    window.confirm(`Delete “${et(I)}”${P}?`) && ($ > 0 && W(!0), s({
       ...a,
-      definitions: a.definitions.filter((re, ee) => ee !== V).map((re, ee) => ({ ...re, sortOrder: ee }))
+      definitions: a.definitions.filter((J, se) => se !== V).map((J, se) => ({ ...J, sortOrder: se }))
     }));
   }
-  async function D() {
+  async function R() {
     var I;
     f("slots"), v("Saving performer slots…");
     let V;
@@ -5120,19 +5145,19 @@ function Vr({
           revision: a.revision,
           allowSamePerformerInMultipleSlots: !!a.allowSamePerformerInMultipleSlots,
           confirmDeleteAssigned: N,
-          definitions: a.definitions.map((C, F) => {
-            var re;
+          definitions: a.definitions.map(($, P) => {
+            var J;
             return {
-              id: C.id || void 0,
-              label: ((re = C.label) == null ? void 0 : re.trim()) || null,
-              sortOrder: F,
-              genderHints: C.genderHints || []
+              id: $.id || void 0,
+              label: ((J = $.label) == null ? void 0 : J.trim()) || null,
+              sortOrder: P,
+              genderHints: $.genderHints || []
             };
           })
         })
       }), s(V), W(!1);
-    } catch (C) {
-      C.status === 409 ? (v("Performer slots changed elsewhere; current values were reloaded."), (I = C.payload) != null && I.current && (s(C.payload.current), W(!1))) : v(C.message || "Unable to save performer slots."), f(null);
+    } catch ($) {
+      $.status === 409 ? (v("Performer slots changed elsewhere; current values were reloaded."), (I = $.payload) != null && I.current && (s($.payload.current), W(!1))) : v($.message || "Unable to save performer slots."), f(null);
       return;
     }
     try {
@@ -5158,17 +5183,17 @@ function Vr({
         return;
       }
       try {
-        const [I, C] = await Promise.allSettled([
+        const [I, $] = await Promise.allSettled([
           Z("/segment-groups"),
           o()
         ]);
         if (I.status === "fulfilled") {
           d(I.value);
-          const F = I.value.find((ee) => (ee.tags || []).some((we) => Number(we.tagId) === Number(e))), re = (F == null ? void 0 : F.id) ?? null;
-          g(re), u(re == null ? "" : String(re));
+          const P = I.value.find((se) => (se.tags || []).some((me) => Number(me.tagId) === Number(e))), J = (P == null ? void 0 : P.id) ?? null;
+          g(J), u(J == null ? "" : String(J));
         }
         v(
-          I.status === "fulfilled" && C.status === "fulfilled" ? "Tag group saved." : "Tag group saved, but the configuration could not be fully refreshed."
+          I.status === "fulfilled" && $.status === "fulfilled" ? "Tag group saved." : "Tag group saved, but the configuration could not be fully refreshed."
         );
       } finally {
         f(null);
@@ -5176,22 +5201,22 @@ function Vr({
     }
   }
   l.find((V) => Number(V.id) === Number(c));
-  const P = "rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50";
+  const D = "rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50";
   return n("div", {
     className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4",
     onMouseDown: (V) => {
-      V.target === V.currentTarget && !b && i();
+      V.target === V.currentTarget && !h && i();
     },
     onKeyDownCapture: (V) => ot(V, {
-      onCancel: b ? void 0 : i
+      onCancel: h ? void 0 : i
     })
   }, n("section", {
-    ref: R,
+    ref: j,
     role: "dialog",
     "aria-modal": "true",
     "aria-labelledby": "segment-studio-inline-tag-configuration-title",
     tabIndex: -1,
-    onKeyDownCapture: bt,
+    onKeyDownCapture: yt,
     className: "flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
   }, [
     n("header", { key: "header", className: "border-b border-border px-5 py-4" }, [
@@ -5221,7 +5246,7 @@ function Vr({
           n("select", {
             key: "select",
             value: m,
-            disabled: b != null,
+            disabled: h != null,
             onChange: (V) => u(V.target.value),
             className: "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
           }, [
@@ -5232,10 +5257,10 @@ function Vr({
         y ? null : n("button", {
           key: "save",
           type: "button",
-          disabled: b != null || (m === "" ? null : Number(m)) === c,
+          disabled: h != null || (m === "" ? null : Number(m)) === c,
           onClick: U,
           className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-        }, b === "group" ? "Saving…" : "Save tag group")
+        }, h === "group" ? "Saving…" : "Save tag group")
       ]),
       r ? n("section", { key: "slots", className: "space-y-3 border-t border-border pt-5", "aria-labelledby": "inline-tag-slots-heading" }, [
         n("div", { key: "heading" }, [
@@ -5248,7 +5273,7 @@ function Vr({
               key: "input",
               type: "checkbox",
               checked: !!a.allowSamePerformerInMultipleSlots,
-              disabled: b != null,
+              disabled: h != null,
               onChange: (V) => s({ ...a, allowSamePerformerInMultipleSlots: V.target.checked })
             }),
             n("span", { key: "label" }, "Allow the same performer in multiple slots")
@@ -5262,57 +5287,57 @@ function Vr({
               n("input", {
                 key: "input",
                 value: V.label || "",
-                disabled: b != null,
-                onChange: (C) => A(I, { label: C.target.value }),
+                disabled: h != null,
+                onChange: ($) => T(I, { label: $.target.value }),
                 className: "w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm"
               })
             ]),
             n("fieldset", { key: "hints", className: "space-y-1 text-xs text-secondary" }, [
               n("legend", { key: "label" }, "Gender hints"),
-              n("div", { key: "choices", className: "flex flex-wrap gap-x-3 gap-y-1" }, Li.map((C) => n("label", { key: C, className: "inline-flex items-center gap-1" }, [
+              n("div", { key: "choices", className: "flex flex-wrap gap-x-3 gap-y-1" }, ji.map(($) => n("label", { key: $, className: "inline-flex items-center gap-1" }, [
                 n("input", {
                   key: "input",
                   type: "checkbox",
-                  disabled: b != null,
-                  checked: (V.genderHints || []).includes(C),
-                  onChange: (F) => A(I, {
-                    genderHints: F.target.checked ? [.../* @__PURE__ */ new Set([...V.genderHints || [], C])] : (V.genderHints || []).filter((re) => re !== C)
+                  disabled: h != null,
+                  checked: (V.genderHints || []).includes($),
+                  onChange: (P) => T(I, {
+                    genderHints: P.target.checked ? [.../* @__PURE__ */ new Set([...V.genderHints || [], $])] : (V.genderHints || []).filter((J) => J !== $)
                   })
                 }),
-                n("span", { key: "text" }, ar(C))
+                n("span", { key: "text" }, ar($))
               ])))
             ]),
             n("div", { key: "actions", className: "flex items-end gap-1" }, [
               n("span", { key: "count", className: "mr-1 text-xs text-secondary" }, `${V.assignmentCount || 0} assigned`),
-              n("button", { key: "up", type: "button", disabled: b != null || I === 0, onClick: () => $(I, -1), className: P, "aria-label": `Move ${et(V)} up` }, "↑"),
-              n("button", { key: "down", type: "button", disabled: b != null || I === a.definitions.length - 1, onClick: () => $(I, 1), className: P, "aria-label": `Move ${et(V)} down` }, "↓"),
-              n("button", { key: "delete", type: "button", disabled: b != null, onClick: () => O(I), className: `${P} text-red-300` }, "Delete")
+              n("button", { key: "up", type: "button", disabled: h != null || I === 0, onClick: () => M(I, -1), className: D, "aria-label": `Move ${et(V)} up` }, "↑"),
+              n("button", { key: "down", type: "button", disabled: h != null || I === a.definitions.length - 1, onClick: () => M(I, 1), className: D, "aria-label": `Move ${et(V)} down` }, "↓"),
+              n("button", { key: "delete", type: "button", disabled: h != null, onClick: () => E(I), className: `${D} text-red-300` }, "Delete")
             ])
           ])),
           n("div", { key: "buttons", className: "flex items-center gap-2" }, [
             n("button", {
               key: "add",
               type: "button",
-              disabled: b != null,
+              disabled: h != null,
               onClick: () => s({
                 ...a,
                 definitions: [...a.definitions, {
-                  _clientKey: `new-${++_.current}`,
+                  _clientKey: `new-${++F.current}`,
                   label: "",
                   sortOrder: a.definitions.length,
                   genderHints: [],
                   assignmentCount: 0
                 }]
               }),
-              className: P
+              className: D
             }, "Add slot"),
             n("button", {
               key: "save",
               type: "button",
-              disabled: b != null,
-              onClick: D,
+              disabled: h != null,
+              onClick: R,
               className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-            }, b === "slots" ? "Saving…" : "Save performer slots")
+            }, h === "slots" ? "Saving…" : "Save performer slots")
           ])
         ]) : null
       ]) : null,
@@ -5323,40 +5348,40 @@ function Vr({
       { key: "footer", className: "flex items-center justify-end border-t border-border px-5 py-4" },
       n("button", {
         type: "button",
-        disabled: b != null,
+        disabled: h != null,
         onClick: i,
         className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
       }, "Close")
     )
   ]));
 }
-function pd(e) {
-  const { activeFilterCount: t, allSwimlanes: r, analysisError: o, analysisRun: i, analysisStatus: a, approvalFacetCounts: s, autoAssignCandidates: l, autoAssignError: d, autoAssignOpen: c, autoAssignPerformers: g, autoAssigning: m, captureTrainingExport: u, centerTimelineRef: y, closeEditorFilters: p, closeFirstSegmentTagDialog: b, closeMaterializeDialog: f, closeMergeConfirmation: w, closePublishApprovedDialog: v, closeTagEditing: N, collapsedSegmentGroups: W, compatibilityMode: R, configuringTag: _, createSegment: A, currentTime: $, deleteRejectedSegments: O, detail: D, detailPanelRef: U, detailWidth: P, duplicateSegment: V, editorFilters: I, editorLayout: C, editorRef: F, exportingExamples: re, filtersButtonRef: ee, filtersOpen: we, firstSegmentTagOpen: ce, focusRowRef: T, handleSeparatorKeyDown: Q, handleSeparatorPointerDown: oe, handleSeparatorPointerMove: fe, hideDerivedSegments: ie, history: B, historyOpen: ue, historySaving: Me, horizontalLayoutSize: Y, importNativeSegments: Se, incorrectExamples: h, incorrectExamplesOpen: K, lineage: M, markerRailWidth: x, materializeButtonRef: E, materializeCancelButtonRef: S, materializeDerivedSegments: k, materializeError: H, materializeLoading: le, materializeOpen: se, materializePreview: te, materializing: xe, mediaStackRef: q, mergeCancelButtonRef: X, mergeConfirmation: J, mergeSavingRef: L, mergeSelectedSwimlane: ne, nativeImportState: me, onDetailChange: he, onNavigate: be, onReload: Ee, onSlotsChanged: Pe, openPublishApprovedDialog: ve, panelSeparatorProps: Ce, pendingInitialSeekRef: $e, performerSlots: ge, performerSlotsAvailable: Ge, playbackControlsRef: Ae, previewDerivedSegments: at, provenance: ke, provenanceSources: De, publishApprovedCancelButtonRef: He, publishApprovedDrafts: je, publishApprovedError: Ne, publishApprovedOpen: Te, quickSearchOpen: Ke, railScrollRef: it, railToggleRef: Je, recordHistoryAction: Ye, rejectedDeletionPreview: pt, removeIncorrectExample: jt, removingExampleId: En, restoreHistoryTarget: Xt, saveMessage: Dn, saveTag: Mt, saveTiming: lr, savingSegmentId: ft, seekRef: ht, segmentGroups: Bt, segmentRailLayout: At, segments: Nt, selectAllVideoSegments: dr, selectSegment: vt, selectSegmentCollection: cr, selectedGroups: en, selectedPerformerSlots: tn, selectedSegment: xt, selectedSegmentGroupKey: nn, selectedSegmentIds: Gt, selectedSegments: On, selectedSlotStatus: rn, setAutoAssignError: Rt, setAutoAssignOpen: Kt, setConfiguringTag: on, setCurrentTime: ur, setEditorFilters: Pn, setEditorLayout: mr, setFiltersOpen: an, setHideDerivedSegments: sn, setHistoryOpen: ln, setIncorrectExamplesOpen: Et, setQuickSearchOpen: Ln, setRailViewport: Fn, setRejectedDeletionPreview: dn, setSaveMessage: cn, setSavingSegmentId: un, setSelectedSegmentGroupKey: tt, setSelectedSegmentId: jn, setShortcutsOpen: Ut, setTimelineZoom: Bn, shotBoundaries: Gn, shortcutsOpen: mn, slotButtonRef: gn, splitLayout: St, splitSegment: gr, startFullAnalysis: Kn, tagEditing: pn, tagSearchRef: fn, timelineDuration: yn, timelineRatioBounds: _e, timelineZoom: Ze, toggleSegmentGroup: Un, toggleSegmentRail: pr, updateTimelineRatio: yt, video: Ue, videoPerformers: zn, visibleCounts: bn, visibleSegmentRailRows: hn, visibleSegments: zt, wideLayout: It, workspaceRef: fr } = e, vn = Be(
-    () => Nt.filter((z) => !z.published && z.reviewState === "approved"),
-    [Nt]
-  ), yr = Di(jr), xn = vn.length, ct = te ? te.createCount + te.linkCount : null;
-  function br(z) {
-    const Fe = Gt.includes(z.id), ze = z.id === (xt == null ? void 0 : xt.id), ae = z.endSec == null ? Ie(z.startSec) : `${Ie(z.startSec)} – ${Ie(z.endSec)}`, st = `${gt(z.sourceKey)}${z.confidence != null ? ` · ${Math.round(z.confidence * 100)}%` : ""}`;
+function xd(e) {
+  const { activeFilterCount: t, allSwimlanes: r, analysisError: o, analysisRun: i, analysisStatus: a, approvalFacetCounts: s, autoAssignCandidates: l, autoAssignError: d, autoAssignOpen: c, autoAssignPerformers: g, autoAssigning: m, cancelQueuedReviewsForSegments: u, captureTrainingExport: y, centerTimelineRef: p, closeEditorFilters: h, closeFirstSegmentTagDialog: f, closeMaterializeDialog: w, closeMergeConfirmation: v, closePublishApprovedDialog: N, closeTagEditing: W, collapsedSegmentGroups: j, compatibilityMode: F, configuringTag: T, createSegment: M, currentTime: E, deleteRejectedSegments: R, detail: U, detailPanelRef: D, detailWidth: V, duplicateSegment: I, editorFilters: $, editorLayout: P, editorRef: J, exportingExamples: se, filtersButtonRef: me, filtersOpen: ge, firstSegmentTagOpen: B, focusRowRef: Q, handleSeparatorKeyDown: de, handleSeparatorPointerDown: oe, handleSeparatorPointerMove: xe, hideDerivedSegments: ke, history: z, historyOpen: te, historySaving: X, horizontalLayoutSize: le, importNativeSegments: b, incorrectExamples: K, incorrectExamplesOpen: C, lineage: x, markerRailWidth: A, materializeButtonRef: S, materializeCancelButtonRef: k, materializeDerivedSegments: q, materializeError: ue, materializeLoading: ae, materializeOpen: re, materializePreview: Se, materializing: H, mediaStackRef: ee, mergeCancelButtonRef: Y, mergeConfirmation: O, mergeSavingRef: ne, mergeSelectedSwimlane: ye, nativeImportState: be, onDetailChange: he, onNavigate: Ae, onReload: Ee, onSlotsChanged: Ne, openPublishApprovedDialog: Ie, panelSeparatorProps: Ce, pendingInitialSeekRef: ve, performerSlots: Oe, performerSlotsAvailable: De, playbackControlsRef: at, previewDerivedSegments: we, provenance: Pe, provenanceSources: qe, publishApprovedCancelButtonRef: je, publishApprovedDrafts: Te, publishApprovedError: Re, publishApprovedOpen: Ke, quickSearchOpen: it, railScrollRef: Qe, railToggleRef: Ye, recordHistoryAction: wt, rejectedDeletionPreview: Nt, removeIncorrectExample: lr, removingExampleId: En, restoreHistoryTarget: Xt, saveMessage: Dn, saveTag: Mt, saveTiming: dr, savingSegmentId: pt, seekRef: bt, segmentGroups: Bt, segmentRailLayout: At, segments: It, selectAllVideoSegments: cr, selectSegment: ht, selectSegmentCollection: ur, selectedGroups: en, selectedPerformerSlots: tn, selectedSegment: vt, selectedSegmentGroupKey: nn, selectedSegmentIds: Gt, selectedSegments: On, selectedSlotStatus: rn, setAutoAssignError: Et, setAutoAssignOpen: Kt, setConfiguringTag: on, setCurrentTime: mr, setEditorFilters: Pn, setEditorLayout: gr, setFiltersOpen: an, setHideDerivedSegments: sn, setHistoryOpen: ln, setIncorrectExamplesOpen: Dt, setQuickSearchOpen: Ln, setRailViewport: Fn, setRejectedDeletionPreview: dn, setSaveMessage: cn, setSavingSegmentId: un, setSelectedSegmentGroupKey: tt, setSelectedSegmentId: jn, setShortcutsOpen: Ut, setTimelineZoom: Bn, shotBoundaries: Gn, shortcutsOpen: mn, slotButtonRef: gn, splitLayout: xt, splitSegment: pr, startFullAnalysis: Kn, tagEditing: pn, tagSearchRef: fn, timelineDuration: yn, timelineRatioBounds: _e, timelineZoom: Je, toggleSegmentGroup: Un, toggleSegmentRail: fr, updateTimelineRatio: ft, video: Ue, videoPerformers: zn, visibleCounts: bn, visibleSegmentRailRows: hn, visibleSegments: zt, wideLayout: Ct, workspaceRef: yr } = e, vn = Ge(
+    () => It.filter((_) => !_.published && _.reviewState === "approved"),
+    [It]
+  ), br = Pi(Br), xn = vn.length, ct = Se ? Se.createCount + Se.linkCount : null;
+  function hr(_) {
+    const Be = Gt.includes(_.id), ze = _.id === (vt == null ? void 0 : vt.id), ie = _.endSec == null ? $e(_.startSec) : `${$e(_.startSec)} – ${$e(_.endSec)}`, st = `${gt(_.sourceKey)}${_.confidence != null ? ` · ${Math.round(_.confidence * 100)}%` : ""}`;
     return n("button", {
-      key: z.id,
+      key: _.id,
       type: "button",
-      onClick: (qt) => vt(z, { additive: qt.metaKey || qt.ctrlKey }),
-      "aria-pressed": Fe,
+      onClick: (qt) => ht(_, { additive: qt.metaKey || qt.ctrlKey }),
+      "aria-pressed": Be,
       "aria-current": ze ? "true" : void 0,
       "data-selected-segment-shortcut-target": ze ? "true" : void 0,
-      "aria-label": R ? `${z.tagName || "Tag segment"}, ${z.reviewState}${z.isDerived ? ", derived segment" : ""}, ${ae}` : `${z.tagName || "Tag segment"}${z.isDerived ? ", derived segment" : ""}, ${ae}`,
+      "aria-label": F ? `${_.tagName || "Tag segment"}, ${_.reviewState}${_.isDerived ? ", derived segment" : ""}, ${ie}` : `${_.tagName || "Tag segment"}${_.isDerived ? ", derived segment" : ""}, ${ie}`,
       className: "relative mb-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-left transition-colors hover:bg-muted/40 last:mb-0",
-      style: Ea(Fe, ze)
+      style: Oa(Be, ze)
     }, [
       n("div", { key: "row", className: "flex min-w-0 items-center gap-1.5" }, [
-        R ? n(Ft, { key: "review", state: z.reviewState, includeLabel: !1 }) : null,
-        z.isDerived ? n(sr, { key: "derived" }) : null,
+        F ? n(jt, { key: "review", state: _.reviewState, includeLabel: !1 }) : null,
+        _.isDerived ? n(sr, { key: "derived" }) : null,
         n(
           "span",
           { key: "tag", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" },
-          z.tagName || "Tag segment"
+          _.tagName || "Tag segment"
         ),
-        n("span", { key: "time", className: "shrink-0 whitespace-nowrap font-mono text-[10px] text-secondary" }, ae),
+        n("span", { key: "time", className: "shrink-0 whitespace-nowrap font-mono text-[10px] text-secondary" }, ie),
         n("span", {
           key: "provenance",
           className: "max-w-24 shrink truncate text-right text-[10px] text-secondary",
@@ -5365,12 +5390,12 @@ function pd(e) {
       ])
     ]);
   }
-  const _t = "inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-muted/40 hover:text-foreground disabled:opacity-50", Ht = [...B.actions || []].reverse().find((z) => z.sequence <= B.cursorSequence);
+  const _t = "inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-muted/40 hover:text-foreground disabled:opacity-50", Ht = [...z.actions || []].reverse().find((_) => _.sequence <= z.cursorSequence);
   return n("section", {
-    ref: F,
+    ref: J,
     tabIndex: -1,
     "aria-label": "Segment Studio segment editor",
-    className: `${St ? "min-h-0 flex-1" : ""} flex flex-col gap-2 outline-none`
+    className: `${xt ? "min-h-0 flex-1" : ""} flex flex-col gap-2 outline-none`
   }, [
     n("header", { key: "header", className: "flex shrink-0 flex-col items-stretch gap-2 rounded-md border border-border bg-surface px-3 py-2" }, [
       n("div", { key: "title-row", className: "flex min-w-0 items-center gap-3" }, [
@@ -5378,7 +5403,7 @@ function pd(e) {
           n("a", {
             key: "exit",
             href: "/segment-studio",
-            onClick: (z) => Ua(z, be, { page: "segment-studio" }),
+            onClick: (_) => _a(_, Ae, { page: "segment-studio" }),
             "aria-label": "Go back",
             title: "Go back",
             className: "shrink-0 px-1 text-lg leading-none text-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
@@ -5388,51 +5413,51 @@ function pd(e) {
             className: "hover:underline focus:underline focus:outline-none",
             title: Ue.title || `Video ${Ue.id}`
           }, Ue.title || `Video ${Ue.id}`)),
-          ...zn.map((z) => n(Tn, {
-            key: Ve(z),
-            performer: { id: Ve(z), name: z.name },
+          ...zn.map((_) => n(Tn, {
+            key: Ve(_),
+            performer: { id: Ve(_), name: _.name },
             compact: !0,
-            tooltip: z.name
+            tooltip: _.name
           })),
-          R ? n($t, { key: "review-counts", counts: bn }) : null
+          F ? n(Tt, { key: "review-counts", counts: bn }) : null
         ]),
         n("div", { key: "actions", className: "flex shrink-0 items-center gap-1.5" }, [
-          R ? null : n(_a, { key: "bin", onNavigate: be, compact: !0 }),
-          n(Ha, { key: "settings", onNavigate: be, compact: !0 })
+          F ? null : n(qa, { key: "bin", onNavigate: Ae, compact: !0 }),
+          n(Wa, { key: "settings", onNavigate: Ae, compact: !0 })
         ])
       ]),
-      R && D.nativeImportCount > 0 ? n("div", {
+      F && U.nativeImportCount > 0 ? n("div", {
         key: "native-import",
         className: "flex flex-wrap items-center gap-2 rounded-md border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-xs"
       }, [
         n(
           "span",
           { key: "message", className: "mr-auto text-amber-100" },
-          `${D.nativeImportCount} Cove segment${D.nativeImportCount === 1 ? "" : "s"} ${D.nativeImportCount === 1 ? "is" : "are"} not in Segment Studio.`
+          `${U.nativeImportCount} Cove segment${U.nativeImportCount === 1 ? "" : "s"} ${U.nativeImportCount === 1 ? "is" : "are"} not in Segment Studio.`
         ),
-        me.busy ? n("span", {
+        be.busy ? n("span", {
           key: "progress",
           role: "status",
           className: "font-medium text-foreground"
-        }, me.reviewState === "approved" ? "Importing as approved…" : "Importing for review…") : [
+        }, be.reviewState === "approved" ? "Importing as approved…" : "Importing for review…") : [
           n("button", {
             key: "review",
             type: "button",
-            onClick: () => Se("unreviewed"),
+            onClick: () => b("unreviewed"),
             className: "rounded-md border border-amber-300/60 px-2.5 py-1 font-medium text-foreground hover:bg-amber-500/20"
           }, "Import for review"),
           n("button", {
             key: "approved",
             type: "button",
-            onClick: () => Se("approved"),
+            onClick: () => b("approved"),
             className: "rounded-md border border-emerald-400/60 bg-emerald-500/10 px-2.5 py-1 font-medium text-foreground hover:bg-emerald-500/20"
           }, "Import as approved")
         ],
-        me.error ? n("span", {
+        be.error ? n("span", {
           key: "error",
           role: "alert",
           className: "w-full text-red-300"
-        }, me.error) : null
+        }, be.error) : null
       ]) : null,
       o && (a == null ? void 0 : a.configured) !== !1 ? n("div", {
         key: "analysis-error",
@@ -5441,7 +5466,7 @@ function pd(e) {
       }, o) : null,
       n("div", { key: "toolbar", className: "flex flex-wrap items-center justify-between gap-2" }, [
         n("div", { key: "workflow", className: "flex flex-wrap items-center gap-1.5" }, [
-          R ? n("div", {
+          F ? n("div", {
             key: "full-analysis",
             className: "inline-flex items-stretch"
           }, [
@@ -5459,80 +5484,80 @@ function pd(e) {
                 "aria-label": "Choose Full Scan analyses",
                 "aria-disabled": (a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running",
                 title: "Choose analyses",
-                onClick: (z) => {
-                  ((a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running") && z.preventDefault();
+                onClick: (_) => {
+                  ((a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running") && _.preventDefault();
                 },
-                onKeyDown: (z) => {
-                  (z.key === "Enter" || z.key === " ") && ((a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running") && z.preventDefault();
+                onKeyDown: (_) => {
+                  (_.key === "Enter" || _.key === " ") && ((a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running") && _.preventDefault();
                 },
                 className: `segment-studio-full-scan-arrow inline-flex list-none items-center justify-center border-l border-white/30 bg-accent px-2 py-1.5 text-white marker:hidden [&::-webkit-details-marker]:hidden ${(a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running" ? "pointer-events-none cursor-default opacity-50" : "cursor-pointer hover:opacity-90"}`
-              }, n(Oi, { className: "h-4 w-4" })),
+              }, n(Li, { className: "h-4 w-4" })),
               n("div", {
                 key: "menu",
                 className: "absolute right-0 top-full z-50 mt-1 min-w-48 whitespace-nowrap rounded-md border border-border bg-card p-1 shadow-xl"
               }, [
                 ["AI analysis only", ["aiTagging"]],
                 ["Shot boundaries only", ["omnishotcut"]]
-              ].map(([z, Fe]) => n("button", {
-                key: z,
+              ].map(([_, Be]) => n("button", {
+                key: _,
                 type: "button",
                 disabled: (a == null ? void 0 : a.configured) === !1 || (a == null ? void 0 : a.ready) === !1 || (i == null ? void 0 : i.status) === "queued" || (i == null ? void 0 : i.status) === "running",
                 onClick: (ze) => {
-                  var ae;
-                  (ae = ze.currentTarget.closest("details")) == null || ae.removeAttribute("open"), Kn(Fe);
+                  var ie;
+                  (ie = ze.currentTarget.closest("details")) == null || ie.removeAttribute("open"), Kn(Be);
                 },
                 className: "block w-full rounded px-2.5 py-2 text-left text-xs text-foreground hover:bg-muted/60 disabled:opacity-50"
-              }, z)))
+              }, _)))
             ])
           ]) : null,
-          R ? n("button", {
+          F ? n("button", {
             key: "auto-assign-performers",
             type: "button",
-            disabled: ft != null || l.length === 0,
+            disabled: pt != null || l.length === 0,
             onClick: () => {
-              Rt(""), Kt(!0);
+              Et(""), Kt(!0);
             },
             title: "Auto-assign performers to segments with one valid complete slot match",
             className: "rounded-md border border-violet-400/60 bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-violet-500/25 disabled:opacity-50"
           }, `Auto-Assign Performers${l.length ? ` (${l.length})` : ""}`) : null,
-          R ? n("button", {
+          F ? n("button", {
             key: "materialize-derived",
-            ref: E,
+            ref: S,
             type: "button",
-            disabled: ft != null || le || xe || ct === 0,
-            onClick: at,
+            disabled: pt != null || ae || H || ct === 0,
+            onClick: we,
             title: "Preview and materialize segments implied by derivation rules",
             className: "rounded-md border border-indigo-400/60 bg-indigo-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-indigo-500/25 disabled:opacity-50"
-          }, le ? "Analyzing…" : `Auto-Materialize${ct != null ? ` (${ct})` : ""}`) : null,
-          R ? n("button", {
+          }, ae ? "Analyzing…" : `Auto-Materialize${ct != null ? ` (${ct})` : ""}`) : null,
+          F ? n("button", {
             key: "complete-review",
             type: "button",
-            disabled: ft != null || xn === 0,
-            onClick: (z) => ve(z.currentTarget),
+            disabled: pt != null || xn === 0,
+            onClick: (_) => Ie(_.currentTarget),
             "aria-haspopup": "dialog",
-            "aria-expanded": Te,
+            "aria-expanded": Ke,
             className: "rounded-md border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-emerald-500/25 disabled:opacity-50"
           }, `Publish approved${xn ? ` (${xn})` : ""}`) : null,
           n("button", {
             key: "feedback",
             type: "button",
-            disabled: re || En != null || h.length === 0,
-            onClick: () => Et(!0),
+            disabled: se || En != null || K.length === 0,
+            onClick: () => Dt(!0),
             "aria-haspopup": "dialog",
-            "aria-expanded": K,
-            "aria-label": `Open AI feedback collection, ${h.length} example${h.length === 1 ? "" : "s"}`,
+            "aria-expanded": C,
+            "aria-label": `Open AI feedback collection, ${K.length} example${K.length === 1 ? "" : "s"}`,
             title: "Manage incorrect examples (Shift+C)",
             className: "rounded-md border border-cyan-400/60 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-cyan-500/25 disabled:opacity-50"
-          }, `AI Feedback${h.length ? ` (${h.length})` : ""}`)
+          }, `AI Feedback${K.length ? ` (${K.length})` : ""}`)
         ]),
         n("div", { key: "utilities", className: "ml-auto flex flex-wrap items-center justify-end gap-1.5" }, [
           n("button", {
             key: "filters",
-            ref: ee,
+            ref: me,
             type: "button",
             onClick: () => an(!0),
             "aria-haspopup": "dialog",
-            "aria-expanded": we,
+            "aria-expanded": ge,
             className: `${_t} ${t ? "border-accent bg-accent/20 text-foreground" : ""}`
           }, [
             n(Jn, { key: "icon", name: "filter" }),
@@ -5547,33 +5572,33 @@ function pd(e) {
           n("button", {
             key: "history",
             type: "button",
-            disabled: (R ? B.actions.length === 0 : Ht == null) || ft != null || Me,
-            onClick: R ? () => ln((z) => !z) : () => Xt(
+            disabled: (F ? z.actions.length === 0 : Ht == null) || pt != null || X,
+            onClick: F ? () => ln((_) => !_) : () => Xt(
               Ht.sequence - 1
             ),
-            "aria-haspopup": R ? "dialog" : void 0,
-            "aria-expanded": R ? ue : void 0,
+            "aria-haspopup": F ? "dialog" : void 0,
+            "aria-expanded": F ? te : void 0,
             className: _t
           }, [
             n(Jn, { key: "icon", name: "history" }),
-            n("span", { key: "label" }, R ? `History${B.actions.length ? ` (${B.actions.length})` : ""}` : Ht ? `Undo ${Ht.label}` : "Undo")
+            n("span", { key: "label" }, F ? `History${z.actions.length ? ` (${z.actions.length})` : ""}` : Ht ? `Undo ${Ht.label}` : "Undo")
           ]),
           n("button", {
             key: "rail",
-            ref: Je,
+            ref: Ye,
             type: "button",
-            onClick: pr,
+            onClick: fr,
             "aria-controls": "segment-studio-segment-rail",
-            "aria-expanded": C.markerRailOpen,
+            "aria-expanded": P.markerRailOpen,
             className: _t
           }, [
             n(Jn, { key: "icon", name: "list" }),
-            n("span", { key: "label" }, C.markerRailOpen ? "Hide segment rail" : "Show segment rail")
+            n("span", { key: "label" }, P.markerRailOpen ? "Hide segment rail" : "Show segment rail")
           ])
         ])
       ])
     ]),
-    R && ue ? n("section", {
+    F && te ? n("section", {
       key: "history-panel",
       role: "dialog",
       "aria-label": "Editor history",
@@ -5589,66 +5614,66 @@ function pd(e) {
         }, "Close")
       ]),
       n("div", { key: "actions", className: "max-h-72 overflow-y-auto" }, [
-        ...[...B.actions].reverse().map((z) => n("button", {
-          key: z.sequence,
+        ...[...z.actions].reverse().map((_) => n("button", {
+          key: _.sequence,
           type: "button",
-          disabled: Me,
-          onClick: () => Xt(z.sequence),
-          "aria-current": B.cursorSequence === z.sequence ? "step" : void 0,
-          className: `flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${z.sequence > B.cursorSequence ? "text-secondary" : "text-foreground"} ${B.cursorSequence === z.sequence ? "bg-accent/15" : ""}`
+          disabled: X,
+          onClick: () => Xt(_.sequence),
+          "aria-current": z.cursorSequence === _.sequence ? "step" : void 0,
+          className: `flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${_.sequence > z.cursorSequence ? "text-secondary" : "text-foreground"} ${z.cursorSequence === _.sequence ? "bg-accent/15" : ""}`
         }, [
-          n("span", { key: "label", className: "min-w-0 flex-1 truncate" }, z.label),
+          n("span", { key: "label", className: "min-w-0 flex-1 truncate" }, _.label),
           n("time", {
             key: "time",
-            dateTime: z.createdAt,
+            dateTime: _.createdAt,
             className: "shrink-0 text-[10px] text-secondary"
-          }, new Date(z.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+          }, new Date(_.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
         ])),
         n("button", {
           key: "baseline",
           type: "button",
-          disabled: Me,
-          onClick: () => Xt(B.baselineSequence),
-          "aria-current": B.cursorSequence === B.baselineSequence ? "step" : void 0,
-          className: `w-full rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${B.cursorSequence === B.baselineSequence ? "bg-accent/15 text-foreground" : "text-secondary"}`
+          disabled: X,
+          onClick: () => Xt(z.baselineSequence),
+          "aria-current": z.cursorSequence === z.baselineSequence ? "step" : void 0,
+          className: `w-full rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${z.cursorSequence === z.baselineSequence ? "bg-accent/15 text-foreground" : "text-secondary"}`
         }, "Before recent changes")
       ])
     ]) : null,
-    we ? n(td, {
+    ge ? n(sd, {
       key: "editor-filters",
-      filters: I,
-      hideDerivedSegments: ie,
+      filters: $,
+      hideDerivedSegments: ke,
       performers: zn,
-      provenanceSources: De,
+      provenanceSources: qe,
       reviewCounts: s,
-      segments: Nt,
+      segments: It,
       segmentGroups: Bt,
-      reviewMode: R,
+      reviewMode: F,
       onChange: Pn,
       onHideDerivedChange: sn,
-      onClose: p
+      onClose: h
     }) : null,
-    ce ? n(ed, {
+    B ? n(id, {
       key: "first-segment-tag-dialog",
-      saving: ft != null,
+      saving: pt != null,
       error: Dn,
-      onSelect: (z, Fe) => A(z, Fe),
-      onClose: b
+      onSelect: (_, Be) => M(_, Be),
+      onClose: f
     }) : null,
-    Ke ? n(od, {
+    it ? n(cd, {
       key: "quick-search-dialog",
-      segments: Us(r),
-      onSelect: (z) => {
-        Ln(!1), vt(z, { focusEditor: !0, seekToSegment: !1 });
+      segments: Vs(r),
+      onSelect: (_) => {
+        Ln(!1), ht(_, { focusEditor: !0, seekToSegment: !1 });
       },
       onClose: () => {
         Ln(!1), requestAnimationFrame(() => {
-          var z;
-          return (z = F.current) == null ? void 0 : z.focus({ preventScroll: !0 });
+          var _;
+          return (_ = J.current) == null ? void 0 : _.focus({ preventScroll: !0 });
         });
       }
     }) : null,
-    c ? n(sd, {
+    c ? n(gd, {
       key: "auto-assign-dialog",
       candidates: l,
       processing: m,
@@ -5656,153 +5681,154 @@ function pd(e) {
       onConfirm: g,
       onClose: () => Kt(!1)
     }) : null,
-    J ? n(dd, {
+    O ? n(fd, {
       key: "merge-selection-dialog",
-      merge: J,
-      processing: L.current,
-      undoable: !R,
-      cancelButtonRef: X,
-      onConfirm: (z) => ne(!0, z, J),
-      onClose: w
+      merge: O,
+      processing: ne.current,
+      undoable: !F,
+      cancelButtonRef: Y,
+      onConfirm: (_) => ye(!0, _, O),
+      onClose: v
     }) : null,
-    se ? n(ud, {
+    re ? n(bd, {
       key: "materialize-derived-dialog",
-      preview: te,
-      loading: le,
-      processing: xe,
-      error: H,
-      cancelButtonRef: S,
-      onConfirm: k,
+      preview: Se,
+      loading: ae,
+      processing: H,
+      error: ue,
+      cancelButtonRef: k,
+      onConfirm: q,
       onClose: () => {
-        xe || f();
+        H || w();
       }
     }) : null,
     n("div", {
       key: "workspace",
-      ref: fr,
-      className: `${St ? "min-h-0 flex-1" : ""} relative grid gap-2`
+      ref: yr,
+      className: `${xt ? "min-h-0 flex-1" : ""} relative grid gap-2`
     }, [
-      C.markerRailOpen ? n("aside", {
+      P.markerRailOpen ? n("aside", {
         key: "segment-rail",
         id: "segment-studio-segment-rail",
         "aria-label": "Segment rail",
         className: "order-2 flex min-h-[24rem] flex-col overflow-hidden rounded-md border border-border bg-surface lg:min-h-0",
-        style: It ? { position: "absolute", top: 0, right: 0, width: x, height: Y.focusRowHeight || "16rem", zIndex: 1 } : { height: "32rem" }
+        style: Ct ? { position: "absolute", top: 0, right: 0, width: A, height: le.focusRowHeight || "16rem", zIndex: 1 } : { height: "32rem" }
       }, [
-        Nt.length === 0 ? n("p", { key: "empty", className: "p-4 text-sm text-secondary" }, "This video has no ordinary tag segments.") : zt.length === 0 ? n(
+        It.length === 0 ? n("p", { key: "empty", className: "p-4 text-sm text-secondary" }, "This video has no ordinary tag segments.") : zt.length === 0 ? n(
           "p",
           { key: "filtered-empty", className: "p-4 text-sm text-secondary" },
           "No segments match the current editor filters."
         ) : n("div", {
           key: "segments",
-          ref: it,
-          onScroll: (z) => Fn({
-            scrollTop: z.currentTarget.scrollTop,
-            height: z.currentTarget.clientHeight
+          ref: Qe,
+          onScroll: (_) => Fn({
+            scrollTop: _.currentTarget.scrollTop,
+            height: _.currentTarget.clientHeight
           }),
           className: "min-h-0 flex-1 overflow-y-auto p-2"
         }, n("div", {
           className: "relative",
           style: { height: At.height }
-        }, hn.map((z) => {
+        }, hn.map((_) => {
           var ze;
-          let Fe;
-          if (z.kind === "group") {
-            const ae = W.includes(z.group.key), st = z.group.lanes.reduce((qt, _n) => qt + _n.markers.length, 0);
-            Fe = n("button", {
+          let Be;
+          if (_.kind === "group") {
+            const ie = j.includes(_.group.key), st = _.group.lanes.reduce((qt, _n) => qt + _n.markers.length, 0);
+            Be = n("button", {
               type: "button",
               onClick: () => {
-                tt(z.group.key), Un(z.group.key);
+                tt(_.group.key), Un(_.group.key);
               },
-              "aria-expanded": !ae,
-              "aria-current": nn === z.group.key ? "true" : void 0,
-              "data-segment-rail-group": z.group.key,
-              className: `flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted/50 ${nn === z.group.key ? "border-accent bg-accent/15" : "border-border bg-muted/30"}`
+              "aria-expanded": !ie,
+              "aria-current": nn === _.group.key ? "true" : void 0,
+              "data-segment-rail-group": _.group.key,
+              className: `flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted/50 ${nn === _.group.key ? "border-accent bg-accent/15" : "border-border bg-muted/30"}`
             }, [
-              n("span", { key: "toggle", "aria-hidden": "true", className: "w-3 shrink-0 text-center" }, ae ? "▸" : "▾"),
-              n("span", { key: "name", className: "min-w-0 flex-1 truncate", title: z.group.name }, z.group.name),
+              n("span", { key: "toggle", "aria-hidden": "true", className: "w-3 shrink-0 text-center" }, ie ? "▸" : "▾"),
+              n("span", { key: "name", className: "min-w-0 flex-1 truncate", title: _.group.name }, _.group.name),
               n("span", { key: "count", className: "shrink-0 tabular-nums text-secondary" }, st),
-              R && ae ? n($t, { key: "states", counts: z.group.counts }) : null
+              F && ie ? n(Tt, { key: "states", counts: _.group.counts }) : null
             ]);
-          } else z.kind === "lane" ? Fe = n("div", {
+          } else _.kind === "lane" ? Be = n("div", {
             className: "flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/30 px-2 py-1.5",
-            title: $n(z.lane),
-            "aria-label": $n(z.lane)
+            title: $n(_.lane),
+            "aria-label": $n(_.lane)
           }, [
-            n("span", { key: "name", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" }, z.lane.label),
-            (ze = z.lane.performers) != null && ze.length ? n(ir, {
+            n("span", { key: "name", className: "min-w-0 flex-1 truncate text-xs font-medium text-foreground" }, _.lane.label),
+            (ze = _.lane.performers) != null && ze.length ? n(ir, {
               key: "performers",
-              performers: z.lane.performers,
-              performerAssignments: z.lane.performerAssignments
+              performers: _.lane.performers,
+              performerAssignments: _.lane.performerAssignments
             }) : null,
-            R ? n($t, { key: "states", counts: z.lane.counts }) : null
-          ]) : Fe = br(z.segment);
+            F ? n(Tt, { key: "states", counts: _.lane.counts }) : null
+          ]) : Be = hr(_.segment);
           return n("div", {
-            key: z.key,
+            key: _.key,
             className: "absolute left-0 right-0",
-            style: { top: z.top, height: z.height }
-          }, Fe);
+            style: { top: _.top, height: _.height }
+          }, Be);
         })))
       ]) : null,
-      n("div", { key: "review-pane", className: `${St ? "min-h-0" : ""} order-1 flex min-w-0 flex-col gap-2 lg:order-1` }, [
+      n("div", { key: "review-pane", className: `${xt ? "min-h-0" : ""} order-1 flex min-w-0 flex-col gap-2 lg:order-1` }, [
         n("div", {
           key: "media-stack",
-          ref: q,
-          className: `${St ? "min-h-0 flex-1" : ""} grid`,
-          style: St ? {
-            gridTemplateRows: `minmax(16rem, ${(1 - C.timelineRatio) * 100}fr) 0.5rem minmax(14rem, ${C.timelineRatio * 100}fr)`
+          ref: ee,
+          className: `${xt ? "min-h-0 flex-1" : ""} grid`,
+          style: xt ? {
+            gridTemplateRows: `minmax(16rem, ${(1 - P.timelineRatio) * 100}fr) 0.5rem minmax(14rem, ${P.timelineRatio * 100}fr)`
           } : { rowGap: "0.5rem" }
         }, [
           n("div", {
             key: "focus-row",
-            ref: T,
+            ref: Q,
             className: "grid min-h-0 gap-2",
-            style: It ? {
-              gridTemplateColumns: C.markerRailOpen ? `${P}px 0.5rem minmax(0,1fr) 0.5rem ${x}px` : `${P}px 0.5rem minmax(0,1fr)`
+            style: Ct ? {
+              gridTemplateColumns: P.markerRailOpen ? `${V}px 0.5rem minmax(0,1fr) 0.5rem ${A}px` : `${V}px 0.5rem minmax(0,1fr)`
             } : void 0
           }, [
-            n(md, {
+            n(hd, {
               key: "tools",
-              compatibilityMode: R,
-              selectedSegment: xt,
+              compatibilityMode: F,
+              selectedSegment: vt,
               selectedSegments: On,
               selectedGroups: en,
               saveMessage: Dn,
-              savingSegmentId: ft,
+              savingSegmentId: pt,
               setSavingSegmentId: un,
               setSaveMessage: cn,
               saveTag: Mt,
               slotStatus: rn,
-              performerSlotsAvailable: Ge,
+              performerSlotsAvailable: De,
               selectedPerformerSlots: tn,
-              performerSlots: ge,
-              detail: D,
+              performerSlots: Oe,
+              detail: U,
               onDetailChange: he,
+              onCancelQueuedReview: u,
               video: Ue,
               slotButtonRef: gn,
               tagSearchRef: fn,
               tagEditing: pn,
-              onCancelTagEditing: N,
-              detailPanelRef: U,
-              onReduceSelection: (z) => {
-                vt(z), requestAnimationFrame(() => {
-                  var Fe;
-                  return (Fe = U.current) == null ? void 0 : Fe.focus({ preventScroll: !0 });
+              onCancelTagEditing: W,
+              detailPanelRef: D,
+              onReduceSelection: (_) => {
+                ht(_), requestAnimationFrame(() => {
+                  var Be;
+                  return (Be = D.current) == null ? void 0 : Be.focus({ preventScroll: !0 });
                 });
               },
-              saveTiming: lr,
-              onSlotsChanged: Pe,
-              onRecordHistory: Ye,
-              splitSegment: gr,
-              duplicateSegment: V,
-              provenance: ke,
-              lineage: M,
-              onNavigateLineageItem: (z) => {
-                const Fe = Nt.find((ze) => ze.itemId === z);
-                Fe && jn(Fe.id);
+              saveTiming: dr,
+              onSlotsChanged: Ne,
+              onRecordHistory: wt,
+              splitSegment: pr,
+              duplicateSegment: I,
+              provenance: Pe,
+              lineage: x,
+              onNavigateLineageItem: (_) => {
+                const Be = It.find((ze) => ze.itemId === _);
+                Be && jn(Be.id);
               }
             }),
-            It ? n(
+            Ct ? n(
               "div",
               { key: "detail-separator", ...Ce("detailWidth", "Resize segment details") },
               n("span", { className: "h-16 w-1 rounded-full bg-border" })
@@ -5810,7 +5836,7 @@ function pd(e) {
             Ue.videoFile ? n(
               "div",
               { key: "player", "data-segment-player": "true", className: "flex min-h-0 items-center overflow-hidden rounded-md border border-border bg-black", style: { minHeight: "16rem" } },
-              n("div", { className: "h-full min-h-0 w-full" }, n(Xo, {
+              n("div", { className: "h-full min-h-0 w-full" }, n(ta, {
                 streamUrl: `/api/stream/video/${Ue.id}`,
                 posterUrl: `/api/stream/video/${Ue.id}/screenshot?v=${encodeURIComponent(Ue.updatedAt || "")}`,
                 format: Ue.videoFile.format,
@@ -5818,23 +5844,23 @@ function pd(e) {
                 duration: Ue.videoFile.duration,
                 videoId: Ue.id,
                 trackingEnabled: !1,
-                onSeekRegister: (z) => {
-                  ht.current = z, js($e.current, Nt, z) && ($e.current = null);
+                onSeekRegister: (_) => {
+                  bt.current = _, _s(ve.current, It, _) && (ve.current = null);
                 },
-                onPlaybackControlRegister: (z) => {
-                  Ae.current = z;
+                onPlaybackControlRegister: (_) => {
+                  at.current = _;
                 },
-                onTimeUpdate: ur
+                onTimeUpdate: mr
               }))
             ) : n("p", { key: "no-player", className: "flex min-h-0 items-center justify-center rounded-md border border-dashed border-border p-4 text-sm text-secondary", style: { minHeight: "16rem" } }, "This video has no playable file."),
-            It && C.markerRailOpen ? n(
+            Ct && P.markerRailOpen ? n(
               "div",
               { key: "rail-separator", ...Ce("markerRailWidth", "Resize segment rail") },
               n("span", { className: "h-16 w-1 rounded-full bg-border" })
             ) : null,
-            It && C.markerRailOpen ? n("div", { key: "rail-placeholder", "aria-hidden": "true" }) : null
+            Ct && P.markerRailOpen ? n("div", { key: "rail-placeholder", "aria-hidden": "true" }) : null
           ]),
-          St ? n("div", {
+          xt ? n("div", {
             key: "separator",
             role: "separator",
             tabIndex: 0,
@@ -5842,210 +5868,210 @@ function pd(e) {
             "aria-orientation": "horizontal",
             "aria-valuemin": Math.round(_e.minimum * 100),
             "aria-valuemax": Math.round(_e.maximum * 100),
-            "aria-valuenow": Math.round(C.timelineRatio * 100),
-            "aria-valuetext": `Swimlanes use ${Math.round(C.timelineRatio * 100)} percent of the media area`,
+            "aria-valuenow": Math.round(P.timelineRatio * 100),
+            "aria-valuetext": `Swimlanes use ${Math.round(P.timelineRatio * 100)} percent of the media area`,
             title: "Drag or use Up/Down to resize · Shift for larger steps · double-click to reset",
             onPointerDown: oe,
-            onPointerMove: fe,
-            onKeyDown: Q,
-            onDoubleClick: () => yt(rt.timelineRatio),
+            onPointerMove: xe,
+            onKeyDown: de,
+            onDoubleClick: () => ft(rt.timelineRatio),
             className: "flex items-center justify-center rounded-sm hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-accent",
             style: { touchAction: "none", cursor: "row-resize" }
           }, n("span", { className: "h-1 w-16 rounded-full bg-border" })) : null,
-          n("div", { key: "timeline", className: "min-h-0", style: St ? void 0 : { height: "20rem" } }, n(gd, {
+          n("div", { key: "timeline", className: "min-h-0", style: xt ? void 0 : { height: "20rem" } }, n(vd, {
             segments: zt,
             shotBoundaries: Gn,
             segmentGroups: Bt,
-            performerSlots: ge,
-            collapsedGroupKeys: W,
+            performerSlots: Oe,
+            collapsedGroupKeys: j,
             selectedGroupKey: nn,
-            selectedSegmentId: xt == null ? void 0 : xt.id,
+            selectedSegmentId: vt == null ? void 0 : vt.id,
             selectedSegmentIds: Gt,
             duration: yn,
-            currentTime: $,
-            zoom: Ze,
+            currentTime: E,
+            zoom: Je,
             onZoomChange: Bn,
             onSelectGroup: tt,
             onToggleGroup: Un,
-            onSelect: (z, Fe) => vt(z, Fe),
-            onSelectSegments: cr,
-            onSelectAll: dr,
-            onConfigureTag: (z) => on(z),
-            onSeekTime: (z) => {
-              var Fe;
-              return (Fe = ht.current) == null ? void 0 : Fe.call(ht, z, !1);
+            onSelect: (_, Be) => ht(_, Be),
+            onSelectSegments: ur,
+            onSelectAll: cr,
+            onConfigureTag: (_) => on(_),
+            onSeekTime: (_) => {
+              var Be;
+              return (Be = bt.current) == null ? void 0 : Be.call(bt, _, !1);
             },
-            centerRef: y,
-            showReviewState: R,
-            swimlaneTitleWidth: C.swimlaneTitleWidth,
-            onSwimlaneTitleWidthChange: (z) => mr((Fe) => ({ ...Fe, swimlaneTitleWidth: z }))
+            centerRef: p,
+            showReviewState: F,
+            swimlaneTitleWidth: P.swimlaneTitleWidth,
+            onSwimlaneTitleWidthChange: (_) => gr((Be) => ({ ...Be, swimlaneTitleWidth: _ }))
           }))
         ])
       ])
     ]),
-    _ ? n(Vr, {
-      key: `configure-tag:${_.tagId}`,
-      tagId: _.tagId,
-      tagName: _.tagName,
-      performerSlotsEnabled: R,
+    T ? n(Jr, {
+      key: `configure-tag:${T.tagId}`,
+      tagId: T.tagId,
+      tagName: T.tagName,
+      performerSlotsEnabled: F,
       onSaved: Ee,
       onClose: () => {
-        const z = _.trigger;
+        const _ = T.trigger;
         on(null), requestAnimationFrame(() => {
-          var Fe;
-          z != null && z.isConnected ? z.focus({ preventScroll: !0 }) : (Fe = F.current) == null || Fe.focus({ preventScroll: !0 });
+          var Be;
+          _ != null && _.isConnected ? _.focus({ preventScroll: !0 }) : (Be = J.current) == null || Be.focus({ preventScroll: !0 });
         });
       }
     }) : null,
-    Te ? n(id, {
+    Ke ? n(md, {
       key: "publish-approved-dialog",
       drafts: vn,
-      processing: ft === -1,
-      error: Ne,
-      cancelButtonRef: He,
-      onConfirm: je,
-      onClose: v
+      processing: pt === -1,
+      error: Re,
+      cancelButtonRef: je,
+      onConfirm: Te,
+      onClose: N
     }) : null,
-    pt ? n(ld, {
+    Nt ? n(pd, {
       key: "rejected-deletion-dialog",
-      preview: pt,
-      onConfirm: () => O(pt),
+      preview: Nt,
+      onConfirm: () => R(Nt),
       onClose: () => {
         dn(null), requestAnimationFrame(() => {
-          var z;
-          return (z = F.current) == null ? void 0 : z.focus({ preventScroll: !0 });
+          var _;
+          return (_ = J.current) == null ? void 0 : _.focus({ preventScroll: !0 });
         });
       }
     }) : null,
-    mn ? n(nd, {
+    mn ? n(ld, {
       key: "shortcuts-dialog",
-      reviewMode: R,
-      bindings: yr,
+      reviewMode: F,
+      bindings: br,
       onClose: () => Ut(!1)
     }) : null,
-    K ? n(rd, {
+    C ? n(dd, {
       key: "incorrect-examples-dialog",
-      examples: h,
-      exporting: re,
+      examples: K,
+      exporting: se,
       removingExampleId: En,
-      onExport: u,
-      onRemove: jt,
-      onClose: () => Et(!1)
+      onExport: y,
+      onRemove: lr,
+      onClose: () => Dt(!1)
     }) : null
   ]);
 }
-function fd(e) {
-  const { allSwimlanes: t, editorRef: r, performerSlots: o, seekRef: i, segmentGroups: a, segments: s, selectedSegmentId: l, selectedSegmentIds: d, selectionAnchorIdRef: c, selectionRangeBaseIdsRef: g, setCollapsedSegmentGroups: m, setEditorFilters: u, setHideDerivedSegments: y, setSaveMessage: p, setSelectedSegmentGroupKey: b, setSelectedSegmentId: f, setSelectedSegmentIds: w } = e;
-  function v(A) {
-    const $ = ut(t, A);
-    $ && m((O) => Ga(O, $));
+function Sd(e) {
+  const { allSwimlanes: t, editorRef: r, performerSlots: o, seekRef: i, segmentGroups: a, segments: s, selectedSegmentId: l, selectedSegmentIds: d, selectionAnchorIdRef: c, selectionRangeBaseIdsRef: g, setCollapsedSegmentGroups: m, setEditorFilters: u, setHideDerivedSegments: y, setSaveMessage: p, setSelectedSegmentGroupKey: h, setSelectedSegmentId: f, setSelectedSegmentIds: w } = e;
+  function v(T) {
+    const M = ut(t, T);
+    M && m((E) => Ua(E, M));
   }
-  function N(A) {
-    f(A), w(A == null ? [] : [A]), c.current = A, g.current = [];
+  function N(T) {
+    f(T), w(T == null ? [] : [T]), c.current = T, g.current = [];
   }
-  function W(A, {
-    focusEditor: $ = !1,
-    seekToSegment: O = !1,
-    additive: D = !1,
+  function W(T, {
+    focusEditor: M = !1,
+    seekToSegment: E = !1,
+    additive: R = !1,
     rangeSegmentIds: U = null
   } = {}) {
     var V, I;
-    const P = ss({
+    const D = ds({
       selectedSegmentIds: d,
       activeSegmentId: l,
       anchorSegmentId: c.current,
       rangeBaseSegmentIds: g.current
-    }, A.id, U, D);
-    w(P.selectedSegmentIds), f(P.activeSegmentId), c.current = P.anchorSegmentId, g.current = P.rangeBaseSegmentIds, P.activeSegmentId != null && b(ut(t, P.activeSegmentId)), v(A.id), $ && ((V = r.current) == null || V.focus({ preventScroll: !0 })), O && ((I = i.current) == null || I.call(i, A.startSec, !1));
+    }, T.id, U, R);
+    w(D.selectedSegmentIds), f(D.activeSegmentId), c.current = D.anchorSegmentId, g.current = D.rangeBaseSegmentIds, D.activeSegmentId != null && h(ut(t, D.activeSegmentId)), v(T.id), M && ((V = r.current) == null || V.focus({ preventScroll: !0 })), E && ((I = i.current) == null || I.call(i, T.startSec, !1));
   }
-  function R(A) {
-    const $ = as(
+  function j(T) {
+    const M = ss(
       d,
       l,
-      A
+      T
     );
-    w($.selectedSegmentIds), f($.activeSegmentId), c.current = $.activeSegmentId, g.current = [], $.activeSegmentId != null && (b(ut(t, $.activeSegmentId)), v($.activeSegmentId));
+    w(M.selectedSegmentIds), f(M.activeSegmentId), c.current = M.activeSegmentId, g.current = [], M.activeSegmentId != null && (h(ut(t, M.activeSegmentId)), v(M.activeSegmentId));
   }
-  function _() {
-    var O;
-    const A = ds(s), $ = A.includes(l) ? l : A[0] ?? null;
-    u(dt({})), y(!1), w(A), f($), c.current = $, g.current = [], $ != null && b(ut(
-      Pt(s, a, o),
-      $
-    )), p(A.length === 0 ? "There are no segments to select." : `${A.length} segments selected. Collapsed Segment groups keep their selected segments.`), (O = r.current) == null || O.focus({ preventScroll: !0 });
+  function F() {
+    var E;
+    const T = us(s), M = T.includes(l) ? l : T[0] ?? null;
+    u(dt({})), y(!1), w(T), f(M), c.current = M, g.current = [], M != null && h(ut(
+      Lt(s, a, o),
+      M
+    )), p(T.length === 0 ? "There are no segments to select." : `${T.length} segments selected. Collapsed Segment groups keep their selected segments.`), (E = r.current) == null || E.focus({ preventScroll: !0 });
   }
-  return { revealSegmentGroupForSelection: v, replaceSegmentSelection: N, selectSegment: W, selectSegmentCollection: R, selectAllVideoSegments: _ };
+  return { revealSegmentGroupForSelection: v, replaceSegmentSelection: N, selectSegment: W, selectSegmentCollection: j, selectAllVideoSegments: F };
 }
-function yd(e) {
-  const { acceptHistory: t, compatibilityMode: r, detail: o, detailPanelRef: i, historyRef: a, mergeSavingRef: s, onConflict: l, onDetailChange: d, onReload: c, recordHistoryAction: g, revealSegmentGroupForSelection: m, reviewSavingRef: u, savingSegmentId: y, selectedGroups: p, selectedSegment: b, selectedSegmentIdRef: f, selectedSegments: w, selectionAnchorIdRef: v, selectionRangeBaseIdsRef: N, setMergeConfirmation: W, setSaveMessage: R, setSavingSegmentId: _, setSelectedSegmentId: A, setSelectedSegmentIds: $, video: O } = e;
-  function D() {
-    W(null), requestAnimationFrame(() => {
-      var V;
-      return (V = i.current) == null ? void 0 : V.focus({ preventScroll: !0 });
+function kd(e) {
+  const { acceptHistory: t, compatibilityMode: r, detail: o, detailPanelRef: i, historyRef: a, mergeSavingRef: s, onConflict: l, onDetailChange: d, onReload: c, pendingReviewStateRef: g, recordHistoryAction: m, revealSegmentGroupForSelection: u, reviewSavingRef: y, savingSegmentId: p, selectedGroups: h, selectedSegment: f, selectedSegmentIdRef: w, selectedSegments: v, selectionAnchorIdRef: N, selectionRangeBaseIdsRef: W, setMergeConfirmation: j, setSaveMessage: F, setSavingSegmentId: T, setSelectedSegmentId: M, setSelectedSegmentIds: E, video: R } = e;
+  function U() {
+    j(null), requestAnimationFrame(() => {
+      var I;
+      return (I = i.current) == null ? void 0 : I.focus({ preventScroll: !0 });
     });
   }
-  async function U(V = !1, I = !1, C = null) {
-    if (s.current || y != null) return;
-    const F = C || ja(
-      p,
+  async function D(I = !1, $ = !1, P = null) {
+    if (s.current || p != null) return;
+    const J = P || Ga(
+      h,
       { nativeOnly: !r }
     );
-    if (!F) {
-      R("Select at least two segments from one swimlane.");
+    if (!J) {
+      F("Select at least two segments from one swimlane.");
       return;
     }
-    if (!V && pa()) {
-      W(F);
+    if (!I && ya()) {
+      j(J);
       return;
     }
-    I && fa(!1), D();
-    const re = F.endSec == null ? "open end" : Ie(F.endSec);
+    $ && ba(!1), U();
+    const se = J.endSec == null ? "open end" : $e(J.endSec);
     s.current = !0;
-    let ee = F.segments[0];
-    const we = r ? null : lt(F.segments, !1), ce = r ? null : crypto.randomUUID(), T = F.segments.map((oe) => oe.id), Q = Rl(o, F.segments);
-    _(ee.id), d(Q, O.id), $([ee.id]), A(ee.id), v.current = ee.id, N.current = [];
+    let me = J.segments[0];
+    const ge = r ? null : lt(J.segments, !1), B = r ? null : crypto.randomUUID(), Q = J.segments.map((oe) => oe.id), de = Fl(o, J.segments);
+    T(me.id), d(de, R.id), E([me.id]), M(me.id), N.current = me.id, W.current = [];
     try {
-      const oe = F.segments.slice(1);
-      if (!r || ee.nativeSegmentId != null) {
-        const fe = oe.map((B) => {
-          const ue = `merge-native-selection:${O.id}:${ee.id}:${B.id}:${ee.updatedAt}:${B.updatedAt}`;
-          return { key: ue, operationId: Re(ue), segmentId: B.id, expectedUpdatedAt: B.updatedAt };
-        }), ie = await Z(`/videos/${O.id}/segments/merge-selection`, {
+      const oe = J.segments.slice(1);
+      if (!r || me.nativeSegmentId != null) {
+        const xe = oe.map((z) => {
+          const te = `merge-native-selection:${R.id}:${me.id}:${z.id}:${me.updatedAt}:${z.updatedAt}`;
+          return { key: te, operationId: Le(te), segmentId: z.id, expectedUpdatedAt: z.updatedAt };
+        }), ke = await Z(`/videos/${R.id}/segments/merge-selection`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            survivorSegmentId: ee.id,
-            expectedSurvivorUpdatedAt: ee.updatedAt,
-            consumedSegments: fe.map(({ key: B, ...ue }) => ue),
-            historyReceiptId: ce
+            survivorSegmentId: me.id,
+            expectedSurvivorUpdatedAt: me.updatedAt,
+            consumedSegments: xe.map(({ key: z, ...te }) => te),
+            historyReceiptId: B
           })
         });
-        ee = ie.survivor, d(Lo(o, ie), O.id), fe.forEach(({ key: B }) => Oe(B));
+        me = ke.survivor, d(jo(o, ke), R.id), xe.forEach(({ key: z }) => Fe(z));
       } else {
-        const fe = oe.map((B) => {
-          const ue = `merge-draft-selection:${O.id}:${ee.itemId}:${B.itemId}:${ee.revision}:${B.revision}`;
-          return { key: ue, operationId: Re(ue), itemId: B.itemId, expectedRevision: B.revision };
-        }), ie = await Z(`/videos/${O.id}/drafts/merge-selection`, {
+        const xe = oe.map((z) => {
+          const te = `merge-draft-selection:${R.id}:${me.itemId}:${z.itemId}:${me.revision}:${z.revision}`;
+          return { key: te, operationId: Le(te), itemId: z.itemId, expectedRevision: z.revision };
+        }), ke = await Z(`/videos/${R.id}/drafts/merge-selection`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            survivorItemId: ee.itemId,
-            expectedSurvivorRevision: ee.revision,
-            consumedDrafts: fe.map(({ key: B, ...ue }) => ue)
+            survivorItemId: me.itemId,
+            expectedSurvivorRevision: me.revision,
+            consumedDrafts: xe.map(({ key: z, ...te }) => te)
           })
         });
-        ee = ie.survivor, d(Lo(o, ie), O.id), fe.forEach(({ key: B }) => Oe(B));
+        me = ke.survivor, d(jo(o, ke), R.id), xe.forEach(({ key: z }) => Fe(z));
       }
-      $([ee.id]), A(ee.id), v.current = ee.id, N.current = [], r ? t(kt) : await g(
+      E([me.id]), M(me.id), N.current = me.id, W.current = [], r ? t(St) : await m(
         "segments.merge",
-        `Merged ${F.segments.length} segments`,
-        we,
-        lt([ee], !1),
-        ce
-      ), m(ee.id), R(`${F.segments.length} segments merged into ${Ie(F.startSec)} – ${re}.`);
+        `Merged ${J.segments.length} segments`,
+        ge,
+        lt([me], !1),
+        B
+      ), u(me.id), F(`${J.segments.length} segments merged into ${$e(J.startSec)} – ${se}.`);
     } catch (oe) {
-      d((fe) => Ka(
-        Mn(fe, [F.segments[0]], [
+      d((xe) => za(
+        Rn(xe, [J.segments[0]], [
           "startSec",
           "endSec",
           "sourceKey",
@@ -6053,706 +6079,714 @@ function yd(e) {
           "confidence",
           "isDerived"
         ]),
-        F.segments.slice(1)
-      ), O.id), $(T), A((b == null ? void 0 : b.id) ?? T[0] ?? null), v.current = (b == null ? void 0 : b.id) ?? T[0] ?? null, N.current = [], oe.status === 409 ? await l() : R(oe.message || "Unable to merge selected segments.");
+        J.segments.slice(1)
+      ), R.id), E(Q), M((f == null ? void 0 : f.id) ?? Q[0] ?? null), N.current = (f == null ? void 0 : f.id) ?? Q[0] ?? null, W.current = [], oe.status === 409 ? await l() : F(oe.message || "Unable to merge selected segments.");
     } finally {
-      s.current = !1, _(null);
+      s.current = !1, T(null);
     }
   }
-  async function P(V) {
-    var ce;
-    if (w.length === 0 || u.current || y != null) return;
-    const I = ks(w, V), C = w.filter((T) => T.reviewState !== I);
-    if (C.length === 0) return;
-    const F = w.map((T) => ({
-      id: T.id,
-      itemId: T.itemId,
-      nativeSegmentId: T.nativeSegmentId
-    })), re = F.find((T) => T.id === (b == null ? void 0 : b.id)) || F[0], ee = (T, Q = !1) => {
-      if (!(T != null && T.segments) || !Q && !Rr(f.current, re.id))
+  async function V(I, $ = v, P = f) {
+    var de;
+    if ($.length === 0 || y.current) return;
+    if (p != null) {
+      g.current.push(Is(
+        I,
+        $,
+        P
+      )), F(`${I === "approved" ? "Approval" : "Rejection"} queued…`);
+      return;
+    }
+    const J = Ns($, I), se = $.filter((oe) => oe.reviewState !== J);
+    if (se.length === 0) return;
+    const me = $.map((oe) => ({
+      id: oe.id,
+      itemId: oe.itemId,
+      nativeSegmentId: oe.nativeSegmentId
+    })), ge = me.find((oe) => oe.id === (P == null ? void 0 : P.id)) || me[0], B = (oe, xe = !1) => {
+      if (!(oe != null && oe.segments) || !xe && !Er(w.current, ge.id))
         return;
-      const oe = F.map((ie) => We(T == null ? void 0 : T.segments, ie)).filter(Boolean), fe = We(T == null ? void 0 : T.segments, re) || oe[0] || null;
-      $(oe.map((ie) => ie.id)), A((fe == null ? void 0 : fe.id) ?? null), v.current = (fe == null ? void 0 : fe.id) ?? null, N.current = [];
+      const ke = me.map((te) => He(oe == null ? void 0 : oe.segments, te)).filter(Boolean), z = He(oe == null ? void 0 : oe.segments, ge) || ke[0] || null;
+      E(ke.map((te) => te.id)), M((z == null ? void 0 : z.id) ?? null), N.current = (z == null ? void 0 : z.id) ?? null, W.current = [];
     };
-    u.current = !0, _((b == null ? void 0 : b.id) ?? C[0].id), R(`Updating ${C.length} selected segment${C.length === 1 ? "" : "s"}…`);
-    const we = rr(
+    y.current = !0, T((P == null ? void 0 : P.id) ?? se[0].id), F(`Updating ${se.length} selected segment${se.length === 1 ? "" : "s"}…`);
+    const Q = rr(
       o,
-      C.map((T) => T.id),
-      { reviewState: I }
+      se.map((oe) => oe.id),
+      { reviewState: J }
     );
-    d(we, O.id);
+    d(Q, R.id);
     try {
-      const T = await Z(`/videos/${O.id}/segments/review-state`, {
+      const oe = await Z(`/videos/${R.id}/segments/review-state`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           operationId: crypto.randomUUID(),
           expectedHistoryRevision: a.current.revision,
-          reviewState: I,
-          segments: w.map((ie) => ie.published ? {
-            nativeSegmentId: ie.nativeSegmentId,
-            expectedUpdatedAt: ie.updatedAt
+          reviewState: J,
+          segments: $.map((te) => te.published ? {
+            nativeSegmentId: te.nativeSegmentId,
+            expectedUpdatedAt: te.updatedAt
           } : {
-            itemId: ie.itemId,
-            expectedRevision: ie.revision
+            itemId: te.itemId,
+            expectedRevision: te.revision
           })
         })
-      }), Q = new Map((T.items || []).map((ie) => [
-        ie.requestedNativeSegmentId != null ? `native:${ie.requestedNativeSegmentId}` : `item:${ie.requestedItemId}`,
-        ie
+      }), xe = new Map((oe.items || []).map((te) => [
+        te.requestedNativeSegmentId != null ? `native:${te.requestedNativeSegmentId}` : `item:${te.requestedItemId}`,
+        te
       ]));
-      if (F.forEach((ie) => {
-        const B = Q.get(ie.nativeSegmentId != null ? `native:${ie.nativeSegmentId}` : `item:${ie.itemId}`);
-        B && (ie.nativeSegmentId = B.nativeSegmentId, ie.itemId = B.itemId);
-      }), T.history && t(T.history), I === "rejected" || (T.items || []).some((ie) => ie.requestedNativeSegmentId != null && ie.nativeSegmentId !== ie.requestedNativeSegmentId)) {
-        ee(await c()), R(`${T.updatedCount} selected segment${T.updatedCount === 1 ? "" : "s"} ${I === "rejected" ? "rejected" : "reset to unreviewed"}.`);
+      if (me.forEach((te) => {
+        const X = xe.get(te.nativeSegmentId != null ? `native:${te.nativeSegmentId}` : `item:${te.itemId}`);
+        X && (te.nativeSegmentId = X.nativeSegmentId, te.itemId = X.itemId);
+      }), oe.history && t(oe.history), J === "rejected" || (oe.items || []).some((te) => te.requestedNativeSegmentId != null && te.nativeSegmentId !== te.requestedNativeSegmentId)) {
+        B(await c()), F(`${oe.updatedCount} selected segment${oe.updatedCount === 1 ? "" : "s"} ${J === "rejected" ? "rejected" : "reset to unreviewed"}.`);
         return;
       }
-      const fe = {
+      const z = {
         ...o,
-        approvedSetVersion: T.approvedSetVersion || o.approvedSetVersion,
-        segments: (o.segments || []).map((ie) => {
-          const B = Q.get(ie.nativeSegmentId != null ? `native:${ie.nativeSegmentId}` : `item:${ie.itemId}`);
-          return B ? {
-            ...ie,
-            id: B.nativeSegmentId != null ? B.nativeSegmentId : -B.itemId,
-            itemId: B.itemId,
-            nativeSegmentId: B.nativeSegmentId,
-            published: B.nativeSegmentId != null,
-            reviewState: I,
-            revision: B.nativeSegmentId != null ? ie.revision : B.revision,
-            updatedAt: B.updatedAt
-          } : ie;
+        approvedSetVersion: oe.approvedSetVersion || o.approvedSetVersion,
+        segments: (o.segments || []).map((te) => {
+          const X = xe.get(te.nativeSegmentId != null ? `native:${te.nativeSegmentId}` : `item:${te.itemId}`);
+          return X ? {
+            ...te,
+            id: X.nativeSegmentId != null ? X.nativeSegmentId : -X.itemId,
+            itemId: X.itemId,
+            nativeSegmentId: X.nativeSegmentId,
+            published: X.nativeSegmentId != null,
+            reviewState: J,
+            revision: X.nativeSegmentId != null ? te.revision : X.revision,
+            updatedAt: X.updatedAt
+          } : te;
         })
       };
-      d(fe, O.id), ee(fe), R(`${T.updatedCount} selected segment${T.updatedCount === 1 ? "" : "s"} ${I === "approved" ? "approved" : I === "rejected" ? "rejected" : "reset to unreviewed"}.`);
-    } catch (T) {
-      d((oe) => Mn(
-        oe,
-        C,
+      d(z, R.id), B(z), F(`${oe.updatedCount} selected segment${oe.updatedCount === 1 ? "" : "s"} ${J === "approved" ? "approved" : J === "rejected" ? "rejected" : "reset to unreviewed"}.`);
+    } catch (oe) {
+      d((ke) => Rn(
+        ke,
+        se,
         ["reviewState"]
-      ), O.id), T.status === 409 && ((ce = T.payload) != null && ce.currentHistory) && t(T.payload.currentHistory);
-      const Q = T.status === 409 ? await l() : o;
-      ee(Q, !0), R(T.message || "Unable to update the selected segments.");
+      ), R.id), oe.status === 409 && ((de = oe.payload) != null && de.currentHistory) && t(oe.payload.currentHistory);
+      const xe = oe.status === 409 ? await l() : o;
+      B(xe, !0), F(oe.message || "Unable to update the selected segments.");
     } finally {
-      u.current = !1, _(null);
+      y.current = !1, T(null);
     }
   }
-  return { closeMergeConfirmation: D, mergeSelectedSwimlane: U, saveSelectedReviewState: P };
+  return { closeMergeConfirmation: U, mergeSelectedSwimlane: D, saveSelectedReviewState: V };
 }
-function bd(e) {
-  const { acceptHistory: t, allSwimlanes: r, autoAssignCandidates: o, autoAssigning: i, binEmptyingRef: a, canMoveSelectionToBin: s, closeTagEditing: l, compatibilityMode: d, detail: c, editorRef: g, exportingExamples: m, incorrectExamples: u, lineage: y, materializeButtonRef: p, materializePreview: b, materializeRestoreFocusRef: f, materializing: w, mutateSegment: v, onConflict: N, onDetailChange: W, onReload: R, recordHistoryAction: _, refreshMaterializationPreview: A, removingExampleId: $, revealSegmentGroupForSelection: O, savingSegmentId: D, segments: U, selectedSegment: P, selectedSegmentIdRef: V, selectedSegments: I, selectionAnchorIdRef: C, selectionRangeBaseIdsRef: F, setAutoAssignError: re, setAutoAssignOpen: ee, setAutoAssigning: we, setExportingExamples: ce, setIncorrectExamples: T, setMaterializeError: Q, setMaterializeLoading: oe, setMaterializeOpen: fe, setMaterializePreview: ie, setMaterializing: B, setRejectedDeletionPreview: ue, setRemovingExampleId: Me, setSaveMessage: Y, setSavingSegmentId: Se, setSelectedSegmentGroupKey: h, setSelectedSegmentId: K, setSelectedSegmentIds: M, video: x } = e;
-  async function E() {
-    var ve, Ce, $e;
-    if (I.length === 0 || !P || D != null) return;
-    const L = Il(I, u), ne = L.segments;
+function wd(e) {
+  const { acceptHistory: t, allSwimlanes: r, autoAssignCandidates: o, autoAssigning: i, binEmptyingRef: a, canMoveSelectionToBin: s, closeTagEditing: l, compatibilityMode: d, detail: c, editorRef: g, exportingExamples: m, incorrectExamples: u, lineage: y, materializeButtonRef: p, materializePreview: h, materializeRestoreFocusRef: f, materializing: w, mutateSegment: v, onConflict: N, onDetailChange: W, onReload: j, recordHistoryAction: F, refreshMaterializationPreview: T, removingExampleId: M, revealSegmentGroupForSelection: E, savingSegmentId: R, segments: U, selectedSegment: D, selectedSegmentIdRef: V, selectedSegments: I, selectionAnchorIdRef: $, selectionRangeBaseIdsRef: P, setAutoAssignError: J, setAutoAssignOpen: se, setAutoAssigning: me, setExportingExamples: ge, setIncorrectExamples: B, setMaterializeError: Q, setMaterializeLoading: de, setMaterializeOpen: oe, setMaterializePreview: xe, setMaterializing: ke, setRejectedDeletionPreview: z, setRemovingExampleId: te, setSaveMessage: X, setSavingSegmentId: le, setSelectedSegmentGroupKey: b, setSelectedSegmentId: K, setSelectedSegmentIds: C, video: x } = e;
+  async function A() {
+    var Ne, Ie, Ce;
+    if (I.length === 0 || !D || R != null) return;
+    const O = Al(I, u), ne = O.segments;
     if (ne.length === 0) return;
-    const me = I.map((ge) => ({
-      id: ge.id,
-      itemId: ge.itemId,
-      nativeSegmentId: ge.nativeSegmentId
-    })), he = me.find((ge) => ge.id === P.id) || me[0], be = [], Ee = [];
-    let Pe = c;
-    Se(he.id), Y(L.action === "remove" ? `Removing ${ne.length} selected incorrect example${ne.length === 1 ? "" : "s"}…` : `Collecting ${ne.length} selected segment${ne.length === 1 ? "" : "s"} as incorrect AI feedback…`);
+    const ye = I.map((ve) => ({
+      id: ve.id,
+      itemId: ve.itemId,
+      nativeSegmentId: ve.nativeSegmentId
+    })), be = ye.find((ve) => ve.id === D.id) || ye[0], he = [], Ae = [];
+    let Ee = c;
+    le(be.id), X(O.action === "remove" ? `Removing ${ne.length} selected incorrect example${ne.length === 1 ? "" : "s"}…` : `Collecting ${ne.length} selected segment${ne.length === 1 ? "" : "s"} as incorrect AI feedback…`);
     try {
-      const ge = async (Ne, Te) => {
-        const Ke = Ne.nativeSegmentId != null, it = L.action === "remove" ? `incorrect-example-remove:${x.id}:${Te == null ? void 0 : Te.id}:${Te == null ? void 0 : Te.revision}:${Te == null ? void 0 : Te.representationRevision}` : `incorrect-example-collect:${x.id}:${Ke ? `native:${Ne.nativeSegmentId}:${Ne.updatedAt}` : `item:${Ne.itemId}:${Ne.revision}`}`;
-        if (L.action === "remove" && !Te)
+      const ve = async (Te, Re) => {
+        const Ke = Te.nativeSegmentId != null, it = O.action === "remove" ? `incorrect-example-remove:${x.id}:${Re == null ? void 0 : Re.id}:${Re == null ? void 0 : Re.revision}:${Re == null ? void 0 : Re.representationRevision}` : `incorrect-example-collect:${x.id}:${Ke ? `native:${Te.nativeSegmentId}:${Te.updatedAt}` : `item:${Te.itemId}:${Te.revision}`}`;
+        if (O.action === "remove" && !Re)
           throw new Error("The incorrect-example collection changed. Reload and try again.");
-        let Je;
+        let Qe;
         try {
-          Je = L.action === "remove" ? await Z(
-            `/videos/${x.id}/incorrect-examples/${Te.id}/remove`,
+          Qe = O.action === "remove" ? await Z(
+            `/videos/${x.id}/incorrect-examples/${Re.id}/remove`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                operationId: Re(it),
-                expectedExampleRevision: Te.revision,
-                expectedRepresentationRevision: Te.representationRevision
+                operationId: Le(it),
+                expectedExampleRevision: Re.revision,
+                expectedRepresentationRevision: Re.representationRevision
               })
             }
           ) : await Z(`/videos/${x.id}/incorrect-examples/collect`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              operationId: Re(it),
-              nativeSegmentId: Ke ? Ne.nativeSegmentId : null,
-              itemId: Ke ? null : Ne.itemId,
-              expectedUpdatedAt: Ke ? Ne.updatedAt : null,
-              expectedRevision: Ke ? null : Ne.revision
+              operationId: Le(it),
+              nativeSegmentId: Ke ? Te.nativeSegmentId : null,
+              itemId: Ke ? null : Te.itemId,
+              expectedUpdatedAt: Ke ? Te.updatedAt : null,
+              expectedRevision: Ke ? null : Te.revision
             })
           });
         } catch (Ye) {
           throw Ye.operationKey = it, Ye;
         }
-        if (!Cl(L.action, Je))
+        if (!El(O.action, Qe))
           throw new Error("The server returned an unexpected incorrect-example state. Reload and try again.");
-        return Oe(it), Je;
+        return Fe(it), Qe;
       };
-      for (const Ne of ne) {
-        const Te = L.action === "remove" ? u.find((Ke) => Ke.itemId != null && Ke.itemId === Ne.itemId) : null;
+      for (const Te of ne) {
+        const Re = O.action === "remove" ? u.find((Ke) => Ke.itemId != null && Ke.itemId === Te.itemId) : null;
         try {
-          const Ke = me.find((Ye) => Ye.id === Ne.id);
-          let it = We(
-            Pe == null ? void 0 : Pe.segments,
+          const Ke = ye.find((Ye) => Ye.id === Te.id);
+          let it = He(
+            Ee == null ? void 0 : Ee.segments,
             Ke
-          ) || Ne, Je;
+          ) || Te, Qe;
           try {
-            Je = await ge(it, Te);
+            Qe = await ve(it, Re);
           } catch (Ye) {
-            if (Ye.status === 409 && ((Ce = (ve = Ye.payload) == null ? void 0 : ve.result) == null ? void 0 : Ce.code) === "OPERATION_REPLAYED")
-              Pe = await Z(
+            if (Ye.status === 409 && ((Ie = (Ne = Ye.payload) == null ? void 0 : Ne.result) == null ? void 0 : Ie.code) === "OPERATION_REPLAYED")
+              Ee = await Z(
                 `/videos/${x.id}/editor`
-              ), Oe(Ye.operationKey), Je = Ye.payload.result;
+              ), Fe(Ye.operationKey), Qe = Ye.payload.result;
             else {
-              if (L.action !== "collect" || Ye.status !== 409) throw Ye;
-              const pt = await Z(
+              if (O.action !== "collect" || Ye.status !== 409) throw Ye;
+              const wt = await Z(
                 `/videos/${x.id}/editor`
               );
-              Pe = pt;
-              const jt = We(
-                pt == null ? void 0 : pt.segments,
+              Ee = wt;
+              const Nt = He(
+                wt == null ? void 0 : wt.segments,
                 Ke
               );
-              if (!jt) throw Ye;
-              it = jt, Je = await ge(it, null);
+              if (!Nt) throw Ye;
+              it = Nt, Qe = await ve(it, null);
             }
           }
-          Ke && Je.itemId != null && (Ke.itemId = Je.itemId), Pe = jo(
-            Pe,
-            Je.editorDelta
-          ), be.push({ segment: Ne, result: Je });
+          Ke && Qe.itemId != null && (Ke.itemId = Qe.itemId), Ee = Go(
+            Ee,
+            Qe.editorDelta
+          ), he.push({ segment: Te, result: Qe });
         } catch (Ke) {
-          if (Ee.push(Ke), ![400, 404, 409].includes(Ke.status)) break;
+          if (Ae.push(Ke), ![400, 404, 409].includes(Ke.status)) break;
         }
       }
-      be.some(({ result: Ne }) => Ne.representation === "basicNativeBin") && Nn();
-      const Ge = Rr(
+      he.some(({ result: Te }) => Te.representation === "basicNativeBin") && Nn();
+      const Oe = Er(
         V.current,
-        he.id
-      ), Ae = L.action === "collect" && be.some(({ segment: Ne }) => Ne.id === he.id), at = be.map(({ segment: Ne }) => Ne.id), ke = Ae ? us(
+        be.id
+      ), De = O.action === "collect" && he.some(({ segment: Te }) => Te.id === be.id), at = he.map(({ segment: Te }) => Te.id), we = De ? gs(
         r,
         at,
-        he.id
-      ) : null, De = Ae ? (ke == null ? void 0 : ke.id) ?? null : he.id;
-      Ge && Ae && (M(ke ? [ke.id] : []), K((ke == null ? void 0 : ke.id) ?? er), C.current = (ke == null ? void 0 : ke.id) ?? null, F.current = []);
-      const He = await Z(`/videos/${x.id}/incorrect-examples`);
-      T(He);
-      const je = Pe;
-      if (W(je, x.id), Ge && Rr(
+        be.id
+      ) : null, Pe = De ? (we == null ? void 0 : we.id) ?? null : be.id;
+      Oe && De && (C(we ? [we.id] : []), K((we == null ? void 0 : we.id) ?? er), $.current = (we == null ? void 0 : we.id) ?? null, P.current = []);
+      const qe = await Z(`/videos/${x.id}/incorrect-examples`);
+      B(qe);
+      const je = Ee;
+      if (W(je, x.id), Oe && Er(
         V.current,
-        De
+        Pe
       )) {
-        let Ne, Te;
-        Ae ? (Te = ke ? We(je == null ? void 0 : je.segments, {
-          id: ke.id,
-          itemId: ke.itemId,
-          nativeSegmentId: ke.nativeSegmentId
-        }) : null, Ne = Te ? [Te] : []) : (Ne = me.map((Ke) => We(je == null ? void 0 : je.segments, Ke)).filter(Boolean), Te = We(je == null ? void 0 : je.segments, he) || Ne[0] || null), M(Ne.map((Ke) => Ke.id)), K((Te == null ? void 0 : Te.id) ?? (Ae ? er : null)), C.current = (Te == null ? void 0 : Te.id) ?? null, F.current = [], h(Te ? ut(r, Te.id) : null), Te && O(Te.id);
+        let Te, Re;
+        De ? (Re = we ? He(je == null ? void 0 : je.segments, {
+          id: we.id,
+          itemId: we.itemId,
+          nativeSegmentId: we.nativeSegmentId
+        }) : null, Te = Re ? [Re] : []) : (Te = ye.map((Ke) => He(je == null ? void 0 : je.segments, Ke)).filter(Boolean), Re = He(je == null ? void 0 : je.segments, be) || Te[0] || null), C(Te.map((Ke) => Ke.id)), K((Re == null ? void 0 : Re.id) ?? (De ? er : null)), $.current = (Re == null ? void 0 : Re.id) ?? null, P.current = [], b(Re ? ut(r, Re.id) : null), Re && E(Re.id);
       }
-      if (Ee.length > 0) {
-        const Ne = (($e = Ee[0]) == null ? void 0 : $e.message) || "Only segments with registered AI provenance can be collected.";
-        be.length === 0 ? Y(Ne) : L.action === "remove" ? Y(
-          `Partially removed ${be.length} of ${ne.length} selected incorrect examples. ${Ne}`
-        ) : Y(
-          `Partially collected ${be.length} of ${ne.length} selected segments. ${Ne}`
+      if (Ae.length > 0) {
+        const Te = ((Ce = Ae[0]) == null ? void 0 : Ce.message) || "Only segments with registered AI provenance can be collected.";
+        he.length === 0 ? X(Te) : O.action === "remove" ? X(
+          `Partially removed ${he.length} of ${ne.length} selected incorrect examples. ${Te}`
+        ) : X(
+          `Partially collected ${he.length} of ${ne.length} selected segments. ${Te}`
         );
-      } else if (L.action === "remove")
-        Y(
-          `${be.length} incorrect example${be.length === 1 ? "" : "s"} removed and ${be.length === 1 ? "segment returned" : "segments returned"} to unreviewed.`
+      } else if (O.action === "remove")
+        X(
+          `${he.length} incorrect example${he.length === 1 ? "" : "s"} removed and ${he.length === 1 ? "segment returned" : "segments returned"} to unreviewed.`
         );
       else {
-        const Ne = be.filter(({ result: Te }) => Te.representation === "basicNativeBin").length;
-        Y(Ne === be.length ? `${be.length} incorrect AI example${be.length === 1 ? "" : "s"} collected and moved to the recycling bin.` : `${be.length} incorrect AI example${be.length === 1 ? "" : "s"} collected and ${be.length === 1 ? "segment rejected" : "segments rejected"}.`);
+        const Te = he.filter(({ result: Re }) => Re.representation === "basicNativeBin").length;
+        X(Te === he.length ? `${he.length} incorrect AI example${he.length === 1 ? "" : "s"} collected and moved to the recycling bin.` : `${he.length} incorrect AI example${he.length === 1 ? "" : "s"} collected and ${he.length === 1 ? "segment rejected" : "segments rejected"}.`);
       }
-    } catch (ge) {
-      Y(ge.message || "Unable to update the selected incorrect examples.");
+    } catch (ve) {
+      X(ve.message || "Unable to update the selected incorrect examples.");
     } finally {
-      Se(null);
+      le(null);
     }
   }
-  async function S(L) {
-    var me, he;
-    if (!L || $ != null || m) return;
-    Me(L.id);
-    const ne = `incorrect-example-remove:${x.id}:${L.id}:${L.revision}:${L.representationRevision}`;
+  async function S(O) {
+    var ye, be;
+    if (!O || M != null || m) return;
+    te(O.id);
+    const ne = `incorrect-example-remove:${x.id}:${O.id}:${O.revision}:${O.representationRevision}`;
     try {
-      const be = await Z(
-        `/videos/${x.id}/incorrect-examples/${L.id}/remove`,
+      const he = await Z(
+        `/videos/${x.id}/incorrect-examples/${O.id}/remove`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            operationId: Re(ne),
-            expectedExampleRevision: L.revision,
-            expectedRepresentationRevision: L.representationRevision
+            operationId: Le(ne),
+            expectedExampleRevision: O.revision,
+            expectedRepresentationRevision: O.representationRevision
           })
         }
       );
-      Oe(ne);
-      const Ee = await Z(
+      Fe(ne);
+      const Ae = await Z(
         `/videos/${x.id}/incorrect-examples`
       );
-      T(Ee), W(
-        jo(c, be.editorDelta),
+      B(Ae), W(
+        Go(c, he.editorDelta),
         x.id
-      ), L.representation === "basicNativeBin" && Nn(), Y(L.representation === "basicNativeBin" ? "Incorrect example removed and its native segment restored." : "Incorrect example removed and segment returned to unreviewed.");
-    } catch (be) {
-      if (be.status === 409 && ((he = (me = be.payload) == null ? void 0 : me.result) == null ? void 0 : he.code) === "OPERATION_REPLAYED") {
-        Oe(ne), T(await Z(
+      ), O.representation === "basicNativeBin" && Nn(), X(O.representation === "basicNativeBin" ? "Incorrect example removed and its native segment restored." : "Incorrect example removed and segment returned to unreviewed.");
+    } catch (he) {
+      if (he.status === 409 && ((be = (ye = he.payload) == null ? void 0 : ye.result) == null ? void 0 : be.code) === "OPERATION_REPLAYED") {
+        Fe(ne), B(await Z(
           `/videos/${x.id}/incorrect-examples`
-        )), await R(), Y("Incorrect example removal was already applied.");
+        )), await j(), X("Incorrect example removal was already applied.");
         return;
       }
-      be.status === 409 && await N(), Y(be.message || "Unable to remove the incorrect example.");
+      he.status === 409 && await N(), X(he.message || "Unable to remove the incorrect example.");
     } finally {
-      Me(null);
+      te(null);
     }
   }
   async function k() {
-    if (m || $ != null || u.length === 0) return;
-    ce(!0);
-    const L = `incorrect-example-export:${x.id}:${u.map((ne) => `${ne.id}:${ne.revision}:${ne.representationRevision}`).join(",")}`;
+    if (m || M != null || u.length === 0) return;
+    ge(!0);
+    const O = `incorrect-example-export:${x.id}:${u.map((ne) => `${ne.id}:${ne.revision}:${ne.representationRevision}`).join(",")}`;
     try {
-      const ne = await Tl(
+      const ne = await Ol(
         x.id,
         u
-      ), me = new FormData();
-      me.append("metadata", JSON.stringify({
-        operationId: Re(L),
+      ), ye = new FormData();
+      ye.append("metadata", JSON.stringify({
+        operationId: Le(O),
         examples: ne.captures
       }));
-      for (const Ce of ne.files)
-        me.append(Ce.fieldName, Ce.file);
-      const he = await Z(
+      for (const Ie of ne.files)
+        ye.append(Ie.fieldName, Ie.file);
+      const be = await Z(
         `/videos/${x.id}/incorrect-examples/export`,
-        { method: "POST", body: me }
-      ), be = await qs(he.downloadUrl), Ee = URL.createObjectURL(be.blob), Pe = document.createElement("a");
-      Pe.href = Ee, Pe.download = be.fileName, Pe.click(), setTimeout(() => URL.revokeObjectURL(Ee), 1e3);
-      const ve = await Z(
-        `/training-exports/${he.id}/complete`,
+        { method: "POST", body: ye }
+      ), he = await Zs(be.downloadUrl), Ae = URL.createObjectURL(he.blob), Ee = document.createElement("a");
+      Ee.href = Ae, Ee.download = he.fileName, Ee.click(), setTimeout(() => URL.revokeObjectURL(Ae), 1e3);
+      const Ne = await Z(
+        `/training-exports/${be.id}/complete`,
         { method: "POST" }
       );
-      Oe(L), T(await Z(
+      Fe(O), B(await Z(
         `/videos/${x.id}/incorrect-examples`
-      )), Y(
-        `Downloaded ${he.exampleCount} incorrect example${he.exampleCount === 1 ? "" : "s"} in an AI Feedback ZIP and cleared ${ve.clearedExampleCount} from the working collection.`
+      )), X(
+        `Downloaded ${be.exampleCount} incorrect example${be.exampleCount === 1 ? "" : "s"} in an AI Feedback ZIP and cleared ${Ne.clearedExampleCount} from the working collection.`
       );
     } catch (ne) {
-      Y(ne.message || "Unable to capture and download the training export. The working collection was kept.");
+      X(ne.message || "Unable to capture and download the training export. The working collection was kept.");
     } finally {
-      ce(!1);
+      ge(!1);
     }
   }
-  async function H(L = null) {
-    const ne = U.filter(($e) => $e.reviewState === "rejected"), me = ne.length, he = u.some(($e) => $e.representation === "fullItem");
-    if (L == null && me === 0 && !he) {
-      Y("There are no rejected segments to delete.");
+  async function q(O = null) {
+    const ne = U.filter((Ce) => Ce.reviewState === "rejected"), ye = ne.length, be = u.some((Ce) => Ce.representation === "fullItem");
+    if (O == null && ye === 0 && !be) {
+      X("There are no rejected segments to delete.");
       return;
     }
-    if (L == null) {
-      Se(-1), Y("Preparing deletion summary…");
+    if (O == null) {
+      le(-1), X("Preparing deletion summary…");
       try {
-        const $e = await Z(`/videos/${x.id}/rejected/deletion/preview`, { method: "POST" }), ge = Number($e.deletedSegmentCount) || 0, Ge = Number($e.deferredRejectedSegmentCount) || 0, Ae = Number($e.protectedIncorrectExampleCount) || 0;
-        if (ge === 0) {
-          Ge > 0 ? Y(
-            `${Ge} feedback-protected rejected segment${Ge === 1 ? "" : "s"} kept. ${Ae} AI feedback example${Ae === 1 ? "" : "s"} must be exported before ${Ge === 1 ? "this segment can" : "these segments can"} be deleted.`
-          ) : Y("There are no rejected segments to delete.");
+        const Ce = await Z(`/videos/${x.id}/rejected/deletion/preview`, { method: "POST" }), ve = Number(Ce.deletedSegmentCount) || 0, Oe = Number(Ce.deferredRejectedSegmentCount) || 0, De = Number(Ce.protectedIncorrectExampleCount) || 0;
+        if (ve === 0) {
+          Oe > 0 ? X(
+            `${Oe} feedback-protected rejected segment${Oe === 1 ? "" : "s"} kept. ${De} AI feedback example${De === 1 ? "" : "s"} must be exported before ${Oe === 1 ? "this segment can" : "these segments can"} be deleted.`
+          ) : X("There are no rejected segments to delete.");
           return;
         }
-        if (!Ta($e, Y)) return;
-        ue($e), Y("");
-      } catch ($e) {
-        Y($e.message || "Unable to prepare rejected segment deletion.");
+        if (!Ma(Ce, X)) return;
+        z(Ce), X("");
+      } catch (Ce) {
+        X(Ce.message || "Unable to prepare rejected segment deletion.");
       } finally {
-        Se(null);
+        le(null);
       }
       return;
     }
-    const be = L, Ee = Number(be.deferredRejectedSegmentCount) || 0, Pe = V.current, ve = Ee === 0 ? Pr(c, ne.map(($e) => $e.id)) : c, Ce = ve.segments.find(($e) => $e.reviewState === "unreviewed") || ve.segments[0] || null;
-    ue(null), Se(-1), Y("Deleting rejected segments…"), Ee === 0 && (W(ve, x.id), M(Ce ? [Ce.id] : []), K((Ce == null ? void 0 : Ce.id) ?? null), C.current = (Ce == null ? void 0 : Ce.id) ?? null, F.current = []);
+    const he = O, Ae = Number(he.deferredRejectedSegmentCount) || 0, Ee = V.current, Ne = Ae === 0 ? Lr(c, ne.map((Ce) => Ce.id)) : c, Ie = Ne.segments.find((Ce) => Ce.reviewState === "unreviewed") || Ne.segments[0] || null;
+    z(null), le(-1), X("Deleting rejected segments…"), Ae === 0 && (W(Ne, x.id), C(Ie ? [Ie.id] : []), K((Ie == null ? void 0 : Ie.id) ?? null), $.current = (Ie == null ? void 0 : Ie.id) ?? null, P.current = []);
     try {
-      const $e = `rejected-dependency-delete:${x.id}:${be.fingerprint}`, ge = await Z(`/videos/${x.id}/rejected/deletion/execute`, {
+      const Ce = `rejected-dependency-delete:${x.id}:${he.fingerprint}`, ve = await Z(`/videos/${x.id}/rejected/deletion/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re($e),
-          fingerprint: be.fingerprint
+          operationId: Le(Ce),
+          fingerprint: he.fingerprint
         })
       });
-      Oe($e), await R(), ge.deletedSegmentCount > 0 && t(kt);
-      const Ge = Ee > 0 ? ` ${Ee} feedback-protected rejected segment${Ee === 1 ? " was" : "s were"} kept for a later post-export batch.` : "";
-      Y(`${ge.deletedSegmentCount} segment${ge.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${Ge}`);
-    } catch ($e) {
-      Ee === 0 && W((ge) => Ka(
-        ge,
+      Fe(Ce), await j(), ve.deletedSegmentCount > 0 && t(St);
+      const Oe = Ae > 0 ? ` ${Ae} feedback-protected rejected segment${Ae === 1 ? " was" : "s were"} kept for a later post-export batch.` : "";
+      X(`${ve.deletedSegmentCount} segment${ve.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${Oe}`);
+    } catch (Ce) {
+      Ae === 0 && W((ve) => za(
+        ve,
         ne
-      ), x.id), M(Pe == null ? [] : [Pe]), K(Pe), C.current = Pe, F.current = [], Y($e.message || "Unable to delete rejected segments.");
+      ), x.id), C(Ee == null ? [] : [Ee]), K(Ee), $.current = Ee, P.current = [], X(Ce.message || "Unable to delete rejected segments.");
     } finally {
-      Se(null);
+      le(null);
     }
   }
-  async function le(L = o) {
-    if (!(i || L.length === 0)) {
-      we(!0), re("");
+  async function ue(O = o) {
+    if (!(i || O.length === 0)) {
+      me(!0), J("");
       try {
         const ne = await Z(`/videos/${x.id}/segments/auto-assign-performer-slots`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            nativeSegmentIds: L.flatMap((me) => me.nativeSegmentId == null ? [] : [me.nativeSegmentId]),
-            itemIds: L.flatMap((me) => me.published || me.itemId == null ? [] : [me.itemId])
+            nativeSegmentIds: O.flatMap((ye) => ye.nativeSegmentId == null ? [] : [ye.nativeSegmentId]),
+            itemIds: O.flatMap((ye) => ye.published || ye.itemId == null ? [] : [ye.itemId])
           })
         });
-        ee(!1), await R(), Y(`${ne.assignedSegmentCount} segment${ne.assignedSegmentCount === 1 ? "" : "s"} received ${ne.assignedSlotCount} performer-slot assignment${ne.assignedSlotCount === 1 ? "" : "s"}.`);
+        se(!1), await j(), X(`${ne.assignedSegmentCount} segment${ne.assignedSegmentCount === 1 ? "" : "s"} received ${ne.assignedSlotCount} performer-slot assignment${ne.assignedSlotCount === 1 ? "" : "s"}.`);
       } catch (ne) {
-        re(ne.message || "Unable to auto-assign performers.");
+        J(ne.message || "Unable to auto-assign performers.");
       } finally {
-        we(!1);
+        me(!1);
       }
     }
   }
-  async function se() {
-    fe(!0), Q(""), !b && (oe(!0), A());
+  async function ae() {
+    oe(!0), Q(""), !h && (de(!0), T());
   }
-  function te() {
-    f.current = !0, fe(!1), requestAnimationFrame(() => {
-      var L;
-      return (L = p.current) == null ? void 0 : L.focus({ preventScroll: !0 });
+  function re() {
+    f.current = !0, oe(!1), requestAnimationFrame(() => {
+      var O;
+      return (O = p.current) == null ? void 0 : O.focus({ preventScroll: !0 });
     });
   }
-  async function xe() {
-    if (!b || w || b.createCount + b.linkCount === 0)
+  async function Se() {
+    if (!h || w || h.createCount + h.linkCount === 0)
       return;
-    B(!0), Q("");
-    let L;
+    ke(!0), Q("");
+    let O;
     try {
-      const ne = `materialize-derived:${x.id}:${b.fingerprint}`;
-      L = await Z(`/videos/${x.id}/derived-segments/materialize`, {
+      const ne = `materialize-derived:${x.id}:${h.fingerprint}`;
+      O = await Z(`/videos/${x.id}/derived-segments/materialize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(ne),
-          fingerprint: b.fingerprint,
+          operationId: Le(ne),
+          fingerprint: h.fingerprint,
           maxDepth: 3
         })
-      }), Oe(ne);
+      }), Fe(ne);
     } catch (ne) {
-      ne.status === 409 && ie(null), Q(ne.message || "Unable to materialize derived segments."), B(!1);
+      ne.status === 409 && xe(null), Q(ne.message || "Unable to materialize derived segments."), ke(!1);
       return;
     }
-    ie((ne) => ne && { ...ne, createCount: 0, linkCount: 0 });
+    xe((ne) => ne && { ...ne, createCount: 0, linkCount: 0 });
     try {
-      await R(), te(), ie(null);
-      const ne = L.createdCount + L.linkedCount;
-      Y(`${L.createdCount} derived segment${L.createdCount === 1 ? "" : "s"} created and ${L.linkedCount} existing segment${L.linkedCount === 1 ? "" : "s"} linked.`), ne === 0 && Y("Every applicable derivation was already materialized.");
+      await j(), re(), xe(null);
+      const ne = O.createdCount + O.linkedCount;
+      X(`${O.createdCount} derived segment${O.createdCount === 1 ? "" : "s"} created and ${O.linkedCount} existing segment${O.linkedCount === 1 ? "" : "s"} linked.`), ne === 0 && X("Every applicable derivation was already materialized.");
     } catch {
       Q("Derived segments were materialized, but the editor could not refresh. Close this dialog and reload Segment Studio.");
     }
-    B(!1);
+    ke(!1);
   }
-  async function q(L, ne = null) {
-    var he, be, Ee, Pe;
-    const me = {
-      tagId: L,
+  async function H(O, ne = null) {
+    var be, he, Ae, Ee;
+    const ye = {
+      tagId: O,
       ...ne ? { tagName: ne } : {}
     };
     if (I.length > 1) {
-      const ve = I.filter((Ae) => Ae.tagId !== L);
-      if (ve.length === 0) {
+      const Ne = I.filter((De) => De.tagId !== O);
+      if (Ne.length === 0) {
         l();
         return;
       }
-      const Ce = I.map((Ae) => ({
-        id: Ae.id,
-        itemId: Ae.itemId,
-        nativeSegmentId: Ae.nativeSegmentId
-      })), $e = I.map((Ae) => !d || Ae.nativeSegmentId != null ? `native:${Ae.nativeSegmentId}:${Ae.updatedAt}` : `item:${Ae.itemId}:${Ae.revision}`).sort().join(","), ge = `bulk-tag:${x.id}:${L}:${$e}`;
-      Se((P == null ? void 0 : P.id) ?? ve[0].id), Y(`Changing tag for ${ve.length} selected segment${ve.length === 1 ? "" : "s"}…`);
-      const Ge = rr(
+      const Ie = I.map((De) => ({
+        id: De.id,
+        itemId: De.itemId,
+        nativeSegmentId: De.nativeSegmentId
+      })), Ce = I.map((De) => !d || De.nativeSegmentId != null ? `native:${De.nativeSegmentId}:${De.updatedAt}` : `item:${De.itemId}:${De.revision}`).sort().join(","), ve = `bulk-tag:${x.id}:${O}:${Ce}`;
+      le((D == null ? void 0 : D.id) ?? Ne[0].id), X(`Changing tag for ${Ne.length} selected segment${Ne.length === 1 ? "" : "s"}…`);
+      const Oe = rr(
         c,
-        ve.map((Ae) => Ae.id),
-        me
+        Ne.map((De) => De.id),
+        ye
       );
-      W(Ge, x.id), l();
+      W(Oe, x.id), l();
       try {
-        const Ae = d ? null : crypto.randomUUID();
+        const De = d ? null : crypto.randomUUID();
         await Z(`/videos/${x.id}/segments/tag`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            operationId: Re(ge),
-            tagId: L,
-            historyReceiptId: Ae,
+            operationId: Le(ve),
+            tagId: O,
+            historyReceiptId: De,
             segments: I.map((je) => {
-              const Ne = !d || je.nativeSegmentId != null;
+              const Te = !d || je.nativeSegmentId != null;
               return {
-                nativeSegmentId: Ne ? je.nativeSegmentId : null,
-                itemId: Ne ? null : je.itemId,
-                expectedUpdatedAt: Ne ? je.updatedAt : null,
-                expectedRevision: Ne ? null : je.revision
+                nativeSegmentId: Te ? je.nativeSegmentId : null,
+                itemId: Te ? null : je.itemId,
+                expectedUpdatedAt: Te ? je.updatedAt : null,
+                expectedRevision: Te ? null : je.revision
               };
             })
           })
-        }), Oe(ge);
+        }), Fe(ve);
         const at = lt(
           I,
           d
-        ), ke = await R(), De = Ce.map((je) => We(ke == null ? void 0 : ke.segments, je)).filter(Boolean);
-        await _(
+        ), we = await j(), Pe = Ie.map((je) => He(we == null ? void 0 : we.segments, je)).filter(Boolean);
+        await F(
           "segments.tag",
-          `Changed tag for ${ve.length} segment${ve.length === 1 ? "" : "s"}`,
+          `Changed tag for ${Ne.length} segment${Ne.length === 1 ? "" : "s"}`,
           at,
-          lt(De, d),
-          Ae
+          lt(Pe, d),
+          De
         );
-        const He = Ce.map((je) => We(ke == null ? void 0 : ke.segments, je)).filter(Boolean);
-        M(He.map((je) => je.id)), K(((he = He.find((je) => je.id === (P == null ? void 0 : P.id))) == null ? void 0 : he.id) ?? ((be = He[0]) == null ? void 0 : be.id) ?? null), l(), Y(`${ve.length} selected segment${ve.length === 1 ? "" : "s"} retagged.`);
-      } catch (Ae) {
-        W((De) => Mn(
-          De,
-          ve,
-          Object.keys(me)
+        const qe = Ie.map((je) => He(we == null ? void 0 : we.segments, je)).filter(Boolean);
+        C(qe.map((je) => je.id)), K(((be = qe.find((je) => je.id === (D == null ? void 0 : D.id))) == null ? void 0 : be.id) ?? ((he = qe[0]) == null ? void 0 : he.id) ?? null), l(), X(`${Ne.length} selected segment${Ne.length === 1 ? "" : "s"} retagged.`);
+      } catch (De) {
+        W((Pe) => Rn(
+          Pe,
+          Ne,
+          Object.keys(ye)
         ), x.id);
-        const at = Ce.map((De) => We(c.segments, De)).filter(Boolean), ke = We(c.segments, {
-          id: P == null ? void 0 : P.id,
-          itemId: P == null ? void 0 : P.itemId,
-          nativeSegmentId: P == null ? void 0 : P.nativeSegmentId
+        const at = Ie.map((Pe) => He(c.segments, Pe)).filter(Boolean), we = He(c.segments, {
+          id: D == null ? void 0 : D.id,
+          itemId: D == null ? void 0 : D.itemId,
+          nativeSegmentId: D == null ? void 0 : D.nativeSegmentId
         }) || at[0] || null;
-        M(at.map((De) => De.id)), K((ke == null ? void 0 : ke.id) ?? null), C.current = (ke == null ? void 0 : ke.id) ?? null, F.current = [], Ae.status === 409 && await N(), Y(Ae.message || "Unable to change the selected segment tags.");
+        C(at.map((Pe) => Pe.id)), K((we == null ? void 0 : we.id) ?? null), $.current = (we == null ? void 0 : we.id) ?? null, P.current = [], De.status === 409 && await N(), X(De.message || "Unable to change the selected segment tags.");
       } finally {
-        Se(null);
+        le(null);
       }
       return;
     }
-    if (!(I.length !== 1 || !P)) {
-      if (L === P.tagId) {
+    if (!(I.length !== 1 || !D)) {
+      if (O === D.tagId) {
         l();
         return;
       }
-      if (P.itemId != null && ((Pe = (Ee = y.data) == null ? void 0 : Ee.children) == null ? void 0 : Pe.length) > 0) {
-        Se(P.id), Y("Checking lineage impact…");
+      if (D.itemId != null && ((Ee = (Ae = y.data) == null ? void 0 : Ae.children) == null ? void 0 : Ee.length) > 0) {
+        le(D.id), X("Checking lineage impact…");
         try {
-          const ve = await Z(`/items/${P.itemId}/tag-change/preview`, {
+          const Ne = await Z(`/items/${D.itemId}/tag-change/preview`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ expectedRevision: P.revision, tagId: L })
-          }), Ce = ve.deletedItemIds.length > 0 || ve.removedEdgeIds.length > 0;
-          if (Ce && !window.confirm(
-            `Changing this tag removes ${ve.removedEdgeIds.length} lineage edge${ve.removedEdgeIds.length === 1 ? "" : "s"} and permanently deletes ${ve.deletedItemIds.length} derived segment${ve.deletedItemIds.length === 1 ? "" : "s"}. Continue?`
+            body: JSON.stringify({ expectedRevision: D.revision, tagId: O })
+          }), Ie = Ne.deletedItemIds.length > 0 || Ne.removedEdgeIds.length > 0;
+          if (Ie && !window.confirm(
+            `Changing this tag removes ${Ne.removedEdgeIds.length} lineage edge${Ne.removedEdgeIds.length === 1 ? "" : "s"} and permanently deletes ${Ne.deletedItemIds.length} derived segment${Ne.deletedItemIds.length === 1 ? "" : "s"}. Continue?`
           )) {
-            Y("Tag change canceled.");
+            X("Tag change canceled.");
             return;
           }
-          const $e = rr(
+          const Ce = rr(
             c,
-            [P.id],
-            me
+            [D.id],
+            ye
           );
-          W($e, x.id), l();
-          const ge = `tag-change:${P.itemId}:${P.revision}:${ve.componentFingerprint}:${L}`;
-          await Z(`/items/${P.itemId}/tag-change/execute`, {
+          W(Ce, x.id), l();
+          const ve = `tag-change:${D.itemId}:${D.revision}:${Ne.componentFingerprint}:${O}`;
+          await Z(`/items/${D.itemId}/tag-change/execute`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              operationId: Re(ge),
-              expectedRevision: P.revision,
-              componentFingerprint: ve.componentFingerprint,
-              tagId: L
+              operationId: Le(ve),
+              expectedRevision: D.revision,
+              componentFingerprint: Ne.componentFingerprint,
+              tagId: O
             })
-          }), Oe(ge), await R(), l(), Y(Ce ? "Tag changed and lineage reconciled." : "Tag changed.");
-        } catch (ve) {
-          W((Ce) => Mn(
-            Ce,
-            [P],
-            Object.keys(me)
-          ), x.id), M([P.id]), K(P.id), C.current = P.id, F.current = [], ve.status === 409 ? (Y("Lineage changed — loading the latest segments…"), await N()) : Y(ve.message || "Unable to reconcile the lineage.");
+          }), Fe(ve), await j(), l(), X(Ie ? "Tag changed and lineage reconciled." : "Tag changed.");
+        } catch (Ne) {
+          W((Ie) => Rn(
+            Ie,
+            [D],
+            Object.keys(ye)
+          ), x.id), C([D.id]), K(D.id), $.current = D.id, P.current = [], Ne.status === 409 ? (X("Lineage changed — loading the latest segments…"), await N()) : X(Ne.message || "Unable to reconcile the lineage.");
         } finally {
-          Se(null);
+          le(null);
         }
         return;
       }
-      l(), await v(P, {
-        startSec: P.startSec,
-        endSec: P.endSec,
-        tagId: L
-      }, !0, null, !0, me);
+      l(), await v(D, {
+        startSec: D.startSec,
+        endSec: D.endSec,
+        tagId: O
+      }, !0, null, !0, ye);
     }
   }
-  async function X() {
-    var Pe, ve, Ce, $e;
-    if (!s || !P || D != null) return;
-    const L = [...I].sort((ge, Ge) => Number(ge.nativeSegmentId ?? ge.id) - Number(Ge.nativeSegmentId ?? Ge.id)), ne = new Set(L.map((ge) => ge.id)), me = L.map((ge) => `${ge.nativeSegmentId ?? ge.id}:${ge.updatedAt}`).join("|");
-    Se(P.id), Y(`Moving ${L.length} segment${L.length === 1 ? "" : "s"} to recycling bin…`);
-    const he = `bulk-move:${x.id}:${me}`, be = Re(he), Ee = d ? null : crypto.randomUUID();
+  async function ee() {
+    var Ee, Ne, Ie, Ce;
+    if (!s || !D || R != null) return;
+    const O = [...I].sort((ve, Oe) => Number(ve.nativeSegmentId ?? ve.id) - Number(Oe.nativeSegmentId ?? Oe.id)), ne = new Set(O.map((ve) => ve.id)), ye = O.map((ve) => `${ve.nativeSegmentId ?? ve.id}:${ve.updatedAt}`).join("|");
+    le(D.id), X(`Moving ${O.length} segment${O.length === 1 ? "" : "s"} to recycling bin…`);
+    const be = `bulk-move:${x.id}:${ye}`, he = Le(be), Ae = d ? null : crypto.randomUUID();
     try {
-      const ge = (De = !1) => Z(`/videos/${x.id}/segments/move-to-bin`, {
+      const ve = (Pe = !1) => Z(`/videos/${x.id}/segments/move-to-bin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: be,
-          segments: L.map((He) => ({
-            segmentId: He.nativeSegmentId ?? He.id,
-            expectedUpdatedAt: He.updatedAt
+          operationId: he,
+          segments: O.map((qe) => ({
+            segmentId: qe.nativeSegmentId ?? qe.id,
+            expectedUpdatedAt: qe.updatedAt
           })),
-          discardMissingImage: De,
+          discardMissingImage: Pe,
           ...d ? { reviewState: "rejected" } : {},
-          historyReceiptId: Ee
+          historyReceiptId: Ae
         })
       });
-      let Ge;
+      let Oe;
       try {
-        Ge = await ge(
-          zr(he)
+        Oe = await ve(
+          _r(be)
         );
-      } catch (De) {
-        if (((Pe = De.payload) == null ? void 0 : Pe.code) !== "missing-image" || !window.confirm(`${De.message}
+      } catch (Pe) {
+        if (((Ee = Pe.payload) == null ? void 0 : Ee.code) !== "missing-image" || !window.confirm(`${Pe.message}
 
-Continue and discard the missing image reference?`)) throw De;
-        _r(he), Ge = await ge(!0);
+Continue and discard the missing image reference?`)) throw Pe;
+        Hr(be), Oe = await ve(!0);
       }
-      Oe(he), Nn();
-      const Ae = new Map((Ge.items || []).map((De) => [
-        Number(De.segmentId),
-        De
+      Fe(be), Nn();
+      const De = new Map((Oe.items || []).map((Pe) => [
+        Number(Pe.segmentId),
+        Pe
       ]));
-      await _(
+      await F(
         "segments.moveToBin",
-        `Moved ${L.length} segment${L.length === 1 ? "" : "s"} to recycling bin`,
-        lt(L, !1),
-        lt(L.map((De) => {
-          const He = Ae.get(
-            Number(De.nativeSegmentId ?? De.id)
+        `Moved ${O.length} segment${O.length === 1 ? "" : "s"} to recycling bin`,
+        lt(O, !1),
+        lt(O.map((Pe) => {
+          const qe = De.get(
+            Number(Pe.nativeSegmentId ?? Pe.id)
           );
           return {
-            ...De,
-            recycleBinItemId: (He == null ? void 0 : He.itemId) ?? null,
+            ...Pe,
+            recycleBinItemId: (qe == null ? void 0 : qe.itemId) ?? null,
             nativeSegmentId: null,
             published: !1,
-            revision: (He == null ? void 0 : He.revision) ?? null
+            revision: (qe == null ? void 0 : qe.revision) ?? null
           };
         }), !1),
-        Ee
+        Ae
       );
-      const at = U.filter((De) => !ne.has(De.id)), ke = cs(r, ne, P.id);
-      W({ ...c, segments: at }, x.id), M(ke ? [ke.id] : []), K((ke == null ? void 0 : ke.id) ?? null), C.current = (ke == null ? void 0 : ke.id) ?? null, F.current = [], ke && (h(ut(r, ke.id)), O(ke.id)), requestAnimationFrame(() => {
-        var De;
-        return (De = g.current) == null ? void 0 : De.focus({ preventScroll: !0 });
-      }), Y(`Moved ${L.length} segment${L.length === 1 ? "" : "s"} to recycling bin.`);
-    } catch (ge) {
-      const Ge = ((ve = ge.payload) == null ? void 0 : ve.code) || (($e = (Ce = ge.payload) == null ? void 0 : Ce.result) == null ? void 0 : $e.code);
-      ge.status === 409 && Ge === "CANONICAL_SEGMENT_CHANGED" ? await N() : Y(ge.message || "Unable to move the selected segments to the recycling bin.");
+      const at = U.filter((Pe) => !ne.has(Pe.id)), we = ms(r, ne, D.id);
+      W({ ...c, segments: at }, x.id), C(we ? [we.id] : []), K((we == null ? void 0 : we.id) ?? null), $.current = (we == null ? void 0 : we.id) ?? null, P.current = [], we && (b(ut(r, we.id)), E(we.id)), requestAnimationFrame(() => {
+        var Pe;
+        return (Pe = g.current) == null ? void 0 : Pe.focus({ preventScroll: !0 });
+      }), X(`Moved ${O.length} segment${O.length === 1 ? "" : "s"} to recycling bin.`);
+    } catch (ve) {
+      const Oe = ((Ne = ve.payload) == null ? void 0 : Ne.code) || ((Ce = (Ie = ve.payload) == null ? void 0 : Ie.result) == null ? void 0 : Ce.code);
+      ve.status === 409 && Oe === "CANONICAL_SEGMENT_CHANGED" ? await N() : X(ve.message || "Unable to move the selected segments to the recycling bin.");
     } finally {
-      Se(null);
+      le(null);
     }
   }
-  async function J() {
-    if (!(d || a.current || D != null)) {
-      a.current = !0, Y("Checking the recycling bin…");
+  async function Y() {
+    if (!(d || a.current || R != null)) {
+      a.current = !0, X("Checking the recycling bin…");
       try {
-        const L = await Z("/bin"), ne = await Aa(L, () => Y("Emptying the recycling bin…"));
+        const O = await Z("/bin"), ne = await Ea(O, () => X("Emptying the recycling bin…"));
         if (ne.status === "empty") {
-          Y("The recycling bin is empty.");
+          X("The recycling bin is empty.");
           return;
         }
         if (ne.status === "canceled") {
-          Y("The recycling bin was not emptied.");
+          X("The recycling bin was not emptied.");
           return;
         }
-        Y(`${ne.segmentCount} segment${ne.segmentCount === 1 ? "" : "s"} from ${ne.sceneCount} scene${ne.sceneCount === 1 ? "" : "s"} permanently deleted.`);
-      } catch (L) {
-        Y(L.message || "Unable to empty the recycling bin.");
+        X(`${ne.segmentCount} segment${ne.segmentCount === 1 ? "" : "s"} from ${ne.sceneCount} scene${ne.sceneCount === 1 ? "" : "s"} permanently deleted.`);
+      } catch (O) {
+        X(O.message || "Unable to empty the recycling bin.");
       } finally {
         a.current = !1;
       }
     }
   }
-  return { toggleIncorrectExample: E, removeIncorrectExample: S, captureTrainingExport: k, deleteRejectedSegments: H, autoAssignPerformers: le, previewDerivedSegments: se, closeMaterializeDialog: te, materializeDerivedSegments: xe, saveTag: q, moveToBin: X, emptyRecyclingBin: J };
+  return { toggleIncorrectExample: A, removeIncorrectExample: S, captureTrainingExport: k, deleteRejectedSegments: q, autoAssignPerformers: ue, previewDerivedSegments: ae, closeMaterializeDialog: re, materializeDerivedSegments: Se, saveTag: H, moveToBin: ee, emptyRecyclingBin: Y };
 }
-function hd(e) {
-  const { acceptHistory: t, compatibilityMode: r, currentTime: o, detail: i, editorLayout: a, focusRowRef: s, history: l, historyRef: d, historySaving: c, horizontalLayoutSize: g, mediaStackHeight: m, mediaStackRef: u, onDetailChange: y, onReload: p, railToggleRef: b, recordHistoryAction: f, savingSegmentId: w, savingShot: v, savingShotRef: N, setCollapsedSegmentGroups: W, setEditorLayout: R, setHistorySaving: _, setSaveMessage: A, setSavingSegmentId: $, setSavingShot: O, shotBoundaries: D, timelineDuration: U, video: P, workspaceRef: V } = e;
-  async function I(h, K, M) {
-    var k, H, le, se;
-    const x = h.type === "segment" ? [h] : h.segments || [], E = (K == null ? void 0 : K.type) === "segment" ? [K] : (K == null ? void 0 : K.segments) || [];
-    let S = M;
-    for (const [te, xe] of x.entries()) {
-      const q = E[te], X = ((k = xe.identity) == null ? void 0 : k.nativeSegmentId) != null || ((H = xe.identity) == null ? void 0 : H.published) === !0, J = ((le = q == null ? void 0 : q.identity) == null ? void 0 : le.recycleBinItemId) ?? ((se = q == null ? void 0 : q.identity) == null ? void 0 : se.itemId);
-      let L = We(S.segments, q == null ? void 0 : q.identity) || We(S.segments, xe.identity);
-      if (!L && X && J != null && q.identity.revision != null) {
-        const he = `history-restore:${P.id}:${J}:${q.identity.revision}`;
-        await Z(`/bin/${J}/restore`, {
+function Nd(e) {
+  const { acceptHistory: t, compatibilityMode: r, currentTime: o, detail: i, editorLayout: a, focusRowRef: s, history: l, historyRef: d, historySaving: c, horizontalLayoutSize: g, mediaStackHeight: m, mediaStackRef: u, onDetailChange: y, onReload: p, railToggleRef: h, recordHistoryAction: f, savingSegmentId: w, savingShot: v, savingShotRef: N, setCollapsedSegmentGroups: W, setEditorLayout: j, setHistorySaving: F, setSaveMessage: T, setSavingSegmentId: M, setSavingShot: E, shotBoundaries: R, timelineDuration: U, video: D, workspaceRef: V } = e;
+  async function I(b, K, C) {
+    var k, q, ue, ae;
+    const x = b.type === "segment" ? [b] : b.segments || [], A = (K == null ? void 0 : K.type) === "segment" ? [K] : (K == null ? void 0 : K.segments) || [];
+    let S = C;
+    for (const [re, Se] of x.entries()) {
+      const H = A[re], ee = ((k = Se.identity) == null ? void 0 : k.nativeSegmentId) != null || ((q = Se.identity) == null ? void 0 : q.published) === !0, Y = ((ue = H == null ? void 0 : H.identity) == null ? void 0 : ue.recycleBinItemId) ?? ((ae = H == null ? void 0 : H.identity) == null ? void 0 : ae.itemId);
+      let O = He(S.segments, H == null ? void 0 : H.identity) || He(S.segments, Se.identity);
+      if (!O && ee && Y != null && H.identity.revision != null) {
+        const be = `history-restore:${D.id}:${Y}:${H.identity.revision}`;
+        await Z(`/bin/${Y}/restore`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            operationId: Re(he),
-            expectedRevision: q.identity.revision
+            operationId: Le(be),
+            expectedRevision: H.identity.revision
           })
-        }), Oe(he), S = await p(), L = S.segments.find((be) => be.tagId === xe.values.tagId && be.startSec === xe.values.startSec && be.endSec === xe.values.endSec);
+        }), Fe(be), S = await p(), O = S.segments.find((he) => he.tagId === Se.values.tagId && he.startSec === Se.values.startSec && he.endSec === Se.values.endSec);
       }
-      if (!L)
+      if (!O)
         throw new Error("A segment in this history state no longer exists.");
-      if ((L.nativeSegmentId != null || L.published === !0) !== X) {
-        if (X) {
-          const he = L.recycleBinItemId ?? L.itemId ?? J;
-          if (he == null)
+      if ((O.nativeSegmentId != null || O.published === !0) !== ee) {
+        if (ee) {
+          const be = O.recycleBinItemId ?? O.itemId ?? Y;
+          if (be == null)
             throw new Error("This recycled segment can no longer be restored.");
-          const be = `history-restore:${P.id}:${he}:${L.revision}:${xe.values.reviewState ?? "native"}`;
-          await Z(`/bin/${he}/restore`, {
+          const he = `history-restore:${D.id}:${be}:${O.revision}:${Se.values.reviewState ?? "native"}`;
+          await Z(`/bin/${be}/restore`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              operationId: Re(be),
-              expectedRevision: L.revision
+              operationId: Le(he),
+              expectedRevision: O.revision
             })
-          }), Oe(be);
+          }), Fe(he);
         } else {
-          const he = `history-bin:${P.id}:${L.nativeSegmentId}:${L.updatedAt}:${xe.values.reviewState}`;
-          await Z(`/videos/${P.id}/segments/${L.nativeSegmentId}/move-to-bin`, {
+          const be = `history-bin:${D.id}:${O.nativeSegmentId}:${O.updatedAt}:${Se.values.reviewState}`;
+          await Z(`/videos/${D.id}/segments/${O.nativeSegmentId}/move-to-bin`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              operationId: Re(he),
-              expectedUpdatedAt: L.updatedAt,
-              reviewState: xe.values.reviewState
+              operationId: Le(be),
+              expectedUpdatedAt: O.updatedAt,
+              reviewState: Se.values.reviewState
             })
-          }), Oe(he);
+          }), Fe(be);
         }
-        if (S = await p(), !X)
+        if (S = await p(), !ee)
           continue;
-        if (L = We(S.segments, xe.identity) || S.segments.find((he) => he.tagId === xe.values.tagId && he.startSec === xe.values.startSec && he.endSec === xe.values.endSec), !L)
+        if (O = He(S.segments, Se.identity) || S.segments.find((be) => be.tagId === Se.values.tagId && be.startSec === Se.values.startSec && be.endSec === Se.values.endSec), !O)
           throw new Error("The restored segment could not be found.");
       }
-      const me = xe.values;
-      if (L.nativeSegmentId == null && L.itemId != null) {
-        const he = `history-draft-update:${P.id}:${L.itemId}:${L.revision}:${me.tagId}:${me.startSec}:${me.endSec ?? "open"}:${me.reviewState}`;
-        await Z(`/videos/${P.id}/drafts/${L.itemId}`, {
+      const ye = Se.values;
+      if (O.nativeSegmentId == null && O.itemId != null) {
+        const be = `history-draft-update:${D.id}:${O.itemId}:${O.revision}:${ye.tagId}:${ye.startSec}:${ye.endSec ?? "open"}:${ye.reviewState}`;
+        await Z(`/videos/${D.id}/drafts/${O.itemId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            operationId: Re(he),
-            expectedRevision: L.revision,
-            ...me
+            operationId: Le(be),
+            expectedRevision: O.revision,
+            ...ye
           })
-        }), Oe(he);
+        }), Fe(be);
       } else
-        await Z(`/videos/${P.id}/segments/${L.id}`, {
+        await Z(`/videos/${D.id}/segments/${O.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...me, expectedUpdatedAt: L.updatedAt })
+          body: JSON.stringify({ ...ye, expectedUpdatedAt: O.updatedAt })
         });
       S = await p();
     }
     return S;
   }
-  async function C(h, K) {
-    var M;
-    for (const x of h.targets || []) {
-      const E = We(K.segments, x.identity);
-      if (!E)
+  async function $(b, K) {
+    var C;
+    for (const x of b.targets || []) {
+      const A = He(K.segments, x.identity);
+      if (!A)
         throw new Error("A segment in this performer-assignment history no longer exists.");
-      const S = (M = K.performerSlotRevisions) == null ? void 0 : M[E.id];
-      await Z(E.published ? `/videos/${P.id}/segments/${E.nativeSegmentId}/slots` : `/videos/${P.id}/drafts/${E.itemId}/slots`, {
+      const S = (C = K.performerSlotRevisions) == null ? void 0 : C[A.id];
+      await Z(A.published ? `/videos/${D.id}/segments/${A.nativeSegmentId}/slots` : `/videos/${D.id}/drafts/${A.itemId}/slots`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6763,53 +6797,53 @@ function hd(e) {
     }
     return K;
   }
-  async function F(h, K, M = []) {
-    const x = h.state;
+  async function P(b, K, C = []) {
+    const x = b.state;
     if (!r && ((x == null ? void 0 : x.type) === "segment" || (x == null ? void 0 : x.type) === "segments")) {
-      const S = `basic-history:${P.id}:${d.current.revision}:${h.action.sequence}:${h.direction}`, k = await Z(`/videos/${P.id}/history/native-state`, {
+      const S = `basic-history:${D.id}:${d.current.revision}:${b.action.sequence}:${b.direction}`, k = await Z(`/videos/${D.id}/history/native-state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(S),
+          operationId: Le(S),
           expectedHistoryRevision: d.current.revision,
-          actionSequence: h.action.sequence,
-          direction: h.direction
+          actionSequence: b.action.sequence,
+          direction: b.direction
         })
       });
-      return t(k.history), M.push(S), p();
+      return t(k.history), C.push(S), p();
     }
-    const E = h.direction === "backward" ? h.action.afterState : h.action.beforeState;
+    const A = b.direction === "backward" ? b.action.afterState : b.action.beforeState;
     if ((x == null ? void 0 : x.type) === "composite") {
       let S = K;
-      const k = (E == null ? void 0 : E.type) === "composite" ? E.states || [] : [];
-      for (const [H, le] of (x.states || []).entries()) {
-        const se = k[H];
-        S = await F({
-          ...h,
-          state: le,
+      const k = (A == null ? void 0 : A.type) === "composite" ? A.states || [] : [];
+      for (const [q, ue] of (x.states || []).entries()) {
+        const ae = k[q];
+        S = await P({
+          ...b,
+          state: ue,
           action: {
-            ...h.action,
-            beforeState: h.direction === "backward" ? le : se,
-            afterState: h.direction === "backward" ? se : le
+            ...b.action,
+            beforeState: b.direction === "backward" ? ue : ae,
+            afterState: b.direction === "backward" ? ae : ue
           }
-        }, S, M);
+        }, S, C);
       }
       return S;
     }
     if ((x == null ? void 0 : x.type) === "segment" || (x == null ? void 0 : x.type) === "segments")
       return I(
         x,
-        E,
+        A,
         K
       );
     if ((x == null ? void 0 : x.type) === "performerSlots")
-      return C(x, K);
+      return $(x, K);
     if ((x == null ? void 0 : x.type) === "shots") {
-      const S = Qn(K.shotBoundaries || []), k = await Z(`/videos/${P.id}/shot-boundaries/restore`, {
+      const S = Zn(K.shotBoundaries || []), k = await Z(`/videos/${D.id}/shot-boundaries/restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(`history-shots:${P.id}:${S}:${x.fingerprint}`),
+          operationId: Le(`history-shots:${D.id}:${S}:${x.fingerprint}`),
           expectedFingerprint: S,
           boundaries: x.boundaries
         })
@@ -6818,308 +6852,308 @@ function hd(e) {
     }
     throw new Error("This history action cannot be restored.");
   }
-  async function re(h) {
-    var M;
-    if (c || w != null || v || h === l.cursorSequence)
+  async function J(b) {
+    var C;
+    if (c || w != null || v || b === l.cursorSequence)
       return;
-    const K = al(l, h);
+    const K = ul(l, b);
     if (K.length !== 0) {
-      _(!0), $(-1), A(`Restoring ${K.length} history ${K.length === 1 ? "action" : "actions"}…`);
+      F(!0), M(-1), T(`Restoring ${K.length} history ${K.length === 1 ? "action" : "actions"}…`);
       try {
         let x = i;
-        const E = [];
+        const A = [];
         for (const k of K)
-          x = await F(
+          x = await P(
             k,
             x,
-            E
+            A
           );
-        const S = r ? await Z(`/videos/${P.id}/history/cursor`, {
+        const S = r ? await Z(`/videos/${D.id}/history/cursor`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             operationId: crypto.randomUUID(),
             expectedRevision: d.current.revision,
-            targetSequence: h
+            targetSequence: b
           })
         }) : d.current;
-        E.forEach(Oe), t(S), await p(), A("History restored.");
+        A.forEach(Fe), t(S), await p(), T("History restored.");
       } catch (x) {
-        x.status === 409 && ((M = x.payload) != null && M.current) && t(x.payload.current), await p(), A(x.message || "Unable to restore editor history.");
+        x.status === 409 && ((C = x.payload) != null && C.current) && t(x.payload.current), await p(), T(x.message || "Unable to restore editor history.");
       } finally {
-        $(null), _(!1);
+        M(null), F(!1);
       }
     }
   }
-  function ee(h) {
-    R((K) => ({ ...K, timelineRatio: Kr(h, m) }));
+  function se(b) {
+    j((K) => ({ ...K, timelineRatio: Ur(b, m) }));
   }
-  function we(h) {
-    var M;
-    const K = (M = u.current) == null ? void 0 : M.getBoundingClientRect();
-    K && ee(Ji(h.clientY, K.top, K.height));
+  function me(b) {
+    var C;
+    const K = (C = u.current) == null ? void 0 : C.getBoundingClientRect();
+    K && se(Qi(b.clientY, K.top, K.height));
   }
-  function ce(h) {
-    h.currentTarget.setPointerCapture(h.pointerId), we(h);
+  function ge(b) {
+    b.currentTarget.setPointerCapture(b.pointerId), me(b);
   }
-  function T(h) {
-    h.currentTarget.hasPointerCapture(h.pointerId) && we(h);
+  function B(b) {
+    b.currentTarget.hasPointerCapture(b.pointerId) && me(b);
   }
-  function Q(h) {
-    const K = h.shiftKey ? 0.1 : 0.05;
-    let M = null;
-    h.key === "ArrowUp" && (M = a.timelineRatio + K), h.key === "ArrowDown" && (M = a.timelineRatio - K);
-    const x = Gr(m);
-    h.key === "Home" && (M = x.minimum), h.key === "End" && (M = x.maximum), M != null && (h.preventDefault(), h.stopPropagation(), ee(M));
+  function Q(b) {
+    const K = b.shiftKey ? 0.1 : 0.05;
+    let C = null;
+    b.key === "ArrowUp" && (C = a.timelineRatio + K), b.key === "ArrowDown" && (C = a.timelineRatio - K);
+    const x = Kr(m);
+    b.key === "Home" && (C = x.minimum), b.key === "End" && (C = x.maximum), C != null && (b.preventDefault(), b.stopPropagation(), se(C));
   }
-  function oe(h) {
-    const K = h === "detailWidth" ? g.focusRow : g.workspace, M = g.workspace > 0 ? Mr(g.workspace, 600) : 560, x = Ot(a.markerRailWidth, M), E = h === "detailWidth" ? 344 + (a.markerRailOpen ? x + 24 : 0) : 600;
-    return K > 0 ? Mr(K, E) : 560;
+  function de(b) {
+    const K = b === "detailWidth" ? g.focusRow : g.workspace, C = g.workspace > 0 ? Mr(g.workspace, 600) : 560, x = Pt(a.markerRailWidth, C), A = b === "detailWidth" ? 344 + (a.markerRailOpen ? x + 24 : 0) : 600;
+    return K > 0 ? Mr(K, A) : 560;
   }
-  function fe(h, K) {
-    R((M) => ({ ...M, [h]: Ot(K, oe(h)) }));
+  function oe(b, K) {
+    j((C) => ({ ...C, [b]: Pt(K, de(b)) }));
   }
-  function ie(h, K) {
-    var x, E;
-    const M = K === "detailWidth" ? (x = s.current) == null ? void 0 : x.getBoundingClientRect() : (E = V.current) == null ? void 0 : E.getBoundingClientRect();
-    M && fe(K, K === "detailWidth" ? h.clientX - M.left : M.right - h.clientX);
+  function xe(b, K) {
+    var x, A;
+    const C = K === "detailWidth" ? (x = s.current) == null ? void 0 : x.getBoundingClientRect() : (A = V.current) == null ? void 0 : A.getBoundingClientRect();
+    C && oe(K, K === "detailWidth" ? b.clientX - C.left : C.right - b.clientX);
   }
-  function B(h, K) {
-    const M = oe(h), x = Ot(a[h], M);
+  function ke(b, K) {
+    const C = de(b), x = Pt(a[b], C);
     return {
       role: "separator",
       tabIndex: 0,
       "aria-label": K,
       "aria-orientation": "vertical",
       "aria-valuemin": 240,
-      "aria-valuemax": Math.round(M),
+      "aria-valuemax": Math.round(C),
       "aria-valuenow": Math.round(x),
       "aria-valuetext": `${Math.round(x)} pixels wide`,
       title: "Drag or use Left/Right to resize · Shift for larger steps · double-click to reset",
-      onPointerDown: (E) => {
-        E.currentTarget.setPointerCapture(E.pointerId), ie(E, h);
+      onPointerDown: (A) => {
+        A.currentTarget.setPointerCapture(A.pointerId), xe(A, b);
       },
-      onPointerMove: (E) => {
-        E.currentTarget.hasPointerCapture(E.pointerId) && ie(E, h);
+      onPointerMove: (A) => {
+        A.currentTarget.hasPointerCapture(A.pointerId) && xe(A, b);
       },
-      onKeyDown: (E) => {
-        const S = E.shiftKey ? 40 : 16;
+      onKeyDown: (A) => {
+        const S = A.shiftKey ? 40 : 16;
         let k = null;
-        E.key === "ArrowLeft" && (k = h === "detailWidth" ? -S : S), E.key === "ArrowRight" && (k = h === "detailWidth" ? S : -S);
-        let H = k == null ? null : x + k;
-        E.key === "Home" && (H = 240), E.key === "End" && (H = M), H != null && (E.preventDefault(), E.stopPropagation(), fe(h, H));
+        A.key === "ArrowLeft" && (k = b === "detailWidth" ? -S : S), A.key === "ArrowRight" && (k = b === "detailWidth" ? S : -S);
+        let q = k == null ? null : x + k;
+        A.key === "Home" && (q = 240), A.key === "End" && (q = C), q != null && (A.preventDefault(), A.stopPropagation(), oe(b, q));
       },
-      onDoubleClick: () => fe(h, rt[h]),
+      onDoubleClick: () => oe(b, rt[b]),
       className: "hidden items-center justify-center rounded-sm hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-accent lg:flex",
       style: { touchAction: "none", cursor: "col-resize" }
     };
   }
-  function ue() {
-    R((h) => ({ ...h, markerRailOpen: !h.markerRailOpen })), requestAnimationFrame(() => {
-      var h;
-      return (h = b.current) == null ? void 0 : h.focus({ preventScroll: !0 });
+  function z() {
+    j((b) => ({ ...b, markerRailOpen: !b.markerRailOpen })), requestAnimationFrame(() => {
+      var b;
+      return (b = h.current) == null ? void 0 : b.focus({ preventScroll: !0 });
     });
   }
-  function Me(h) {
-    W((K) => K.includes(h) ? K.filter((M) => M !== h) : Tt([...K, h]));
+  function te(b) {
+    W((K) => K.includes(b) ? K.filter((C) => C !== b) : Rt([...K, b]));
   }
-  async function Y(h, K = !0, M = o) {
+  async function X(b, K = !0, C = o) {
     var k;
     if (N.current) return null;
-    const x = Number((k = P.videoFile) == null ? void 0 : k.duration) || U, E = Qn(D), S = `shot-${h}:${P.id}:${M.toFixed(3)}:${x.toFixed(3)}:${E}`;
-    N.current = !0, O(!0), A(h === "split" ? "Adding shot boundary…" : "Merging shots…");
+    const x = Number((k = D.videoFile) == null ? void 0 : k.duration) || U, A = Zn(R), S = `shot-${b}:${D.id}:${C.toFixed(3)}:${x.toFixed(3)}:${A}`;
+    N.current = !0, E(!0), T(b === "split" ? "Adding shot boundary…" : "Merging shots…");
     try {
-      const H = await Z(`/videos/${P.id}/shot-boundaries/${h}`, {
+      const q = await Z(`/videos/${D.id}/shot-boundaries/${b}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(h === "split" ? { operationId: Re(S), timeSec: M } : { operationId: Re(S), timeSec: M })
+        body: JSON.stringify(b === "split" ? { operationId: Le(S), timeSec: C } : { operationId: Le(S), timeSec: C })
       });
-      return Oe(S), y((le) => ({ ...le, shotBoundaries: H }), P.id), K && await f(
+      return Fe(S), y((ue) => ({ ...ue, shotBoundaries: q }), D.id), K && await f(
         "shots.update",
-        h === "split" ? "Added shot boundary" : "Merged shots",
+        b === "split" ? "Added shot boundary" : "Merged shots",
         {
           type: "shots",
-          boundaries: D,
-          fingerprint: E
+          boundaries: R,
+          fingerprint: A
         },
         {
           type: "shots",
-          boundaries: H,
-          fingerprint: Qn(H)
+          boundaries: q,
+          fingerprint: Zn(q)
         }
-      ), A(h === "split" ? "Shot boundary added." : "Shots merged."), H;
-    } catch (H) {
-      return A(H.message || "Unable to edit shot boundaries."), null;
+      ), T(b === "split" ? "Shot boundary added." : "Shots merged."), q;
+    } catch (q) {
+      return T(q.message || "Unable to edit shot boundaries."), null;
     } finally {
-      N.current = !1, O(!1);
+      N.current = !1, E(!1);
     }
   }
-  async function Se(h) {
+  async function le(b) {
     if (N.current) return null;
-    const K = `shot-restore:${P.id}:${h.afterFingerprint}`;
-    N.current = !0, O(!0), A("Undoing shot edit…");
+    const K = `shot-restore:${D.id}:${b.afterFingerprint}`;
+    N.current = !0, E(!0), T("Undoing shot edit…");
     try {
-      const M = await Z(`/videos/${P.id}/shot-boundaries/restore`, {
+      const C = await Z(`/videos/${D.id}/shot-boundaries/restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(K),
-          expectedFingerprint: h.afterFingerprint,
-          boundaries: h.before
+          operationId: Le(K),
+          expectedFingerprint: b.afterFingerprint,
+          boundaries: b.before
         })
       });
-      return Oe(K), y((x) => ({ ...x, shotBoundaries: M }), P.id), M;
-    } catch (M) {
-      return A(M.message || "Unable to undo the shot edit."), null;
+      return Fe(K), y((x) => ({ ...x, shotBoundaries: C }), D.id), C;
+    } catch (C) {
+      return T(C.message || "Unable to undo the shot edit."), null;
     } finally {
-      N.current = !1, O(!1);
+      N.current = !1, E(!1);
     }
   }
-  return { applySegmentHistoryState: I, applyPerformerSlotHistoryState: C, applyHistoryState: F, restoreHistoryTarget: re, updateTimelineRatio: ee, updateTimelineRatioFromPointer: we, handleSeparatorPointerDown: ce, handleSeparatorPointerMove: T, handleSeparatorKeyDown: Q, panelWidthMaximum: oe, updatePanelWidth: fe, handlePanelSeparatorPointer: ie, panelSeparatorProps: B, toggleSegmentRail: ue, toggleSegmentGroup: Me, mutateShotBoundary: Y, restoreShotBoundaries: Se };
+  return { applySegmentHistoryState: I, applyPerformerSlotHistoryState: $, applyHistoryState: P, restoreHistoryTarget: J, updateTimelineRatio: se, updateTimelineRatioFromPointer: me, handleSeparatorPointerDown: ge, handleSeparatorPointerMove: B, handleSeparatorKeyDown: Q, panelWidthMaximum: de, updatePanelWidth: oe, handlePanelSeparatorPointer: xe, panelSeparatorProps: ke, toggleSegmentRail: z, toggleSegmentGroup: te, mutateShotBoundary: X, restoreShotBoundaries: le };
 }
-function vd(e) {
-  const { allSwimlanes: t, applyShortcutTiming: r, centerTimelineRef: o, compatibilityMode: i, createSegment: a, currentTime: s, deleteRejectedSegments: l, duplicateSegment: d, editorLayout: c, editorRef: g, emptyRecyclingBin: m, lineage: u, mediaDuration: y, mergeSelectedSwimlane: p, moveToBin: b, mutateShotBoundary: f, openPublishApprovedDialog: w, playbackControlsRef: v, playbackShortcutConfig: N, saveSelectedReviewState: W, seekRef: R, segmentGroupKeys: _, selectSegment: A, selectedSegment: $, selectedSegmentGroupForSegment: O, selectedSegmentGroupKey: D, selectedSegments: U, setCollapsedSegmentGroups: P, setIncorrectExamplesOpen: V, setQuickSearchOpen: I, setSaveMessage: C, setSelectedSegmentGroupKey: F, setTagEditing: re, setTimelineZoom: ee, shotBoundaries: we, slotButtonRef: ce, splitSegment: T, swimlanes: Q, timelineDuration: oe, toggleIncorrectExample: fe, toggleSegmentGroup: ie, updateTimelineRatio: B, videoFrameRate: ue, visibleSegments: Me } = e;
-  function Y(h, K) {
-    if (U.length > 1 && bs(h.id))
+function Id(e) {
+  const { allSwimlanes: t, applyShortcutTiming: r, centerTimelineRef: o, compatibilityMode: i, createSegment: a, currentTime: s, deleteRejectedSegments: l, duplicateSegment: d, editorLayout: c, editorRef: g, emptyRecyclingBin: m, lineage: u, mediaDuration: y, mergeSelectedSwimlane: p, moveToBin: h, mutateShotBoundary: f, openPublishApprovedDialog: w, playbackControlsRef: v, playbackShortcutConfig: N, saveSelectedReviewState: W, seekRef: j, segmentGroupKeys: F, selectSegment: T, selectedSegment: M, selectedSegmentGroupForSegment: E, selectedSegmentGroupKey: R, selectedSegments: U, setCollapsedSegmentGroups: D, setIncorrectExamplesOpen: V, setQuickSearchOpen: I, setSaveMessage: $, setSelectedSegmentGroupKey: P, setTagEditing: J, setTimelineZoom: se, shotBoundaries: me, slotButtonRef: ge, splitSegment: B, swimlanes: Q, timelineDuration: de, toggleIncorrectExample: oe, toggleSegmentGroup: xe, updateTimelineRatio: ke, videoFrameRate: z, visibleSegments: te } = e;
+  function X(b, K) {
+    if (U.length > 1 && vs(b.id))
       return;
-    let M = null;
-    h.id === "video.playPause" && (M = () => {
+    let C = null;
+    b.id === "video.playPause" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.toggle();
-    }), h.id === "video.seekSmallBackward" && (M = () => {
+    }), b.id === "video.seekSmallBackward" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.seekBy(-N.smallSeekTime);
-    }), h.id === "video.seekSmallForward" && (M = () => {
+    }), b.id === "video.seekSmallForward" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.seekBy(N.smallSeekTime);
-    }), h.id === "video.seekMediumBackward" && (M = () => {
+    }), b.id === "video.seekMediumBackward" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.seekBy(-N.mediumSeekTime);
-    }), h.id === "video.seekMediumForward" && (M = () => {
+    }), b.id === "video.seekMediumForward" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.seekBy(N.mediumSeekTime);
-    }), h.id === "video.seekLongBackward" && (M = () => {
+    }), b.id === "video.seekLongBackward" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.seekBy(-N.longSeekTime);
-    }), h.id === "video.seekLongForward" && (M = () => {
+    }), b.id === "video.seekLongForward" && (C = () => {
       var x;
       return (x = v.current) == null ? void 0 : x.seekBy(N.longSeekTime);
-    }), h.id === "video.playSelected" && $ && (M = () => {
+    }), b.id === "video.playSelected" && M && (C = () => {
       var x;
-      (x = R.current) == null || x.call(R, $.startSec, !0), requestAnimationFrame(() => {
-        var E;
-        return (E = g.current) == null ? void 0 : E.focus({ preventScroll: !0 });
+      (x = j.current) == null || x.call(j, M.startSec, !0), requestAnimationFrame(() => {
+        var A;
+        return (A = g.current) == null ? void 0 : A.focus({ preventScroll: !0 });
       });
-    }), (h.id === "video.playPreviousSegment" || h.id === "video.playNextSegment") && (M = () => {
-      var E;
-      const x = Or(
+    }), (b.id === "video.playPreviousSegment" || b.id === "video.playNextSegment") && (C = () => {
+      var A;
+      const x = Pr(
         Q,
-        $ == null ? void 0 : $.id,
-        h.id === "video.playPreviousSegment" ? "left" : "right"
+        M == null ? void 0 : M.id,
+        b.id === "video.playPreviousSegment" ? "left" : "right"
       );
-      !x || x.id === ($ == null ? void 0 : $.id) || (A(x, { focusEditor: !0, seekToSegment: !1 }), (E = R.current) == null || E.call(R, x.startSec, !0));
-    }), h.id.startsWith("video.seekPercent") && (M = () => {
-      var E;
-      const x = Number(h.id.slice(17)) / 10;
-      (E = R.current) == null || E.call(R, ms(y ?? oe, x), !1);
-    }), h.id === "video.jumpToSegmentStart" && $ && (M = () => {
+      !x || x.id === (M == null ? void 0 : M.id) || (T(x, { focusEditor: !0, seekToSegment: !1 }), (A = j.current) == null || A.call(j, x.startSec, !0));
+    }), b.id.startsWith("video.seekPercent") && (C = () => {
+      var A;
+      const x = Number(b.id.slice(17)) / 10;
+      (A = j.current) == null || A.call(j, ps(y ?? de, x), !1);
+    }), b.id === "video.jumpToSegmentStart" && M && (C = () => {
       var x;
-      return (x = R.current) == null ? void 0 : x.call(R, $.startSec, !1);
-    }), h.id === "video.jumpToSegmentEnd" && $ && (M = () => {
+      return (x = j.current) == null ? void 0 : x.call(j, M.startSec, !1);
+    }), b.id === "video.jumpToSegmentEnd" && M && (C = () => {
       var x;
-      return (x = R.current) == null ? void 0 : x.call(R, $.endSec ?? $.startSec, !1);
-    }), h.id === "video.jumpToVideoStart" && (M = () => {
+      return (x = j.current) == null ? void 0 : x.call(j, M.endSec ?? M.startSec, !1);
+    }), b.id === "video.jumpToVideoStart" && (C = () => {
       var x;
-      return (x = R.current) == null ? void 0 : x.call(R, 0, !1);
-    }), h.id === "video.jumpToVideoEnd" && (M = () => {
+      return (x = j.current) == null ? void 0 : x.call(j, 0, !1);
+    }), b.id === "video.jumpToVideoEnd" && (C = () => {
       var x;
-      return (x = R.current) == null ? void 0 : x.call(R, oe, !1);
-    }), h.id.startsWith("video.frame") && (M = () => {
+      return (x = j.current) == null ? void 0 : x.call(j, de, !1);
+    }), b.id.startsWith("video.frame") && (C = () => {
       var S, k;
-      const x = h.id.includes("Small") ? "small" : h.id.includes("Medium") ? "medium" : "long", E = N[`${x}FrameStep`] * (h.id.endsWith("Backward") ? -1 : 1);
-      (S = v.current) == null || S.pause(), (k = v.current) == null || k.seekBy($s(E, ue));
-    }), h.id.startsWith("navigation.swimlane") && (M = () => {
-      const x = h.id.slice(19).toLowerCase(), E = Or(Q, $ == null ? void 0 : $.id, x, s);
-      E && A(E, { focusEditor: !0, seekToSegment: !1 });
-    }), (h.id === "navigation.extendSwimlaneLeft" || h.id === "navigation.extendSwimlaneRight") && (M = () => {
-      const x = Sl(
+      const x = b.id.includes("Small") ? "small" : b.id.includes("Medium") ? "medium" : "long", A = N[`${x}FrameStep`] * (b.id.endsWith("Backward") ? -1 : 1);
+      (S = v.current) == null || S.pause(), (k = v.current) == null || k.seekBy(Ds(A, z));
+    }), b.id.startsWith("navigation.swimlane") && (C = () => {
+      const x = b.id.slice(19).toLowerCase(), A = Pr(Q, M == null ? void 0 : M.id, x, s);
+      A && T(A, { focusEditor: !0, seekToSegment: !1 });
+    }), (b.id === "navigation.extendSwimlaneLeft" || b.id === "navigation.extendSwimlaneRight") && (C = () => {
+      const x = $l(
         t,
-        $ == null ? void 0 : $.id,
-        h.id.endsWith("Left") ? "left" : "right"
+        M == null ? void 0 : M.id,
+        b.id.endsWith("Left") ? "left" : "right"
       );
-      x && A(x.segment, {
+      x && T(x.segment, {
         focusEditor: !0,
         seekToSegment: !1,
         rangeSegmentIds: x.segmentIds
       });
-    }), (h.id === "navigation.segmentGroupUp" || h.id === "navigation.segmentGroupDown") && (M = () => {
-      const x = kl(
-        _,
-        D ?? O,
-        h.id.endsWith("Up") ? -1 : 1
+    }), (b.id === "navigation.segmentGroupUp" || b.id === "navigation.segmentGroupDown") && (C = () => {
+      const x = Tl(
+        F,
+        R ?? E,
+        b.id.endsWith("Up") ? -1 : 1
       );
-      x && F(x);
-    }), (h.id === "navigation.previousAtPlayhead" || h.id === "navigation.nextAtPlayhead") && (M = () => {
-      const x = Yi(Me, s, h.id === "navigation.previousAtPlayhead" ? -1 : 1, $ == null ? void 0 : $.id);
-      x && A(x, { focusEditor: !0, seekToSegment: !1 });
-    }), h.id === "navigation.nearestInCurrentSwimlane" && (M = () => {
-      const x = Bi(
+      x && P(x);
+    }), (b.id === "navigation.previousAtPlayhead" || b.id === "navigation.nextAtPlayhead") && (C = () => {
+      const x = Zi(te, s, b.id === "navigation.previousAtPlayhead" ? -1 : 1, M == null ? void 0 : M.id);
+      x && T(x, { focusEditor: !0, seekToSegment: !1 });
+    }), b.id === "navigation.nearestInCurrentSwimlane" && (C = () => {
+      const x = Ki(
         Q,
-        $ == null ? void 0 : $.id,
+        M == null ? void 0 : M.id,
         s
       );
-      x && A(x, { focusEditor: !0, seekToSegment: !1 });
-    }), h.id.includes("Unreviewed") && (M = () => {
-      const x = ma(
+      x && T(x, { focusEditor: !0, seekToSegment: !1 });
+    }), b.id.includes("Unreviewed") && (C = () => {
+      const x = pa(
         Q,
-        $ == null ? void 0 : $.id,
-        h.id.startsWith("navigation.previous") ? -1 : 1,
-        h.id.endsWith("Global")
+        M == null ? void 0 : M.id,
+        b.id.startsWith("navigation.previous") ? -1 : 1,
+        b.id.endsWith("Global")
       );
-      x && A(x, { focusEditor: !0, seekToSegment: !1 });
-    }), (h.id === "navigation.nextTouchingPlayhead" || h.id === "navigation.previousTouchingPlayhead") && (M = () => {
-      const x = ji(Q, s, h.id === "navigation.previousTouchingPlayhead" ? -1 : 1, $ == null ? void 0 : $.id);
-      x && A(x, { focusEditor: !0, seekToSegment: !1 });
-    }), h.id === "navigation.quickSearch" && (M = () => I(!0)), (h.id === "navigation.previousShot" || h.id === "navigation.nextShot") && (M = () => {
-      var E;
-      const x = Cs(we, s, h.id === "navigation.previousShot" ? -1 : 1);
-      x && ((E = R.current) == null || E.call(R, x.startSec, !1));
-    }), h.id === "shot.split" && (M = () => f("split")), h.id === "shot.merge" && (M = () => f("merge")), h.id === "marker.create" && (M = () => a()), h.id === "marker.duplicate" && (M = () => d(!1)), h.id === "marker.duplicateAtPlayhead" && (M = () => d(!0)), h.id === "marker.split" && (M = () => T()), h.id === "marker.editTag" && (M = () => {
+      x && T(x, { focusEditor: !0, seekToSegment: !1 });
+    }), (b.id === "navigation.nextTouchingPlayhead" || b.id === "navigation.previousTouchingPlayhead") && (C = () => {
+      const x = Gi(Q, s, b.id === "navigation.previousTouchingPlayhead" ? -1 : 1, M == null ? void 0 : M.id);
+      x && T(x, { focusEditor: !0, seekToSegment: !1 });
+    }), b.id === "navigation.quickSearch" && (C = () => I(!0)), (b.id === "navigation.previousShot" || b.id === "navigation.nextShot") && (C = () => {
+      var A;
+      const x = Es(me, s, b.id === "navigation.previousShot" ? -1 : 1);
+      x && ((A = j.current) == null || A.call(j, x.startSec, !1));
+    }), b.id === "shot.split" && (C = () => f("split")), b.id === "shot.merge" && (C = () => f("merge")), b.id === "marker.create" && (C = () => a()), b.id === "marker.duplicate" && (C = () => d(!1)), b.id === "marker.duplicateAtPlayhead" && (C = () => d(!0)), b.id === "marker.split" && (C = () => B()), b.id === "marker.editTag" && (C = () => {
       var x;
-      if (U.length > 1 && U.some((E) => E.isDerived)) {
-        C("Derived segments cannot be retagged because their tags are set by derivation rules.");
+      if (U.length > 1 && U.some((A) => A.isDerived)) {
+        $("Derived segments cannot be retagged because their tags are set by derivation rules.");
         return;
       }
       if ((x = u.data) != null && x.tagReadOnly) {
-        C("This tag is read-only because it is set by a derivation rule.");
+        $("This tag is read-only because it is set by a derivation rule.");
         return;
       }
-      re(!0);
-    }), h.id === "marker.setStart" && $ && (M = () => r(s, $.endSec)), h.id === "marker.setEnd" && $ && (M = () => r($.startSec, s)), h.id === "marker.copyTiming" && $ && (M = () => {
-      C(Gl($) ? "Segment timing copied." : "Unable to copy segment timing.");
-    }), h.id === "marker.pasteTiming" && $ && (M = () => {
-      const x = Bl();
+      J(!0);
+    }), b.id === "marker.setStart" && M && (C = () => r(s, M.endSec)), b.id === "marker.setEnd" && M && (C = () => r(M.startSec, s)), b.id === "marker.copyTiming" && M && (C = () => {
+      $(ql(M) ? "Segment timing copied." : "Unable to copy segment timing.");
+    }), b.id === "marker.pasteTiming" && M && (C = () => {
+      const x = Hl();
       if (!x) {
-        C("No copied segment timing is available.");
+        $("No copied segment timing is available.");
         return;
       }
       r(x.startSec, x.endSec);
-    }), h.id === "marker.mergeSelection" && (M = () => p()), h.id === "marker.moveToBin" && (M = () => b()), h.id === "marker.toggleIncorrectExample" && $ && (M = () => fe()), h.id === "marker.openIncorrectExamples" && (M = () => V(!0)), h.id === "markerGroup.toggleCollapse" && D && (M = () => ie(D)), h.id === "markerGroup.toggleAll" && (M = () => P((x) => xl(x, _))), h.id === "marker.assignSlots" && (M = () => {
+    }), b.id === "marker.mergeSelection" && (C = () => p()), b.id === "marker.moveToBin" && (C = () => h()), b.id === "marker.toggleIncorrectExample" && M && (C = () => oe()), b.id === "marker.openIncorrectExamples" && (C = () => V(!0)), b.id === "markerGroup.toggleCollapse" && R && (C = () => xe(R)), b.id === "markerGroup.toggleAll" && (C = () => D((x) => Cl(x, F))), b.id === "marker.assignSlots" && (C = () => {
       var x;
-      return (x = ce.current) == null ? void 0 : x.click();
-    }), h.id === "navigation.zoomIn" && (M = () => ee((x) => Xn(x + 0.5))), h.id === "navigation.zoomOut" && (M = () => ee((x) => Xn(x - 0.5))), h.id === "navigation.resetZoom" && (M = () => ee(1)), h.id === "navigation.centerPlayhead" && (M = () => {
+      return (x = ge.current) == null ? void 0 : x.click();
+    }), b.id === "navigation.zoomIn" && (C = () => se((x) => Xn(x + 0.5))), b.id === "navigation.zoomOut" && (C = () => se((x) => Xn(x - 0.5))), b.id === "navigation.resetZoom" && (C = () => se(1)), b.id === "navigation.centerPlayhead" && (C = () => {
       var x;
       return (x = o.current) == null ? void 0 : x.call(o);
-    }), h.id === "layout.growSwimlanes" && (M = () => B(c.timelineRatio + 0.05)), h.id === "layout.shrinkSwimlanes" && (M = () => B(c.timelineRatio - 0.05)), h.id === "marker.confirm" && $ && (M = () => W("approved")), h.id === "system.publishApproved" && (M = () => w(K.target)), h.id === "marker.reject" && $ && (M = () => W("rejected")), h.id === "system.emptyBin" && (M = () => m()), h.id === "system.deleteRejected" && (M = () => l()), M && M();
+    }), b.id === "layout.growSwimlanes" && (C = () => ke(c.timelineRatio + 0.05)), b.id === "layout.shrinkSwimlanes" && (C = () => ke(c.timelineRatio - 0.05)), b.id === "marker.confirm" && M && (C = () => W("approved")), b.id === "system.publishApproved" && (C = () => w(K.target)), b.id === "marker.reject" && M && (C = () => W("rejected")), b.id === "system.emptyBin" && (C = () => m()), b.id === "system.deleteRejected" && (C = () => l()), C && C();
   }
-  function Se(h, K) {
-    const M = An.find((x) => x.id === h);
-    M && Zt(M, i) && Y(M, K);
+  function le(b, K) {
+    const C = Mn.find((x) => x.id === b);
+    C && Qt(C, i) && X(C, K);
   }
-  return { executeShortcutById: Se };
+  return { executeShortcutById: le };
 }
-function xd(e, t, r = !1, o = 0, i = "") {
-  const [a, s] = j(null), [l, d] = j(null), [c, g] = j(""), [m, u] = j({
+function Cd(e, t, r = !1, o = 0, i = "") {
+  const [a, s] = L(null), [l, d] = L(null), [c, g] = L(""), [m, u] = L({
     busy: !1,
     reviewState: null,
     error: ""
@@ -7130,7 +7164,7 @@ function xd(e, t, r = !1, o = 0, i = "") {
       await Z(`/videos/${e}/native-segments/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operationId: Dr(), reviewState: w })
+        body: JSON.stringify({ operationId: Or(), reviewState: w })
       }), await t(), u({ busy: !1, reviewState: null, error: "" });
     } catch (v) {
       u({
@@ -7140,7 +7174,7 @@ function xd(e, t, r = !1, o = 0, i = "") {
       });
     }
   }
-  async function b() {
+  async function h() {
     try {
       const w = await Z(`/videos/${e}/analysis-runs`), v = (w == null ? void 0 : w[0]) || null;
       return s(v), (v == null ? void 0 : v.status) === "completed" && y.current !== v.id && (y.current = v.id, await t()), ((v == null ? void 0 : v.status) === "failed" || (v == null ? void 0 : v.status) === "cancelled") && g(v.errorMessage || "Video analysis did not complete."), v;
@@ -7169,13 +7203,13 @@ function xd(e, t, r = !1, o = 0, i = "") {
         g(W.message || "Unable to start video analysis.");
       }
   }
-  return ye(() => {
-    b(), Z("/analysis/status").then((w) => {
+  return fe(() => {
+    h(), Z("/analysis/status").then((w) => {
       d(w), w.configured || g("");
     }).catch((w) => g(w.message || "Unable to check video analysis readiness."));
-  }, [e, r]), ye(() => {
+  }, [e, r]), fe(() => {
     if ((a == null ? void 0 : a.status) !== "queued" && (a == null ? void 0 : a.status) !== "running") return;
-    const w = setInterval(b, 2500);
+    const w = setInterval(h, 2500);
     return () => clearInterval(w);
   }, [a == null ? void 0 : a.id, a == null ? void 0 : a.status]), {
     analysisError: c,
@@ -7187,44 +7221,44 @@ function xd(e, t, r = !1, o = 0, i = "") {
   };
 }
 const wn = Object.freeze([]);
-function Sd(e, t) {
+function $d(e, t) {
   var o;
   const r = e != null && e.isConnected && e.disabled !== !0 && e.tagName !== "BODY" && typeof e.focus == "function" ? e : t;
   (o = r == null ? void 0 : r.focus) == null || o.call(r, { preventScroll: !0 });
 }
-function kd({ detail: e, onDetailChange: t, onConflict: r, onReload: o, onSlotsChanged: i, splitLayout: a, initialSegmentId: s, compatibilityMode: l = !1, profile: d, onNavigate: c }) {
-  var uo, mo, go, po, fo;
-  const [g, m] = j(null), [u, y] = j([]), p = pe(null), b = pe(null), f = pe([]), w = pe(null), [v, N] = j(() => dt({})), [W, R] = j(!1), [_, A] = j(ps), [$, O] = j(0), [D, U] = j(null), [P, V] = j(!1), [I, C] = j(""), [F, re] = j(""), [ee, we] = j(""), [ce, T] = j(1), [Q, oe] = j(Pl), [fe, ie] = j(0), [B, ue] = j({ workspace: 0, focusRow: 0, focusRowHeight: 0 }), [Me, Y] = j(kt), Se = pe(kt), [h, K] = j(!1), [M, x] = j(!1), [E, S] = j(!1), [k, H] = j(!1), le = pe(!1), [se, te] = j(null), [xe, q] = j(null), X = pe(null), [J, L] = j(!1), [ne, me] = j(""), he = pe(null), be = pe(null), Ee = pe(!1), Pe = pe(!1), [ve, Ce] = j(Ll), [$e, ge] = j(null), [Ge, Ae] = j(!1), [at, ke] = j(!1), [De, He] = j(!1), [je, Ne] = j(!1), [Te, Ke] = j(!1), [it, Je] = j(""), {
-    analysisError: Ye,
-    analysisRun: pt,
-    analysisStatus: jt,
+function Td({ detail: e, onDetailChange: t, onConflict: r, onReload: o, onSlotsChanged: i, splitLayout: a, initialSegmentId: s, compatibilityMode: l = !1, profile: d, onNavigate: c }) {
+  var go, po, fo, yo, bo;
+  const [g, m] = L(null), [u, y] = L([]), p = pe(null), h = pe(null), f = pe([]), w = pe(null), [v, N] = L(() => dt({})), [W, j] = L(!1), [F, T] = L(ys), [M, E] = L(0), [R, U] = L(null), [D, V] = L(!1), [I, $] = L(""), [P, J] = L(""), [se, me] = L(""), [ge, B] = L(1), [Q, de] = L(Kl), [oe, xe] = L(0), [ke, z] = L({ workspace: 0, focusRow: 0, focusRowHeight: 0 }), [te, X] = L(St), le = pe(St), [b, K] = L(!1), [C, x] = L(!1), [A, S] = L(!1), [k, q] = L(!1), ue = pe(!1), [ae, re] = L(null), [Se, H] = L(null), ee = pe(null), [Y, O] = L(!1), [ne, ye] = L(""), be = pe(null), he = pe(null), Ae = pe(!1), Ee = pe([]), Ne = pe(!1), [Ie, Ce] = L(Ul), [ve, Oe] = L(null), [De, at] = L(!1), [we, Pe] = L(!1), [qe, je] = L(!1), [Te, Re] = L(!1), [Ke, it] = L(!1), [Qe, Ye] = L(""), {
+    analysisError: wt,
+    analysisRun: Nt,
+    analysisStatus: lr,
     importNativeSegments: En,
     nativeImportState: Xt,
     startFullAnalysis: Dn
-  } = xd(
+  } = Cd(
     e.video.id,
     o,
     l,
-    ((uo = e.shotBoundaries) == null ? void 0 : uo.length) || 0,
-    Qn(e.shotBoundaries || [])
-  ), [Mt, lr] = j(!1), [ft, ht] = j(null), [Bt, At] = j(l), [Nt, dr] = j(0), [vt, cr] = j(!1), [en, tn] = j(""), [xt, nn] = j(null), Gt = pe(null), On = pe(null), rn = pe(!1), [Rt, Kt] = j([]), [on, ur] = j(!1), [Pn, mr] = j(null), an = Dl(), sn = pe(null), ln = pe(null), Et = pe(null), Ln = pe(s), Fn = pe(null), dn = pe(null), cn = pe(null), un = pe(null), tt = pe(null), jn = pe(null), Ut = pe(null), Bn = pe(null), Gn = pe(null), mn = pe(null), gn = pe(null), St = pe(-1e12), gr = pe(null), Kn = pe(!1), pn = pe(null), [fn, yn] = j({ scrollTop: 0, height: 512 });
-  ye(() => {
-    if (!Mt || vt || !en) return;
+    ((go = e.shotBoundaries) == null ? void 0 : go.length) || 0,
+    Zn(e.shotBoundaries || [])
+  ), [Mt, dr] = L(!1), [pt, bt] = L(null), [Bt, At] = L(l), [It, cr] = L(0), [ht, ur] = L(!1), [en, tn] = L(""), [vt, nn] = L(null), Gt = pe(null), On = pe(null), rn = pe(!1), [Et, Kt] = L([]), [on, mr] = L(!1), [Pn, gr] = L(null), an = Bl(), sn = pe(null), ln = pe(null), Dt = pe(null), Ln = pe(s), Fn = pe(null), dn = pe(null), cn = pe(null), un = pe(null), tt = pe(null), jn = pe(null), Ut = pe(null), Bn = pe(null), Gn = pe(null), mn = pe(null), gn = pe(null), xt = pe(-1e12), pr = pe(null), Kn = pe(!1), pn = pe(null), [fn, yn] = L({ scrollTop: 0, height: 512 });
+  fe(() => {
+    if (!Mt || ht || !en) return;
     const G = requestAnimationFrame(() => {
-      var de;
-      return (de = On.current) == null ? void 0 : de.focus({ preventScroll: !0 });
+      var ce;
+      return (ce = On.current) == null ? void 0 : ce.focus({ preventScroll: !0 });
     });
     return () => cancelAnimationFrame(G);
-  }, [Mt, vt, en]), ye(() => {
+  }, [Mt, ht, en]), fe(() => {
     if (!rn.current || Mt || Bt) return;
     const G = requestAnimationFrame(() => {
-      var de;
-      (de = Gt.current) == null || de.focus({ preventScroll: !0 }), rn.current = !1;
+      var ce;
+      (ce = Gt.current) == null || ce.focus({ preventScroll: !0 }), rn.current = !1;
     });
     return () => cancelAnimationFrame(G);
   }, [Mt, Bt]);
-  const _e = e.video, Ze = e.segments || wn, Un = Be(() => JSON.stringify({
-    segments: Ze.map((G) => [
+  const _e = e.video, Je = e.segments || wn, Un = Ge(() => JSON.stringify({
+    segments: Je.map((G) => [
       G.id,
       G.itemId,
       G.nativeSegmentId,
@@ -7246,217 +7280,217 @@ function kd({ detail: e, onDetailChange: t, onConflict: r, onReload: o, onSlotsC
       G.sortOrder
     ]),
     itemMetadata: e.itemMetadata || {}
-  }), [Ze, e.performerSlots, e.itemMetadata]);
-  ye(() => {
+  }), [Je, e.performerSlots, e.itemMetadata]);
+  fe(() => {
     if (!l) {
-      ht(null), At(!1);
+      bt(null), At(!1);
       return;
     }
-    if (D != null) {
+    if (R != null) {
       At(!0);
       return;
     }
     let G = !0;
     At(!0);
-    const de = setTimeout(() => {
+    const ce = setTimeout(() => {
       Z(`/videos/${_e.id}/derived-segments/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ maxDepth: 3 })
-      }).then((Le) => {
-        G && (ht(Le), tn(""));
-      }).catch((Le) => {
-        G && (ht(null), tn(Le.message || "Unable to preview derived segments."));
+      }).then((Me) => {
+        G && (bt(Me), tn(""));
+      }).catch((Me) => {
+        G && (bt(null), tn(Me.message || "Unable to preview derived segments."));
       }).finally(() => {
         G && At(!1);
       });
     }, 150);
     return () => {
-      G = !1, clearTimeout(de);
+      G = !1, clearTimeout(ce);
     };
-  }, [l, _e.id, Un, Nt, D]);
-  const pr = () => dr((G) => G + 1), yt = e.segmentGroups || wn, Ue = e.performerSlots || wn, zn = l && e.performerSlotsAvailable !== !1, bn = Be(
+  }, [l, _e.id, Un, It, R]);
+  const fr = () => cr((G) => G + 1), ft = e.segmentGroups || wn, Ue = e.performerSlots || wn, zn = l && e.performerSlotsAvailable !== !1, bn = Ge(
     () => (e.performerCandidates || []).filter((G) => G.isVideoPerformer),
     [e.performerCandidates]
-  ), hn = e.shotBoundaries || wn, zt = Be(
-    () => La(Ue),
+  ), hn = e.shotBoundaries || wn, zt = Ge(
+    () => ja(Ue),
     [Ue]
-  ), It = Be(
-    () => Ze.map((G) => {
-      const de = zt.get(G.id) || [];
+  ), Ct = Ge(
+    () => Je.map((G) => {
+      const ce = zt.get(G.id) || [];
       return {
         ...G,
-        slots: de,
-        assignment: de.every((Le) => Le.performerId == null) ? Bs(de, bn) : null
+        slots: ce,
+        assignment: ce.every((Me) => Me.performerId == null) ? Hs(ce, bn) : null
       };
     }).filter((G) => G.slots.length > 0 && G.assignment != null),
-    [Ze, zt, bn]
-  ), fr = Number((mo = _e.videoFile) == null ? void 0 : mo.frameRate) > 0 ? Number(_e.videoFile.frameRate) : 30;
+    [Je, zt, bn]
+  ), yr = Number((po = _e.videoFile) == null ? void 0 : po.frameRate) > 0 ? Number(_e.videoFile.frameRate) : 30;
   function vn() {
     S(!1), requestAnimationFrame(() => {
       var G;
       return (G = tt.current) == null ? void 0 : G.focus({ preventScroll: !0 });
     });
   }
-  function yr() {
-    D == null && (gn.current = null, H(!1), C(""), requestAnimationFrame(() => {
+  function br() {
+    R == null && (gn.current = null, q(!1), $(""), requestAnimationFrame(() => {
       var G;
       return (G = tt.current) == null ? void 0 : G.focus({ preventScroll: !0 });
     }));
   }
   function xn() {
-    R(!1), requestAnimationFrame(() => {
-      var G, de;
-      (G = Ut.current) != null && G.isConnected ? Ut.current.focus({ preventScroll: !0 }) : (de = tt.current) == null || de.focus({ preventScroll: !0 });
+    j(!1), requestAnimationFrame(() => {
+      var G, ce;
+      (G = Ut.current) != null && G.isConnected ? Ut.current.focus({ preventScroll: !0 }) : (ce = tt.current) == null || ce.focus({ preventScroll: !0 });
     });
   }
-  ye(() => {
+  fe(() => {
     mn.current === g ? (mn.current = null, S(!0)) : S(!1);
-  }, [g]), ye(() => {
-    var de;
-    if (!E) return;
-    const G = (de = Gn.current) == null ? void 0 : de.querySelector("input");
+  }, [g]), fe(() => {
+    var ce;
+    if (!A) return;
+    const G = (ce = Gn.current) == null ? void 0 : ce.querySelector("input");
     G == null || G.focus({ preventScroll: !0 }), G == null || G.select();
-  }, [E, g]), ye(() => {
-    var Le, qe, nt;
-    const G = Pt(
-      kr(
+  }, [A, g]), fe(() => {
+    var Me, We, nt;
+    const G = Lt(
+      wr(
         e.segments,
         e.performerSlots || [],
         dt({}),
-        l && _,
+        l && F,
         e.segmentGroups || []
       ),
       e.segmentGroups || [],
       e.performerSlots || []
-    ), de = ((Le = e.segments.find((Wn) => Wn.id === s)) == null ? void 0 : Le.id) ?? ((qe = ua(G)) == null ? void 0 : qe.id) ?? null;
-    m(de), y(de == null ? [] : [de]), b.current = de, f.current = [], ge(ut(G, de)), N(dt({})), R(!1), gn.current = null, H(!1), T(1), C(""), Y(kt), Se.current = kt, K(!1), (nt = tt.current) == null || nt.focus({ preventScroll: !0 });
-  }, [_e.id, s]), ye(() => {
+    ), ce = ((Me = e.segments.find((Wn) => Wn.id === s)) == null ? void 0 : Me.id) ?? ((We = ga(G)) == null ? void 0 : We.id) ?? null;
+    m(ce), y(ce == null ? [] : [ce]), h.current = ce, f.current = [], Oe(ut(G, ce)), N(dt({})), j(!1), gn.current = null, q(!1), B(1), $(""), X(St), le.current = St, K(!1), (nt = tt.current) == null || nt.focus({ preventScroll: !0 });
+  }, [_e.id, s]), fe(() => {
     const G = new AbortController();
-    return Z(`/videos/${_e.id}/incorrect-examples`, { signal: G.signal }).then(Kt).catch((de) => {
-      de.name !== "AbortError" && Kt([]);
+    return Z(`/videos/${_e.id}/incorrect-examples`, { signal: G.signal }).then(Kt).catch((ce) => {
+      ce.name !== "AbortError" && Kt([]);
     }), () => G.abort();
-  }, [_e.id, d == null ? void 0 : d.effectiveMode]), ye(() => {
+  }, [_e.id, d == null ? void 0 : d.effectiveMode]), fe(() => {
     const G = new AbortController();
-    return Z(`/videos/${_e.id}/history`, { signal: G.signal }).then((de) => {
-      const Le = de || kt;
-      Se.current = Le, Y(Le);
-    }).catch((de) => {
-      de.name !== "AbortError" && C(de.message || "Unable to load editor history.");
+    return Z(`/videos/${_e.id}/history`, { signal: G.signal }).then((ce) => {
+      const Me = ce || St;
+      le.current = Me, X(Me);
+    }).catch((ce) => {
+      ce.name !== "AbortError" && $(ce.message || "Unable to load editor history.");
     }), () => G.abort();
-  }, [_e.id]), ye(() => {
-    jl(Q);
-  }, [Q.timelineRatio, Q.markerRailOpen, Q.detailWidth, Q.markerRailWidth, Q.swimlaneTitleWidth]), ye(() => {
-    Fl(ve);
-  }, [ve]), ye(() => {
-    fs(_);
-  }, [_]), ye(() => {
+  }, [_e.id]), fe(() => {
+    _l(Q);
+  }, [Q.timelineRatio, Q.markerRailOpen, Q.detailWidth, Q.markerRailWidth, Q.swimlaneTitleWidth]), fe(() => {
+    zl(Ie);
+  }, [Ie]), fe(() => {
+    bs(F);
+  }, [F]), fe(() => {
     const G = dn.current;
     if (!a || !G || typeof ResizeObserver > "u") return;
-    const de = () => {
-      const qe = G.clientHeight;
-      ie(qe), oe((nt) => {
-        const Wn = Kr(nt.timelineRatio, qe);
+    const ce = () => {
+      const We = G.clientHeight;
+      xe(We), de((nt) => {
+        const Wn = Ur(nt.timelineRatio, We);
         return Wn === nt.timelineRatio ? nt : { ...nt, timelineRatio: Wn };
       });
-    }, Le = new ResizeObserver(de);
-    return Le.observe(G), de(), () => Le.disconnect();
-  }, [a]), ye(() => {
+    }, Me = new ResizeObserver(ce);
+    return Me.observe(G), ce(), () => Me.disconnect();
+  }, [a]), fe(() => {
     if (!an || typeof ResizeObserver > "u") return;
-    const G = un.current, de = cn.current;
-    if (!G || !de) return;
-    const Le = () => ue({
+    const G = un.current, ce = cn.current;
+    if (!G || !ce) return;
+    const Me = () => z({
       workspace: G.clientWidth,
-      focusRow: de.clientWidth,
-      focusRowHeight: de.clientHeight
-    }), qe = new ResizeObserver(Le);
-    return qe.observe(G), qe.observe(de), Le(), () => qe.disconnect();
+      focusRow: ce.clientWidth,
+      focusRowHeight: ce.clientHeight
+    }), We = new ResizeObserver(Me);
+    return We.observe(G), We.observe(ce), Me(), () => We.disconnect();
   }, [an, Q.markerRailOpen]);
-  const ct = Be(
-    () => Bo(
-      kr(
-        Ze,
+  const ct = Ge(
+    () => Ko(
+      wr(
+        Je,
         Ue,
         v,
-        l && _,
-        yt
+        l && F,
+        ft
       ),
-      Rt,
+      Et,
       !0
     ),
     [
-      Ze,
+      Je,
       Ue,
       v,
-      _,
-      yt,
+      F,
+      ft,
       l,
-      Rt
+      Et
     ]
-  ), br = Object.fromEntries(Xe.map((G) => [G, ct.filter((de) => de.reviewState === G).length])), _t = Bo(
-    kr(
-      Ze,
+  ), hr = Object.fromEntries(Xe.map((G) => [G, ct.filter((ce) => ce.reviewState === G).length])), _t = Ko(
+    wr(
+      Je,
       Ue,
       { ...v, reviewStates: Xe },
-      l && _,
-      yt
+      l && F,
+      ft
     ),
-    Rt,
+    Et,
     !0
-  ), Ht = Object.fromEntries(Xe.map((G) => [G, _t.filter((de) => de.reviewState === G).length])), z = [...new Set(Ze.map((G) => G.sourceKey).filter(Boolean))].sort((G, de) => gt(G).localeCompare(gt(de))), Fe = ts(
+  ), Ht = Object.fromEntries(Xe.map((G) => [G, _t.filter((ce) => ce.reviewState === G).length])), _ = [...new Set(Je.map((G) => G.sourceKey).filter(Boolean))].sort((G, ce) => gt(G).localeCompare(gt(ce))), Be = rs(
     v,
-    l && _
-  ), ze = Be(
-    () => Pt(ct, yt, Ue),
-    [ct, yt, Ue]
-  ), ae = os(
+    l && F
+  ), ze = Ge(
+    () => Lt(ct, ft, Ue),
+    [ct, ft, Ue]
+  ), ie = is(
     ze,
     g,
     s
-  ), st = gs(ct, u), qt = !l && st.length > 0 && st.every((G) => G.nativeSegmentId != null), _n = ct.map((G) => G.id), qa = _n.join("|");
-  p.current = (ae == null ? void 0 : ae.id) ?? null;
-  const Jr = zt.get(ae == null ? void 0 : ae.id) || [], Wa = Hr(Jr), Yr = Be(
-    () => bl(ze, u),
+  ), st = fs(ct, u), qt = !l && st.length > 0 && st.every((G) => G.nativeSegmentId != null), _n = ct.map((G) => G.id), Va = _n.join("|");
+  p.current = (ie == null ? void 0 : ie.id) ?? null;
+  const Yr = zt.get(ie == null ? void 0 : ie.id) || [], Ja = qr(Yr), Qr = Ge(
+    () => wl(ze, u),
     [ze, u]
-  ), hr = Be(() => qr(ze), [ze]), Sn = Be(
-    () => fl(hr, ve),
-    [hr, ve]
-  ), Va = Be(
-    () => Fa(
+  ), vr = Ge(() => Wr(ze), [ze]), Sn = Ge(
+    () => Sl(vr, Ie),
+    [vr, Ie]
+  ), Ya = Ge(
+    () => Ba(
       Sn.rows,
       fn.scrollTop,
       fn.height
     ),
     [Sn, fn]
-  ), Ja = Be(
-    () => vl(ze, ve),
-    [ze, ve]
-  ), Wt = ae ? ut(ze, ae.id) : null, vr = yt.length > 0 ? hr.map((G) => G.key) : [], Ya = vr.join("|"), Hn = Math.max(
+  ), Qa = Ge(
+    () => Il(ze, Ie),
+    [ze, Ie]
+  ), Wt = ie ? ut(ze, ie.id) : null, xr = ft.length > 0 ? vr.map((G) => G.key) : [], Za = xr.join("|"), Hn = Math.max(
     0,
-    Number((go = _e.videoFile) == null ? void 0 : go.duration) || 0,
-    ...Ze.map((G) => Number(G.endSec ?? G.startSec) || 0)
-  ), Zr = Number((po = _e.videoFile) == null ? void 0 : po.duration) > 0 ? Number(_e.videoFile.duration) : null;
-  Me.actions;
-  const Za = xa();
-  ye(() => {
-    const G = g === er ? g : (ae == null ? void 0 : ae.id) ?? null;
+    Number((fo = _e.videoFile) == null ? void 0 : fo.duration) || 0,
+    ...Je.map((G) => Number(G.endSec ?? G.startSec) || 0)
+  ), Zr = Number((yo = _e.videoFile) == null ? void 0 : yo.duration) > 0 ? Number(_e.videoFile.duration) : null;
+  te.actions;
+  const Xa = ka();
+  fe(() => {
+    const G = g === er ? g : (ie == null ? void 0 : ie.id) ?? null;
     G !== g && m(G);
-  }, [ae, g]), ye(() => {
+  }, [ie, g]), fe(() => {
     y((G) => {
-      const de = ls(
+      const ce = cs(
         G,
         _n,
-        (ae == null ? void 0 : ae.id) ?? null
+        (ie == null ? void 0 : ie.id) ?? null
       );
-      return de.length === G.length && de.every((Le, qe) => Le === G[qe]) ? G : de;
+      return ce.length === G.length && ce.every((Me, We) => Me === G[We]) ? G : ce;
     });
-  }, [qa, ae == null ? void 0 : ae.id]);
-  const Vt = (ae == null ? void 0 : ae.itemId) == null ? null : ((fo = e.itemMetadata) == null ? void 0 : fo[ae.itemId]) || null, Qa = {
-    key: (ae == null ? void 0 : ae.itemId) != null ? `item:${ae.itemId}` : (ae == null ? void 0 : ae.nativeSegmentId) != null ? `native:${ae.nativeSegmentId}` : null,
+  }, [Va, ie == null ? void 0 : ie.id]);
+  const Vt = (ie == null ? void 0 : ie.itemId) == null ? null : ((bo = e.itemMetadata) == null ? void 0 : bo[ie.itemId]) || null, ei = {
+    key: (ie == null ? void 0 : ie.itemId) != null ? `item:${ie.itemId}` : (ie == null ? void 0 : ie.nativeSegmentId) != null ? `native:${ie.nativeSegmentId}` : null,
     loading: !1,
     error: e.itemMetadataAvailable === !1 ? "Provenance is unavailable." : null,
-    items: e.itemMetadataAvailable ? (Vt == null ? void 0 : Vt.provenance) || (ae == null ? void 0 : ae.fieldProvenance) || [] : []
-  }, xr = (ae == null ? void 0 : ae.itemId) != null ? {
+    items: e.itemMetadataAvailable ? (Vt == null ? void 0 : Vt.provenance) || (ie == null ? void 0 : ie.fieldProvenance) || [] : []
+  }, Sr = (ie == null ? void 0 : ie.itemId) != null ? {
     loading: !1,
     error: e.lineageMetadataAvailable === !1 ? "Lineage is unavailable." : null,
     data: e.lineageMetadataAvailable && (Vt == null ? void 0 : Vt.lineage) || null
@@ -7465,304 +7499,330 @@ function kd({ detail: e, onDetailChange: t, onConflict: r, onReload: o, onSlotsC
     error: "Lineage is available in Full mode.",
     data: null
   };
-  ye(() => {
-    re(ae == null ? "" : String(ae.startSec)), we((ae == null ? void 0 : ae.endSec) == null ? "" : String(ae.endSec));
-  }, [ae == null ? void 0 : ae.id, ae == null ? void 0 : ae.startSec, ae == null ? void 0 : ae.endSec]), ye(() => {
-    Wt && Ce((G) => Ga(G, Wt));
-  }, [_e.id, s, Wt]), ye(() => {
-    ge((G) => wl(vr, G, Wt));
-  }, [_e.id, Ya, Wt]), ye(() => {
-    if (!Q.markerRailOpen || (ae == null ? void 0 : ae.id) == null) return;
-    const G = pn.current, de = Sn.rows.find((nt) => nt.kind === "segment" && nt.segment.id === ae.id);
-    if (!G || !de) return;
-    const Le = de.top + de.height;
-    let qe = G.scrollTop;
-    de.top < G.scrollTop ? qe = de.top : Le > G.scrollTop + G.clientHeight && (qe = Math.max(0, Le - G.clientHeight)), qe !== G.scrollTop && (G.scrollTop = qe), yn({ scrollTop: qe, height: G.clientHeight });
-  }, [ae == null ? void 0 : ae.id, Sn, Q.markerRailOpen]), ye(() => {
+  fe(() => {
+    J(ie == null ? "" : String(ie.startSec)), me((ie == null ? void 0 : ie.endSec) == null ? "" : String(ie.endSec));
+  }, [ie == null ? void 0 : ie.id, ie == null ? void 0 : ie.startSec, ie == null ? void 0 : ie.endSec]), fe(() => {
+    Wt && Ce((G) => Ua(G, Wt));
+  }, [_e.id, s, Wt]), fe(() => {
+    Oe((G) => Rl(xr, G, Wt));
+  }, [_e.id, Za, Wt]), fe(() => {
+    if (!Q.markerRailOpen || (ie == null ? void 0 : ie.id) == null) return;
+    const G = pn.current, ce = Sn.rows.find((nt) => nt.kind === "segment" && nt.segment.id === ie.id);
+    if (!G || !ce) return;
+    const Me = ce.top + ce.height;
+    let We = G.scrollTop;
+    ce.top < G.scrollTop ? We = ce.top : Me > G.scrollTop + G.clientHeight && (We = Math.max(0, Me - G.clientHeight)), We !== G.scrollTop && (G.scrollTop = We), yn({ scrollTop: We, height: G.clientHeight });
+  }, [ie == null ? void 0 : ie.id, Sn, Q.markerRailOpen]), fe(() => {
     const G = pn.current;
     if (!Q.markerRailOpen || !G) return;
-    const de = () => yn({
+    const ce = () => yn({
       scrollTop: G.scrollTop,
       height: G.clientHeight
     });
     if (typeof ResizeObserver > "u") {
-      de();
+      ce();
       return;
     }
-    const Le = new ResizeObserver(de);
-    return Le.observe(G), de(), () => Le.disconnect();
+    const Me = new ResizeObserver(ce);
+    return Me.observe(G), ce(), () => Me.disconnect();
   }, [Q.markerRailOpen]);
-  const { revealSegmentGroupForSelection: Qr, replaceSegmentSelection: Xa, selectSegment: Xr, selectSegmentCollection: ei, selectAllVideoSegments: ti } = fd({
+  const { revealSegmentGroupForSelection: Xr, replaceSegmentSelection: ti, selectSegment: eo, selectSegmentCollection: ni, selectAllVideoSegments: ri } = Sd({
     allSwimlanes: ze,
     editorRef: tt,
     performerSlots: Ue,
     seekRef: sn,
-    segmentGroups: yt,
-    segments: Ze,
+    segmentGroups: ft,
+    segments: Je,
     selectedSegmentId: g,
     selectedSegmentIds: u,
-    selectionAnchorIdRef: b,
+    selectionAnchorIdRef: h,
     selectionRangeBaseIdsRef: f,
     setCollapsedSegmentGroups: Ce,
     setEditorFilters: N,
-    setHideDerivedSegments: A,
-    setSaveMessage: C,
-    setSelectedSegmentGroupKey: ge,
+    setHideDerivedSegments: T,
+    setSaveMessage: $,
+    setSelectedSegmentGroupKey: Oe,
     setSelectedSegmentId: m,
     setSelectedSegmentIds: y
-  }), { acceptHistory: Sr, recordHistoryAction: qn, mutateSegment: ni, completeReview: ri, createSegment: eo, splitSegment: to, duplicateSegment: no, saveTiming: oi, applyShortcutTiming: ai } = El({
+  }), { acceptHistory: kr, recordHistoryAction: qn, mutateSegment: oi, completeReview: ai, createSegment: to, splitSegment: no, duplicateSegment: ro, saveTiming: ii, applyShortcutTiming: si } = jl({
     compatibilityMode: l,
-    currentTime: $,
+    currentTime: M,
     detail: e,
     editorFilters: v,
-    endInput: ee,
-    hideDerivedSegments: _,
-    historyRef: Se,
+    endInput: se,
+    hideDerivedSegments: F,
+    historyRef: le,
     mediaDuration: Zr,
     onConflict: r,
     onDetailChange: t,
     onReload: o,
-    optimisticSegmentIdRef: St,
-    pendingDuplicateRef: gr,
+    optimisticSegmentIdRef: xt,
+    pendingDuplicateRef: pr,
     pendingFirstSegmentStartSecRef: gn,
     pendingTagEditSegmentIdRef: mn,
-    replaceSegmentSelection: Xa,
-    savingSegmentId: D,
-    segments: Ze,
-    selectedSegment: ae,
+    replaceSegmentSelection: ti,
+    savingSegmentId: R,
+    segments: Je,
+    selectedSegment: ie,
     selectedSegmentIdRef: p,
     selectedSegments: st,
-    selectionAnchorIdRef: b,
+    selectionAnchorIdRef: h,
     selectionRangeBaseIdsRef: f,
     setEditorFilters: N,
-    setFirstSegmentTagOpen: H,
-    setHideDerivedSegments: A,
-    setHistory: Y,
+    setFirstSegmentTagOpen: q,
+    setHideDerivedSegments: T,
+    setHistory: X,
     setHistoryOpen: K,
-    setPublishApprovedError: me,
-    setSaveMessage: C,
+    setPublishApprovedError: ye,
+    setSaveMessage: $,
     setSavingSegmentId: U,
-    setSelectedSegmentGroupKey: ge,
+    setSelectedSegmentGroupKey: Oe,
     setSelectedSegmentId: m,
     setSelectedSegmentIds: y,
-    startInput: F,
+    startInput: P,
     timelineDuration: Hn,
     video: _e
   });
-  function ro(G = null) {
-    var qe;
-    if (!l || D != null || !Ze.some((nt) => !nt.published && nt.reviewState === "approved")) return;
-    const de = ((qe = tt.current) == null ? void 0 : qe.ownerDocument) ?? document, Le = de.activeElement === de.body ? null : de.activeElement;
-    be.current = G != null && G.isConnected && G !== de.body ? G : Le, me(""), L(!0);
+  function oo(G = null) {
+    var We;
+    if (!l || R != null || !Je.some((nt) => !nt.published && nt.reviewState === "approved")) return;
+    const ce = ((We = tt.current) == null ? void 0 : We.ownerDocument) ?? document, Me = ce.activeElement === ce.body ? null : ce.activeElement;
+    he.current = G != null && G.isConnected && G !== ce.body ? G : Me, ye(""), O(!0);
   }
-  function oo() {
-    D == null && (L(!1), me(""), requestAnimationFrame(() => {
-      Sd(
-        be.current,
+  function ao() {
+    R == null && (O(!1), ye(""), requestAnimationFrame(() => {
+      $d(
+        he.current,
         tt.current
-      ), be.current = null;
+      ), he.current = null;
     }));
   }
-  async function ii() {
-    await ri() && oo();
+  async function li() {
+    await ai() && ao();
   }
-  const { closeMergeConfirmation: si, mergeSelectedSwimlane: ao, saveSelectedReviewState: li } = yd({
-    acceptHistory: Sr,
+  const { closeMergeConfirmation: di, mergeSelectedSwimlane: io, saveSelectedReviewState: so } = kd({
+    acceptHistory: kr,
     compatibilityMode: l,
     detail: e,
     detailPanelRef: w,
-    historyRef: Se,
-    mergeSavingRef: le,
+    historyRef: le,
+    mergeSavingRef: ue,
     onConflict: r,
     onDetailChange: t,
     onReload: o,
+    pendingReviewStateRef: Ee,
     recordHistoryAction: qn,
-    revealSegmentGroupForSelection: Qr,
-    reviewSavingRef: Ee,
-    savingSegmentId: D,
-    selectedGroups: Yr,
-    selectedSegment: ae,
+    revealSegmentGroupForSelection: Xr,
+    reviewSavingRef: Ae,
+    savingSegmentId: R,
+    selectedGroups: Qr,
+    selectedSegment: ie,
     selectedSegmentIdRef: p,
     selectedSegments: st,
-    selectionAnchorIdRef: b,
+    selectionAnchorIdRef: h,
     selectionRangeBaseIdsRef: f,
-    setMergeConfirmation: te,
-    setSaveMessage: C,
+    setMergeConfirmation: re,
+    setSaveMessage: $,
     setSavingSegmentId: U,
     setSelectedSegmentId: m,
     setSelectedSegmentIds: y,
     video: _e
-  }), { toggleIncorrectExample: di, removeIncorrectExample: ci, captureTrainingExport: ui, deleteRejectedSegments: io, autoAssignPerformers: mi, previewDerivedSegments: gi, closeMaterializeDialog: pi, materializeDerivedSegments: fi, saveTag: yi, moveToBin: bi, emptyRecyclingBin: hi } = bd({
-    acceptHistory: Sr,
+  }), ci = (G) => {
+    Ee.current = Ts(
+      Ee.current,
+      G
+    );
+  };
+  fe(() => {
+    if (R != null || Ae.current) return;
+    let G = !1;
+    for (; Ee.current.length > 0; ) {
+      const ce = Ee.current.shift(), Me = Cs(ce, Je);
+      if (!Me) {
+        G = !0;
+        continue;
+      }
+      so(
+        Me.requestedState,
+        Me.selectedSegments,
+        Me.selectedSegment
+      );
+      return;
+    }
+    G && $("The queued review could not find its segment after refreshing.");
+  }, [R, Je]);
+  const { toggleIncorrectExample: ui, removeIncorrectExample: mi, captureTrainingExport: gi, deleteRejectedSegments: lo, autoAssignPerformers: pi, previewDerivedSegments: fi, closeMaterializeDialog: yi, materializeDerivedSegments: bi, saveTag: hi, moveToBin: vi, emptyRecyclingBin: xi } = wd({
+    acceptHistory: kr,
     allSwimlanes: ze,
-    autoAssignCandidates: It,
-    autoAssigning: Te,
-    binEmptyingRef: Pe,
+    autoAssignCandidates: Ct,
+    autoAssigning: Ke,
+    binEmptyingRef: Ne,
     canMoveSelectionToBin: qt,
     closeTagEditing: vn,
     compatibilityMode: l,
     detail: e,
     editorRef: tt,
     exportingExamples: on,
-    incorrectExamples: Rt,
-    lineage: xr,
+    incorrectExamples: Et,
+    lineage: Sr,
     materializeButtonRef: Gt,
-    materializePreview: ft,
+    materializePreview: pt,
     materializeRestoreFocusRef: rn,
-    materializing: vt,
-    mutateSegment: ni,
+    materializing: ht,
+    mutateSegment: oi,
     onConflict: r,
     onDetailChange: t,
     onReload: o,
     recordHistoryAction: qn,
-    refreshMaterializationPreview: pr,
+    refreshMaterializationPreview: fr,
     removingExampleId: Pn,
-    revealSegmentGroupForSelection: Qr,
-    savingSegmentId: D,
-    segments: Ze,
-    selectedSegment: ae,
+    revealSegmentGroupForSelection: Xr,
+    savingSegmentId: R,
+    segments: Je,
+    selectedSegment: ie,
     selectedSegmentIdRef: p,
     selectedSegments: st,
-    selectionAnchorIdRef: b,
+    selectionAnchorIdRef: h,
     selectionRangeBaseIdsRef: f,
-    setAutoAssignError: Je,
-    setAutoAssignOpen: Ne,
-    setAutoAssigning: Ke,
-    setExportingExamples: ur,
+    setAutoAssignError: Ye,
+    setAutoAssignOpen: Re,
+    setAutoAssigning: it,
+    setExportingExamples: mr,
     setIncorrectExamples: Kt,
     setMaterializeError: tn,
     setMaterializeLoading: At,
-    setMaterializeOpen: lr,
-    setMaterializePreview: ht,
-    setMaterializing: cr,
-    setRemovingExampleId: mr,
-    setRejectedDeletionPreview: q,
-    setSaveMessage: C,
+    setMaterializeOpen: dr,
+    setMaterializePreview: bt,
+    setMaterializing: ur,
+    setRemovingExampleId: gr,
+    setRejectedDeletionPreview: H,
+    setSaveMessage: $,
     setSavingSegmentId: U,
-    setSelectedSegmentGroupKey: ge,
+    setSelectedSegmentGroupKey: Oe,
     setSelectedSegmentId: m,
     setSelectedSegmentIds: y,
     video: _e
-  }), { restoreHistoryTarget: vi, updateTimelineRatio: so, handleSeparatorPointerDown: xi, handleSeparatorPointerMove: Si, handleSeparatorKeyDown: ki, panelWidthMaximum: lo, panelSeparatorProps: wi, toggleSegmentRail: Ni, toggleSegmentGroup: co, mutateShotBoundary: Ii } = hd({
-    acceptHistory: Sr,
+  }), { restoreHistoryTarget: Si, updateTimelineRatio: co, handleSeparatorPointerDown: ki, handleSeparatorPointerMove: wi, handleSeparatorKeyDown: Ni, panelWidthMaximum: uo, panelSeparatorProps: Ii, toggleSegmentRail: Ci, toggleSegmentGroup: mo, mutateShotBoundary: $i } = Nd({
+    acceptHistory: kr,
     compatibilityMode: l,
-    currentTime: $,
+    currentTime: M,
     detail: e,
     editorLayout: Q,
     focusRowRef: cn,
-    history: Me,
-    historyRef: Se,
-    historySaving: M,
-    horizontalLayoutSize: B,
-    mediaStackHeight: fe,
+    history: te,
+    historyRef: le,
+    historySaving: C,
+    horizontalLayoutSize: ke,
+    mediaStackHeight: oe,
     mediaStackRef: dn,
     onDetailChange: t,
     onReload: o,
     railToggleRef: jn,
     recordHistoryAction: qn,
-    savingSegmentId: D,
-    savingShot: P,
+    savingSegmentId: R,
+    savingShot: D,
     savingShotRef: Kn,
     setCollapsedSegmentGroups: Ce,
-    setEditorLayout: oe,
+    setEditorLayout: de,
     setHistorySaving: x,
-    setSaveMessage: C,
+    setSaveMessage: $,
     setSavingSegmentId: U,
     setSavingShot: V,
     shotBoundaries: hn,
     timelineDuration: Hn,
     video: _e,
     workspaceRef: un
-  }), { executeShortcutById: Ci } = vd({
+  }), { executeShortcutById: Ti } = Id({
     allSwimlanes: ze,
-    applyShortcutTiming: ai,
+    applyShortcutTiming: si,
     centerTimelineRef: Fn,
     compatibilityMode: l,
-    createSegment: eo,
-    currentTime: $,
-    deleteRejectedSegments: io,
-    duplicateSegment: no,
+    createSegment: to,
+    currentTime: M,
+    deleteRejectedSegments: lo,
+    duplicateSegment: ro,
     editorLayout: Q,
     editorRef: tt,
-    emptyRecyclingBin: hi,
-    lineage: xr,
+    emptyRecyclingBin: xi,
+    lineage: Sr,
     mediaDuration: Zr,
-    mergeSelectedSwimlane: ao,
-    moveToBin: bi,
-    mutateShotBoundary: Ii,
-    openPublishApprovedDialog: ro,
+    mergeSelectedSwimlane: io,
+    moveToBin: vi,
+    mutateShotBoundary: $i,
+    openPublishApprovedDialog: oo,
     playbackControlsRef: ln,
-    playbackShortcutConfig: Za,
-    saveSelectedReviewState: li,
+    playbackShortcutConfig: Xa,
+    saveSelectedReviewState: so,
     seekRef: sn,
-    segmentGroupKeys: vr,
-    selectSegment: Xr,
-    selectedSegment: ae,
+    segmentGroupKeys: xr,
+    selectSegment: eo,
+    selectedSegment: ie,
     selectedSegmentGroupForSegment: Wt,
-    selectedSegmentGroupKey: $e,
+    selectedSegmentGroupKey: ve,
     selectedSegments: st,
     setCollapsedSegmentGroups: Ce,
-    setIncorrectExamplesOpen: He,
-    setQuickSearchOpen: ke,
-    setSaveMessage: C,
-    setSelectedSegmentGroupKey: ge,
+    setIncorrectExamplesOpen: je,
+    setQuickSearchOpen: Pe,
+    setSaveMessage: $,
+    setSelectedSegmentGroupKey: Oe,
     setTagEditing: S,
-    setTimelineZoom: T,
+    setTimelineZoom: B,
     shotBoundaries: hn,
     slotButtonRef: Bn,
-    splitSegment: to,
-    swimlanes: Ja,
+    splitSegment: no,
+    swimlanes: Qa,
     timelineDuration: Hn,
-    toggleIncorrectExample: di,
-    toggleSegmentGroup: co,
-    updateTimelineRatio: so,
-    videoFrameRate: fr,
+    toggleIncorrectExample: ui,
+    toggleSegmentGroup: mo,
+    updateTimelineRatio: co,
+    videoFrameRate: yr,
     visibleSegments: ct
   });
-  Et.current = Ci;
-  const $i = Be(() => An.map((G) => ({
+  Dt.current = Ti;
+  const Ri = Ge(() => Mn.map((G) => ({
     id: G.id,
-    enabled: Zt(G, l),
+    enabled: Qt(G, l),
     surface: "local",
-    action: (de) => {
-      var Le;
-      return (Le = Et.current) == null ? void 0 : Le.call(Et, G.id, de);
+    action: (ce) => {
+      var Me;
+      return (Me = Dt.current) == null ? void 0 : Me.call(Dt, G.id, ce);
     }
   })), [l]);
-  ea(jr, $i);
-  const Ti = Gr(fe), Mi = Ot(Q.markerRailWidth, lo("markerRailWidth")), Ai = Ot(Q.detailWidth, lo("detailWidth"));
-  return n(pd, {
-    activeFilterCount: Fe,
+  na(Br, Ri);
+  const Mi = Kr(oe), Ai = Pt(Q.markerRailWidth, uo("markerRailWidth")), Ei = Pt(Q.detailWidth, uo("detailWidth"));
+  return n(xd, {
+    activeFilterCount: Be,
     allSwimlanes: ze,
-    analysisError: Ye,
-    analysisRun: pt,
-    analysisStatus: jt,
+    analysisError: wt,
+    analysisRun: Nt,
+    analysisStatus: lr,
     approvalFacetCounts: Ht,
-    autoAssignCandidates: It,
-    autoAssignError: it,
-    autoAssignOpen: je,
-    autoAssignPerformers: mi,
-    autoAssigning: Te,
-    captureTrainingExport: ui,
-    removeIncorrectExample: ci,
-    rejectedDeletionPreview: xe,
+    autoAssignCandidates: Ct,
+    autoAssignError: Qe,
+    autoAssignOpen: Te,
+    autoAssignPerformers: pi,
+    autoAssigning: Ke,
+    captureTrainingExport: gi,
+    cancelQueuedReviewsForSegments: ci,
+    removeIncorrectExample: mi,
+    rejectedDeletionPreview: Se,
     centerTimelineRef: Fn,
     closeEditorFilters: xn,
-    closeFirstSegmentTagDialog: yr,
-    closeMaterializeDialog: pi,
-    closeMergeConfirmation: si,
-    closePublishApprovedDialog: oo,
+    closeFirstSegmentTagDialog: br,
+    closeMaterializeDialog: yi,
+    closeMergeConfirmation: di,
+    closePublishApprovedDialog: ao,
     closeTagEditing: vn,
-    collapsedSegmentGroups: ve,
+    collapsedSegmentGroups: Ie,
     compatibilityMode: l,
-    configuringTag: xt,
-    createSegment: eo,
-    currentTime: $,
-    deleteRejectedSegments: io,
+    configuringTag: vt,
+    createSegment: to,
+    currentTime: M,
+    deleteRejectedSegments: lo,
     detail: e,
     detailPanelRef: w,
-    detailWidth: Ai,
-    duplicateSegment: no,
+    detailWidth: Ei,
+    duplicateSegment: ro,
     editorFilters: v,
     editorLayout: Q,
     editorRef: tt,
@@ -7771,117 +7831,117 @@ function kd({ detail: e, onDetailChange: t, onConflict: r, onReload: o, onSlotsC
     filtersOpen: W,
     firstSegmentTagOpen: k,
     focusRowRef: cn,
-    handleSeparatorKeyDown: ki,
-    handleSeparatorPointerDown: xi,
-    handleSeparatorPointerMove: Si,
-    hideDerivedSegments: _,
-    history: Me,
-    historyOpen: h,
-    historySaving: M,
-    horizontalLayoutSize: B,
+    handleSeparatorKeyDown: Ni,
+    handleSeparatorPointerDown: ki,
+    handleSeparatorPointerMove: wi,
+    hideDerivedSegments: F,
+    history: te,
+    historyOpen: b,
+    historySaving: C,
+    horizontalLayoutSize: ke,
     importNativeSegments: En,
-    incorrectExamples: Rt,
-    incorrectExamplesOpen: De,
+    incorrectExamples: Et,
+    incorrectExamplesOpen: qe,
     removingExampleId: Pn,
-    lineage: xr,
-    markerRailWidth: Mi,
+    lineage: Sr,
+    markerRailWidth: Ai,
     materializeButtonRef: Gt,
     materializeCancelButtonRef: On,
-    materializeDerivedSegments: fi,
+    materializeDerivedSegments: bi,
     materializeError: en,
     materializeLoading: Bt,
     materializeOpen: Mt,
-    materializePreview: ft,
-    materializing: vt,
+    materializePreview: pt,
+    materializing: ht,
     mediaStackRef: dn,
-    mergeCancelButtonRef: X,
-    mergeConfirmation: se,
-    mergeSavingRef: le,
-    mergeSelectedSwimlane: ao,
+    mergeCancelButtonRef: ee,
+    mergeConfirmation: ae,
+    mergeSavingRef: ue,
+    mergeSelectedSwimlane: io,
     nativeImportState: Xt,
     onNavigate: c,
     onDetailChange: t,
-    openPublishApprovedDialog: ro,
+    openPublishApprovedDialog: oo,
     onReload: o,
     onSlotsChanged: i,
-    panelSeparatorProps: wi,
+    panelSeparatorProps: Ii,
     pendingInitialSeekRef: Ln,
     performerSlots: Ue,
     performerSlotsAvailable: zn,
     playbackControlsRef: ln,
-    previewDerivedSegments: gi,
-    provenance: Qa,
-    provenanceSources: z,
-    publishApprovedCancelButtonRef: he,
-    publishApprovedDrafts: ii,
+    previewDerivedSegments: fi,
+    provenance: ei,
+    provenanceSources: _,
+    publishApprovedCancelButtonRef: be,
+    publishApprovedDrafts: li,
     publishApprovedError: ne,
-    publishApprovedOpen: J,
-    quickSearchOpen: at,
+    publishApprovedOpen: Y,
+    quickSearchOpen: we,
     railScrollRef: pn,
     railToggleRef: jn,
     recordHistoryAction: qn,
-    restoreHistoryTarget: vi,
+    restoreHistoryTarget: Si,
     saveMessage: I,
-    setSaveMessage: C,
-    saveTag: yi,
-    saveTiming: oi,
-    savingSegmentId: D,
+    setSaveMessage: $,
+    saveTag: hi,
+    saveTiming: ii,
+    savingSegmentId: R,
     setSavingSegmentId: U,
     seekRef: sn,
-    segmentGroups: yt,
+    segmentGroups: ft,
     segmentRailLayout: Sn,
-    segments: Ze,
-    selectAllVideoSegments: ti,
-    selectSegment: Xr,
-    selectSegmentCollection: ei,
-    selectedGroups: Yr,
-    selectedPerformerSlots: Jr,
-    selectedSegment: ae,
-    selectedSegmentGroupKey: $e,
+    segments: Je,
+    selectAllVideoSegments: ri,
+    selectSegment: eo,
+    selectSegmentCollection: ni,
+    selectedGroups: Qr,
+    selectedPerformerSlots: Yr,
+    selectedSegment: ie,
+    selectedSegmentGroupKey: ve,
     selectedSegmentIds: u,
     selectedSegments: st,
-    selectedSlotStatus: Wa,
-    setAutoAssignError: Je,
-    setAutoAssignOpen: Ne,
+    selectedSlotStatus: Ja,
+    setAutoAssignError: Ye,
+    setAutoAssignOpen: Re,
     setConfiguringTag: nn,
-    setCurrentTime: O,
+    setCurrentTime: E,
     setEditorFilters: N,
-    setEditorLayout: oe,
-    setFiltersOpen: R,
-    setHideDerivedSegments: A,
+    setEditorLayout: de,
+    setFiltersOpen: j,
+    setHideDerivedSegments: T,
     setHistoryOpen: K,
-    setIncorrectExamplesOpen: He,
-    setQuickSearchOpen: ke,
-    setRejectedDeletionPreview: q,
+    setIncorrectExamplesOpen: je,
+    setQuickSearchOpen: Pe,
+    setRejectedDeletionPreview: H,
     setRailViewport: yn,
-    setSelectedSegmentGroupKey: ge,
+    setSelectedSegmentGroupKey: Oe,
     setSelectedSegmentId: m,
-    setShortcutsOpen: Ae,
-    setTimelineZoom: T,
+    setShortcutsOpen: at,
+    setTimelineZoom: B,
     shotBoundaries: hn,
-    shortcutsOpen: Ge,
+    shortcutsOpen: De,
     slotButtonRef: Bn,
     splitLayout: a,
-    splitSegment: to,
+    splitSegment: no,
     startFullAnalysis: Dn,
-    tagEditing: E,
+    tagEditing: A,
     tagSearchRef: Gn,
     timelineDuration: Hn,
-    timelineRatioBounds: Ti,
-    timelineZoom: ce,
-    toggleSegmentGroup: co,
-    toggleSegmentRail: Ni,
-    updateTimelineRatio: so,
+    timelineRatioBounds: Mi,
+    timelineZoom: ge,
+    toggleSegmentGroup: mo,
+    toggleSegmentRail: Ci,
+    updateTimelineRatio: co,
     video: _e,
     videoPerformers: bn,
-    visibleCounts: br,
-    visibleSegmentRailRows: Va,
+    visibleCounts: hr,
+    visibleSegmentRailRows: Ya,
     visibleSegments: ct,
     wideLayout: an,
     workspaceRef: un
   });
 }
-function wd(e = [], t = []) {
+function Rd(e = [], t = []) {
   const r = new Map((t || []).map((s) => [
     Number(s.tagId),
     {
@@ -7923,7 +7983,7 @@ function wd(e = [], t = []) {
     tags: a
   }), i;
 }
-function Nd(e = [], t = "", r = "all") {
+function Md(e = [], t = "", r = "all") {
   const o = String(t || "").trim().toLocaleLowerCase();
   return e.map((i) => ({
     ...i,
@@ -7936,32 +7996,32 @@ function Nd(e = [], t = "", r = "all") {
     })
   })).filter((i) => i.tags.length > 0);
 }
-function Qe(e, t) {
+function Ze(e, t) {
   return String(e || "").localeCompare(String(t || ""), void 0, {
     numeric: !0,
     sensitivity: "base"
   });
 }
-function Id(e = [], t = []) {
+function Ad(e = [], t = []) {
   var y;
   const r = /* @__PURE__ */ new Map();
-  [...t].sort((p, b) => (p.sortOrder ?? 0) - (b.sortOrder ?? 0) || Number(p.id) - Number(b.id)).forEach((p, b) => {
+  [...t].sort((p, h) => (p.sortOrder ?? 0) - (h.sortOrder ?? 0) || Number(p.id) - Number(h.id)).forEach((p, h) => {
     [...p.tags || []].sort((f, w) => (f.sortOrder ?? 0) - (w.sortOrder ?? 0) || Number(f.tagId) - Number(w.tagId)).forEach((f, w) => r.set(Number(f.tagId), {
       key: `group:${p.id}`,
       id: p.id,
       name: p.name,
-      sortOrder: p.sortOrder ?? b,
+      sortOrder: p.sortOrder ?? h,
       tagSortOrder: f.sortOrder ?? w
     }));
   });
   const o = /* @__PURE__ */ new Map();
-  function i(p, b) {
+  function i(p, h) {
     const f = Number(p);
     if (!o.has(f)) {
       const w = r.get(f);
       o.set(f, {
         tagId: f,
-        name: b || `Tag ${f}`,
+        name: h || `Tag ${f}`,
         incomingRuleCount: 0,
         outgoingRuleCount: 0,
         segmentGroupKey: (w == null ? void 0 : w.key) || "ungrouped",
@@ -7975,12 +8035,12 @@ function Id(e = [], t = []) {
   }
   const a = /* @__PURE__ */ new Map();
   e.forEach((p) => {
-    const b = i(p.sourceTagId, p.sourceTagName), f = i(p.derivedTagId, p.derivedTagName);
-    b.outgoingRuleCount++, f.incomingRuleCount++;
-    const w = `${b.tagId}:${f.tagId}`;
+    const h = i(p.sourceTagId, p.sourceTagName), f = i(p.derivedTagId, p.derivedTagName);
+    h.outgoingRuleCount++, f.incomingRuleCount++;
+    const w = `${h.tagId}:${f.tagId}`;
     a.has(w) || a.set(w, {
       id: w,
-      sourceTagId: b.tagId,
+      sourceTagId: h.tagId,
       derivedTagId: f.tagId,
       rules: [],
       edgeCount: 0
@@ -7990,34 +8050,34 @@ function Id(e = [], t = []) {
   });
   const s = [...o.values()], l = [...a.values()], d = new Map(s.map((p) => [p.tagId, /* @__PURE__ */ new Set()]));
   l.forEach((p) => {
-    var b, f;
-    (b = d.get(p.sourceTagId)) == null || b.add(p.derivedTagId), (f = d.get(p.derivedTagId)) == null || f.add(p.sourceTagId);
+    var h, f;
+    (h = d.get(p.sourceTagId)) == null || h.add(p.derivedTagId), (f = d.get(p.derivedTagId)) == null || f.add(p.sourceTagId);
   });
   const c = /* @__PURE__ */ new Set(), g = [];
   for (const p of s) {
     if (c.has(p.tagId)) continue;
-    const b = [p.tagId], f = [];
-    for (c.add(p.tagId); b.length > 0; ) {
-      const A = b.shift();
-      f.push(A);
-      for (const $ of d.get(A) || [])
-        c.has($) || (c.add($), b.push($));
+    const h = [p.tagId], f = [];
+    for (c.add(p.tagId); h.length > 0; ) {
+      const T = h.shift();
+      f.push(T);
+      for (const M of d.get(T) || [])
+        c.has(M) || (c.add(M), h.push(M));
     }
-    const w = new Set(f), v = f.map((A) => o.get(A)), N = l.filter((A) => w.has(A.sourceTagId) && w.has(A.derivedTagId)), W = N.flatMap((A) => A.rules), R = v.filter((A) => A.outgoingRuleCount === 0).sort((A, $) => Qe(A.name, $.name)), _ = R.length > 0 ? R : [...v].sort((A, $) => Qe(A.name, $.name));
+    const w = new Set(f), v = f.map((T) => o.get(T)), N = l.filter((T) => w.has(T.sourceTagId) && w.has(T.derivedTagId)), W = N.flatMap((T) => T.rules), j = v.filter((T) => T.outgoingRuleCount === 0).sort((T, M) => Ze(T.name, M.name)), F = j.length > 0 ? j : [...v].sort((T, M) => Ze(T.name, M.name));
     g.push({
-      id: [...f].sort((A, $) => A - $).join(":"),
-      label: _.length > 1 ? `${_[0].name} + ${_.length - 1}` : ((y = _[0]) == null ? void 0 : y.name) || "Derivation component",
+      id: [...f].sort((T, M) => T - M).join(":"),
+      label: F.length > 1 ? `${F[0].name} + ${F.length - 1}` : ((y = F[0]) == null ? void 0 : y.name) || "Derivation component",
       nodes: v,
       connections: N,
       rules: W,
-      segmentGroupKeys: [...new Set(v.map((A) => A.segmentGroupKey))],
+      segmentGroupKeys: [...new Set(v.map((T) => T.segmentGroupKey))],
       materializedEdgeCount: W.reduce(
-        (A, $) => A + (Number($.edgeCount) || 0),
+        (T, M) => T + (Number(M.edgeCount) || 0),
         0
       )
     });
   }
-  g.sort((p, b) => b.rules.length - p.rules.length || Qe(p.label, b.label));
+  g.sort((p, h) => h.rules.length - p.rules.length || Ze(p.label, h.label));
   const m = /* @__PURE__ */ new Map();
   s.forEach((p) => {
     m.has(p.segmentGroupKey) || m.set(p.segmentGroupKey, {
@@ -8030,15 +8090,15 @@ function Id(e = [], t = []) {
       componentIds: /* @__PURE__ */ new Set()
     }), m.get(p.segmentGroupKey).nodes.push(p);
   }), g.forEach((p) => {
-    p.nodes.forEach((b) => {
+    p.nodes.forEach((h) => {
       var f;
-      return (f = m.get(b.segmentGroupKey)) == null ? void 0 : f.componentIds.add(p.id);
-    }), p.rules.forEach((b) => {
+      return (f = m.get(h.segmentGroupKey)) == null ? void 0 : f.componentIds.add(p.id);
+    }), p.rules.forEach((h) => {
       var f, w;
-      (f = m.get(o.get(Number(b.sourceTagId)).segmentGroupKey)) == null || f.ruleIds.add(b.id), (w = m.get(o.get(Number(b.derivedTagId)).segmentGroupKey)) == null || w.ruleIds.add(b.id);
+      (f = m.get(o.get(Number(h.sourceTagId)).segmentGroupKey)) == null || f.ruleIds.add(h.id), (w = m.get(o.get(Number(h.derivedTagId)).segmentGroupKey)) == null || w.ruleIds.add(h.id);
     });
   });
-  const u = [...m.values()].sort((p, b) => p.sortOrder - b.sortOrder || Qe(p.name, b.name)).map((p) => ({
+  const u = [...m.values()].sort((p, h) => p.sortOrder - h.sortOrder || Ze(p.name, h.name)).map((p) => ({
     ...p,
     ruleCount: p.ruleIds.size,
     componentCount: p.componentIds.size
@@ -8050,97 +8110,97 @@ function Id(e = [], t = []) {
     segmentGroups: u
   };
 }
-function Cd(e, {
+function Ed(e, {
   minimumWidth: t = 720,
   minimumHeight: r = 420
 } = {}) {
   if (!e || e.nodes.length === 0)
     return { width: 720, height: 420, nodes: [], connections: [], groups: [] };
-  const g = new Map(e.nodes.map((O) => [O.tagId, /* @__PURE__ */ new Set()])), m = new Map(e.nodes.map((O) => [O.tagId, /* @__PURE__ */ new Set()]));
-  e.connections.forEach((O) => {
-    var D, U;
-    (D = g.get(O.sourceTagId)) == null || D.add(O.derivedTagId), (U = m.get(O.derivedTagId)) == null || U.add(O.sourceTagId);
+  const g = new Map(e.nodes.map((E) => [E.tagId, /* @__PURE__ */ new Set()])), m = new Map(e.nodes.map((E) => [E.tagId, /* @__PURE__ */ new Set()]));
+  e.connections.forEach((E) => {
+    var R, U;
+    (R = g.get(E.sourceTagId)) == null || R.add(E.derivedTagId), (U = m.get(E.derivedTagId)) == null || U.add(E.sourceTagId);
   });
-  const u = new Map(e.nodes.map((O) => {
-    var D;
+  const u = new Map(e.nodes.map((E) => {
+    var R;
     return [
-      O.tagId,
-      ((D = m.get(O.tagId)) == null ? void 0 : D.size) || 0
+      E.tagId,
+      ((R = m.get(E.tagId)) == null ? void 0 : R.size) || 0
     ];
-  })), y = new Map(e.nodes.map((O) => [O.tagId, 0])), p = e.nodes.filter((O) => u.get(O.tagId) === 0).sort((O, D) => Qe(O.name, D.name)).map((O) => O.tagId), b = /* @__PURE__ */ new Set();
+  })), y = new Map(e.nodes.map((E) => [E.tagId, 0])), p = e.nodes.filter((E) => u.get(E.tagId) === 0).sort((E, R) => Ze(E.name, R.name)).map((E) => E.tagId), h = /* @__PURE__ */ new Set();
   for (; p.length > 0; ) {
-    const O = p.shift();
-    if (!b.has(O)) {
-      b.add(O);
-      for (const D of g.get(O) || [])
-        y.set(D, Math.max(y.get(D) || 0, (y.get(O) || 0) + 1)), u.set(D, u.get(D) - 1), u.get(D) === 0 && p.push(D);
+    const E = p.shift();
+    if (!h.has(E)) {
+      h.add(E);
+      for (const R of g.get(E) || [])
+        y.set(R, Math.max(y.get(R) || 0, (y.get(E) || 0) + 1)), u.set(R, u.get(R) - 1), u.get(R) === 0 && p.push(R);
     }
   }
-  b.size !== e.nodes.length && e.nodes.filter((O) => !b.has(O.tagId)).sort((O, D) => Qe(O.name, D.name)).forEach((O) => y.set(O.tagId, 0));
+  h.size !== e.nodes.length && e.nodes.filter((E) => !h.has(E.tagId)).sort((E, R) => Ze(E.name, R.name)).forEach((E) => y.set(E.tagId, 0));
   const f = Math.max(0, ...y.values()), w = Math.max(
     t,
     240 + f * 296
   ), v = /* @__PURE__ */ new Map();
-  e.nodes.forEach((O) => {
-    v.has(O.segmentGroupKey) || v.set(O.segmentGroupKey, {
-      key: O.segmentGroupKey,
-      id: O.segmentGroupId,
-      name: O.segmentGroupName,
-      sortOrder: O.segmentGroupSortOrder,
+  e.nodes.forEach((E) => {
+    v.has(E.segmentGroupKey) || v.set(E.segmentGroupKey, {
+      key: E.segmentGroupKey,
+      id: E.segmentGroupId,
+      name: E.segmentGroupName,
+      sortOrder: E.segmentGroupSortOrder,
       nodes: []
-    }), v.get(O.segmentGroupKey).nodes.push(O);
+    }), v.get(E.segmentGroupKey).nodes.push(E);
   });
-  const N = [...v.values()].sort((O, D) => O.sortOrder - D.sortOrder || Qe(O.name, D.name));
+  const N = [...v.values()].sort((E, R) => E.sortOrder - R.sortOrder || Ze(E.name, R.name));
   let W = 28;
-  const R = [], _ = N.map((O) => {
-    const D = /* @__PURE__ */ new Map();
-    O.nodes.forEach((C) => {
-      const F = y.get(C.tagId) || 0;
-      D.has(F) || D.set(F, []), D.get(F).push(C);
+  const j = [], F = N.map((E) => {
+    const R = /* @__PURE__ */ new Map();
+    E.nodes.forEach(($) => {
+      const P = y.get($.tagId) || 0;
+      R.has(P) || R.set(P, []), R.get(P).push($);
     });
-    for (const C of D.values())
-      C.sort((F, re) => F.segmentGroupTagSortOrder - re.segmentGroupTagSortOrder || Qe(F.name, re.name));
-    const U = Math.max(1, ...[...D.values()].map((C) => C.length)), P = U * 58 + (U - 1) * 18, V = 70 + P, I = {
-      ...O,
+    for (const $ of R.values())
+      $.sort((P, J) => P.segmentGroupTagSortOrder - J.segmentGroupTagSortOrder || Ze(P.name, J.name));
+    const U = Math.max(1, ...[...R.values()].map(($) => $.length)), D = U * 58 + (U - 1) * 18, V = 70 + D, I = {
+      ...E,
       x: 12,
       y: W,
       width: w - 24,
       height: V
     };
-    for (const [C, F] of D.entries()) {
-      const re = F.length * 58 + Math.max(0, F.length - 1) * 18, ee = (P - re) / 2;
-      F.forEach((we, ce) => R.push({
-        ...we,
-        rank: C,
-        x: 28 + C * 296,
-        y: W + 34 + 18 + ee + ce * 76,
+    for (const [$, P] of R.entries()) {
+      const J = P.length * 58 + Math.max(0, P.length - 1) * 18, se = (D - J) / 2;
+      P.forEach((me, ge) => j.push({
+        ...me,
+        rank: $,
+        x: 28 + $ * 296,
+        y: W + 34 + 18 + se + ge * 76,
         width: 184,
         height: 58
       }));
     }
     return W += V + 16, I;
-  }), A = new Map(R.map((O) => [O.tagId, O])), $ = e.connections.map((O) => {
-    const D = A.get(O.sourceTagId), U = A.get(O.derivedTagId), P = D.x + D.width, V = D.y + D.height / 2, I = U.x, C = U.y + U.height / 2, F = Math.max(48, (I - P) * 0.48);
+  }), T = new Map(j.map((E) => [E.tagId, E])), M = e.connections.map((E) => {
+    const R = T.get(E.sourceTagId), U = T.get(E.derivedTagId), D = R.x + R.width, V = R.y + R.height / 2, I = U.x, $ = U.y + U.height / 2, P = Math.max(48, (I - D) * 0.48);
     return {
-      ...O,
-      path: `M ${P} ${V} C ${P + F} ${V}, ${I - F} ${C}, ${I} ${C}`
+      ...E,
+      path: `M ${D} ${V} C ${D + P} ${V}, ${I - P} ${$}, ${I} ${$}`
     };
   });
   return {
     width: w,
     height: Math.max(r, W - 16 + 28),
-    nodes: R,
-    connections: $,
-    groups: _
+    nodes: j,
+    connections: M,
+    groups: F
   };
 }
-function $d(e) {
+function Dd(e) {
   if (!e || e.length === 0)
     return { width: 720, height: 420, nodes: [], connections: [], groups: [] };
   let o = 20, i = 0;
   const a = [], s = [], l = [];
   return e.forEach((d) => {
-    const c = Cd(d, {
+    const c = Ed(d, {
       minimumWidth: 0,
       minimumHeight: 0
     }), g = 20, m = o, u = c.nodes.map((p) => ({
@@ -8154,11 +8214,11 @@ function $d(e) {
       x: p.x + g,
       y: p.y + m
     }))), s.push(...c.connections.map((p) => {
-      const b = y.get(p.sourceTagId), f = y.get(p.derivedTagId), w = b.x + b.width, v = b.y + b.height / 2, N = f.x, W = f.y + f.height / 2, R = Math.max(48, (N - w) * 0.48);
+      const h = y.get(p.sourceTagId), f = y.get(p.derivedTagId), w = h.x + h.width, v = h.y + h.height / 2, N = f.x, W = f.y + f.height / 2, j = Math.max(48, (N - w) * 0.48);
       return {
         ...p,
         componentId: d.id,
-        path: `M ${w} ${v} C ${w + R} ${v}, ${N - R} ${W}, ${N} ${W}`
+        path: `M ${w} ${v} C ${w + j} ${v}, ${N - j} ${W}, ${N} ${W}`
       };
     })), i = Math.max(i, c.width), o += c.height + 32;
   }), {
@@ -8169,7 +8229,7 @@ function $d(e) {
     groups: l
   };
 }
-function Wo(e, t = []) {
+function Jo(e, t = []) {
   if (!(e != null && e.sourceTagId) || !(e != null && e.derivedTagId)) return null;
   const r = Number(e.sourceTagId), o = Number(e.derivedTagId);
   if (r === o)
@@ -8202,16 +8262,16 @@ function Wo(e, t = []) {
   }
   return null;
 }
-function Td(e, t, r) {
+function Od(e, t, r) {
   return (e == null ? void 0 : e.type) === "rule" ? t.find((o) => o.id === e.id) || null : e == null && !r && t[0] || null;
 }
-function Md(e) {
-  const { arrowMarkerId: t, busy: r, buttonClass: o, configuringTag: i, deleteRule: a, derivedSlots: s, derivedSlotsLoading: l, draft: d, draftIssue: c, editRule: g, editorRef: m, emptyDraft: u, graph: y, layout: p, listSort: b, materializationOffer: f, materializeOutgoingRules: w, materializeRule: v, message: N, normalizedQuery: W, query: R, refreshConfiguredTag: _, revealEditor: A, rules: $, save: O, segmentGroupKey: D, selectedNode: U, selectedRule: P, selection: V, setConfiguringTag: I, setDraft: C, setListSort: F, setMaterializationOffer: re, setQuery: ee, setSegmentGroupKey: we, setSelection: ce, setView: T, sortedVisibleRules: Q, sourceSlots: oe, sourceSlotsLoading: fe, updateMapping: ie, updateTag: B, view: ue, visibleComponents: Me, visibleRules: Y } = e;
-  function Se(E) {
-    const S = y.nodes.find((H) => H.tagId === Number(E.sourceTagId)), k = y.nodes.find((H) => H.tagId === Number(E.derivedTagId));
+function Pd(e) {
+  const { arrowMarkerId: t, busy: r, buttonClass: o, configuringTag: i, deleteRule: a, derivedSlots: s, derivedSlotsLoading: l, draft: d, draftIssue: c, editRule: g, editorRef: m, emptyDraft: u, graph: y, layout: p, listSort: h, materializationOffer: f, materializeOutgoingRules: w, materializeRule: v, message: N, normalizedQuery: W, query: j, refreshConfiguredTag: F, revealEditor: T, rules: M, save: E, segmentGroupKey: R, selectedNode: U, selectedRule: D, selection: V, setConfiguringTag: I, setDraft: $, setListSort: P, setMaterializationOffer: J, setQuery: se, setSegmentGroupKey: me, setSelection: ge, setView: B, sortedVisibleRules: Q, sourceSlots: de, sourceSlotsLoading: oe, updateMapping: xe, updateTag: ke, view: z, visibleComponents: te, visibleRules: X } = e;
+  function le(A) {
+    const S = y.nodes.find((q) => q.tagId === Number(A.sourceTagId)), k = y.nodes.find((q) => q.tagId === Number(A.derivedTagId));
     return (S == null ? void 0 : S.segmentGroupKey) === (k == null ? void 0 : k.segmentGroupKey) ? S.segmentGroupKey : "cross-group";
   }
-  function h() {
+  function b() {
     return n("div", { key: "editor", ref: m, className: "space-y-4 p-4" }, [
       n("div", { key: "heading", className: "flex items-center justify-between gap-2" }, [
         n("div", { key: "copy" }, [
@@ -8230,7 +8290,7 @@ function Md(e) {
           key: "close",
           type: "button",
           disabled: r,
-          onClick: () => C(null),
+          onClick: () => $(null),
           className: "rounded-md px-2 py-1 text-secondary hover:bg-muted/40 hover:text-foreground",
           "aria-label": "Close rule editor"
         }, "×")
@@ -8245,7 +8305,7 @@ function Md(e) {
               value: d.sourceTagId,
               selectedDisplay: "input",
               selectedLabel: d.sourceTagName || void 0,
-              onChange: (E, S) => B("source", E, S == null ? void 0 : S.label),
+              onChange: (A, S) => ke("source", A, S == null ? void 0 : S.label),
               disabled: r,
               placeholder: "Find a source tag…",
               inputClassName: "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground",
@@ -8253,7 +8313,7 @@ function Md(e) {
               allowCreate: !1
             })
           ]),
-          d.ruleId == null && d.sourceTagId && !fe && oe.length === 0 ? n("div", {
+          d.ruleId == null && d.sourceTagId && !oe && de.length === 0 ? n("div", {
             key: "missing-slots",
             className: "flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2"
           }, [
@@ -8262,11 +8322,11 @@ function Md(e) {
               key: "configure",
               type: "button",
               disabled: r,
-              onClick: (E) => I({
+              onClick: (A) => I({
                 tagId: d.sourceTagId,
                 tagName: d.sourceTagName || "Source tag",
                 draftKind: "source",
-                trigger: E.currentTarget
+                trigger: A.currentTarget
               }),
               className: "rounded-md border border-amber-500/50 bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50"
             }, "Configure source tag")
@@ -8281,7 +8341,7 @@ function Md(e) {
               value: d.derivedTagId,
               selectedDisplay: "input",
               selectedLabel: d.derivedTagName || void 0,
-              onChange: (E, S) => B("derived", E, S == null ? void 0 : S.label),
+              onChange: (A, S) => ke("derived", A, S == null ? void 0 : S.label),
               disabled: r,
               placeholder: "Find a derived tag…",
               inputClassName: "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground",
@@ -8298,11 +8358,11 @@ function Md(e) {
               key: "configure",
               type: "button",
               disabled: r,
-              onClick: (E) => I({
+              onClick: (A) => I({
                 tagId: d.derivedTagId,
                 tagName: d.derivedTagName || "Derived tag",
                 draftKind: "derived",
-                trigger: E.currentTarget
+                trigger: A.currentTarget
               }),
               className: "rounded-md border border-amber-500/50 bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50"
             }, "Configure derived tag")
@@ -8320,10 +8380,10 @@ function Md(e) {
           n("button", {
             key: "add",
             type: "button",
-            disabled: r || oe.length === 0 || s.length === 0,
-            onClick: () => C((E) => ({
-              ...E,
-              slotMappings: [...E.slotMappings, { sourceSlotDefinitionId: "", derivedSlotDefinitionId: "" }]
+            disabled: r || de.length === 0 || s.length === 0,
+            onClick: () => $((A) => ({
+              ...A,
+              slotMappings: [...A.slotMappings, { sourceSlotDefinitionId: "", derivedSlotDefinitionId: "" }]
             })),
             className: o
           }, "Add mapping")
@@ -8334,21 +8394,21 @@ function Md(e) {
             { key: "suggested", className: "text-xs text-secondary" },
             "Matching performer slots were suggested automatically."
           ) : null,
-          ...d.slotMappings.map((E, S) => n("div", { key: S, className: "flex items-center gap-2" }, [
+          ...d.slotMappings.map((A, S) => n("div", { key: S, className: "flex items-center gap-2" }, [
             n("select", {
               key: "source",
-              value: E.sourceSlotDefinitionId,
+              value: A.sourceSlotDefinitionId,
               disabled: r,
-              onChange: (k) => ie(S, "sourceSlotDefinitionId", k.target.value),
+              onChange: (k) => xe(S, "sourceSlotDefinitionId", k.target.value),
               className: "min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm",
               "aria-label": `Source slot mapping ${S + 1}`
-            }, [n("option", { key: "none", value: "" }, "Source slot…"), ...oe.map((k) => n("option", { key: k.id, value: k.id }, et(k)))]),
+            }, [n("option", { key: "none", value: "" }, "Source slot…"), ...de.map((k) => n("option", { key: k.id, value: k.id }, et(k)))]),
             n("span", { key: "arrow", className: "self-center text-secondary" }, "→"),
             n("select", {
               key: "derived",
-              value: E.derivedSlotDefinitionId,
+              value: A.derivedSlotDefinitionId,
               disabled: r,
-              onChange: (k) => ie(S, "derivedSlotDefinitionId", k.target.value),
+              onChange: (k) => xe(S, "derivedSlotDefinitionId", k.target.value),
               className: "min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm",
               "aria-label": `Derived slot mapping ${S + 1}`
             }, [n("option", { key: "none", value: "" }, "Derived slot…"), ...s.map((k) => n("option", { key: k.id, value: k.id }, et(k)))]),
@@ -8356,9 +8416,9 @@ function Md(e) {
               key: "remove",
               type: "button",
               disabled: r,
-              onClick: () => C((k) => ({
+              onClick: () => $((k) => ({
                 ...k,
-                slotMappings: k.slotMappings.filter((H, le) => le !== S)
+                slotMappings: k.slotMappings.filter((q, ue) => ue !== S)
               })),
               className: `${o} shrink-0 text-red-300`,
               "aria-label": `Remove performer slot mapping ${S + 1}`,
@@ -8371,51 +8431,51 @@ function Md(e) {
         n("button", {
           key: "save",
           type: "button",
-          disabled: r || !d.sourceTagId || !d.derivedTagId || c != null || d.slotMappings.some((E) => !E.sourceSlotDefinitionId || !E.derivedSlotDefinitionId),
-          onClick: O,
+          disabled: r || !d.sourceTagId || !d.derivedTagId || c != null || d.slotMappings.some((A) => !A.sourceSlotDefinitionId || !A.derivedSlotDefinitionId),
+          onClick: E,
           className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
         }, "Save rule"),
-        n("button", { key: "cancel", type: "button", disabled: r, onClick: () => C(null), className: o }, "Cancel")
+        n("button", { key: "cancel", type: "button", disabled: r, onClick: () => $(null), className: o }, "Cancel")
       ])
     ]);
   }
   function K() {
     if (U) {
-      const k = Y.filter((se) => Number(se.derivedTagId) === U.tagId), H = Y.filter((se) => Number(se.sourceTagId) === U.tagId), le = (se, te, xe) => n("div", {
-        key: se.id,
+      const k = X.filter((ae) => Number(ae.derivedTagId) === U.tagId), q = X.filter((ae) => Number(ae.sourceTagId) === U.tagId), ue = (ae, re, Se) => n("div", {
+        key: ae.id,
         className: "space-y-2 rounded-md border border-border bg-card p-2"
       }, [
         n("div", {
           key: "relationship",
           className: "text-xs"
         }, [
-          n("span", { key: "direction", className: "block text-secondary" }, te),
+          n("span", { key: "direction", className: "block text-secondary" }, re),
           n(
             "span",
             { key: "relationship", className: "mt-0.5 block font-medium text-foreground" },
-            `${se.sourceTagName} → ${se.derivedTagName}`
+            `${ae.sourceTagName} → ${ae.derivedTagName}`
           )
         ]),
         n("div", { key: "actions", className: "flex flex-wrap gap-2" }, [
-          xe ? n("button", {
+          Se ? n("button", {
             key: "materialize",
             type: "button",
             disabled: r || d != null,
-            onClick: () => v(se),
+            onClick: () => v(ae),
             className: o
           }, "Materialize") : null,
           n("button", {
             key: "edit",
             type: "button",
             disabled: r || d != null,
-            onClick: () => g(se, !0),
+            onClick: () => g(ae, !0),
             className: o
           }, "Edit rule"),
           n("button", {
             key: "delete",
             type: "button",
             disabled: r || d != null,
-            onClick: () => a(se),
+            onClick: () => a(ae),
             className: `${o} text-red-300`
           }, "Delete")
         ])
@@ -8434,23 +8494,23 @@ function Md(e) {
           key: "configure-tag",
           type: "button",
           disabled: r || d != null,
-          onClick: (se) => I({
+          onClick: (ae) => I({
             tagId: U.tagId,
             tagName: U.name,
-            trigger: se.currentTarget
+            trigger: ae.currentTarget
           }),
           className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:border-accent/60 hover:bg-muted/40 disabled:opacity-50"
         }, "Configure tag"),
-        H.length ? n("button", {
+        q.length ? n("button", {
           key: "materialize-outgoing",
           type: "button",
           disabled: r || d != null,
-          onClick: () => w(U, H),
+          onClick: () => w(U, q),
           className: "w-full rounded-md border border-accent bg-accent/15 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent/25 disabled:opacity-50"
-        }, `Materialize outgoing (${H.length})`) : null,
-        H.length ? n("div", { key: "outgoing", className: "space-y-2" }, [
+        }, `Materialize outgoing (${q.length})`) : null,
+        q.length ? n("div", { key: "outgoing", className: "space-y-2" }, [
           n("h4", { key: "title", className: "text-xs font-semibold uppercase tracking-wide text-secondary" }, "Outgoing rules"),
-          ...H.map((se) => le(se, "Derives", !0))
+          ...q.map((ae) => ue(ae, "Derives", !0))
         ]) : null,
         k.length ? n("details", {
           key: "incoming",
@@ -8470,36 +8530,36 @@ function Md(e) {
           n(
             "div",
             { key: "rules", className: "space-y-2 border-t border-border p-2" },
-            k.map((se) => le(se, "Derived by", !1))
+            k.map((ae) => ue(ae, "Derived by", !1))
           )
         ]) : null
       ]);
     }
-    if (!P)
+    if (!D)
       return n(
         "div",
         { key: "empty-details", className: "p-5 text-sm text-secondary" },
         "Select a tag or relationship to inspect it."
       );
-    const E = y.nodes.find((k) => k.tagId === Number(P.sourceTagId)), S = y.nodes.find((k) => k.tagId === Number(P.derivedTagId));
+    const A = y.nodes.find((k) => k.tagId === Number(D.sourceTagId)), S = y.nodes.find((k) => k.tagId === Number(D.derivedTagId));
     return n("div", { key: "rule-details", className: "space-y-4 p-4" }, [
       n("div", { key: "identity" }, [
         n("div", { key: "groups", className: "flex flex-wrap items-center gap-1 text-xs text-accent" }, [
-          n("span", { key: "source" }, (E == null ? void 0 : E.segmentGroupName) || "Ungrouped"),
-          (E == null ? void 0 : E.segmentGroupKey) !== (S == null ? void 0 : S.segmentGroupKey) ? n("span", { key: "derived" }, `→ ${(S == null ? void 0 : S.segmentGroupName) || "Ungrouped"}`) : null
+          n("span", { key: "source" }, (A == null ? void 0 : A.segmentGroupName) || "Ungrouped"),
+          (A == null ? void 0 : A.segmentGroupKey) !== (S == null ? void 0 : S.segmentGroupKey) ? n("span", { key: "derived" }, `→ ${(S == null ? void 0 : S.segmentGroupName) || "Ungrouped"}`) : null
         ]),
         n(
           "h3",
           { key: "name", className: "mt-1 text-lg font-semibold leading-snug text-foreground" },
-          `${P.sourceTagName} → ${P.derivedTagName}`
+          `${D.sourceTagName} → ${D.derivedTagName}`
         ),
         n(
           "p",
           { key: "edges", className: "mt-2 text-sm text-secondary" },
-          `${P.edgeCount} materialized lineage edge${P.edgeCount === 1 ? "" : "s"}`
+          `${D.edgeCount} materialized lineage edge${D.edgeCount === 1 ? "" : "s"}`
         )
       ]),
-      (f == null ? void 0 : f.ruleId) === P.id ? n("div", { key: "offer", className: "space-y-2 rounded-md border border-accent/40 bg-accent/10 p-3" }, [
+      (f == null ? void 0 : f.ruleId) === D.id ? n("div", { key: "offer", className: "space-y-2 rounded-md border border-accent/40 bg-accent/10 p-3" }, [
         n(
           "p",
           { key: "summary", className: "text-sm font-medium text-foreground" },
@@ -8515,21 +8575,21 @@ function Md(e) {
             key: "materialize",
             type: "button",
             disabled: r,
-            onClick: () => v(P, f),
+            onClick: () => v(D, f),
             className: "rounded-md border border-accent bg-accent/20 px-3 py-1.5 text-sm font-medium text-foreground disabled:opacity-50"
           }, "Materialize now"),
           n("button", {
             key: "later",
             type: "button",
             disabled: r,
-            onClick: () => re(null),
+            onClick: () => J(null),
             className: o
           }, "Later")
         ])
       ]) : null,
       n("div", { key: "mappings", className: "space-y-2" }, [
         n("h4", { key: "title", className: "text-sm font-medium text-foreground" }, "Performer slot mappings"),
-        P.slotMappings.length === 0 ? n("p", { key: "empty", className: "text-xs text-secondary" }, "No performer slots are copied.") : P.slotMappings.map((k, H) => n("div", {
+        D.slotMappings.length === 0 ? n("p", { key: "empty", className: "text-xs text-secondary" }, "No performer slots are copied.") : D.slotMappings.map((k, q) => n("div", {
           key: `${k.sourceSlotDefinitionId}:${k.derivedSlotDefinitionId}`,
           className: "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-md border border-border bg-card p-2 text-xs"
         }, [
@@ -8551,13 +8611,13 @@ function Md(e) {
         n(
           "dd",
           { key: "created", className: "text-right text-foreground" },
-          P.createdAt ? new Date(P.createdAt).toLocaleDateString() : "Unknown"
+          D.createdAt ? new Date(D.createdAt).toLocaleDateString() : "Unknown"
         ),
         n("dt", { key: "updated-label", className: "text-secondary" }, "Updated"),
         n(
           "dd",
           { key: "updated", className: "text-right text-foreground" },
-          P.updatedAt ? new Date(P.updatedAt).toLocaleDateString() : "Unknown"
+          D.updatedAt ? new Date(D.updatedAt).toLocaleDateString() : "Unknown"
         )
       ]),
       n("div", { key: "actions", className: "flex flex-wrap gap-2" }, [
@@ -8565,33 +8625,33 @@ function Md(e) {
           key: "materialize",
           type: "button",
           disabled: r || d != null,
-          onClick: () => v(P),
+          onClick: () => v(D),
           className: o
         }, "Materialize pending"),
         n("button", {
           key: "edit",
           type: "button",
           disabled: r || d != null,
-          onClick: () => g(P),
+          onClick: () => g(D),
           className: "rounded-md border border-accent bg-accent/15 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent/25 disabled:opacity-50"
         }, "Edit rule"),
         n("button", {
           key: "delete",
           type: "button",
           disabled: r,
-          onClick: () => a(P),
+          onClick: () => a(D),
           className: `${o} text-red-300`
         }, "Delete")
       ])
     ]);
   }
-  function M() {
-    if (Me.length === 0)
+  function C() {
+    if (te.length === 0)
       return n("p", {
         className: "grid min-h-[26rem] place-items-center p-8 text-center text-sm text-secondary",
         role: "status"
       }, W ? "No derivation relationships match your search." : "No derivation rules.");
-    const E = U == null ? void 0 : U.tagId, S = /* @__PURE__ */ new Set();
+    const A = U == null ? void 0 : U.tagId, S = /* @__PURE__ */ new Set();
     return U && (S.add(U.tagId), p.connections.forEach((k) => {
       (k.sourceTagId === U.tagId || k.derivedTagId === U.tagId) && (S.add(k.sourceTagId), S.add(k.derivedTagId));
     })), n("div", {
@@ -8616,7 +8676,7 @@ function Md(e) {
       }, [
         ...p.groups.map((k) => n("div", {
           key: `group:${k.componentId}:${k.key}`,
-          className: `absolute rounded-xl border ${D === k.key ? "border-accent/60 bg-accent/5" : "border-border bg-surface/75"}`,
+          className: `absolute rounded-xl border ${R === k.key ? "border-accent/60 bg-accent/5" : "border-border bg-surface/75"}`,
           style: {
             left: `${k.x}px`,
             top: `${k.y}px`,
@@ -8644,31 +8704,31 @@ function Md(e) {
             orient: "auto-start-reverse"
           }, n("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "context-stroke" }))),
           ...p.connections.map((k) => {
-            const H = E === k.sourceTagId || E === k.derivedTagId, le = U != null, se = H ? "var(--color-accent)" : "var(--color-secondary)";
+            const q = A === k.sourceTagId || A === k.derivedTagId, ue = U != null, ae = q ? "var(--color-accent)" : "var(--color-secondary)";
             return n("path", {
               key: `${k.id}:visible`,
               d: k.path,
               fill: "none",
-              stroke: se,
-              strokeWidth: H ? 2.5 : 1.5,
-              opacity: le && !H ? 0.2 : 0.7,
+              stroke: ae,
+              strokeWidth: q ? 2.5 : 1.5,
+              opacity: ue && !q ? 0.2 : 0.7,
               markerEnd: `url(#${t})`
             });
           })
         ]),
         ...p.nodes.map((k) => {
-          const H = !W || k.name.toLocaleLowerCase().includes(W), le = U != null, se = S.has(k.tagId), te = (U == null ? void 0 : U.tagId) === k.tagId;
+          const q = !W || k.name.toLocaleLowerCase().includes(W), ue = U != null, ae = S.has(k.tagId), re = (U == null ? void 0 : U.tagId) === k.tagId;
           return n("button", {
             key: `node:${k.tagId}`,
             type: "button",
-            onClick: () => ce({ type: "node", id: k.tagId }),
-            className: `absolute z-20 overflow-hidden rounded-lg border px-3 py-2 text-left shadow-sm transition ${te ? "border-accent bg-accent/15 ring-2 ring-accent/25" : se ? "border-accent/70 bg-card" : "border-border bg-card hover:border-accent/60 hover:bg-muted/30"}`,
+            onClick: () => ge({ type: "node", id: k.tagId }),
+            className: `absolute z-20 overflow-hidden rounded-lg border px-3 py-2 text-left shadow-sm transition ${re ? "border-accent bg-accent/15 ring-2 ring-accent/25" : ae ? "border-accent/70 bg-card" : "border-border bg-card hover:border-accent/60 hover:bg-muted/30"}`,
             style: {
               left: `${k.x}px`,
               top: `${k.y}px`,
               width: `${k.width}px`,
               height: `${k.height}px`,
-              opacity: !H || le && !se ? 0.62 : 1
+              opacity: !q || ue && !ae ? 0.62 : 1
             },
             title: `${k.name} — ${k.segmentGroupName}`,
             "aria-label": `${k.name}, ${k.incomingRuleCount} incoming and ${k.outgoingRuleCount} outgoing derivation rules`
@@ -8682,13 +8742,13 @@ function Md(e) {
           ]);
         }),
         ...p.connections.filter((k) => k.rules.length > 1).map((k) => {
-          const H = p.nodes.find((se) => se.tagId === k.sourceTagId), le = p.nodes.find((se) => se.tagId === k.derivedTagId);
+          const q = p.nodes.find((ae) => ae.tagId === k.sourceTagId), ue = p.nodes.find((ae) => ae.tagId === k.derivedTagId);
           return n("div", {
             key: `bundle:${k.id}`,
             className: "pointer-events-none absolute z-20 rounded-full border border-amber-500/40 bg-surface px-2 py-0.5 text-[10px] font-medium text-amber-200 shadow",
             style: {
-              left: `${(H.x + H.width + le.x) / 2 - 24}px`,
-              top: `${(H.y + H.height / 2 + le.y + le.height / 2) / 2 - 10}px`
+              left: `${(q.x + q.width + ue.x) / 2 - 24}px`,
+              top: `${(q.y + q.height / 2 + ue.y + ue.height / 2) / 2 - 10}px`
             },
             "aria-label": `${k.rules.length} rules connect ${k.rules[0].sourceTagName} to ${k.rules[0].derivedTagName}`
           }, `${k.rules.length} rules`);
@@ -8697,33 +8757,33 @@ function Md(e) {
     ]);
   }
   function x() {
-    if (Me.length === 0)
+    if (te.length === 0)
       return n(
         "p",
         { className: "p-8 text-center text-sm text-secondary", role: "status" },
         W ? "No derivation relationships match your search." : "No derivation rules."
       );
-    const E = /* @__PURE__ */ new Map();
+    const A = /* @__PURE__ */ new Map();
     Q.forEach((k) => {
-      const H = Se(k);
-      E.has(H) || E.set(H, []), E.get(H).push(k);
+      const q = le(k);
+      A.has(q) || A.set(q, []), A.get(q).push(k);
     });
     const S = [
       ...y.segmentGroups.map((k) => k.key),
       "cross-group"
-    ].filter((k) => E.has(k));
+    ].filter((k) => A.has(k));
     return n("div", { className: "overflow-auto", style: { maxHeight: "42rem" } }, S.map((k) => {
-      const H = y.segmentGroups.find((te) => te.key === k), le = k === "cross-group" ? "Cross-group relationships" : (H == null ? void 0 : H.name) || "Ungrouped", se = E.get(k);
-      return n("section", { key: k, "aria-label": le }, [
+      const q = y.segmentGroups.find((re) => re.key === k), ue = k === "cross-group" ? "Cross-group relationships" : (q == null ? void 0 : q.name) || "Ungrouped", ae = A.get(k);
+      return n("section", { key: k, "aria-label": ue }, [
         n("div", { key: "heading", className: "sticky top-0 z-10 flex items-center justify-between border-y border-border bg-surface/95 px-3 py-2 backdrop-blur" }, [
-          n("h4", { key: "title", className: "text-xs font-semibold uppercase tracking-wide text-secondary" }, le),
+          n("h4", { key: "title", className: "text-xs font-semibold uppercase tracking-wide text-secondary" }, ue),
           n(
             "span",
             { key: "count", className: "text-xs text-secondary" },
-            `${se.length} rule${se.length === 1 ? "" : "s"}`
+            `${ae.length} rule${ae.length === 1 ? "" : "s"}`
           )
         ]),
-        n("div", { key: "table", role: "table", "aria-label": `${le} derivation rules` }, [
+        n("div", { key: "table", role: "table", "aria-label": `${ue} derivation rules` }, [
           n("div", {
             key: "header",
             role: "row",
@@ -8734,21 +8794,21 @@ function Md(e) {
             n("span", { key: "mappings", role: "columnheader" }, "Slot mappings"),
             n("span", { key: "materialized", role: "columnheader", className: "text-right" }, "Materialized")
           ]),
-          ...se.map((te) => n("button", {
-            key: te.id,
+          ...ae.map((re) => n("button", {
+            key: re.id,
             type: "button",
             role: "row",
-            onClick: () => ce({ type: "rule", id: te.id }),
-            className: `grid w-full gap-3 border-b border-border px-3 py-3 text-left text-sm hover:bg-muted/30 ${(P == null ? void 0 : P.id) === te.id ? "bg-accent/10" : ""}`,
+            onClick: () => ge({ type: "rule", id: re.id }),
+            className: `grid w-full gap-3 border-b border-border px-3 py-3 text-left text-sm hover:bg-muted/30 ${(D == null ? void 0 : D.id) === re.id ? "bg-accent/10" : ""}`,
             style: { gridTemplateColumns: "minmax(15rem, 1fr) 7rem 7rem" }
           }, [
             n(
               "span",
-              { key: "relationship", role: "cell", className: "min-w-0 truncate font-medium text-foreground", title: `${te.sourceTagName} → ${te.derivedTagName}` },
-              `${te.sourceTagName} → ${te.derivedTagName}`
+              { key: "relationship", role: "cell", className: "min-w-0 truncate font-medium text-foreground", title: `${re.sourceTagName} → ${re.derivedTagName}` },
+              `${re.sourceTagName} → ${re.derivedTagName}`
             ),
-            n("span", { key: "mappings", role: "cell", className: "text-secondary" }, String(te.slotMappings.length)),
-            n("span", { key: "materialized", role: "cell", className: "text-right text-secondary" }, String(te.edgeCount))
+            n("span", { key: "mappings", role: "cell", className: "text-secondary" }, String(re.slotMappings.length)),
+            n("span", { key: "materialized", role: "cell", className: "text-right text-secondary" }, String(re.edgeCount))
           ]))
         ])
       ]);
@@ -8769,7 +8829,7 @@ function Md(e) {
         n(
           "p",
           { key: "summary", className: "mt-2 text-xs text-secondary" },
-          `${$.length} rules · ${y.nodes.length} tags`
+          `${M.length} rules · ${y.nodes.length} tags`
         )
       ]),
       n("button", {
@@ -8777,7 +8837,7 @@ function Md(e) {
         type: "button",
         disabled: r || d != null,
         onClick: () => {
-          C(u()), ce(null), A();
+          $(u()), ge(null), T();
         },
         className: "rounded-md border border-accent bg-accent/15 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent/25 disabled:opacity-50"
       }, "Add rule")
@@ -8788,9 +8848,9 @@ function Md(e) {
         n("input", {
           key: "input",
           type: "search",
-          value: R,
-          onChange: (E) => {
-            ee(E.target.value), ce(null);
+          value: j,
+          onChange: (A) => {
+            se(A.target.value), ge(null);
           },
           placeholder: "Find a tag or relationship…",
           "aria-label": "Search derivation rules",
@@ -8801,24 +8861,24 @@ function Md(e) {
         n("span", { key: "label" }, "Segment group"),
         n("select", {
           key: "select",
-          value: D,
+          value: R,
           disabled: d != null,
-          onChange: (E) => {
-            we(E.target.value), ce(null), C(null);
+          onChange: (A) => {
+            me(A.target.value), ge(null), $(null);
           },
           "aria-label": "Segment group",
           className: "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground disabled:opacity-50"
         }, [
           n("option", { key: "all", value: "all" }, "All Segment groups"),
-          ...y.segmentGroups.map((E) => n("option", { key: E.key, value: E.key }, E.name))
+          ...y.segmentGroups.map((A) => n("option", { key: A.key, value: A.key }, A.name))
         ])
       ]),
-      ue === "list" ? n("label", { key: "sort", className: "min-w-[10rem] space-y-1 text-xs text-secondary" }, [
+      z === "list" ? n("label", { key: "sort", className: "min-w-[10rem] space-y-1 text-xs text-secondary" }, [
         n("span", { key: "label" }, "Sort"),
         n("select", {
           key: "select",
-          value: b,
-          onChange: (E) => F(E.target.value),
+          value: h,
+          onChange: (A) => P(A.target.value),
           className: "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
         }, [
           n("option", { key: "relationship", value: "relationship" }, "Relationship"),
@@ -8833,14 +8893,14 @@ function Md(e) {
         [
           ["graph", "Graph"],
           ["list", "List"]
-        ].map(([E, S]) => n("button", {
-          key: E,
+        ].map(([A, S]) => n("button", {
+          key: A,
           type: "button",
           onClick: () => {
-            T(E), E === "graph" && (V == null ? void 0 : V.type) === "rule" && ce(null);
+            B(A), A === "graph" && (V == null ? void 0 : V.type) === "rule" && ge(null);
           },
-          "aria-pressed": ue === E,
-          className: `rounded px-3 py-1.5 text-sm font-medium ${ue === E ? "bg-accent/20 text-foreground" : "text-secondary hover:text-foreground"}`
+          "aria-pressed": z === A,
+          className: `rounded px-3 py-1.5 text-sm font-medium ${z === A ? "bg-accent/20 text-foreground" : "text-secondary hover:text-foreground"}`
         }, S))
       )
     ]),
@@ -8858,7 +8918,7 @@ function Md(e) {
       n(
         "div",
         { key: "visualization", className: "min-w-0 border-r border-border" },
-        ue === "graph" ? M() : x()
+        z === "graph" ? C() : x()
       ),
       n("aside", {
         key: "details",
@@ -8867,27 +8927,27 @@ function Md(e) {
         "aria-label": "Rule details"
       }, [
         n("div", { key: "heading", className: "border-b border-border px-4 py-3 text-sm font-semibold text-foreground" }, "Rule details"),
-        d ? h() : K()
+        d ? b() : K()
       ])
     ])),
     n("div", { key: "footer", className: "flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3" }, [
       N ? n("p", { key: "message", role: "status", className: "text-sm text-secondary" }, N) : null
     ]),
-    i ? n(Vr, {
+    i ? n(Jr, {
       key: `derivation-configure-tag:${i.tagId}`,
       tagId: i.tagId,
       tagName: i.tagName,
-      onSaved: () => _(i),
+      onSaved: () => F(i),
       onClose: () => {
-        const E = i.trigger;
+        const A = i.trigger;
         I(null), requestAnimationFrame(() => {
-          E != null && E.isConnected && E.focus();
+          A != null && A.isConnected && A.focus();
         });
       }
     }) : null
   ]);
 }
-function Ad({ segmentGroups: e = [], onSegmentGroupsChanged: t }) {
+function Ld({ segmentGroups: e = [], onSegmentGroupsChanged: t }) {
   const r = () => ({
     ruleId: null,
     sourceTagId: null,
@@ -8896,38 +8956,38 @@ function Ad({ segmentGroups: e = [], onSegmentGroupsChanged: t }) {
     derivedTagName: "",
     slotMappings: [],
     slotMappingsSuggested: !1
-  }), [o, i] = j([]), [a, s] = j(null), [l, d] = j([]), [c, g] = j([]), [m, u] = j(!1), [y, p] = j(!1), [b, f] = j(!1), [w, v] = j(""), [N, W] = j(""), [R, _] = j("graph"), [A, $] = j("all"), [O, D] = j(null), [U, P] = j("relationship"), [V, I] = j(null), [C, F] = j(null), re = pe(null), ee = pe(null), we = Ca().replace(/:/g, "");
-  function ce() {
+  }), [o, i] = L([]), [a, s] = L(null), [l, d] = L([]), [c, g] = L([]), [m, u] = L(!1), [y, p] = L(!1), [h, f] = L(!1), [w, v] = L(""), [N, W] = L(""), [j, F] = L("graph"), [T, M] = L("all"), [E, R] = L(null), [U, D] = L("relationship"), [V, I] = L(null), [$, P] = L(null), J = pe(null), se = pe(null), me = Ta().replace(/:/g, "");
+  function ge() {
     requestAnimationFrame(() => {
-      var q;
-      return (q = re.current) == null ? void 0 : q.scrollIntoView({ block: "nearest" });
+      var H;
+      return (H = J.current) == null ? void 0 : H.scrollIntoView({ block: "nearest" });
     });
   }
-  async function T(q) {
-    const X = await Z("/derivation-rules", q ? { signal: q } : void 0);
-    i(X || []);
+  async function B(H) {
+    const ee = await Z("/derivation-rules", H ? { signal: H } : void 0);
+    i(ee || []);
   }
-  ye(() => {
-    const q = new AbortController();
-    return T(q.signal).catch((X) => {
-      X.name !== "AbortError" && v(X.message || "Unable to load derived segment rules.");
-    }), () => q.abort();
-  }, []), ye(() => {
-    const q = new AbortController();
-    return a != null && a.sourceTagId ? (u(!0), Z(`/slot-definitions/${a.sourceTagId}`, { signal: q.signal }).then((X) => d(X.definitions || [])).catch((X) => {
-      X.name !== "AbortError" && d([]);
+  fe(() => {
+    const H = new AbortController();
+    return B(H.signal).catch((ee) => {
+      ee.name !== "AbortError" && v(ee.message || "Unable to load derived segment rules.");
+    }), () => H.abort();
+  }, []), fe(() => {
+    const H = new AbortController();
+    return a != null && a.sourceTagId ? (u(!0), Z(`/slot-definitions/${a.sourceTagId}`, { signal: H.signal }).then((ee) => d(ee.definitions || [])).catch((ee) => {
+      ee.name !== "AbortError" && d([]);
     }).finally(() => {
-      q.signal.aborted || u(!1);
-    })) : (d([]), u(!1)), a != null && a.derivedTagId ? (p(!0), Z(`/slot-definitions/${a.derivedTagId}`, { signal: q.signal }).then((X) => g(X.definitions || [])).catch((X) => {
-      X.name !== "AbortError" && g([]);
+      H.signal.aborted || u(!1);
+    })) : (d([]), u(!1)), a != null && a.derivedTagId ? (p(!0), Z(`/slot-definitions/${a.derivedTagId}`, { signal: H.signal }).then((ee) => g(ee.definitions || [])).catch((ee) => {
+      ee.name !== "AbortError" && g([]);
     }).finally(() => {
-      q.signal.aborted || p(!1);
-    })) : (g([]), p(!1)), () => q.abort();
-  }, [a == null ? void 0 : a.sourceTagId, a == null ? void 0 : a.derivedTagId]), ye(() => {
+      H.signal.aborted || p(!1);
+    })) : (g([]), p(!1)), () => H.abort();
+  }, [a == null ? void 0 : a.sourceTagId, a == null ? void 0 : a.derivedTagId]), fe(() => {
     if (!(a != null && a.sourceTagId) || !(a != null && a.derivedTagId) || a.ruleId != null || m || y)
       return;
-    const q = `${a.sourceTagId}:${a.derivedTagId}`;
-    ee.current !== q && (ee.current = q, s((X) => !X || Number(X.sourceTagId) !== Number(a.sourceTagId) || Number(X.derivedTagId) !== Number(a.derivedTagId) ? X : cl(X, l, c)));
+    const H = `${a.sourceTagId}:${a.derivedTagId}`;
+    se.current !== H && (se.current = H, s((ee) => !ee || Number(ee.sourceTagId) !== Number(a.sourceTagId) || Number(ee.derivedTagId) !== Number(a.derivedTagId) ? ee : yl(ee, l, c)));
   }, [
     a == null ? void 0 : a.ruleId,
     a == null ? void 0 : a.sourceTagId,
@@ -8937,72 +8997,72 @@ function Ad({ segmentGroups: e = [], onSegmentGroupsChanged: t }) {
     m,
     y
   ]);
-  function Q(q, X = !1) {
-    X || D({ type: "rule", id: q.id }), ee.current = null, s({
-      ruleId: q.id,
-      sourceTagId: q.sourceTagId,
-      sourceTagName: q.sourceTagName,
-      derivedTagId: q.derivedTagId,
-      derivedTagName: q.derivedTagName,
-      slotMappings: q.slotMappings.map((J) => ({
-        sourceSlotDefinitionId: J.sourceSlotDefinitionId,
-        derivedSlotDefinitionId: J.derivedSlotDefinitionId
+  function Q(H, ee = !1) {
+    ee || R({ type: "rule", id: H.id }), se.current = null, s({
+      ruleId: H.id,
+      sourceTagId: H.sourceTagId,
+      sourceTagName: H.sourceTagName,
+      derivedTagId: H.derivedTagId,
+      derivedTagName: H.derivedTagName,
+      slotMappings: H.slotMappings.map((Y) => ({
+        sourceSlotDefinitionId: Y.sourceSlotDefinitionId,
+        derivedSlotDefinitionId: Y.derivedSlotDefinitionId
       })),
       slotMappingsSuggested: !1
-    }), v(""), ce();
+    }), v(""), ge();
   }
-  function oe(q, X, J = "") {
-    ee.current = null, q === "source" ? (d([]), u(X != null)) : (g([]), p(X != null)), s((L) => ({
-      ...L,
-      [`${q}TagId`]: X == null ? null : Number(X),
-      [`${q}TagName`]: J || "",
+  function de(H, ee, Y = "") {
+    se.current = null, H === "source" ? (d([]), u(ee != null)) : (g([]), p(ee != null)), s((O) => ({
+      ...O,
+      [`${H}TagId`]: ee == null ? null : Number(ee),
+      [`${H}TagName`]: Y || "",
       slotMappings: [],
       slotMappingsSuggested: !1
     }));
   }
-  async function fe(q) {
-    (a == null ? void 0 : a.ruleId) == null && (ee.current = null);
-    const X = [T(), t == null ? void 0 : t()];
-    return q.draftKind === "source" ? (u(!0), X.push(Z(`/slot-definitions/${q.tagId}`).then((J) => d(J.definitions || [])).finally(() => u(!1)))) : q.draftKind === "derived" && (p(!0), X.push(Z(`/slot-definitions/${q.tagId}`).then((J) => g(J.definitions || [])).finally(() => p(!1)))), Promise.all(X);
+  async function oe(H) {
+    (a == null ? void 0 : a.ruleId) == null && (se.current = null);
+    const ee = [B(), t == null ? void 0 : t()];
+    return H.draftKind === "source" ? (u(!0), ee.push(Z(`/slot-definitions/${H.tagId}`).then((Y) => d(Y.definitions || [])).finally(() => u(!1)))) : H.draftKind === "derived" && (p(!0), ee.push(Z(`/slot-definitions/${H.tagId}`).then((Y) => g(Y.definitions || [])).finally(() => p(!1)))), Promise.all(ee);
   }
-  function ie(q, X, J) {
-    s((L) => ({
-      ...L,
-      slotMappings: L.slotMappings.map((ne, me) => me === q ? { ...ne, [X]: J } : ne)
+  function xe(H, ee, Y) {
+    s((O) => ({
+      ...O,
+      slotMappings: O.slotMappings.map((ne, ye) => ye === H ? { ...ne, [ee]: Y } : ne)
     }));
   }
-  async function B() {
+  async function ke() {
     if (!(a != null && a.sourceTagId) || !(a != null && a.derivedTagId)) return;
-    const q = Wo(a, o);
-    if (q) {
-      v(q.message);
+    const H = Jo(a, o);
+    if (H) {
+      v(H.message);
       return;
     }
-    if (a.slotMappings.some((X) => !X.sourceSlotDefinitionId || !X.derivedSlotDefinitionId)) {
+    if (a.slotMappings.some((ee) => !ee.sourceSlotDefinitionId || !ee.derivedSlotDefinitionId)) {
       v("Complete or remove every performer slot mapping before saving.");
       return;
     }
     f(!0), v(a.ruleId == null ? "Saving derived segment rule…" : "Previewing materializations that must be removed…");
     try {
-      let X = null;
+      let ee = null;
       if (a.ruleId != null) {
-        const L = await Z(
+        const O = await Z(
           `/derivation-rules/${a.ruleId}/deletion/preview`,
           { method: "POST" }
         );
         if (!window.confirm(
           `Saving this rule removes its existing materializations.
 
-Deleted segments: ${L.deletedSegmentCount}
-Removed lineage edges: ${L.removedEdgeCount}
-Shared derived segments retained: ${L.retainedSharedSegmentCount}
+Deleted segments: ${O.deletedSegmentCount}
+Removed lineage edges: ${O.removedEdgeCount}
+Shared derived segments retained: ${O.retainedSharedSegmentCount}
 
 Continue saving?`
         )) return;
-        X = L.fingerprint;
+        ee = O.fingerprint;
       }
       v("Saving derived segment rule…");
-      const J = await Z("/derivation-rules", {
+      const Y = await Z("/derivation-rules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -9010,177 +9070,177 @@ Continue saving?`
           sourceTagId: a.sourceTagId,
           derivedTagId: a.derivedTagId,
           slotMappings: a.slotMappings,
-          cleanupFingerprint: X
+          cleanupFingerprint: ee
         })
       });
-      if (await T(), D(R === "graph" ? { type: "node", id: Number(J.sourceTagId) } : { type: "rule", id: J.id }), s(null), a.ruleId == null)
+      if (await B(), R(j === "graph" ? { type: "node", id: Number(Y.sourceTagId) } : { type: "rule", id: Y.id }), s(null), a.ruleId == null)
         try {
-          const L = await Z(
-            `/derivation-rules/${J.id}/materialization/preview`,
+          const O = await Z(
+            `/derivation-rules/${Y.id}/materialization/preview`,
             { method: "POST" }
           );
           I(
-            L.createCount + L.linkCount > 0 ? L : null
-          ), v(L.createCount + L.linkCount > 0 ? "Rule saved. Its pending derivations can be materialized now or later." : "Derived segment rule saved; every applicable derivation is already materialized.");
+            O.createCount + O.linkCount > 0 ? O : null
+          ), v(O.createCount + O.linkCount > 0 ? "Rule saved. Its pending derivations can be materialized now or later." : "Derived segment rule saved; every applicable derivation is already materialized.");
         } catch {
           I(null), v("Rule saved. Pending derivations can be materialized from the rule later.");
         }
       else
         I(null), v("Derived segment rule saved. Previous materializations were removed.");
-    } catch (X) {
-      v(X.message || "Unable to save derived segment rule.");
+    } catch (ee) {
+      v(ee.message || "Unable to save derived segment rule.");
     } finally {
       f(!1);
     }
   }
-  async function ue(q) {
+  async function z(H) {
     f(!0), v("Previewing rule deletion…");
     try {
-      const X = await Z(
-        `/derivation-rules/${q.id}/deletion/preview`,
+      const ee = await Z(
+        `/derivation-rules/${H.id}/deletion/preview`,
         { method: "POST" }
       );
       if (!window.confirm(
-        `Delete ${q.sourceTagName} → ${q.derivedTagName}?
+        `Delete ${H.sourceTagName} → ${H.derivedTagName}?
 
-Deleted segments: ${X.deletedSegmentCount}
-Removed lineage edges: ${X.removedEdgeCount}
-Shared derived segments retained: ${X.retainedSharedSegmentCount}
+Deleted segments: ${ee.deletedSegmentCount}
+Removed lineage edges: ${ee.removedEdgeCount}
+Shared derived segments retained: ${ee.retainedSharedSegmentCount}
 
 This cannot be undone.`
       )) return;
-      const J = `derivation-rule-delete:${q.id}:${X.fingerprint}`;
-      await Z(`/derivation-rules/${q.id}`, {
+      const Y = `derivation-rule-delete:${H.id}:${ee.fingerprint}`;
+      await Z(`/derivation-rules/${H.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(J),
-          fingerprint: X.fingerprint
+          operationId: Le(Y),
+          fingerprint: ee.fingerprint
         })
-      }), Oe(J), await T(), (a == null ? void 0 : a.ruleId) === q.id && s(null), (O == null ? void 0 : O.type) === "rule" && O.id === q.id && D(null), (V == null ? void 0 : V.ruleId) === q.id && I(null), v(`Rule deleted with ${X.deletedSegmentCount} exclusively derived segment${X.deletedSegmentCount === 1 ? "" : "s"}.`);
-    } catch (X) {
-      v(X.message || "Unable to delete derived segment rule.");
+      }), Fe(Y), await B(), (a == null ? void 0 : a.ruleId) === H.id && s(null), (E == null ? void 0 : E.type) === "rule" && E.id === H.id && R(null), (V == null ? void 0 : V.ruleId) === H.id && I(null), v(`Rule deleted with ${ee.deletedSegmentCount} exclusively derived segment${ee.deletedSegmentCount === 1 ? "" : "s"}.`);
+    } catch (ee) {
+      v(ee.message || "Unable to delete derived segment rule.");
     } finally {
       f(!1);
     }
   }
-  async function Me(q, X = null) {
-    const J = X || await Z(
-      `/derivation-rules/${q.id}/materialization/preview`,
+  async function te(H, ee = null) {
+    const Y = ee || await Z(
+      `/derivation-rules/${H.id}/materialization/preview`,
       { method: "POST" }
     );
-    if (J.createCount + J.linkCount === 0)
+    if (Y.createCount + Y.linkCount === 0)
       return { createdCount: 0, linkedCount: 0 };
-    const L = `derivation-rule-materialize:${q.id}:${J.fingerprint}`, ne = await Z(`/derivation-rules/${q.id}/materialize`, {
+    const O = `derivation-rule-materialize:${H.id}:${Y.fingerprint}`, ne = await Z(`/derivation-rules/${H.id}/materialize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        operationId: Re(L),
-        fingerprint: J.fingerprint
+        operationId: Le(O),
+        fingerprint: Y.fingerprint
       })
     });
-    return Oe(L), ne;
+    return Fe(O), ne;
   }
-  async function Y(q, X = null) {
+  async function X(H, ee = null) {
     f(!0), v("Finding pending derivations…");
     try {
-      const J = await Me(q, X);
-      if (I(null), await T(), J.createdCount + J.linkedCount === 0) {
+      const Y = await te(H, ee);
+      if (I(null), await B(), Y.createdCount + Y.linkedCount === 0) {
         v("Every applicable derivation is already materialized.");
         return;
       }
       v(
-        `${J.createdCount} derived segment${J.createdCount === 1 ? "" : "s"} created and ${J.linkedCount} existing segment${J.linkedCount === 1 ? "" : "s"} linked.`
+        `${Y.createdCount} derived segment${Y.createdCount === 1 ? "" : "s"} created and ${Y.linkedCount} existing segment${Y.linkedCount === 1 ? "" : "s"} linked.`
       );
-    } catch (J) {
-      v(J.message || "Unable to materialize pending derivations.");
+    } catch (Y) {
+      v(Y.message || "Unable to materialize pending derivations.");
     } finally {
       f(!1);
     }
   }
-  async function Se(q, X) {
-    if (X.length === 0) return;
-    f(!0), v(`Finding pending derivations from ${q.name}…`);
-    let J = 0, L = 0;
+  async function le(H, ee) {
+    if (ee.length === 0) return;
+    f(!0), v(`Finding pending derivations from ${H.name}…`);
+    let Y = 0, O = 0;
     try {
-      for (const ne of X) {
-        const me = await Me(ne);
-        J += me.createdCount, L += me.linkedCount;
+      for (const ne of ee) {
+        const ye = await te(ne);
+        Y += ye.createdCount, O += ye.linkedCount;
       }
-      I(null), await T(), v(J + L === 0 ? `Every outgoing derivation from ${q.name} is already materialized.` : `${J} derived segment${J === 1 ? "" : "s"} created and ${L} existing segment${L === 1 ? "" : "s"} linked from ${q.name}.`);
+      I(null), await B(), v(Y + O === 0 ? `Every outgoing derivation from ${H.name} is already materialized.` : `${Y} derived segment${Y === 1 ? "" : "s"} created and ${O} existing segment${O === 1 ? "" : "s"} linked from ${H.name}.`);
     } catch (ne) {
-      await T().catch(() => {
-      }), v(ne.message || `Unable to materialize derivations from ${q.name}.`);
+      await B().catch(() => {
+      }), v(ne.message || `Unable to materialize derivations from ${H.name}.`);
     } finally {
       f(!1);
     }
   }
-  const h = Wo(a, o), K = Be(
-    () => Id(o, e),
+  const b = Jo(a, o), K = Ge(
+    () => Ad(o, e),
     [o, e]
-  ), M = N.trim().toLocaleLowerCase(), E = K.components.filter((q) => A === "all" || q.segmentGroupKeys.includes(A)).filter((q) => !M || q.nodes.some((X) => X.name.toLocaleLowerCase().includes(M))), S = E.flatMap((q) => q.rules), k = new Set(
-    E.flatMap((q) => q.nodes.map((X) => X.tagId))
-  ), H = Be(
-    () => $d(E),
-    [E]
-  ), le = R === "list" ? Td(
-    O,
+  ), C = N.trim().toLocaleLowerCase(), A = K.components.filter((H) => T === "all" || H.segmentGroupKeys.includes(T)).filter((H) => !C || H.nodes.some((ee) => ee.name.toLocaleLowerCase().includes(C))), S = A.flatMap((H) => H.rules), k = new Set(
+    A.flatMap((H) => H.nodes.map((ee) => ee.tagId))
+  ), q = Ge(
+    () => Dd(A),
+    [A]
+  ), ue = j === "list" ? Od(
+    E,
     S,
-    M.length > 0
-  ) : null, se = (O == null ? void 0 : O.type) === "node" && K.nodes.find((q) => q.tagId === O.id && k.has(q.tagId)) || null, te = [...S].sort((q, X) => U === "source" ? Qe(q.sourceTagName, X.sourceTagName) || Qe(q.derivedTagName, X.derivedTagName) : U === "target" ? Qe(q.derivedTagName, X.derivedTagName) || Qe(q.sourceTagName, X.sourceTagName) : U === "materialized" ? (Number(X.edgeCount) || 0) - (Number(q.edgeCount) || 0) || Qe(q.sourceTagName, X.sourceTagName) : Qe(
-    `${q.sourceTagName} ${q.derivedTagName}`,
-    `${X.sourceTagName} ${X.derivedTagName}`
+    C.length > 0
+  ) : null, ae = (E == null ? void 0 : E.type) === "node" && K.nodes.find((H) => H.tagId === E.id && k.has(H.tagId)) || null, re = [...S].sort((H, ee) => U === "source" ? Ze(H.sourceTagName, ee.sourceTagName) || Ze(H.derivedTagName, ee.derivedTagName) : U === "target" ? Ze(H.derivedTagName, ee.derivedTagName) || Ze(H.sourceTagName, ee.sourceTagName) : U === "materialized" ? (Number(ee.edgeCount) || 0) - (Number(H.edgeCount) || 0) || Ze(H.sourceTagName, ee.sourceTagName) : Ze(
+    `${H.sourceTagName} ${H.derivedTagName}`,
+    `${ee.sourceTagName} ${ee.derivedTagName}`
   ));
-  return n(Md, {
-    arrowMarkerId: we,
-    busy: b,
+  return n(Pd, {
+    arrowMarkerId: me,
+    busy: h,
     buttonClass: "rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted/40 disabled:opacity-50",
-    configuringTag: C,
-    deleteRule: ue,
+    configuringTag: $,
+    deleteRule: z,
     derivedSlots: c,
     derivedSlotsLoading: y,
     draft: a,
-    draftIssue: h,
+    draftIssue: b,
     editRule: Q,
-    editorRef: re,
+    editorRef: J,
     emptyDraft: r,
     graph: K,
-    layout: H,
+    layout: q,
     listSort: U,
     materializationOffer: V,
-    materializeOutgoingRules: Se,
-    materializeRule: Y,
+    materializeOutgoingRules: le,
+    materializeRule: X,
     message: w,
-    normalizedQuery: M,
+    normalizedQuery: C,
     query: N,
-    refreshConfiguredTag: fe,
-    revealEditor: ce,
+    refreshConfiguredTag: oe,
+    revealEditor: ge,
     rules: o,
-    save: B,
-    segmentGroupKey: A,
-    selectedNode: se,
-    selectedRule: le,
-    selection: O,
-    setConfiguringTag: F,
+    save: ke,
+    segmentGroupKey: T,
+    selectedNode: ae,
+    selectedRule: ue,
+    selection: E,
+    setConfiguringTag: P,
     setDraft: s,
-    setListSort: P,
+    setListSort: D,
     setMaterializationOffer: I,
     setQuery: W,
-    setSegmentGroupKey: $,
-    setSelection: D,
-    setView: _,
-    sortedVisibleRules: te,
+    setSegmentGroupKey: M,
+    setSelection: R,
+    setView: F,
+    sortedVisibleRules: re,
     sourceSlots: l,
     sourceSlotsLoading: m,
-    updateMapping: ie,
-    updateTag: oe,
-    view: R,
-    visibleComponents: E,
+    updateMapping: xe,
+    updateTag: de,
+    view: j,
+    visibleComponents: A,
     visibleRules: S
   });
 }
-function Rd() {
-  const [e, t] = j(xa), r = [
+function Fd() {
+  const [e, t] = L(ka), r = [
     ["smallSeekTime", "Small seek (seconds)", 0.1, 60, 0.5],
     ["mediumSeekTime", "Medium seek (seconds)", 0.1, 120, 0.5],
     ["longSeekTime", "Long seek (seconds)", 1, 300, 1],
@@ -9189,10 +9249,10 @@ function Rd() {
     ["longFrameStep", "Long frame step (frames)", 1, 300, 1]
   ];
   function o(a, s) {
-    t((l) => $o({ ...l, [a]: s }));
+    t((l) => Ro({ ...l, [a]: s }));
   }
   function i() {
-    t($o(Br));
+    t(Ro(Gr));
   }
   return n("section", { className: "space-y-3 rounded-lg border border-border bg-surface p-4", "aria-labelledby": "segment-studio-playback-shortcuts-title" }, [
     n("div", { key: "heading", className: "flex flex-wrap items-start justify-between gap-3" }, [
@@ -9217,15 +9277,15 @@ function Rd() {
     ])))
   ]);
 }
-function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
-  const [o, i] = j([]), [a, s] = j(!1), [l, d] = j(!1), [c, g] = j(""), [m, u] = j(""), [y, p] = j("all"), [b, f] = j(() => /* @__PURE__ */ new Set()), [w, v] = j(null);
-  ye(() => {
+function jd({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
+  const [o, i] = L([]), [a, s] = L(!1), [l, d] = L(!1), [c, g] = L(""), [m, u] = L(""), [y, p] = L("all"), [h, f] = L(() => /* @__PURE__ */ new Set()), [w, v] = L(null);
+  fe(() => {
     if (!e || a) return;
     const I = new AbortController();
-    return d(!0), g(""), Z("/slot-definitions", { signal: I.signal }).then((C) => {
-      i(C || []), s(!0);
-    }).catch((C) => {
-      C.name !== "AbortError" && g(C.message || "Unable to load performer slot definitions.");
+    return d(!0), g(""), Z("/slot-definitions", { signal: I.signal }).then(($) => {
+      i($ || []), s(!0);
+    }).catch(($) => {
+      $.name !== "AbortError" && g($.message || "Unable to load performer slot definitions.");
     }).finally(() => {
       I.signal.aborted || d(!1);
     }), () => I.abort();
@@ -9248,25 +9308,25 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
     ]);
     i(I || []), s(!0), g("");
   }
-  function R() {
+  function j() {
     const I = w == null ? void 0 : w.trigger;
     v(null), requestAnimationFrame(() => {
       I != null && I.isConnected && I.focus({ preventScroll: !0 });
     });
   }
-  function _(I) {
-    f((C) => {
-      const F = new Set(C);
-      return F.has(I) ? F.delete(I) : F.add(I), F;
+  function F(I) {
+    f(($) => {
+      const P = new Set($);
+      return P.has(I) ? P.delete(I) : P.add(I), P;
     });
   }
-  const A = Be(
-    () => wd(t, o),
+  const T = Ge(
+    () => Rd(t, o),
     [t, o]
-  ), $ = Be(
-    () => Nd(A, m, y),
-    [A, m, y]
-  ), O = A.flatMap((I) => I.tags), D = O.filter((I) => I.definitions.length > 0).length, U = O.length - D, P = [
+  ), M = Ge(
+    () => Md(T, m, y),
+    [T, m, y]
+  ), E = T.flatMap((I) => I.tags), R = E.filter((I) => I.definitions.length > 0).length, U = E.length - R, D = [
     ["all", "All"],
     ["with", "With slots"],
     ["without", "Without slots"]
@@ -9285,7 +9345,7 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
       a ? n(
         "p",
         { key: "summary", className: "mt-2 text-xs text-secondary" },
-        `${O.length} tags · ${D} with slots · ${U} without slots`
+        `${E.length} tags · ${R} with slots · ${U} without slots`
       ) : null
     ]),
     n("div", { key: "toolbar", className: "flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-3" }, [
@@ -9306,13 +9366,13 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
         n(
           "div",
           { key: "choices", role: "group", "aria-label": "Performer slot coverage", className: "inline-flex rounded-md border border-border bg-card p-0.5" },
-          P.map(([I, C]) => n("button", {
+          D.map(([I, $]) => n("button", {
             key: I,
             type: "button",
             onClick: () => p(I),
             "aria-pressed": y === I,
             className: `rounded px-3 py-1.5 text-xs font-medium ${y === I ? "bg-accent/20 text-foreground" : "text-secondary hover:text-foreground"}`
-          }, C))
+          }, $))
         )
       ]),
       n("div", { key: "group-actions", className: "ml-auto flex items-center gap-2" }, [
@@ -9325,7 +9385,7 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
         n("button", {
           key: "collapse",
           type: "button",
-          onClick: () => f(new Set(A.map((I) => I.overviewKey))),
+          onClick: () => f(new Set(T.map((I) => I.overviewKey))),
           className: V
         }, "Collapse all")
       ])
@@ -9345,13 +9405,13 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
         className: "rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
       }, "Retry")
     ]) : null,
-    a && $.length === 0 ? n(
+    a && M.length === 0 ? n(
       "p",
       { key: "empty", role: "status", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" },
       "No tags match the current search and coverage filter."
     ) : null,
-    a ? n("div", { key: "groups", className: "space-y-3" }, $.map((I) => {
-      const C = b.has(I.overviewKey), F = I.tags.filter((re) => re.definitions.length > 0).length;
+    a ? n("div", { key: "groups", className: "space-y-3" }, M.map((I) => {
+      const $ = h.has(I.overviewKey), P = I.tags.filter((J) => J.definitions.length > 0).length;
       return n("article", {
         key: I.overviewKey,
         className: "overflow-hidden rounded-lg border border-border bg-surface"
@@ -9359,23 +9419,23 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
         n("button", {
           key: "header",
           type: "button",
-          onClick: () => _(I.overviewKey),
-          "aria-expanded": !C,
+          onClick: () => F(I.overviewKey),
+          "aria-expanded": !$,
           className: "flex w-full items-center gap-3 border-b border-border bg-card/40 px-4 py-3 text-left hover:bg-muted/30"
         }, [
-          n("span", { key: "indicator", "aria-hidden": "true", className: "w-4 shrink-0 text-secondary" }, C ? "▸" : "▾"),
+          n("span", { key: "indicator", "aria-hidden": "true", className: "w-4 shrink-0 text-secondary" }, $ ? "▸" : "▾"),
           n("span", { key: "name", className: "min-w-0 flex-1 font-semibold text-foreground" }, I.name),
           n(
             "span",
             { key: "count", className: "shrink-0 text-xs text-secondary" },
-            `${I.tags.length} tag${I.tags.length === 1 ? "" : "s"} · ${F} with slots`
+            `${I.tags.length} tag${I.tags.length === 1 ? "" : "s"} · ${P} with slots`
           )
         ]),
-        C ? null : n(
+        $ ? null : n(
           "ul",
           { key: "tags", className: "divide-y divide-border" },
-          I.tags.map((re) => n("li", {
-            key: re.tagId,
+          I.tags.map((J) => n("li", {
+            key: J.tagId,
             className: "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start"
           }, [
             n("div", {
@@ -9383,41 +9443,41 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
               className: "min-w-0",
               style: { width: "14rem", flexShrink: 0 }
             }, [
-              n("span", { key: "name", className: "block truncate text-sm font-medium text-foreground", title: re.tagName }, re.tagName),
-              re.allowSamePerformerInMultipleSlots ? n(
+              n("span", { key: "name", className: "block truncate text-sm font-medium text-foreground", title: J.tagName }, J.tagName),
+              J.allowSamePerformerInMultipleSlots ? n(
                 "span",
                 { key: "duplicates", className: "mt-1 inline-flex rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] text-accent" },
                 "Allow same performer"
               ) : null
             ]),
-            re.definitions.length === 0 ? n("span", {
+            J.definitions.length === 0 ? n("span", {
               key: "empty",
               className: "text-sm text-secondary",
               style: { width: "100%", maxWidth: "32rem", flexShrink: 1 }
             }, "No performer slots") : n("ul", {
               key: "slots",
-              "aria-label": `Performer slots for ${re.tagName}`,
+              "aria-label": `Performer slots for ${J.tagName}`,
               className: "grid min-w-0 gap-2",
               style: { width: "100%", maxWidth: "32rem", flexShrink: 1 }
-            }, re.definitions.map((ee) => n("li", {
-              key: ee.id,
+            }, J.definitions.map((se) => n("li", {
+              key: se.id,
               className: "flex w-full flex-wrap items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
             }, [
-              n("span", { key: "label", className: "font-medium text-foreground" }, et(ee)),
-              ...(ee.genderHints || []).map((we) => n("span", {
-                key: we,
+              n("span", { key: "label", className: "font-medium text-foreground" }, et(se)),
+              ...(se.genderHints || []).map((me) => n("span", {
+                key: me,
                 className: "rounded-full bg-muted/50 px-1.5 py-0.5 text-[10px] text-secondary"
-              }, ar(we)))
+              }, ar(me)))
             ]))),
             n("button", {
               key: "edit",
               type: "button",
-              onClick: (ee) => v({
-                tagId: re.tagId,
-                tagName: re.tagName,
-                trigger: ee.currentTarget
+              onClick: (se) => v({
+                tagId: J.tagId,
+                tagName: J.tagName,
+                trigger: se.currentTarget
               }),
-              "aria-label": `Edit performer slots for ${re.tagName}`,
+              "aria-label": `Edit performer slots for ${J.tagName}`,
               className: `${V} self-start`,
               style: { marginLeft: "auto", flexShrink: 0 }
             }, "Edit")
@@ -9425,109 +9485,109 @@ function Ed({ active: e, segmentGroups: t, onSegmentGroupsChanged: r }) {
         )
       ]);
     })) : null,
-    w ? n(Vr, {
+    w ? n(Jr, {
       key: `performer-slots-configure:${w.tagId}`,
       tagId: w.tagId,
       tagName: w.tagName,
       onSaved: W,
-      onClose: R
+      onClose: j
     }) : null
   ]);
 }
-function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
-  const [o, i] = j("general"), [a, s] = j([]), [l, d] = j(!1), [c, g] = j(""), [m, u] = j(""), [y, p] = j(null), [b, f] = j(!0), [w, v] = j(!1), [N, W] = j(""), [R, _] = j(!0), [A, $] = j(pa), O = As(t), D = O.map(([C]) => C);
-  ye(() => {
-    D.includes(o) || i(D[0] || "general");
+function Bd({ onNavigate: e, profile: t, onProfileChange: r }) {
+  const [o, i] = L("general"), [a, s] = L([]), [l, d] = L(!1), [c, g] = L(""), [m, u] = L(""), [y, p] = L(null), [h, f] = L(!0), [w, v] = L(!1), [N, W] = L(""), [j, F] = L(!0), [T, M] = L(ya), E = Ls(t), R = E.map(([$]) => $);
+  fe(() => {
+    R.includes(o) || i(R[0] || "general");
   }, [t.effectiveMode]);
-  async function U(C) {
-    const F = await Z("/segment-groups", C ? { signal: C } : void 0);
-    s(F || []);
+  async function U($) {
+    const P = await Z("/segment-groups", $ ? { signal: $ } : void 0);
+    s(P || []);
   }
-  ye(() => {
-    const C = new AbortController();
-    return U(C.signal).catch((F) => {
-      F.name !== "AbortError" && g(F.message || "Unable to load tag groups.");
-    }), () => C.abort();
-  }, []), ye(() => {
+  fe(() => {
+    const $ = new AbortController();
+    return U($.signal).catch((P) => {
+      P.name !== "AbortError" && g(P.message || "Unable to load tag groups.");
+    }), () => $.abort();
+  }, []), fe(() => {
     if (t.effectiveMode !== "full") {
       f(!1);
       return;
     }
-    const C = new AbortController();
+    const $ = new AbortController();
     return W(""), f(!0), Promise.all([
-      Z("/analysis/settings", { signal: C.signal }),
-      Z("/analysis/status", { signal: C.signal })
-    ]).then(([F, re]) => {
-      _(!0), u((F == null ? void 0 : F.baseUrl) || ""), p(re);
-    }).catch((F) => {
-      if (F.name !== "AbortError") {
-        if (F.status === 403) {
-          _(!1), W("You do not have permission to manage the analysis service connection.");
+      Z("/analysis/settings", { signal: $.signal }),
+      Z("/analysis/status", { signal: $.signal })
+    ]).then(([P, J]) => {
+      F(!0), u((P == null ? void 0 : P.baseUrl) || ""), p(J);
+    }).catch((P) => {
+      if (P.name !== "AbortError") {
+        if (P.status === 403) {
+          F(!1), W("You do not have permission to manage the analysis service connection.");
           return;
         }
-        W(F.message || "Unable to load analysis service settings.");
+        W(P.message || "Unable to load analysis service settings.");
       }
     }).finally(() => {
-      C.signal.aborted || f(!1);
-    }), () => C.abort();
+      $.signal.aborted || f(!1);
+    }), () => $.abort();
   }, [t.effectiveMode]);
-  async function P(C) {
-    if (C !== t.requestedMode) {
+  async function D($) {
+    if ($ !== t.requestedMode) {
       d(!0), g("");
       try {
-        const F = await Z(
-          `/preferences/transition?mode=${encodeURIComponent(C)}`
+        const P = await Z(
+          `/preferences/transition?mode=${encodeURIComponent($)}`
         );
-        let re = !1, ee = null, we = null, ce = null, T = !1;
-        if (t.requestedMode === "basic" && C === "full") {
-          if (!window.confirm(Ds(
-            F.recyclingBinCount,
-            F.protectedRecyclingBinCount
+        let J = !1, se = null, me = null, ge = null, B = !1;
+        if (t.requestedMode === "basic" && $ === "full") {
+          if (!window.confirm(Bs(
+            P.recyclingBinCount,
+            P.protectedRecyclingBinCount
           )))
             return;
-          T = !0, F.recyclingBinCount > 0 && (re = !0, ce = F.recyclingBinFingerprint, ee = `mode-switch-empty-bin:${ce}`, we = Re(ee));
+          B = !0, P.recyclingBinCount > 0 && (J = !0, ge = P.recyclingBinFingerprint, se = `mode-switch-empty-bin:${ge}`, me = Le(se));
         }
         let Q = !1;
-        if (t.requestedMode === "full" && C === "basic") {
-          if (!window.confirm(Es(
-            F.extensionOwnedSegmentCount
+        if (t.requestedMode === "full" && $ === "basic") {
+          if (!window.confirm(js(
+            P.extensionOwnedSegmentCount
           )))
             return;
           Q = !0;
         }
-        const oe = await Z("/preferences", {
+        const de = await Z("/preferences", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            mode: C,
+            mode: $,
             confirmHiddenExtensionOwnedSegments: Q,
-            confirmBasicHistoryCleanup: T,
-            emptyRecyclingBin: re,
-            operationId: we,
-            expectedRecyclingBinFingerprint: ce
+            confirmBasicHistoryCleanup: B,
+            emptyRecyclingBin: J,
+            operationId: me,
+            expectedRecyclingBinFingerprint: ge
           })
         });
-        ee && Oe(ee), r == null || r(Sa(oe)), g("Workflow mode saved.");
-      } catch (F) {
-        g(F.message || "Unable to save workflow mode.");
+        se && Fe(se), r == null || r(wa(de)), g("Workflow mode saved.");
+      } catch (P) {
+        g(P.message || "Unable to save workflow mode.");
       } finally {
         d(!1);
       }
     }
   }
-  async function V(C) {
-    C.preventDefault(), v(!0), W("");
+  async function V($) {
+    $.preventDefault(), v(!0), W("");
     try {
-      const F = await Z("/analysis/settings", {
+      const P = await Z("/analysis/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ baseUrl: m })
       });
-      u((F == null ? void 0 : F.baseUrl) || "");
-      const re = await Z("/analysis/status");
-      p(re), W(F != null && F.baseUrl ? re != null && re.ready ? "Analysis Server URL saved. The service is ready." : `Analysis Server URL saved. ${(re == null ? void 0 : re.error) || "The service is not ready."}` : "Analysis service disabled.");
-    } catch (F) {
-      W(F.message || "Unable to save analysis service settings.");
+      u((P == null ? void 0 : P.baseUrl) || "");
+      const J = await Z("/analysis/status");
+      p(J), W(P != null && P.baseUrl ? J != null && J.ready ? "Analysis Server URL saved. The service is ready." : `Analysis Server URL saved. ${(J == null ? void 0 : J.error) || "The service is not ready."}` : "Analysis service disabled.");
+    } catch (P) {
+      W(P.message || "Unable to save analysis service settings.");
     } finally {
       v(!1);
     }
@@ -9536,7 +9596,7 @@ function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
   return n("div", {
     className: "mx-auto w-full max-w-none space-y-5 px-0 py-4 sm:py-6"
   }, [
-    n("a", { key: "back", href: "/segment-studio", onClick: (C) => Ua(C, e, I), className: "inline-flex text-sm font-medium text-accent hover:underline" }, "← Go back"),
+    n("a", { key: "back", href: "/segment-studio", onClick: ($) => _a($, e, I), className: "inline-flex text-sm font-medium text-accent hover:underline" }, "← Go back"),
     n("header", { key: "header", className: "space-y-2" }, [
       n("h1", { key: "title", className: "text-2xl font-semibold text-foreground" }, "Segment Studio settings"),
       n(
@@ -9548,18 +9608,18 @@ function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
     n(
       "nav",
       { key: "settings-tabs", "aria-label": "Settings sections", className: "flex gap-1 overflow-x-auto border-b border-border" },
-      O.map(([C, F]) => n("button", {
-        key: C,
+      E.map(([$, P]) => n("button", {
+        key: $,
         type: "button",
-        onClick: () => i(C),
-        "aria-current": o === C ? "page" : void 0,
-        className: `shrink-0 border-b-2 px-4 py-2 text-sm font-semibold ${o === C ? "border-accent text-foreground" : "border-transparent text-secondary hover:text-foreground"}`
-      }, F))
+        onClick: () => i($),
+        "aria-current": o === $ ? "page" : void 0,
+        className: `shrink-0 border-b-2 px-4 py-2 text-sm font-semibold ${o === $ ? "border-accent text-foreground" : "border-transparent text-secondary hover:text-foreground"}`
+      }, P))
     ),
     n(
       "div",
       { key: "playback-shortcuts-panel", hidden: o !== "shortcuts" },
-      n(Rd)
+      n(Fd)
     ),
     n("section", { key: "shortcut-bindings-panel", hidden: o !== "shortcuts", className: "space-y-2 rounded-lg border border-border bg-surface p-4" }, [
       n("h2", { key: "title", className: "font-semibold text-foreground" }, "Keyboard bindings"),
@@ -9576,10 +9636,10 @@ function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
     ]),
     n("section", { key: "mode", hidden: o !== "general", className: "space-y-3 rounded-lg border border-border bg-surface p-4" }, [
       n("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "Workflow mode"),
-      n(Ql, {
+      n(od, {
         key: "selector",
         mode: t.legacyCompatibilityRequired ? t.effectiveMode : t.requestedMode,
-        onModeChange: P,
+        onModeChange: D,
         disabled: l || t.legacyCompatibilityRequired
       }),
       n("div", { key: "mode-guide", className: "grid gap-3 md:grid-cols-2" }, [
@@ -9612,10 +9672,10 @@ function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
         n("input", {
           key: "input",
           type: "checkbox",
-          checked: A,
-          onChange: (C) => {
-            const F = C.target.checked;
-            fa(F), $(F);
+          checked: T,
+          onChange: ($) => {
+            const P = $.target.checked;
+            ba(P), M(P);
           },
           className: "mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
         }),
@@ -9645,39 +9705,39 @@ function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
             key: "input",
             type: "url",
             value: m,
-            onChange: (C) => u(C.target.value),
+            onChange: ($) => u($.target.value),
             placeholder: "http://segment-studio-analysis:8766",
             autoComplete: "off",
             spellCheck: !1,
-            disabled: b || w || !R,
+            disabled: h || w || !j,
             className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
           })
         ]),
         n("button", {
           key: "save",
           type: "submit",
-          disabled: b || w || !R,
+          disabled: h || w || !j,
           className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
         }, w ? "Saving…" : "Save")
       ]),
       n(
         "p",
         { key: "status", className: "text-xs text-secondary", role: "status" },
-        N || (b ? "Loading analysis service settings…" : (y == null ? void 0 : y.configured) === !1 ? "Full Scan is not configured." : y != null && y.ready ? "Analysis service is ready." : (y == null ? void 0 : y.error) || "Analysis service is configured but not ready.")
+        N || (h ? "Loading analysis service settings…" : (y == null ? void 0 : y.configured) === !1 ? "Full Scan is not configured." : y != null && y.ready ? "Analysis service is ready." : (y == null ? void 0 : y.error) || "Analysis service is configured but not ready.")
       )
     ]) : null,
-    D.includes("derivation") ? n(
+    R.includes("derivation") ? n(
       "div",
       { key: "derivation-rules-panel", hidden: o !== "derivation" },
-      n(Ad, {
+      n(Ld, {
         segmentGroups: a,
         onSegmentGroupsChanged: () => U()
       })
     ) : null,
-    D.includes("performer-slots") ? n(
+    R.includes("performer-slots") ? n(
       "div",
       { key: "performer-slots-panel", hidden: o !== "performer-slots" },
-      n(Ed, {
+      n(jd, {
         active: o === "performer-slots",
         segmentGroups: a,
         onSegmentGroupsChanged: () => U()
@@ -9686,7 +9746,7 @@ function Dd({ onNavigate: e, profile: t, onProfileChange: r }) {
     c ? n("p", { key: "message", role: "status", className: "rounded-md border border-border bg-card px-3 py-2 text-sm text-secondary" }, c) : null
   ]);
 }
-function Vo({ facets: e, values: t, disabled: r, onChange: o }) {
+function Yo({ facets: e, values: t, disabled: r, onChange: o }) {
   var i;
   return r ? n(
     "p",
@@ -9705,7 +9765,7 @@ function Vo({ facets: e, values: t, disabled: r, onChange: o }) {
     ])
   ]))) : null;
 }
-function Od({ item: e, selected: t, busy: r, onSelect: o, onRestore: i, onPurge: a }) {
+function Gd({ item: e, selected: t, busy: r, onSelect: o, onRestore: i, onPurge: a }) {
   var g, m;
   const s = [...e.slots || []].sort((u, y) => u.sortOrder - y.sortOrder || String(u.slotDefinitionId).localeCompare(String(y.slotDefinitionId))), l = [...new Map(s.map((u) => [
     u.performerId,
@@ -9714,12 +9774,12 @@ function Od({ item: e, selected: t, busy: r, onSelect: o, onRestore: i, onPurge:
     slotDefinitionId: u.slotDefinitionId,
     label: et(u),
     performer: { id: u.performerId, name: u.performerName }
-  })), c = wa(e);
+  })), c = Ia(e);
   return n("article", {
     className: "overflow-hidden rounded-md border border-border bg-card shadow-sm",
-    style: Ea(t)
+    style: Oa(t)
   }, [
-    n("button", { key: "select", type: "button", onClick: o, "data-segment-key": e.key, className: "block w-full text-left focus:outline-none focus:ring-2 focus:ring-accent", "aria-label": `Play ${((g = e.activity) == null ? void 0 : g.name) || "segment"}, ${e.reviewState}, ${Ie(e.startSec)} to ${e.endSec == null ? "end of video" : Ie(e.endSec)}` }, [
+    n("button", { key: "select", type: "button", onClick: o, "data-segment-key": e.key, className: "block w-full text-left focus:outline-none focus:ring-2 focus:ring-accent", "aria-label": `Play ${((g = e.activity) == null ? void 0 : g.name) || "segment"}, ${e.reviewState}, ${$e(e.startSec)} to ${e.endSec == null ? "end of video" : $e(e.endSec)}` }, [
       n("div", { key: "image", className: "relative aspect-video bg-black" }, [
         n("img", {
           key: "image",
@@ -9728,11 +9788,11 @@ function Od({ item: e, selected: t, busy: r, onSelect: o, onRestore: i, onPurge:
           loading: "lazy",
           className: "h-full w-full object-cover"
         }),
-        n("span", { key: "time", className: "absolute bottom-1 right-1 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[11px] text-white" }, e.endSec == null ? `${Ie(e.startSec)} → end` : `${Ie(e.startSec)} – ${Ie(e.endSec)}`)
+        n("span", { key: "time", className: "absolute bottom-1 right-1 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[11px] text-white" }, e.endSec == null ? `${$e(e.startSec)} → end` : `${$e(e.startSec)} – ${$e(e.endSec)}`)
       ]),
       n("div", { key: "body", className: "flex flex-col gap-1.5 p-2.5" }, [
         n("div", { key: "segment", className: "flex min-w-0 items-center gap-1.5" }, [
-          n(Ft, { key: "state", state: e.reviewState, includeLabel: !1 }),
+          n(jt, { key: "state", state: e.reviewState, includeLabel: !1 }),
           n("span", { key: "activity", className: "line-clamp-1 min-w-0 flex-1 text-sm font-semibold text-foreground" }, ((m = e.activity) == null ? void 0 : m.name) || "Tag segment"),
           l.length ? n(ir, {
             key: "performers",
@@ -9757,18 +9817,18 @@ function Od({ item: e, selected: t, busy: r, onSelect: o, onRestore: i, onPurge:
     )
   ]);
 }
-function Pd({ item: e, index: t, count: r, onPrevious: o, onNext: i, onClose: a, onNavigate: s }) {
+function Kd({ item: e, index: t, count: r, onPrevious: o, onNext: i, onClose: a, onNavigate: s }) {
   if (!e) return null;
   const l = e.videoFile;
   return n("section", { "aria-label": "Selected segment player", className: "sticky top-2 z-20 mx-auto w-full max-w-2xl space-y-3 rounded-lg border border-border bg-surface p-3 shadow-lg" }, [
-    l ? n("div", { key: "player", className: "aspect-video overflow-hidden rounded-md bg-black" }, n(Xo, {
+    l ? n("div", { key: "player", className: "aspect-video overflow-hidden rounded-md bg-black" }, n(ta, {
       streamUrl: `/api/stream/video/${e.videoId}`,
       posterUrl: `/api/stream/video/${e.videoId}/screenshot?seconds=${encodeURIComponent(e.startSec)}&v=${encodeURIComponent(e.videoUpdatedAt || "")}`,
       format: l.format,
       audioCodec: l.audioCodec,
       duration: l.duration,
       videoId: e.videoId,
-      clip: { start: e.startSec, end: Ls(e), loop: !1 },
+      clip: { start: e.startSec, end: Us(e), loop: !1 },
       autostart: !0,
       trackingEnabled: !1
     })) : n("p", { key: "missing", className: "p-6 text-center text-sm text-secondary" }, "This segment has no playable file."),
@@ -9777,140 +9837,140 @@ function Pd({ item: e, index: t, count: r, onPrevious: o, onNext: i, onClose: a,
       n("span", { key: "position", className: "text-xs text-secondary" }, `${t + 1} of ${r}`),
       n("button", { key: "next", type: "button", disabled: t < 0 || t >= r - 1, onClick: i, className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50" }, "Next"),
       n("button", { key: "close", type: "button", onClick: a, "aria-label": "Close segment preview", className: "ml-auto rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" }, "Close preview"),
-      n("a", { key: "edit", href: wa(e), className: "text-sm font-semibold text-accent hover:underline" }, "Edit segment")
+      n("a", { key: "edit", href: Ia(e), className: "text-sm font-semibold text-accent hover:underline" }, "Edit segment")
     ])
   ]);
 }
-function Jo({ onNavigate: e, profile: t }) {
-  const r = Be(() => {
-    const T = ta("ext:com.midnightrider.segment-studio:segments");
-    return T ? {
-      ...wr,
-      defaultFilter: { ...wr.defaultFilter, ...T.findFilter || {} },
-      defaultObjectFilter: T.objectFilter || {}
-    } : wr;
-  }, []), { filter: o, objectFilter: i, setFilter: a, setObjectFilter: s } = na(r), [l, d] = j(null), [c, g] = j({ items: [], totalCount: 0, performerSlotsAvailable: !0 }), [m, u] = j(null), [y, p] = j(null), [b, f] = j(0), [w, v] = j(""), [N, W] = j(!0), [R, _] = j(""), A = pe(0), $ = Mo(o, i), O = $.activityTagId, D = Yt(i.slots), U = Be(() => [{
+function Qo({ onNavigate: e, profile: t }) {
+  const r = Ge(() => {
+    const B = ra("ext:com.midnightrider.segment-studio:segments");
+    return B ? {
+      ...Nr,
+      defaultFilter: { ...Nr.defaultFilter, ...B.findFilter || {} },
+      defaultObjectFilter: B.objectFilter || {}
+    } : Nr;
+  }, []), { filter: o, objectFilter: i, setFilter: a, setObjectFilter: s } = oa(r), [l, d] = L(null), [c, g] = L({ items: [], totalCount: 0, performerSlotsAvailable: !0 }), [m, u] = L(null), [y, p] = L(null), [h, f] = L(0), [w, v] = L(""), [N, W] = L(!0), [j, F] = L(""), T = pe(0), M = Ao(o, i), E = M.activityTagId, R = Yt(i.slots), U = Ge(() => [{
     id: "slots",
     label: "Performer Slots",
     filterKey: "slots",
     defaultValue: void 0,
-    isActive: (T) => Object.keys(Yt(T)).length > 0,
-    sanitize: (T) => Nr(O, Yt(T)),
-    summarize: (T) => `${Object.keys(Yt(T)).length} assigned`,
-    renderEditor: (T, Q) => O ? n(Vo, {
+    isActive: (B) => Object.keys(Yt(B)).length > 0,
+    sanitize: (B) => Ir(E, Yt(B)),
+    summarize: (B) => `${Object.keys(Yt(B)).length} assigned`,
+    renderEditor: (B, Q) => E ? n(Yo, {
       facets: l,
-      values: Yt(T),
+      values: Yt(B),
       disabled: c.performerSlotsAvailable === !1 || (l == null ? void 0 : l.restricted),
-      onChange: (oe, fe) => {
-        const ie = { ...Yt(T) };
-        fe ? ie[oe] = Number(fe) : delete ie[oe], Q(Nr(O, ie));
+      onChange: (de, oe) => {
+        const xe = { ...Yt(B) };
+        oe ? xe[de] = Number(oe) : delete xe[de], Q(Ir(E, xe));
       }
     }) : n("p", { className: "text-sm text-secondary" }, "Select one tag before filtering performer slots.")
-  }], [O, l, c.performerSlotsAvailable]), P = JSON.stringify($);
-  ye(() => {
-    if (d(null), !O) return;
-    const T = new AbortController();
-    return Z(`/browse/activities/${O}/facets`, { signal: T.signal }).then(d).catch((Q) => {
-      Q.status === 403 ? d({ slots: [], restricted: !0 }) : Q.name !== "AbortError" && _(Q.message);
-    }), () => T.abort();
-  }, [O]), ye(() => {
-    const T = ++A.current, Q = new AbortController();
-    return W(!0), _(""), Z("/browse/segments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify($), signal: Q.signal }).then((oe) => {
-      T === A.current && g({ ...oe, totalCount: oe.totalCount ?? oe.total ?? 0 });
-    }).catch((oe) => {
-      if (!(T !== A.current || oe.name === "AbortError")) {
-        if (oe.status === 400 && oe.message.includes("unrestricted performer read access")) {
-          g((fe) => ({ ...fe, performerSlotsAvailable: !1 })), s({ ...i, performerId: void 0, performersCriterion: void 0, slots: void 0 }), _("Performer filters were cleared because performer details are unavailable.");
+  }], [E, l, c.performerSlotsAvailable]), D = JSON.stringify(M);
+  fe(() => {
+    if (d(null), !E) return;
+    const B = new AbortController();
+    return Z(`/browse/activities/${E}/facets`, { signal: B.signal }).then(d).catch((Q) => {
+      Q.status === 403 ? d({ slots: [], restricted: !0 }) : Q.name !== "AbortError" && F(Q.message);
+    }), () => B.abort();
+  }, [E]), fe(() => {
+    const B = ++T.current, Q = new AbortController();
+    return W(!0), F(""), Z("/browse/segments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(M), signal: Q.signal }).then((de) => {
+      B === T.current && g({ ...de, totalCount: de.totalCount ?? de.total ?? 0 });
+    }).catch((de) => {
+      if (!(B !== T.current || de.name === "AbortError")) {
+        if (de.status === 400 && de.message.includes("unrestricted performer read access")) {
+          g((oe) => ({ ...oe, performerSlotsAvailable: !1 })), s({ ...i, performerId: void 0, performersCriterion: void 0, slots: void 0 }), F("Performer filters were cleared because performer details are unavailable.");
           return;
         }
-        _(oe.message);
+        F(de.message);
       }
     }).finally(() => {
-      T === A.current && W(!1);
+      B === T.current && W(!1);
     }), () => {
-      A.current++, Q.abort();
+      T.current++, Q.abort();
     };
-  }, [P, b]);
-  const V = c.items.findIndex((T) => T.key === m), I = c.items[V] || null;
-  function C(T) {
-    s(T), a({ ...o, page: 1 });
+  }, [D, h]);
+  const V = c.items.findIndex((B) => B.key === m), I = c.items[V] || null;
+  function $(B) {
+    s(B), a({ ...o, page: 1 });
   }
-  function F(T) {
-    const Q = Mo(o, T), oe = T.slots && Q.activityTagId != null && Q.slotAssignments.length > 0 ? T.slots : void 0;
-    C({ ...T, slots: oe });
+  function P(B) {
+    const Q = Ao(o, B), de = B.slots && Q.activityTagId != null && Q.slotAssignments.length > 0 ? B.slots : void 0;
+    $({ ...B, slots: de });
   }
-  function re(T, Q) {
-    const oe = { ...D };
-    Q ? oe[T] = Number(Q) : delete oe[T], C({ ...i, slots: Nr(O, oe) });
+  function J(B, Q) {
+    const de = { ...R };
+    Q ? de[B] = Number(Q) : delete de[B], $({ ...i, slots: Ir(E, de) });
   }
-  function ee() {
-    const T = document.querySelector(`[data-segment-key="${m}"]`);
-    u(null), requestAnimationFrame(() => T == null ? void 0 : T.focus());
+  function se() {
+    const B = document.querySelector(`[data-segment-key="${m}"]`);
+    u(null), requestAnimationFrame(() => B == null ? void 0 : B.focus());
   }
-  async function we(T) {
-    var fe;
+  async function me(B) {
+    var oe;
     if (!window.confirm("Restore this rejected segment to Cove? It will receive a new native ID.")) return;
-    p(T.key), v("");
-    const Q = `browse-restore:${T.itemId}:${T.revision}`, oe = Re(Q);
+    p(B.key), v("");
+    const Q = `browse-restore:${B.itemId}:${B.revision}`, de = Le(Q);
     try {
-      const ie = (B = !1) => Z(`/bin/${T.itemId}/restore`, {
+      const xe = (ke = !1) => Z(`/bin/${B.itemId}/restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: oe,
-          expectedRevision: T.revision,
-          discardMissingImage: B
+          operationId: de,
+          expectedRevision: B.revision,
+          discardMissingImage: ke
         })
       });
       try {
-        await ie(zr(Q));
-      } catch (B) {
-        if (((fe = B.payload) == null ? void 0 : fe.code) !== "missing-image" || !window.confirm(`${B.message}
+        await xe(_r(Q));
+      } catch (ke) {
+        if (((oe = ke.payload) == null ? void 0 : oe.code) !== "missing-image" || !window.confirm(`${ke.message}
 
 Continue and discard the missing image reference?`))
-          throw B;
-        _r(Q), await ie(!0);
+          throw ke;
+        Hr(Q), await xe(!0);
       }
-      Oe(Q), m === T.key && u(null), v("Segment restored to Cove."), f((B) => B + 1);
-    } catch (ie) {
-      v(ie.message || "Unable to restore the segment."), ie.status === 409 && f((B) => B + 1);
+      Fe(Q), m === B.key && u(null), v("Segment restored to Cove."), f((ke) => ke + 1);
+    } catch (xe) {
+      v(xe.message || "Unable to restore the segment."), xe.status === 409 && f((ke) => ke + 1);
     } finally {
       p(null);
     }
   }
-  async function ce(T) {
-    p(T.key), v("");
+  async function ge(B) {
+    p(B.key), v("");
     try {
-      const Q = await Z(`/items/${T.itemId}/delete/preview`, {
+      const Q = await Z(`/items/${B.itemId}/delete/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expectedRevision: T.revision })
+        body: JSON.stringify({ expectedRevision: B.revision })
       });
-      if (!Ta(Q, v) || !Vs(Q))
+      if (!Ma(Q, v) || !el(Q))
         return;
-      const oe = `browse-dependency-delete:${T.itemId}:${Q.fingerprint}`;
-      await Z(`/items/${T.itemId}/delete/execute`, {
+      const de = `browse-dependency-delete:${B.itemId}:${Q.fingerprint}`;
+      await Z(`/items/${B.itemId}/delete/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: Re(oe),
+          operationId: Le(de),
           fingerprint: Q.fingerprint
         })
-      }), Oe(oe), m === T.key && u(null), v(`${Q.deletedSegmentCount} segment${Q.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.`), f((fe) => fe + 1);
+      }), Fe(de), m === B.key && u(null), v(`${Q.deletedSegmentCount} segment${Q.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.`), f((oe) => oe + 1);
     } catch (Q) {
-      v(Q.message || "Unable to permanently delete the segment."), Q.status === 409 && f((oe) => oe + 1);
+      v(Q.message || "Unable to permanently delete the segment."), Q.status === 409 && f((de) => de + 1);
     } finally {
       p(null);
     }
   }
   return n("div", { className: "w-full space-y-5" }, [
-    n(Wr, {
+    n(Vr, {
       key: "tabs",
       active: "segments",
       onNavigate: e,
       profile: t
     }),
-    n(ra, {
+    n(aa, {
       key: "list",
       title: "Segments",
       pageKey: "segment-studio-segments",
@@ -9921,53 +9981,53 @@ Continue and discard the missing image reference?`))
       onFilterChange: a,
       totalCount: c.totalCount,
       isLoading: N,
-      error: R ? new Error(R) : null,
-      onRetry: () => f((T) => T + 1),
+      error: j ? new Error(j) : null,
+      onRetry: () => f((B) => B + 1),
       sortOptions: [{ value: "default", label: "Updated" }],
       displayMode: "grid",
       availableDisplayModes: ["grid"],
-      criteriaDefinitions: c.performerSlotsAvailable === !1 ? To.filter((T) => T.id !== "performers") : To,
+      criteriaDefinitions: c.performerSlotsAvailable === !1 ? Mo.filter((B) => B.id !== "performers") : Mo,
       objectFilter: i,
-      onObjectFilterChange: F,
+      onObjectFilterChange: P,
       customFilterSections: U,
       searchPlaceholder: "Search segments..."
     }, [
-      O ? n(Vo, { key: "slots", facets: l, values: D, disabled: c.performerSlotsAvailable === !1 || (l == null ? void 0 : l.restricted), onChange: re }) : null,
-      n(Pd, { key: "player", item: I, index: V, count: c.items.length, onPrevious: () => {
-        var T;
-        return u((T = c.items[V - 1]) == null ? void 0 : T.key);
+      E ? n(Yo, { key: "slots", facets: l, values: R, disabled: c.performerSlotsAvailable === !1 || (l == null ? void 0 : l.restricted), onChange: J }) : null,
+      n(Kd, { key: "player", item: I, index: V, count: c.items.length, onPrevious: () => {
+        var B;
+        return u((B = c.items[V - 1]) == null ? void 0 : B.key);
       }, onNext: () => {
-        var T;
-        return u((T = c.items[V + 1]) == null ? void 0 : T.key);
-      }, onClose: ee, onNavigate: e }),
+        var B;
+        return u((B = c.items[V + 1]) == null ? void 0 : B.key);
+      }, onClose: se, onNavigate: e }),
       w ? n("p", { key: "message", role: "status", className: "rounded-md border border-border bg-card px-3 py-2 text-sm text-secondary" }, w) : null,
       !N && c.items.length === 0 ? n("p", { key: "empty", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" }, "No segments match these filters.") : null,
-      N ? null : n("section", { key: "cards", "aria-label": "Browse results", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, c.items.map((T) => n(Od, {
-        key: T.key,
-        item: T,
-        selected: T.key === m,
-        busy: y === T.key,
-        onSelect: () => u(T.key),
-        onRestore: we,
-        onPurge: ce
+      N ? null : n("section", { key: "cards", "aria-label": "Browse results", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, c.items.map((B) => n(Gd, {
+        key: B.key,
+        item: B,
+        selected: B.key === m,
+        busy: y === B.key,
+        onSelect: () => u(B.key),
+        onRestore: me,
+        onPurge: ge
       })))
     ])
   ]);
 }
-function Ld({ onNavigate: e, profile: t }) {
-  const [r, o] = j([]), [i, a] = j(""), [s, l] = j(0), [d, c] = j(!0), [g, m] = j(null), [u, y] = j(""), p = pe(null);
-  async function b(v) {
+function Ud({ onNavigate: e, profile: t }) {
+  const [r, o] = L([]), [i, a] = L(""), [s, l] = L(0), [d, c] = L(!0), [g, m] = L(null), [u, y] = L(""), p = pe(null);
+  async function h(v) {
     const N = await Z("/bin", v ? { signal: v } : void 0);
     return o(N.items || []), a(N.fingerprint || ""), l(Number(N.totalCount) || 0), N;
   }
-  ye(() => {
+  fe(() => {
     const v = new AbortController();
-    return c(!0), b(v.signal).catch((N) => {
+    return c(!0), h(v.signal).catch((N) => {
       N.name !== "AbortError" && y(N.message);
     }).finally(() => {
       v.signal.aborted || c(!1);
     }), () => v.abort();
-  }, []), ea(jr, [{
+  }, []), na(Br, [{
     id: "system.emptyBin",
     surface: "local",
     action: () => {
@@ -9976,27 +10036,27 @@ function Ld({ onNavigate: e, profile: t }) {
     }
   }]);
   async function f(v) {
-    var R;
+    var j;
     if (!window.confirm("Restore this segment to Cove? It will receive a new native ID. Relationships owned outside Segment Studio that referenced the old native ID will not be restored.")) return;
     m(v.itemId), y("");
-    const N = `restore:${v.itemId}:${v.revision}`, W = Re(N);
+    const N = `restore:${v.itemId}:${v.revision}`, W = Le(N);
     try {
-      const _ = (A = !1) => Z(`/bin/${v.itemId}/restore`, {
+      const F = (T = !1) => Z(`/bin/${v.itemId}/restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operationId: W, expectedRevision: v.revision, discardMissingImage: A })
+        body: JSON.stringify({ operationId: W, expectedRevision: v.revision, discardMissingImage: T })
       });
       try {
-        await _(zr(N));
-      } catch (A) {
-        if (((R = A.payload) == null ? void 0 : R.code) !== "missing-image" || !window.confirm(`${A.message}
+        await F(_r(N));
+      } catch (T) {
+        if (((j = T.payload) == null ? void 0 : j.code) !== "missing-image" || !window.confirm(`${T.message}
 
-Continue and discard the missing image reference?`)) throw A;
-        _r(N), await _(!0);
+Continue and discard the missing image reference?`)) throw T;
+        Hr(N), await F(!0);
       }
-      Oe(N), await b(), Nn(), y("Segment restored with a new native ID.");
-    } catch (_) {
-      y(_.message || "Unable to restore the segment."), _.status === 409 && await b();
+      Fe(N), await h(), Nn(), y("Segment restored with a new native ID.");
+    } catch (F) {
+      y(F.message || "Unable to restore the segment."), F.status === 409 && await h();
     } finally {
       m(null);
     }
@@ -10004,7 +10064,7 @@ Continue and discard the missing image reference?`)) throw A;
   async function w() {
     if (g == null)
       try {
-        const v = await Aa({
+        const v = await Ea({
           items: r,
           fingerprint: i,
           totalCount: s
@@ -10012,15 +10072,15 @@ Continue and discard the missing image reference?`)) throw A;
           m(-1), y("");
         });
         if (v.status !== "emptied") return;
-        await b(), Nn(), y(`${v.segmentCount} segment${v.segmentCount === 1 ? "" : "s"} from ${v.sceneCount} scene${v.sceneCount === 1 ? "" : "s"} permanently deleted.`);
+        await h(), Nn(), y(`${v.segmentCount} segment${v.segmentCount === 1 ? "" : "s"} from ${v.sceneCount} scene${v.sceneCount === 1 ? "" : "s"} permanently deleted.`);
       } catch (v) {
-        y(v.message || "Unable to empty the recycling bin."), v.status === 409 && await b();
+        y(v.message || "Unable to empty the recycling bin."), v.status === 409 && await h();
       } finally {
         m(null);
       }
   }
   return p.current = w, n("div", { className: "mx-auto w-full max-w-6xl space-y-5 p-4 sm:p-6" }, [
-    n(Wr, {
+    n(Vr, {
       key: "tabs",
       active: "bin",
       onNavigate: e,
@@ -10046,7 +10106,7 @@ Continue and discard the missing image reference?`)) throw A;
     ...r.map((v) => n("article", { key: v.itemId, className: "flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface p-4" }, [
       n("div", { key: "copy", className: "min-w-0 flex-1" }, [
         n("h2", { key: "title", className: "truncate font-semibold" }, `${v.tagName || "Tag segment"} · ${v.videoTitle || `Video ${v.videoId}`}`),
-        n("p", { key: "time", className: "font-mono text-xs text-secondary" }, v.endSec == null ? Ie(v.startSec) : `${Ie(v.startSec)} – ${Ie(v.endSec)}`),
+        n("p", { key: "time", className: "font-mono text-xs text-secondary" }, v.endSec == null ? $e(v.startSec) : `${$e(v.startSec)} – ${$e(v.endSec)}`),
         n("p", { key: "source", className: "mt-1 text-xs text-secondary" }, `Source ${v.sourceKey || "unknown"}`)
       ]),
       n("a", { key: "video", href: `/video/${v.videoId}`, className: "text-sm font-medium text-accent hover:underline" }, "Open video"),
@@ -10054,120 +10114,120 @@ Continue and discard the missing image reference?`)) throw A;
     ]))
   ]);
 }
-const Yo = "ext:com.midnightrider.segment-studio:videos";
-function $r({
+const Zo = "ext:com.midnightrider.segment-studio:videos";
+function Tr({
   onNavigate: e,
   compatibilityMode: t = !1,
   mode: r = "editor",
   profile: o
 }) {
-  const i = Be(() => {
-    var P;
-    const D = ta(Yo), U = (P = D == null ? void 0 : D.uiOptions) == null ? void 0 : P.displayMode;
-    return D ? {
+  const i = Ge(() => {
+    var D;
+    const R = ra(Zo), U = (D = R == null ? void 0 : R.uiOptions) == null ? void 0 : D.displayMode;
+    return R ? {
       ...kn,
-      defaultFilter: { ...kn.defaultFilter, ...D.findFilter || {} },
-      defaultObjectFilter: D.objectFilter || {},
+      defaultFilter: { ...kn.defaultFilter, ...R.findFilter || {} },
+      defaultObjectFilter: R.objectFilter || {},
       defaultDisplayMode: kn.allowedDisplayModes.includes(U) ? U : kn.defaultDisplayMode
     } : kn;
-  }, []), { filter: a, objectFilter: s, displayMode: l, setFilter: d, setObjectFilter: c, setDisplayMode: g } = na(i), [m, u] = j({ items: [], totalCount: 0 }), [y, p] = j(!0), [b, f] = j(""), [w, v] = j(0), N = pe(0), W = JSON.stringify(a), R = JSON.stringify(s), _ = t || r === "review";
-  ye(() => {
-    const D = ++N.current, U = new AbortController();
-    return p(!0), f(""), Z(`/videos?${Vl(a, s, t ? "compatibility" : r === "review" ? "full" : null)}`, { signal: U.signal }).then((P) => {
-      D === N.current && u(P);
-    }).catch((P) => {
-      D === N.current && P.name !== "AbortError" && f(P.message || "Unable to discover videos.");
+  }, []), { filter: a, objectFilter: s, displayMode: l, setFilter: d, setObjectFilter: c, setDisplayMode: g } = oa(i), [m, u] = L({ items: [], totalCount: 0 }), [y, p] = L(!0), [h, f] = L(""), [w, v] = L(0), N = pe(0), W = JSON.stringify(a), j = JSON.stringify(s), F = t || r === "review";
+  fe(() => {
+    const R = ++N.current, U = new AbortController();
+    return p(!0), f(""), Z(`/videos?${ed(a, s, t ? "compatibility" : r === "review" ? "full" : null)}`, { signal: U.signal }).then((D) => {
+      R === N.current && u(D);
+    }).catch((D) => {
+      R === N.current && D.name !== "AbortError" && f(D.message || "Unable to discover videos.");
     }).finally(() => {
-      D === N.current && p(!1);
+      R === N.current && p(!1);
     }), () => {
       N.current++, U.abort();
     };
-  }, [W, R, t, r, w]);
-  function A(D) {
-    d({ ...D, page: D.page || 1 });
+  }, [W, j, t, r, w]);
+  function T(R) {
+    d({ ...R, page: R.page || 1 });
   }
-  function $(D) {
-    c(D), d({ ...a, page: 1 });
+  function M(R) {
+    c(R), d({ ...a, page: 1 });
   }
-  const O = t || r === "review" ? _o : _o.filter((D) => !["reviewState", "shotBoundaries"].includes(D.id));
+  const E = t || r === "review" ? qo : qo.filter((R) => !["reviewState", "shotBoundaries"].includes(R.id));
   return n("div", { className: "w-full space-y-5" }, [
-    n(Wr, {
+    n(Vr, {
       key: "tabs",
       active: "videos",
       onNavigate: e,
       showBin: !t && r === "editor",
       profile: o
     }),
-    n(ra, {
+    n(aa, {
       key: "list",
       title: "Videos",
       pageKey: "segment-studio-videos",
-      savedFilterScope: Yo,
+      savedFilterScope: Zo,
       cardSizeEntityType: "video",
       maxPageSize: 1e3,
       filter: a,
-      onFilterChange: A,
+      onFilterChange: T,
       totalCount: m.totalCount,
       isLoading: y,
-      error: b ? new Error(b) : null,
-      onRetry: () => v((D) => D + 1),
-      sortOptions: t || r === "review" ? [...zo, { value: "unreviewed_count", label: "Unreviewed count" }] : zo,
+      error: h ? new Error(h) : null,
+      onRetry: () => v((R) => R + 1),
+      sortOptions: t || r === "review" ? [...Ho, { value: "unreviewed_count", label: "Unreviewed count" }] : Ho,
       displayMode: l,
       onDisplayModeChange: g,
       availableDisplayModes: ["grid", "list"],
-      criteriaDefinitions: O,
+      criteriaDefinitions: E,
       objectFilter: s,
-      onObjectFilterChange: $,
+      onObjectFilterChange: M,
       searchPlaceholder: "Search Segment Studio videos..."
     }, [
       !y && m.items.length === 0 ? n("p", { key: "empty", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" }, "No videos match these filters.") : null,
-      !y && l === "grid" ? n("section", { key: "grid", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, m.items.map((D) => n(Jl, { key: D.videoId, item: D, onNavigate: e, showReviewStates: _ }))) : null,
-      !y && l === "list" ? n("section", { key: "rows", className: "space-y-3" }, m.items.map((D) => n(Yl, { key: D.videoId, item: D, onNavigate: e, showReviewStates: _ }))) : null
+      !y && l === "grid" ? n("section", { key: "grid", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, m.items.map((R) => n(td, { key: R.videoId, item: R, onNavigate: e, showReviewStates: F }))) : null,
+      !y && l === "list" ? n("section", { key: "rows", className: "space-y-3" }, m.items.map((R) => n(nd, { key: R.videoId, item: R, onNavigate: e, showReviewStates: F }))) : null
     ])
   ]);
 }
-function Zo({
+function Xo({
   videoId: e,
   onNavigate: t,
   compatibilityMode: r = !1,
   profile: o
 }) {
-  const [i, a] = j(null), [s, l] = j(!0), [d, c] = j(""), g = pe(0), m = pe(0), u = pe(e), y = Ol();
+  const [i, a] = L(null), [s, l] = L(!0), [d, c] = L(""), g = pe(0), m = pe(0), u = pe(e), y = Gl();
   u.current = e;
   const p = (N) => `/videos/${N}/editor`;
-  async function b(N, W, R) {
-    const _ = await Z(p(W), R ? { signal: R.signal } : void 0);
-    return Dt(N, R ? g.current : m.current, W, u.current) ? (a(_), !0) : !1;
+  async function h(N, W, j) {
+    const F = await Z(p(W), j ? { signal: j.signal } : void 0);
+    return Ot(N, j ? g.current : m.current, W, u.current) ? (a(F), !0) : !1;
   }
-  ye(() => {
-    const N = ++g.current, W = e, R = new AbortController();
-    return a(null), l(!0), c(""), b(N, W, R).catch((_) => {
-      Dt(N, g.current, W, u.current) && _.name !== "AbortError" && c(_.message || "Unable to load the editor.");
+  fe(() => {
+    const N = ++g.current, W = e, j = new AbortController();
+    return a(null), l(!0), c(""), h(N, W, j).catch((F) => {
+      Ot(N, g.current, W, u.current) && F.name !== "AbortError" && c(F.message || "Unable to load the editor.");
     }).finally(() => {
-      Dt(N, g.current, W, u.current) && l(!1);
+      Ot(N, g.current, W, u.current) && l(!1);
     }), () => {
-      g.current++, m.current++, R.abort();
+      g.current++, m.current++, j.abort();
     };
   }, [e]);
   function f(N, W) {
-    a((R) => (R == null ? void 0 : R.video.id) !== W ? R : typeof N == "function" ? N(R) : N);
+    a((j) => (j == null ? void 0 : j.video.id) !== W ? j : typeof N == "function" ? N(j) : N);
   }
   async function w() {
     const N = e, W = ++m.current;
     try {
-      const R = await Z(p(N));
-      return Dt(W, m.current, N, u.current) ? (a(R), c("A newer canonical segment was loaded. Your stale change was not applied."), R) : null;
-    } catch (R) {
-      return Dt(W, m.current, N, u.current) && c(R.message || "Unable to reload the latest segment."), null;
+      const j = await Z(p(N));
+      return Ot(W, m.current, N, u.current) ? (a(j), c("A newer canonical segment was loaded. Your stale change was not applied."), j) : null;
+    } catch (j) {
+      return Ot(W, m.current, N, u.current) && c(j.message || "Unable to reload the latest segment."), null;
     }
   }
   async function v() {
     const N = e, W = ++m.current;
     try {
-      const R = await Z(p(N));
-      return Dt(W, m.current, N, u.current) ? (a(R), c(""), R) : null;
-    } catch (R) {
-      return Dt(W, m.current, N, u.current) && c(R.message || "Unable to reload performer slots."), null;
+      const j = await Z(p(N));
+      return Ot(W, m.current, N, u.current) ? (a(j), c(""), j) : null;
+    } catch (j) {
+      return Ot(W, m.current, N, u.current) && c(j.message || "Unable to reload performer slots."), null;
     }
   }
   return n("div", {
@@ -10184,10 +10244,10 @@ function Zo({
       role: "status",
       className: "flex min-h-[50vh] w-full items-center justify-center"
     }, [
-      n(Pi, { key: "indicator", "aria-hidden": !0, className: "h-6 w-6 animate-spin text-muted" }),
+      n(Fi, { key: "indicator", "aria-hidden": !0, className: "h-6 w-6 animate-spin text-muted" }),
       n("span", { key: "label", className: "sr-only" }, "Loading editor…")
     ]) : null,
-    i ? n(kd, {
+    i ? n(Td, {
       key: i.video.id,
       detail: i,
       onDetailChange: f,
@@ -10196,77 +10256,77 @@ function Zo({
       onSlotsChanged: v,
       splitLayout: y,
       profile: o,
-      initialSegmentId: Ro() ? -Ro() : Fs(),
+      initialSegmentId: Do() ? -Do() : zs(),
       compatibilityMode: r,
       onNavigate: t
     }) : null
   ]);
 }
-function Fd(e, t, r) {
+function zd(e, t, r) {
   return t === "settings" || e === "settings" || t == null && e == null && r.replace(/\/+$/, "") === "/segment-studio/settings";
 }
-function jd(e, t, r) {
+function _d(e, t, r) {
   return t === "segments" || e === "segments" || t === "review" || e === "review" || t == null && e == null && ["/segment-studio/segments", "/segment-studio/review"].includes(r.replace(/\/+$/, ""));
 }
-function Bd(e, t, r) {
+function Hd(e, t, r) {
   return t === "bin" || e === "bin" || t == null && e == null && r.replace(/\/+$/, "") === "/segment-studio/bin";
 }
-function Gd({
+function qd({
   id: e,
   slug: t,
   onNavigate: r,
   profile: o,
   onProfileChange: i
 }) {
-  const a = o.legacyCompatibilityRequired, s = Ts(o), l = Fd(e, t, window.location.pathname), d = jd(e, t, window.location.pathname), c = Bd(e, t, window.location.pathname), g = l ? "settings" : d ? "segments" : c ? "bin" : "videos";
-  if (Rs(g, o) === "videos" && g !== "videos")
-    return window.history.replaceState({}, "", "/segment-studio"), n($r, {
+  const a = o.legacyCompatibilityRequired, s = Os(o), l = zd(e, t, window.location.pathname), d = _d(e, t, window.location.pathname), c = Hd(e, t, window.location.pathname), g = l ? "settings" : d ? "segments" : c ? "bin" : "videos";
+  if (Fs(g, o) === "videos" && g !== "videos")
+    return window.history.replaceState({}, "", "/segment-studio"), n(Tr, {
       onNavigate: r,
       compatibilityMode: a,
       mode: s,
       profile: o
     });
-  if (l) return n(Dd, {
+  if (l) return n(Bd, {
     onNavigate: r,
     profile: o,
     onProfileChange: i
   });
   if (a) {
-    if (d) return n(Jo, { onNavigate: r, profile: o });
+    if (d) return n(Qo, { onNavigate: r, profile: o });
     const y = Number(e);
-    return Number.isInteger(y) && y > 0 ? n(Zo, {
+    return Number.isInteger(y) && y > 0 ? n(Xo, {
       videoId: y,
       onNavigate: r,
       compatibilityMode: !0,
       profile: o
-    }) : n($r, {
+    }) : n(Tr, {
       onNavigate: r,
       compatibilityMode: !0,
       mode: s,
       profile: o
     });
   }
-  if (c) return n(Ld, { onNavigate: r, profile: o });
+  if (c) return n(Ud, { onNavigate: r, profile: o });
   const u = Number(e);
-  return d ? n(Jo, { onNavigate: r, profile: o }) : Number.isInteger(u) && u > 0 ? n(Zo, {
+  return d ? n(Qo, { onNavigate: r, profile: o }) : Number.isInteger(u) && u > 0 ? n(Xo, {
     videoId: u,
     onNavigate: r,
     compatibilityMode: s === "review",
     profile: o
-  }) : n($r, {
+  }) : n(Tr, {
     onNavigate: r,
     mode: s,
     profile: o
   });
 }
-function Kd({ id: e, slug: t, onNavigate: r }) {
-  const [o, i] = j(null), [a, s] = j("");
-  return ye(() => {
+function Wd({ id: e, slug: t, onNavigate: r }) {
+  const [o, i] = L(null), [a, s] = L("");
+  return fe(() => {
     const l = new AbortController();
-    return Z("/preferences", { signal: l.signal }).then((d) => i(Sa(d))).catch((d) => {
+    return Z("/preferences", { signal: l.signal }).then((d) => i(wa(d))).catch((d) => {
       d.name !== "AbortError" && s(d.message);
     }), () => l.abort();
-  }, []), a ? n("p", { className: "m-6 rounded-md border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300" }, a) : o == null ? n("p", { role: "status", className: "m-6 text-sm text-secondary" }, "Loading Segment Studio…") : n(Gd, {
+  }, []), a ? n("p", { className: "m-6 rounded-md border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300" }, a) : o == null ? n("p", { role: "status", className: "m-6 text-sm text-secondary" }, "Loading Segment Studio…") : n(qd, {
     id: e,
     slug: t,
     onNavigate: r,
@@ -10274,216 +10334,219 @@ function Kd({ id: e, slug: t, onNavigate: r }) {
     onProfileChange: i
   });
 }
-function Ud(e) {
+function Vd(e) {
   const t = Array.isArray(e == null ? void 0 : e.selectedIds) ? e.selectedIds : e == null ? void 0 : e.entityIds;
   if (!Array.isArray(t) || t.length !== 1) return null;
   const r = Number(t[0]);
   return Number.isInteger(r) && r > 0 ? `/segment-studio/${r}` : null;
 }
-function zd(e, t) {
-  const r = Ud(t);
+function Jd(e, t) {
+  const r = Vd(t);
   return r ? (window.location.assign(r), { cancelled: !0 }) : (window.alert("Segment Studio can only open one video at a time."), { cancelled: !0 });
 }
-const dc = {
-  components: { SegmentStudioPage: Kd },
-  actionHandlers: { openSegmentStudio: zd }
+const fc = {
+  components: { SegmentStudioPage: Wd },
+  actionHandlers: { openSegmentStudio: Jd }
 };
 export {
   er as CLEARED_SEGMENT_SELECTION_ID,
-  zo as DISCOVERY_SORT_OPTIONS,
-  wt as SEGMENT_STUDIO_CAPABILITIES,
-  jr as SEGMENT_STUDIO_EXTENSION_ID,
-  An as SEGMENT_STUDIO_SHORTCUTS,
-  ts as activeEditorFilterCount,
-  cl as applyDerivationRuleSlotSuggestions,
-  jo as applyFeedbackEditorDelta,
-  Lo as applySegmentMergeDelta,
-  Zs as basicSegmentTimelineStyle,
-  Ls as browseClipEnd,
-  wa as browseEditorHref,
-  Mo as buildBrowseRequest,
-  Id as buildDerivationRuleGraph,
-  Vl as buildDiscoverySearchParams,
-  Gi as buildMinuteTimelineTicks,
-  wd as buildPerformerSlotOverview,
-  Us as buildSegmentQuickSearchEntries,
-  fl as buildSegmentRailRows,
-  yl as buildTimelineRows,
-  Jd as buildTimelineTicks,
-  _i as calculateCenteredTimelineScroll,
+  Ho as DISCOVERY_SORT_OPTIONS,
+  kt as SEGMENT_STUDIO_CAPABILITIES,
+  Br as SEGMENT_STUDIO_EXTENSION_ID,
+  Mn as SEGMENT_STUDIO_SHORTCUTS,
+  rs as activeEditorFilterCount,
+  yl as applyDerivationRuleSlotSuggestions,
+  Go as applyFeedbackEditorDelta,
+  jo as applySegmentMergeDelta,
+  rl as basicSegmentTimelineStyle,
+  Us as browseClipEnd,
+  Ia as browseEditorHref,
+  Ao as buildBrowseRequest,
+  Ad as buildDerivationRuleGraph,
+  ed as buildDiscoverySearchParams,
+  Ui as buildMinuteTimelineTicks,
+  Rd as buildPerformerSlotOverview,
+  Vs as buildSegmentQuickSearchEntries,
+  Sl as buildSegmentRailRows,
+  kl as buildTimelineRows,
+  tc as buildTimelineTicks,
+  qi as calculateCenteredTimelineScroll,
   Mr as calculateEditorPanelMaximum,
-  Ki as calculateMinuteLabelStride,
-  Yd as calculateMinuteTimelineWidth,
-  Wi as calculateSwimlaneTitleMaximum,
-  Hi as calculateTimelinePlayheadPosition,
-  Gr as calculateTimelineRatioBounds,
-  Ji as calculateTimelineRatioFromPointer,
-  Zd as calculateVerticalRevealOffset,
-  Ot as clampEditorPanelWidth,
-  Zn as clampSwimlaneTitleWidth,
-  ga as clampTimelineRatio,
-  Kr as clampTimelineRatioForHeight,
+  zi as calculateMinuteLabelStride,
+  nc as calculateMinuteTimelineWidth,
+  Ji as calculateSwimlaneTitleMaximum,
+  Wi as calculateTimelinePlayheadPosition,
+  Kr as calculateTimelineRatioBounds,
+  Qi as calculateTimelineRatioFromPointer,
+  rc as calculateVerticalRevealOffset,
+  Pt as clampEditorPanelWidth,
+  Qn as clampSwimlaneTitleWidth,
+  fa as clampTimelineRatio,
+  Ur as clampTimelineRatioForHeight,
   Xn as clampTimelineZoom,
-  _l as compactProvenanceSummary,
-  dc as default,
-  Ws as downloadFileNameFromContentDisposition,
-  ns as dualRangeValueFromPointer,
-  Io as duplicateIdentityFromResponse,
-  ws as duplicateOperationKey,
-  es as editorVisibilityIncludingSegment,
-  vl as expandedSwimlanes,
-  Es as extensionOwnedSegmentsModeSwitchPrompt,
-  Nl as feedbackFrameTimestamps,
-  Cl as feedbackResultMatchesAction,
-  Il as feedbackSelectionPlan,
-  Xi as filterDerivedSegments,
-  kr as filterEditorSegments,
-  Nd as filterPerformerSlotOverview,
-  Ks as filterSegmentQuickSearch,
-  nc as filterSegmentStudioShortcuts,
-  kl as findAdjacentSegmentGroupKey,
-  Cs as findAdjacentShot,
-  xs as findEditorShortcut,
-  ua as findInitialSegmentSelection,
-  Bi as findNearestSegmentInCurrentSwimlane,
-  Is as findPublishedSelectionIdentity,
-  We as findSegmentByStableIdentity,
-  Yi as findSegmentFromPlayhead,
-  ji as findSegmentNearPlayhead,
-  Sl as findSwimlaneRangeSelection,
-  Or as findSwimlaneSelection,
-  Bs as findUniquePerformerSlotAssignment,
-  ma as findUnreviewedSelection,
+  Yl as compactProvenanceSummary,
+  Is as createQueuedReviewRequest,
+  fc as default,
+  Xs as downloadFileNameFromContentDisposition,
+  os as dualRangeValueFromPointer,
+  $o as duplicateIdentityFromResponse,
+  Rs as duplicateOperationKey,
+  ns as editorVisibilityIncludingSegment,
+  Il as expandedSwimlanes,
+  js as extensionOwnedSegmentsModeSwitchPrompt,
+  Ml as feedbackFrameTimestamps,
+  El as feedbackResultMatchesAction,
+  Al as feedbackSelectionPlan,
+  ts as filterDerivedSegments,
+  wr as filterEditorSegments,
+  Md as filterPerformerSlotOverview,
+  Ws as filterSegmentQuickSearch,
+  lc as filterSegmentStudioShortcuts,
+  Tl as findAdjacentSegmentGroupKey,
+  Es as findAdjacentShot,
+  ks as findEditorShortcut,
+  ga as findInitialSegmentSelection,
+  Ki as findNearestSegmentInCurrentSwimlane,
+  As as findPublishedSelectionIdentity,
+  He as findSegmentByStableIdentity,
+  Zi as findSegmentFromPlayhead,
+  Gi as findSegmentNearPlayhead,
+  $l as findSwimlaneRangeSelection,
+  Pr as findSwimlaneSelection,
+  Hs as findUniquePerformerSlotAssignment,
+  pa as findUnreviewedSelection,
   ar as formatGenderHint,
-  $s as frameStepSeconds,
-  Na as generatePerformerSlotAssignmentRecommendations,
-  ad as groupApprovedDraftsForPublishing,
-  Gs as groupAutoAssignCandidates,
-  $l as groupIncorrectExamplesByTag,
-  cd as groupMaterializationOutputs,
-  Pt as groupSegmentsIntoSwimlanes,
-  bl as groupSelectedSwimlanes,
-  qr as groupSwimlanesBySegmentGroup,
+  Ds as frameStepSeconds,
+  Ca as generatePerformerSlotAssignmentRecommendations,
+  ud as groupApprovedDraftsForPublishing,
+  qs as groupAutoAssignCandidates,
+  Dl as groupIncorrectExamplesByTag,
+  yd as groupMaterializationOutputs,
+  Lt as groupSegmentsIntoSwimlanes,
+  wl as groupSelectedSwimlanes,
+  Wr as groupSwimlanesBySegmentGroup,
   ot as handleModalKey,
-  Qt as hasSegmentStudioCapability,
-  Bo as hideCollectedFeedbackSegments,
-  al as historyActionsForTarget,
-  La as indexPerformerSlotsBySegment,
-  oc as initialReviewFilter,
-  Al as insertSegmentProjection,
-  Dt as isCurrentEditorRequest,
-  nl as isEditableTarget,
-  ic as isEditorShortcutOwner,
-  Bd as isSegmentStudioBinRoute,
-  jd as isSegmentStudioSegmentsRoute,
-  Fd as isSegmentStudioSettingsRoute,
-  Cd as layoutDerivationRuleComponent,
-  $d as layoutDerivationRuleComponents,
-  Rl as mergeSegmentsProjection,
-  ll as multiSelectionActionHint,
-  cs as nextSegmentAfterRemoval,
-  us as nextUnreviewedAfterRemoval,
-  Tt as normalizeCollapsedSegmentGroups,
-  qo as normalizeDiscoveryIds,
+  Zt as hasSegmentStudioCapability,
+  Ko as hideCollectedFeedbackSegments,
+  ul as historyActionsForTarget,
+  ja as indexPerformerSlotsBySegment,
+  cc as initialReviewFilter,
+  Ll as insertSegmentProjection,
+  Ot as isCurrentEditorRequest,
+  ll as isEditableTarget,
+  mc as isEditorShortcutOwner,
+  Hd as isSegmentStudioBinRoute,
+  _d as isSegmentStudioSegmentsRoute,
+  zd as isSegmentStudioSettingsRoute,
+  Ed as layoutDerivationRuleComponent,
+  Dd as layoutDerivationRuleComponents,
+  Fl as mergeSegmentsProjection,
+  pl as multiSelectionActionHint,
+  ms as nextSegmentAfterRemoval,
+  gs as nextUnreviewedAfterRemoval,
+  Rt as normalizeCollapsedSegmentGroups,
+  Vo as normalizeDiscoveryIds,
   dt as normalizeEditorSegmentFilters,
-  Ct as normalizeGender,
-  Co as normalizeReviewFilter,
-  Sa as normalizeSegmentStudioFeatureProfile,
-  rc as normalizeSegmentStudioMode,
-  Er as normalizeSegmentStudioPublicMode,
+  $t as normalizeGender,
+  To as normalizeReviewFilter,
+  wa as normalizeSegmentStudioFeatureProfile,
+  dc as normalizeSegmentStudioMode,
+  Dr as normalizeSegmentStudioPublicMode,
   Yt as parseBrowseSlotFilters,
-  Vi as parseEditorLayout,
-  Zi as parseHideDerivedSegmentsPreference,
-  Qi as parseMergeConfirmationPreference,
-  va as parsePlaybackShortcutConfig,
-  hs as parseShortcutBindingOverrides,
-  Cr as patchPerformerSlotProjection,
+  Yi as parseEditorLayout,
+  Xi as parseHideDerivedSegmentsPreference,
+  es as parseMergeConfirmationPreference,
+  Sa as parsePlaybackShortcutConfig,
+  xs as parseShortcutBindingOverrides,
+  $r as patchPerformerSlotProjection,
   rr as patchSegmentProjection,
-  ms as percentageSeekTime,
-  js as performInitialSegmentSeek,
+  ps as percentageSeekTime,
+  _s as performInitialSegmentSeek,
   Ve as performerOptionId,
   tr as performerSlotHistoryState,
   et as performerSlotLabel,
-  ul as performerSlotPresentation,
-  lc as performerSlotStatus,
-  Hr as performerSlotStatusFromSegmentSlots,
-  Pa as performerSlotsForSegment,
+  bl as performerSlotPresentation,
+  pc as performerSlotStatus,
+  qr as performerSlotStatusFromSegmentSlots,
+  Fa as performerSlotsForSegment,
   gt as provenanceSourceLabel,
-  Ia as rankPerformerOptions,
-  wl as reconcileSegmentGroupKey,
-  ls as reconcileSelectedSegmentIds,
-  Zl as recyclingBinActionText,
-  Js as recyclingBinDeletionPrompt,
-  Ma as recyclingBinDeletionSummary,
-  Ds as recyclingBinModeSwitchPrompt,
-  Pr as removeSegmentsProjection,
-  Ro as requestedOwnedItemId,
-  Fs as requestedSegmentId,
-  os as resolveEditorSegmentSelection,
-  Ns as resolveSegmentCreationAction,
-  Rs as resolveSegmentStudioRoute,
-  vs as resolveSegmentStudioShortcuts,
-  Td as resolveSelectedDerivationRule,
-  gs as resolveSelectedSegments,
-  Sd as restorePublishApprovedFocus,
-  Mn as restoreSegmentFieldsProjection,
-  Ka as restoreSegmentsProjection,
-  Ga as revealCollapsedSegmentGroup,
-  Ra as segmentBadgeStyle,
+  $a as rankPerformerOptions,
+  Rl as reconcileSegmentGroupKey,
+  cs as reconcileSelectedSegmentIds,
+  rd as recyclingBinActionText,
+  tl as recyclingBinDeletionPrompt,
+  Aa as recyclingBinDeletionSummary,
+  Bs as recyclingBinModeSwitchPrompt,
+  Ts as removeQueuedReviewsForSegments,
+  Lr as removeSegmentsProjection,
+  Do as requestedOwnedItemId,
+  zs as requestedSegmentId,
+  is as resolveEditorSegmentSelection,
+  Cs as resolveQueuedReviewRequest,
+  Ms as resolveSegmentCreationAction,
+  Fs as resolveSegmentStudioRoute,
+  Ss as resolveSegmentStudioShortcuts,
+  Od as resolveSelectedDerivationRule,
+  fs as resolveSelectedSegments,
+  $d as restorePublishApprovedFocus,
+  Rn as restoreSegmentFieldsProjection,
+  za as restoreSegmentsProjection,
+  Ua as revealCollapsedSegmentGroup,
+  Da as segmentBadgeStyle,
   or as segmentGroupHeaderBackground,
   ut as segmentGroupKeyForSegment,
-  Oa as segmentHistoryIdentity,
+  La as segmentHistoryIdentity,
   Vn as segmentHistoryState,
-  Ea as segmentRailItemStyle,
-  ac as segmentStateStyle,
-  Ud as segmentStudioActionTarget,
-  Ts as segmentStudioLegacyMode,
-  Ys as segmentTimelineStyle,
+  Oa as segmentRailItemStyle,
+  uc as segmentStateStyle,
+  Vd as segmentStudioActionTarget,
+  Os as segmentStudioLegacyMode,
+  nl as segmentTimelineStyle,
   lt as segmentsHistoryState,
-  ds as selectAllVideoSegmentIds,
-  Os as selectedBrowseStates,
-  ja as selectedSwimlaneMerge,
-  Ua as setBackLinkNavigation,
-  il as sharedPerformerSlotShape,
-  sl as sharedTagPerformerSlotShape,
-  Zt as shortcutAvailableInMode,
-  Ss as shortcutBindingDisplayText,
-  Qd as shortcutBindingFromEvent,
-  ec as shortcutBindingsOverlap,
-  tc as shortcutModesOverlap,
-  bs as shortcutRequiresSingleSegment,
-  Qn as shotBoundaryFingerprint,
-  ol as shouldAcceptCurrentTagFromEnter,
-  Xd as shouldExitShortcutCapture,
-  sc as shouldHandleEditorShortcut,
-  Uo as shouldReloadAfterSegmentMutation,
-  Rr as shouldRestoreTransitionSelection,
-  zs as shouldShowQuickSearchGroups,
-  wo as splitShortcutCategoriesIntoColumns,
-  dl as suggestDerivationRuleSlotMappings,
+  us as selectAllVideoSegmentIds,
+  Gs as selectedBrowseStates,
+  Ga as selectedSwimlaneMerge,
+  _a as setBackLinkNavigation,
+  ml as sharedPerformerSlotShape,
+  gl as sharedTagPerformerSlotShape,
+  Qt as shortcutAvailableInMode,
+  ws as shortcutBindingDisplayText,
+  oc as shortcutBindingFromEvent,
+  ic as shortcutBindingsOverlap,
+  sc as shortcutModesOverlap,
+  vs as shortcutRequiresSingleSegment,
+  Zn as shotBoundaryFingerprint,
+  cl as shouldAcceptCurrentTagFromEnter,
+  ac as shouldExitShortcutCapture,
+  gc as shouldHandleEditorShortcut,
+  _o as shouldReloadAfterSegmentMutation,
+  Er as shouldRestoreTransitionSelection,
+  Js as shouldShowQuickSearchGroups,
+  Io as splitShortcutCategoriesIntoColumns,
+  fl as suggestDerivationRuleSlotMappings,
   $n as swimlaneDisplayLabel,
-  tl as swimlaneMarkerTop,
-  Xs as swimlaneStripeBackground,
-  qi as timelineContentStyle,
-  xo as timelinePlayheadHorizontalStyle,
-  Qs as timelineSegmentWidth,
-  Ui as timelineTickAlignment,
-  zi as timelineTickPosition,
-  Tr as timelineTimePercent,
-  xl as toggleAllCollapsedSegmentGroups,
-  ks as toggledSelectionReviewState,
-  bt as trapModalFocus,
-  _s as tryParseJsonResponseText,
-  ss as updateAnchoredSegmentSelection,
-  rs as updateDualRangeValues,
-  as as updateSegmentCollectionSelection,
-  is as updateSegmentRangeSelection,
-  ya as updateSegmentSelection,
-  Wo as validateDerivationRuleDraft,
-  vo as validateSegmentTiming,
-  Ur as videoPerformerOptions,
-  Ir as videoPerformerSlotAssignments,
-  As as visibleSegmentStudioSettingsTabs,
-  Ms as visibleSegmentStudioTabs,
-  Fa as visibleVirtualRows
+  sl as swimlaneMarkerTop,
+  al as swimlaneStripeBackground,
+  Vi as timelineContentStyle,
+  ko as timelinePlayheadHorizontalStyle,
+  ol as timelineSegmentWidth,
+  _i as timelineTickAlignment,
+  Hi as timelineTickPosition,
+  Rr as timelineTimePercent,
+  Cl as toggleAllCollapsedSegmentGroups,
+  Ns as toggledSelectionReviewState,
+  yt as trapModalFocus,
+  Ys as tryParseJsonResponseText,
+  ds as updateAnchoredSegmentSelection,
+  as as updateDualRangeValues,
+  ss as updateSegmentCollectionSelection,
+  ls as updateSegmentRangeSelection,
+  ha as updateSegmentSelection,
+  Jo as validateDerivationRuleDraft,
+  So as validateSegmentTiming,
+  zr as videoPerformerOptions,
+  Cr as videoPerformerSlotAssignments,
+  Ls as visibleSegmentStudioSettingsTabs,
+  Ps as visibleSegmentStudioTabs,
+  Ba as visibleVirtualRows
 };

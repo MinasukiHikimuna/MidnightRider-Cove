@@ -2,12 +2,12 @@ import { applySegmentMergeDelta, selectedSwimlaneMerge } from "../model/swimlane
 import { readMergeConfirmationPreference, writeMergeConfirmationPreference } from "../model/selection.js";
 import { completeOperation, formatTime, operationIdFor, requestJson } from "../../shared/api.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
-import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
+import { createQueuedReviewRequest, findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
 import { mergeSegmentsProjection, patchSegmentProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, pendingReviewStateRef, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -127,17 +127,30 @@ function createReviewActions(context) {
       }
     }
 
-    async function saveSelectedReviewState(requestedState) {
-      if (selectedSegments.length === 0 || reviewSavingRef.current || savingSegmentId != null) return;
-      const reviewState = toggledSelectionReviewState(selectedSegments, requestedState);
-      const candidates = selectedSegments.filter((segment) => segment.reviewState !== reviewState);
+    async function saveSelectedReviewState(
+      requestedState,
+      reviewSegments = selectedSegments,
+      reviewSegment = selectedSegment,
+    ) {
+      if (reviewSegments.length === 0 || reviewSavingRef.current) return;
+      if (savingSegmentId != null) {
+        pendingReviewStateRef.current.push(createQueuedReviewRequest(
+          requestedState,
+          reviewSegments,
+          reviewSegment,
+        ));
+        setSaveMessage(`${requestedState === "approved" ? "Approval" : "Rejection"} queued…`);
+        return;
+      }
+      const reviewState = toggledSelectionReviewState(reviewSegments, requestedState);
+      const candidates = reviewSegments.filter((segment) => segment.reviewState !== reviewState);
       if (candidates.length === 0) return;
-      const identities = selectedSegments.map((segment) => ({
+      const identities = reviewSegments.map((segment) => ({
         id: segment.id,
         itemId: segment.itemId,
         nativeSegmentId: segment.nativeSegmentId,
       }));
-      const activeIdentity = identities.find((identity) => identity.id === selectedSegment?.id) || identities[0];
+      const activeIdentity = identities.find((identity) => identity.id === reviewSegment?.id) || identities[0];
       const restoreSelection = (loaded, force = false) => {
         if (!loaded?.segments) return;
         if (!force && !shouldRestoreTransitionSelection(selectedSegmentIdRef.current, activeIdentity.id))
@@ -154,7 +167,7 @@ function createReviewActions(context) {
         selectionRangeBaseIdsRef.current = [];
       };
       reviewSavingRef.current = true;
-      setSavingSegmentId(selectedSegment?.id ?? candidates[0].id);
+      setSavingSegmentId(reviewSegment?.id ?? candidates[0].id);
       setSaveMessage(`Updating ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
       const optimisticDetail = patchSegmentProjection(
         detail,
@@ -170,7 +183,7 @@ function createReviewActions(context) {
             operationId: crypto.randomUUID(),
             expectedHistoryRevision: historyRef.current.revision,
             reviewState,
-            segments: selectedSegments.map((segment) => segment.published
+            segments: reviewSegments.map((segment) => segment.published
               ? {
                 nativeSegmentId: segment.nativeSegmentId,
                 expectedUpdatedAt: segment.updatedAt,

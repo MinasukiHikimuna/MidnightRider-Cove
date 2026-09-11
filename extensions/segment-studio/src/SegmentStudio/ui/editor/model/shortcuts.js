@@ -278,6 +278,44 @@ export function toggledSelectionReviewState(selectedSegments, state) {
     : state;
 }
 
+export function createQueuedReviewRequest(requestedState, selectedSegments, selectedSegment) {
+  const identities = selectedSegments.map(({ id, itemId, nativeSegmentId }) => ({
+    id,
+    itemId,
+    nativeSegmentId,
+  }));
+  const activeIdentity = identities.find((identity) => identity.id === selectedSegment?.id)
+    || identities[0]
+    || null;
+  return { requestedState, identities, activeIdentity };
+}
+
+export function resolveQueuedReviewRequest(request, segments) {
+  if (!request?.identities?.length) return null;
+  const selectedSegments = request.identities
+    .map((identity) => findSegmentByStableIdentity(segments, identity))
+    .filter(Boolean);
+  if (selectedSegments.length === 0) return null;
+  return {
+    requestedState: request.requestedState,
+    selectedSegments,
+    selectedSegment: findSegmentByStableIdentity(segments, request.activeIdentity)
+      || selectedSegments[0],
+  };
+}
+
+function segmentIdentitiesMatch(left, right) {
+  if (left?.itemId != null && right?.itemId != null) return left.itemId === right.itemId;
+  if (left?.nativeSegmentId != null && right?.nativeSegmentId != null)
+    return left.nativeSegmentId === right.nativeSegmentId;
+  return left?.id != null && right?.id != null && left.id === right.id;
+}
+
+export function removeQueuedReviewsForSegments(requests, segments) {
+  return (requests || []).filter((request) => !request.identities.some((identity) =>
+    (segments || []).some((segment) => segmentIdentitiesMatch(identity, segment))));
+}
+
 export function duplicateIdentityFromResponse(sourcePublished, response) {
   if (sourcePublished) {
     const nativeSegmentId = response?.nativeSegmentId ?? response?.id ?? null;

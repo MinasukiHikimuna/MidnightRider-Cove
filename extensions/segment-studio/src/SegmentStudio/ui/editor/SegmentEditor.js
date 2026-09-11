@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from
 
 import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, removeQueuedReviewsForSegments, resolveQueuedReviewRequest, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -77,6 +77,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const publishApprovedCancelButtonRef = useRef(null);
   const publishApprovedRestoreFocusRef = useRef(null);
   const reviewSavingRef = useRef(false);
+  const pendingReviewStateRef = useRef([]);
   const binEmptyingRef = useRef(false);
   const [collapsedSegmentGroups, setCollapsedSegmentGroups] = useState(readCollapsedSegmentGroups);
   const [selectedSegmentGroupKey, setSelectedSegmentGroupKey] = useState(null);
@@ -660,6 +661,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onConflict,
     onDetailChange,
     onReload,
+    pendingReviewStateRef,
     recordHistoryAction,
     revealSegmentGroupForSelection,
     reviewSavingRef,
@@ -677,6 +679,32 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentIds,
     video,
   });
+  const cancelQueuedReviewsForSegments = (cancelledSegments) => {
+    pendingReviewStateRef.current = removeQueuedReviewsForSegments(
+      pendingReviewStateRef.current,
+      cancelledSegments,
+    );
+  };
+  useEffect(() => {
+    if (savingSegmentId != null || reviewSavingRef.current) return;
+    let missedRequest = false;
+    while (pendingReviewStateRef.current.length > 0) {
+      const request = pendingReviewStateRef.current.shift();
+      const resolved = resolveQueuedReviewRequest(request, segments);
+      if (!resolved) {
+        missedRequest = true;
+        continue;
+      }
+      void saveSelectedReviewState(
+        resolved.requestedState,
+        resolved.selectedSegments,
+        resolved.selectedSegment,
+      );
+      return;
+    }
+    if (missedRequest)
+      setSaveMessage("The queued review could not find its segment after refreshing.");
+  }, [savingSegmentId, segments]);
   const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
     acceptHistory,
     allSwimlanes,
@@ -832,6 +860,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     autoAssignPerformers,
     autoAssigning,
     captureTrainingExport,
+    cancelQueuedReviewsForSegments,
     removeIncorrectExample,
     rejectedDeletionPreview,
     centerTimelineRef,

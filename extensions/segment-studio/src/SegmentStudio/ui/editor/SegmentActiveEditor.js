@@ -18,7 +18,7 @@ function SegmentActiveEditor({
   saveTag,
   saveTiming,
   slotStatus, performerSlotsAvailable, selectedPerformerSlots, performerSlots, detail, video, slotButtonRef, tagSearchRef,
-  onDetailChange, setSaveMessage, setSavingSegmentId, onSlotsChanged, onRecordHistory, splitSegment, duplicateSegment, provenance, lineage, onNavigateLineageItem,
+  onDetailChange, setSaveMessage, setSavingSegmentId, onSlotsChanged, onRecordHistory, onCancelQueuedReview, splitSegment, duplicateSegment, provenance, lineage, onNavigateLineageItem,
   tagEditing, onCancelTagEditing, detailPanelRef, onReduceSelection,
 }) {
   const scrollRef = useRef(null);
@@ -383,12 +383,14 @@ function SegmentActiveEditor({
                   beforeState,
                   afterState,
                 );
-                await onSlotsChanged(saved);
+                const loaded = await onSlotsChanged(saved);
+                if (!loaded) onCancelQueuedReview([selectedSegment]);
               } finally {
                 setSavingSegmentId(null);
               }
             },
             onRollback: async (originalSlots, error) => {
+              onCancelQueuedReview([selectedSegment]);
               onDetailChange((current) => patchPerformerSlotProjection(
                 current,
                 selectedSegment.id,

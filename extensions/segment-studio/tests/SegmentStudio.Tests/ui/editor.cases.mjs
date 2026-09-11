@@ -588,7 +588,7 @@ test("selection review shortcuts apply a state and reset only when every segment
     source.indexOf("async function toggleIncorrectExample"),
   );
   assert.match(handler, /segments\/review-state/);
-  assert.match(handler, /segments:\s*selectedSegments\.map/);
+  assert.match(handler, /segments:\s*reviewSegments\.map/);
   assert.match(handler, /expectedHistoryRevision:\s*historyRef\.current\.revision/);
   assert.match(handler, /if \(result\.history\) acceptHistory\(result\.history\)/);
   assert.match(handler, /onDetailChange\(updatedDetail, video\.id\)/);
@@ -624,6 +624,35 @@ test("review decisions update the editor projection before the request settles",
   assert.ok(saveReview.indexOf("onDetailChange(optimisticDetail") < saveReview.indexOf("await requestJson"));
   assert.match(saveReview, /restoreSegmentFieldsProjection\([\s\S]*\["reviewState"\]/);
   assert.match(saveReview, /restoreSelection\(restoredDetail, true\)/);
+});
+
+test("review shortcuts queue across an in-flight segment transition", () => {
+  const original = [
+    { id: -10, itemId: 10, nativeSegmentId: null, reviewState: "unreviewed", revision: 2 },
+  ];
+  const request = ui.createQueuedReviewRequest("approved", original, original[0]);
+  const moved = [
+    { id: 40, itemId: 10, nativeSegmentId: 40, reviewState: "unreviewed", revision: 3 },
+  ];
+  const resolved = ui.resolveQueuedReviewRequest(request, moved);
+
+  assert.equal(resolved.requestedState, "approved");
+  assert.deepEqual(resolved.selectedSegments, moved);
+  assert.equal(resolved.selectedSegment, moved[0]);
+  const other = [{ id: 50, itemId: 20, nativeSegmentId: null, reviewState: "unreviewed" }];
+  const otherRequest = ui.createQueuedReviewRequest("approved", other, other[0]);
+  assert.deepEqual(ui.removeQueuedReviewsForSegments([request, otherRequest], moved), [otherRequest]);
+
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  assert.match(controller, /const pendingReviewStateRef = useRef\(\[\]\)/);
+  assert.match(controller, /resolveQueuedReviewRequest\(request, segments\)/);
+  assert.match(controller, /saveSelectedReviewState\([\s\S]*resolved\.selectedSegments[\s\S]*resolved\.selectedSegment/);
+  const reviewActions = sourceByModule["editor/actions/review.js"];
+  assert.match(reviewActions, /pendingReviewStateRef\.current\.push\(createQueuedReviewRequest/);
+  assert.match(reviewActions, /requestedState === "approved" \? "Approval" : "Rejection"/);
+  const activeEditor = sourceByModule["editor/SegmentActiveEditor.js"];
+  assert.match(activeEditor, /if \(!loaded\) onCancelQueuedReview\(\[selectedSegment\]\)/);
+  assert.match(activeEditor, /onRollback:[\s\S]*onCancelQueuedReview\(\[selectedSegment\]\)/);
 });
 
 test("bulk review patches safe decisions locally and reloads cascading or identity-changing decisions", () => {
