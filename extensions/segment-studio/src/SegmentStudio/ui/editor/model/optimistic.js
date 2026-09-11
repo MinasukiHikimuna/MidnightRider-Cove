@@ -23,3 +23,28 @@ export function removeSegmentsProjection(detail, segmentIds) {
     segments: (detail.segments || []).filter((segment) => !ids.has(segment.id)),
   };
 }
+
+export function mergeSegmentsProjection(detail, mergedSegments) {
+  const ordered = [...(mergedSegments || [])]
+    .sort((left, right) => left.startSec - right.startSec || left.id - right.id);
+  const survivor = ordered[0];
+  if (!survivor) return detail;
+  const consumedIds = new Set(ordered.slice(1).map((segment) => segment.id));
+  const finiteEnds = ordered.map((segment) => segment.endSec).filter(Number.isFinite);
+  const optimisticSurvivor = {
+    ...survivor,
+    startSec: ordered[0].startSec,
+    endSec: finiteEnds.length > 0 ? Math.max(...finiteEnds) : null,
+    sourceKey: "user",
+    sourceRunId: null,
+    confidence: null,
+    isDerived: false,
+  };
+  return {
+    ...detail,
+    segments: (detail.segments || [])
+      .filter((segment) => !consumedIds.has(segment.id))
+      .map((segment) => segment.id === survivor.id ? optimisticSurvivor : segment)
+      .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
+  };
+}

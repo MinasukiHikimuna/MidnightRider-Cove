@@ -4,7 +4,7 @@ import { completeOperation, formatTime, operationIdFor, requestJson } from "../.
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
-import { patchSegmentProjection } from "../model/optimistic.js";
+import { mergeSegmentsProjection, patchSegmentProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
   const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -45,7 +45,14 @@ function createReviewActions(context) {
       const historyReceiptId = !compatibilityMode
         ? crypto.randomUUID()
         : null;
+      const originalSelectionIds = merge.segments.map((segment) => segment.id);
+      const optimisticDetail = mergeSegmentsProjection(detail, merge.segments);
       setSavingSegmentId(survivor.id);
+      onDetailChange(optimisticDetail, video.id);
+      setSelectedSegmentIds([survivor.id]);
+      setSelectedSegmentId(survivor.id);
+      selectionAnchorIdRef.current = survivor.id;
+      selectionRangeBaseIdsRef.current = [];
       try {
         const consumedSegments = merge.segments.slice(1);
         if (!compatibilityMode || survivor.nativeSegmentId != null) {
@@ -102,6 +109,11 @@ function createReviewActions(context) {
         revealSegmentGroupForSelection(survivor.id);
         setSaveMessage(`${merge.segments.length} segments merged into ${formatTime(merge.startSec)} – ${endLabel}.`);
       } catch (error) {
+        onDetailChange(detail, video.id);
+        setSelectedSegmentIds(originalSelectionIds);
+        setSelectedSegmentId(selectedSegment?.id ?? originalSelectionIds[0] ?? null);
+        selectionAnchorIdRef.current = selectedSegment?.id ?? originalSelectionIds[0] ?? null;
+        selectionRangeBaseIdsRef.current = [];
         if (error.status === 409) await onConflict();
         else setSaveMessage(error.message || "Unable to merge selected segments.");
       } finally {

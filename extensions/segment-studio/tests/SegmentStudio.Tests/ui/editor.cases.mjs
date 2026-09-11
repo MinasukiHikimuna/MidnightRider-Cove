@@ -727,6 +727,30 @@ test("merge deltas replace the survivor and remove consumed projection state", (
   assert.equal(merged.approvedSetVersion, "new-version");
 });
 
+test("segment merges collapse the local selection before the request settles", () => {
+  const detail = {
+    segments: [
+      { id: 1, startSec: 2, endSec: 4, sourceKey: "ai", confidence: 0.8 },
+      { id: 2, startSec: 6, endSec: 9, sourceKey: "ai", confidence: 0.9 },
+      { id: 3, startSec: 12, endSec: 13 },
+    ],
+  };
+  const optimistic = ui.mergeSegmentsProjection(detail, detail.segments.slice(0, 2));
+
+  assert.deepEqual(optimistic.segments, [
+    { id: 1, startSec: 2, endSec: 9, sourceKey: "user", sourceRunId: null, confidence: null, isDerived: false },
+    detail.segments[2],
+  ]);
+  assert.equal(detail.segments.length, 3);
+  const reviewActions = sourceByModule["editor/actions/review.js"];
+  const merge = reviewActions.slice(
+    reviewActions.indexOf("async function mergeSelectedSwimlane"),
+    reviewActions.indexOf("async function saveSelectedReviewState"),
+  );
+  assert.ok(merge.indexOf("onDetailChange(optimisticDetail") < merge.indexOf("await requestJson"));
+  assert.match(merge, /onDetailChange\(detail, video\.id\)/);
+});
+
 test("bulk performer assignment requires every selected segment to share one slot shape", () => {
   const segments = [{ id: 1, tagId: 10 }, { id: 2, tagId: 10 }];
   const slots = [
