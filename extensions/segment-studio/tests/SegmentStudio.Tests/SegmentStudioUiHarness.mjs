@@ -57,7 +57,8 @@ globalThis.__segmentStudioReact = {
 register(new URL("./SegmentStudioRuntimeLoader.mjs", import.meta.url));
 
 const ui = await import(bundlePath);
+const { createShortcutHandler } = await import(new URL("../../src/SegmentStudio/ui/editor/actions/shortcuts.js", import.meta.url));
 
 
 
-export { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui };
+export { assert, createShortcutHandler, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui };

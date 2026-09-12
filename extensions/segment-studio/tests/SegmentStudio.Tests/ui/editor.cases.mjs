@@ -127,6 +127,18 @@ test("common segment actions are clickable between the player and swimlanes", ()
   assert.match(actions, /ref: commonActionsRef/);
 });
 
+test("common action toolbar exposes right-aligned frame stepping controls", () => {
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+  const actions = view.slice(view.indexOf('key: "common-actions"'), view.indexOf('key: "timeline"'));
+
+  assert.match(view, /import \{ ChevronDown, StepBack, StepForward \} from "@cove\/runtime\/lucide-react"/);
+  assert.match(actions, /key: "frame-actions"[\s\S]*className: "ml-auto flex items-center gap-1"/);
+  assert.match(actions, /disabled: !video\.videoFile[\s\S]*stepVideoFrame\(-1\)[\s\S]*aria-label": "Previous frame"/);
+  assert.match(actions, /h\(StepBack, \{[\s\S]*"aria-hidden": true/);
+  assert.match(actions, /disabled: !video\.videoFile[\s\S]*stepVideoFrame\(1\)[\s\S]*aria-label": "Next frame"/);
+  assert.match(actions, /h\(StepForward, \{[\s\S]*"aria-hidden": true/);
+});
+
 test("optimistic rollback preserves unrelated refreshed editor data", () => {
   const original = { id: 1, startSec: 4, endSec: 8, reviewState: "unreviewed", tagId: 2 };
   const refreshed = {
@@ -304,7 +316,7 @@ test("Full Scan offers AI-only and shot-boundary-only runs", () => {
   const analysis = sourceByModule["editor/hooks/useSegmentAnalysis.js"];
   const controller = sourceByModule["editor/SegmentEditor.js"];
 
-  assert.match(view, /import \{ ChevronDown \} from "@cove\/runtime\/lucide-react"/);
+  assert.match(view, /import \{[^}]*ChevronDown[^}]*\} from "@cove\/runtime\/lucide-react"/);
   assert.match(view, /aria-label": "Choose Full Scan analyses"/);
   assert.match(view, /h\(ChevronDown, \{ className: "h-4 w-4" \}\)/);
   assert.match(view, /segment-studio-full-scan-run[^"\n]*px-3 py-1\.5 text-xs/);

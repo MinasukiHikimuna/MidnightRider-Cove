@@ -794,7 +794,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     video,
     workspaceRef,
   });
-  const { executeShortcutById } = createShortcutHandler({
+  const { executeShortcutById, stepVideoFrame } = createShortcutHandler({
     allSwimlanes,
     applyShortcutTiming,
     centerTimelineRef,
@@ -949,6 +949,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     recordHistoryAction,
     restoreHistoryTarget,
     runEditorAction: executeShortcutById,
+    stepVideoFrame,
     saveMessage,
     setSaveMessage,
     saveTag,

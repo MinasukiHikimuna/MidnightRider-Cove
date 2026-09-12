@@ -1,5 +1,5 @@
 import test from "node:test";
-import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
+import { assert, createShortcutHandler, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 test("Segment Studio tag terminology stays current in source, tests, and maintained docs", () => {
   const forbidden = new RegExp([
     "canonical",
@@ -293,6 +293,27 @@ test("frame stepping pauses playback and uses configured frame counts", () => {
   assert.match(source, /playbackControlsRef\.current\?\.pause\(\)/);
   assert.match(source, /frameStepSeconds\(frameCount, videoFrameRate\)/);
   assert.match(source, /const videoFrameRate = Number\(video\.videoFile\?\.frameRate\) > 0/);
+});
+
+test("frame toolbar stepping always moves exactly one frame", () => {
+  const seeks = [];
+  let pauses = 0;
+  const { stepVideoFrame } = createShortcutHandler({
+    playbackControlsRef: {
+      current: {
+        pause: () => { pauses += 1; },
+        seekBy: (seconds) => seeks.push(seconds),
+      },
+    },
+    playbackShortcutConfig: { smallFrameStep: 7 },
+    videoFrameRate: 24,
+  });
+
+  stepVideoFrame(-1);
+  stepVideoFrame(1);
+
+  assert.equal(pauses, 2);
+  assert.deepEqual(seeks, [-1 / 24, 1 / 24]);
 });
 
 test("native shortcut registrations keep keyboard ownership with the mounted editor", () => {

@@ -5,6 +5,8 @@ const runtimeModules = {
   "@cove/runtime/lucide-react": [
     "export const ChevronDown = () => null;",
     "export const Loader2 = () => null;",
+    "export const StepBack = () => null;",
+    "export const StepForward = () => null;",
   ].join("\n"),
   "@cove/runtime/components": [
     "export const DetailListPagination = () => null;",

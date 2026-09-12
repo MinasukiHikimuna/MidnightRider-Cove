@@ -7,6 +7,11 @@ import { readTimingClipboard, writeTimingClipboard } from "../model/layout.js";
 function createShortcutHandler(context) {
   const { allSwimlanes, applyShortcutTiming, centerTimelineRef, compatibilityMode, createSegment, currentTime, deleteRejectedSegments, duplicateSegment, editorLayout, editorRef, emptyRecyclingBin, lineage, mediaDuration, mergeSelectedSwimlane, moveToBin, mutateShotBoundary, openPublishApprovedDialog, playbackControlsRef, playbackShortcutConfig, saveSelectedReviewState, seekRef, segmentGroupKeys, selectSegment, selectedSegment, selectedSegmentGroupForSegment, selectedSegmentGroupKey, selectedSegments, setCollapsedSegmentGroups, setIncorrectExamplesOpen, setQuickSearchOpen, setSaveMessage, setSelectedSegmentGroupKey, setTagEditing, setTimelineZoom, shotBoundaries, slotButtonRef, splitSegment, swimlanes, timelineDuration, toggleIncorrectExample, toggleSegmentGroup, updateTimelineRatio, videoFrameRate, visibleSegments } = context;
 
+  function stepVideoFrames(frameCount) {
+    playbackControlsRef.current?.pause();
+    playbackControlsRef.current?.seekBy(frameStepSeconds(frameCount, videoFrameRate));
+  }
+
   function executeShortcut(shortcut, invocation) {
       if (selectedSegments.length > 1 && shortcutRequiresSingleSegment(shortcut.id)) {
         return;
@@ -46,8 +51,7 @@ function createShortcutHandler(context) {
       if (shortcut.id.startsWith("video.frame")) action = () => {
         const stepKind = shortcut.id.includes("Small") ? "small" : shortcut.id.includes("Medium") ? "medium" : "long";
         const frameCount = playbackShortcutConfig[`${stepKind}FrameStep`] * (shortcut.id.endsWith("Backward") ? -1 : 1);
-        playbackControlsRef.current?.pause();
-        playbackControlsRef.current?.seekBy(frameStepSeconds(frameCount, videoFrameRate));
+        stepVideoFrames(frameCount);
       };
       if (shortcut.id.startsWith("navigation.swimlane")) action = () => {
         const direction = shortcut.id.slice("navigation.swimlane".length).toLowerCase();
@@ -163,7 +167,10 @@ function createShortcutHandler(context) {
     if (shortcut && shortcutAvailableInMode(shortcut, compatibilityMode)) executeShortcut(shortcut, invocation);
   }
 
-  return { executeShortcutById };
+  return {
+    executeShortcutById,
+    stepVideoFrame: (direction) => stepVideoFrames(direction < 0 ? -1 : 1),
+  };
 }
 
 export { createShortcutHandler };
