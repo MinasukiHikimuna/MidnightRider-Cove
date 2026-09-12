@@ -55,6 +55,132 @@ test("video discovery exposes Cove's seeded random sort", () => {
   );
 });
 
+test("video discovery supports bulk Full and partial scans for selected videos", async () => {
+  const calls = [];
+  const request = async (path, options) => {
+    calls.push([path, options]);
+    if (path.endsWith("/analysis-runs") && !options) return [];
+    if (path.endsWith("/editor")) return {
+      shotBoundaries: path.includes("/41/")
+        ? [{ id: 7, startSec: 0 }, { id: 8, startSec: 4.5 }]
+        : [],
+    };
+    return { status: "queued" };
+  };
+
+  const full = await ui.runSelectedDiscoveryAnalysis(
+    [41, 42],
+    ["aiTagging", "omnishotcut"],
+    request,
+    () => true,
+  );
+  assert.deepEqual(full, { queuedIds: [41, 42], failed: [], cancelled: false });
+  const posts = calls.filter(([, options]) => options?.method === "POST");
+  assert.equal(posts.length, 2);
+  assert.deepEqual(JSON.parse(posts[0][1].body), {
+    analyses: ["aiTagging", "omnishotcut"],
+    replaceShotBoundaries: true,
+    expectedShotBoundaryFingerprint: ui.shotBoundaryFingerprint([
+      { id: 7, startSec: 0 }, { id: 8, startSec: 4.5 },
+    ]),
+  });
+  assert.deepEqual(JSON.parse(posts[1][1].body), {
+    analyses: ["aiTagging", "omnishotcut"],
+    replaceShotBoundaries: false,
+    expectedShotBoundaryFingerprint: null,
+  });
+
+  calls.length = 0;
+  const partial = await ui.runSelectedDiscoveryAnalysis(
+    [41], ["aiTagging"], request, () => true,
+  );
+  assert.deepEqual(partial.queuedIds, [41]);
+  assert.equal(calls.some(([path]) => path.endsWith("/editor")), false);
+  assert.deepEqual(JSON.parse(calls.at(-1)[1].body), {
+    analyses: ["aiTagging"],
+    replaceShotBoundaries: false,
+    expectedShotBoundaryFingerprint: null,
+  });
+
+  calls.length = 0;
+  const busy = await ui.runSelectedDiscoveryAnalysis(
+    [41],
+    ["aiTagging"],
+    async (path, options) => {
+      calls.push([path, options]);
+      return options ? { status: "queued" } : [{ status: "running" }];
+    },
+    () => true,
+  );
+  assert.deepEqual(busy.queuedIds, []);
+  assert.match(busy.failed[0].error, /already queued or running/);
+  assert.equal(calls.some(([, options]) => options?.method === "POST"), false);
+
+  const discovery = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
+  const cards = sourceByModule["discovery/components.js"];
+  const selectionButton = cards.slice(
+    cards.indexOf("function DiscoverySelectionButton"),
+    cards.indexOf("function DiscoveryCard"),
+  );
+  assert.match(discovery, /selectedIds:/);
+  assert.match(discovery, /selectionActions:/);
+  assert.match(discovery, /Full Scan selected/);
+  assert.match(discovery, /AI analysis only/);
+  assert.match(discovery, /Shot boundaries only/);
+  assert.match(cards, /aria-label": selected \? "Deselect item" : "Select item"/);
+  assert.match(cards, /left-0\.5 top-0\.5 z-10 flex h-8 w-8/);
+  assert.match(cards, /border-border bg-background\/95 text-transparent/);
+  assert.match(cards, /M3\.5 8\.25 6\.5 11\.25 12\.5 4\.75/);
+  assert.doesNotMatch(selectionButton, /rounded-full/);
+  assert.match(discovery, /selectionActive: selectedIds\.size > 0/);
+  assert.doesNotMatch(discovery, /Queued \$\{outcome\.queuedIds\.length\}/);
+  assert.doesNotMatch(discovery, /scan-message/);
+  assert.match(discovery, /key: "scan-announcement", role: "status", "aria-live": "polite", className: "sr-only"/);
+  assert.match(discovery, /outcome\.queuedIds\.includes\(selectionAnchorRef\.current\)/);
+});
+
+test("bulk scan coordination blocks overlap and protects a replacement selection", () => {
+  const coordinator = ui.createBulkAnalysisCoordinator();
+  const first = coordinator.begin();
+
+  assert.ok(first);
+  assert.equal(coordinator.begin(), null);
+  assert.equal(coordinator.ownsCurrentSelection(first), true);
+
+  coordinator.selectionChanged();
+  assert.equal(coordinator.ownsCurrentSelection(first), false);
+  assert.equal(coordinator.begin(), null);
+
+  coordinator.finish(first);
+  const second = coordinator.begin();
+  assert.ok(second);
+  assert.equal(coordinator.ownsCurrentSelection(second), true);
+  coordinator.finish(second);
+
+  const discovery = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
+  assert.match(discovery, /\}, \[serializedFilter, serializedObjectFilter\]\);/);
+  assert.match(discovery, /Full Scan not configured/);
+  assert.match(discovery, /Full Scan unavailable/);
+});
+
+test("video discovery selection mode toggles cards and extends ranges", () => {
+  const first = ui.updateDiscoverySelection(new Set(), [11, 12, 13, 14], 12);
+  assert.deepEqual([...first], [12]);
+
+  const range = ui.updateDiscoverySelection(first, [11, 12, 13, 14], 14, 12, true);
+  assert.deepEqual([...range], [12, 13, 14]);
+
+  const toggled = ui.updateDiscoverySelection(range, [11, 12, 13, 14], 13);
+  assert.deepEqual([...toggled], [12, 14]);
+
+  const cards = sourceByModule["discovery/components.js"];
+  assert.match(cards, /onClick: selectionActive \? \(event\) =>/);
+  assert.match(cards, /onSelect\(item\.videoId, event\.shiftKey\)/);
+  assert.match(cards, /if \(event\.button === 0\) onSelect\(item\.videoId, event\.shiftKey\)/);
+  assert.match(cards, /selectionActive \? null : h\("a"/);
+  assert.match(cards, /h\(selectionActive \? "div" : "a"/);
+});
+
 test("video discovery defines native Cove entity criteria and focused updates", () => {
   const discovery = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));
 

@@ -390,6 +390,10 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     {
                         return Results.BadRequest(new { error = exception.Message });
                     }
+                    catch (SegmentStudioAnalysisAlreadyRunningException exception)
+                    {
+                        return Results.Conflict(new { error = exception.Message });
+                    }
 
                     var jobId = jobs.Enqueue(
                         "segment-studio-analysis",

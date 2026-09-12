@@ -64,6 +64,23 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
     }
 
     [Fact]
+    public async Task CreateRunRejectsAnotherActiveRunForTheSameVideo()
+    {
+        await using var db = CreateContext();
+        db.Add(new Video { Id = 7 });
+        db.Add(new VideoFile { Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4" });
+        await db.SaveChangesAsync();
+        var service = CreateService(new FakeClient(Response()), db);
+
+        await service.CreateRunAsync(db, 7, new(), default);
+
+        var exception = await Assert.ThrowsAsync<SegmentStudioAnalysisAlreadyRunningException>(
+            () => service.CreateRunAsync(db, 7, new(), default));
+        Assert.Contains("already queued or running", exception.Message);
+        Assert.Single(await db.Set<SegmentStudioAnalysisRun>().ToListAsync());
+    }
+
+    [Fact]
     public async Task ExecuteRunStoresCandidatesDraftsAndOmniShotCutBoundaries()
     {
         await using var db = CreateContext();
@@ -415,6 +432,76 @@ public sealed class SegmentStudioVideoAnalysisServiceTests
         var savedRun = await db.Set<SegmentStudioAnalysisRun>().SingleAsync();
         Assert.Equal("failed", savedRun.Status);
         Assert.Equal("shot_boundaries_changed", savedRun.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PostgreSqlCreateRunAllowsOnlyOneConcurrentActiveRun()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+                "COVE__Postgres__ConnectionString")
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var schema = $"segment_studio_analysis_run_lock_test_{Guid.NewGuid():N}";
+        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            SearchPath = schema,
+        };
+        await using var admin = new NpgsqlConnection(connectionString);
+        await admin.OpenAsync();
+        await using (var createSchema = new NpgsqlCommand(
+                         $"CREATE SCHEMA \"{schema}\"", admin))
+            await createSchema.ExecuteNonQueryAsync();
+
+        try
+        {
+            var options = new DbContextOptionsBuilder<AnalysisDbContext>()
+                .UseNpgsql(builder.ConnectionString)
+                .Options;
+            await using (var setup = new AnalysisDbContext(options))
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    setup.Database.GenerateCreateScript());
+                setup.Add(new Video { Id = 7 });
+                setup.Add(new VideoFile
+                {
+                    Id = 10, VideoId = 7, Path = "/mnt/media/source.mp4",
+                });
+                await setup.SaveChangesAsync();
+            }
+
+            async Task<Exception?> TryCreateRunAsync()
+            {
+                await using var context = new AnalysisDbContext(options);
+                var service = CreateService(new FakeClient(Response()), context);
+                try
+                {
+                    await service.CreateRunAsync(context, 7, new(), default);
+                    return null;
+                }
+                catch (Exception exception)
+                {
+                    return exception;
+                }
+            }
+
+            var outcomes = await Task.WhenAll(
+                TryCreateRunAsync(),
+                TryCreateRunAsync());
+
+            Assert.Single(outcomes, outcome => outcome is null);
+            Assert.IsType<SegmentStudioAnalysisAlreadyRunningException>(
+                Assert.Single(outcomes, outcome => outcome is not null));
+            await using var verify = new AnalysisDbContext(options);
+            Assert.Single(await verify.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        }
+        finally
+        {
+            await using var dropSchema = new NpgsqlCommand(
+                $"DROP SCHEMA \"{schema}\" CASCADE", admin);
+            await dropSchema.ExecuteNonQueryAsync();
+        }
     }
 
     [Fact]

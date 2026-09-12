@@ -102,6 +102,19 @@ export function normalizeDiscoveryIds(value) {
   return [...new Set(values.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
+function updateDiscoverySelection(current, visibleIds, videoId, anchorId = null, selectRange = false) {
+  const next = new Set(current);
+  const anchorIndex = visibleIds.indexOf(anchorId);
+  const videoIndex = visibleIds.indexOf(videoId);
+  if (selectRange && anchorIndex >= 0 && videoIndex >= 0) {
+    const start = Math.min(anchorIndex, videoIndex);
+    const end = Math.max(anchorIndex, videoIndex);
+    visibleIds.slice(start, end + 1).forEach((id) => next.add(id));
+  } else if (next.has(videoId)) next.delete(videoId);
+  else next.add(videoId);
+  return next;
+}
+
 function SegmentSummary({ item, showReviewStates = false }) {
   if (item.segmentCount === 0) return h("div", { className: "text-[11px]" }, h(StateBadge, null, "No tag segments"));
   if (!showReviewStates) return h("div", { className: "text-[11px]" },
@@ -119,10 +132,37 @@ function SegmentSummary({ item, showReviewStates = false }) {
   }));
 }
 
-function DiscoveryCard({ item, onNavigate, showReviewStates = false }) {
+function DiscoverySelectionButton({ item, selected, selectionActive, onSelect }) {
+  if (!onSelect) return null;
+  return h("button", {
+    type: "button",
+    "aria-label": selected ? "Deselect item" : "Select item",
+    "aria-pressed": selected,
+    onClick: (event) => { event.preventDefault(); event.stopPropagation(); onSelect(item.videoId, event.shiftKey); },
+    className: `absolute left-0.5 top-0.5 z-10 flex h-8 w-8 items-center justify-center rounded-md transition-opacity ${selected || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`,
+  }, h("span", {
+    className: `flex h-4 w-4 items-center justify-center rounded border shadow-sm ${selected ? "border-accent bg-accent text-white" : "border-border bg-background/95 text-transparent"}`,
+  }, h("svg", {
+    viewBox: "0 0 16 16",
+    className: "h-3 w-3",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+  }, h("path", { d: "M3.5 8.25 6.5 11.25 12.5 4.75" }))));
+}
+
+function DiscoveryCard({ item, onNavigate, showReviewStates = false, selected = false, selectionActive = false, onSelect = null }) {
   const route = { page: "segment-studio", id: item.videoId };
-  return h("article", { className: "group relative flex min-h-full flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm transition-colors hover:border-accent/60" }, [
-    h("a", {
+  return h("article", {
+    onClick: selectionActive ? (event) => {
+      if (event.button === 0) onSelect(item.videoId, event.shiftKey);
+    } : undefined,
+    className: `group relative flex min-h-full flex-col overflow-hidden rounded-md border bg-card shadow-sm transition-colors hover:border-accent/60 ${selectionActive ? "cursor-pointer" : ""} ${selected ? "border-accent ring-2 ring-accent" : "border-border"}`,
+  }, [
+    selectionActive ? null : h("a", {
       key: "link",
       href: `/segment-studio/${item.videoId}`,
       onClick: (event) => setPlainLinkNavigation(event, onNavigate, route),
@@ -131,6 +171,7 @@ function DiscoveryCard({ item, onNavigate, showReviewStates = false }) {
     }),
     h("div", { key: "media", className: "relative aspect-video bg-black" }, [
       h("img", { key: "image", src: `/api/videos/${item.videoId}/image?maxDimension=640&v=${encodeURIComponent(item.updatedAt)}`, alt: "", loading: "lazy", className: "h-full w-full object-cover" }),
+      h(DiscoverySelectionButton, { key: "selection", item, selected, selectionActive, onSelect }),
       item.duration > 0 ? h("span", { key: "duration", className: "absolute bottom-1 right-1 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white" }, formatDuration(item.duration)) : null,
     ]),
     h("div", { key: "body", className: "flex flex-1 flex-col gap-1.5 p-2.5" }, [
@@ -145,11 +186,19 @@ function DiscoveryCard({ item, onNavigate, showReviewStates = false }) {
   ]);
 }
 
-function DiscoveryRow({ item, onNavigate, showReviewStates = false }) {
+function DiscoveryRow({ item, onNavigate, showReviewStates = false, selected = false, selectionActive = false, onSelect = null }) {
   const route = { page: "segment-studio", id: item.videoId };
-  return h("article", { className: "overflow-hidden rounded-md border border-border bg-card" }, h("a", {
-    href: `/segment-studio/${item.videoId}`,
-    onClick: (event) => setPlainLinkNavigation(event, onNavigate, route),
+  return h("article", {
+    onClick: selectionActive ? (event) => {
+      if (event.button === 0) onSelect(item.videoId, event.shiftKey);
+    } : undefined,
+    className: `group relative overflow-hidden rounded-md border bg-card ${selectionActive ? "cursor-pointer" : ""} ${selected ? "border-accent ring-2 ring-accent" : "border-border"}`,
+  }, [
+    h(DiscoverySelectionButton, { key: "selection", item, selected, selectionActive, onSelect }),
+    h(selectionActive ? "div" : "a", {
+      key: "link",
+    href: selectionActive ? undefined : `/segment-studio/${item.videoId}`,
+    onClick: selectionActive ? undefined : (event) => setPlainLinkNavigation(event, onNavigate, route),
     className: "flex items-center gap-3 text-left hover:bg-muted/20 focus:outline-none focus:ring-2 focus:ring-accent",
     "aria-label": `Open segment editor for ${item.title}`,
   }, [
@@ -159,7 +208,8 @@ function DiscoveryRow({ item, onNavigate, showReviewStates = false }) {
       h(SegmentSummary, { key: "segments", item, showReviewStates }),
     ]),
     h("span", { key: "action", "aria-hidden": "true", className: "shrink-0 px-3 text-secondary" }, "›"),
-  ]));
+    ]),
+  ]);
 }
 
-export { DISCOVERY_URL_OPTIONS, DISCOVERY_SORT_OPTIONS, DISCOVERY_FILTER_CRITERIA, setPlainLinkNavigation, setBackLinkNavigation, SegmentSummary, DiscoveryCard, DiscoveryRow };
+export { DISCOVERY_URL_OPTIONS, DISCOVERY_SORT_OPTIONS, DISCOVERY_FILTER_CRITERIA, setPlainLinkNavigation, setBackLinkNavigation, updateDiscoverySelection, SegmentSummary, DiscoveryCard, DiscoveryRow };

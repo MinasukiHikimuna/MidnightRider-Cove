@@ -37,6 +37,9 @@ public sealed record SegmentStudioAnalysisRunResponse(
     DateTime UpdatedAt,
     DateTime? CompletedAt);
 
+public sealed class SegmentStudioAnalysisAlreadyRunningException()
+    : InvalidOperationException("A Full Scan is already queued or running for this video.");
+
 public sealed record SegmentStudioAnalysisCandidateResponse(
     long Id,
     string CandidateKey,
@@ -134,6 +137,13 @@ public sealed class SegmentStudioVideoAnalysisService(
             .Select(file => new { file.Id })
             .FirstOrDefaultAsync(ct)
             ?? throw new KeyNotFoundException("Video or source file not found.");
+        await using var runLock = await SegmentStudioAnalysisRunLock.AcquireAsync(
+            db, videoId, ct);
+        if (await db.Set<SegmentStudioAnalysisRun>().AsNoTracking().AnyAsync(
+                run => run.VideoId == videoId
+                    && (run.Status == "queued" || run.Status == "running"),
+                ct))
+            throw new SegmentStudioAnalysisAlreadyRunningException();
         var now = DateTime.UtcNow;
         var run = new SegmentStudioAnalysisRun
         {
