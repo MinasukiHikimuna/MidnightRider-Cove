@@ -131,7 +131,7 @@ test("Basic omitted collections use stable fallbacks across renders", () => {
   assert.match(controller, /shotBoundaries = detail\.shotBoundaries \|\| EMPTY_EDITOR_COLLECTION/);
 });
 
-test("Basic mode hides Full Scan and approved publishing actions", () => {
+test("Basic mode hides Full Scan and skips Full-only analysis requests", async () => {
   const view = sourceByModule["editor/SegmentEditorView.js"];
   assert.match(
     view,
@@ -141,6 +141,30 @@ test("Basic mode hides Full Scan and approved publishing actions", () => {
     view,
     /compatibilityMode \? h\("button", \{\s*key: "complete-review",[\s\S]{0,600}`Publish approved\$\{approvedDraftCount \? ` \(\$\{approvedDraftCount\}\)` : ""\}`\) : null/,
   );
+  assert.equal(ui.shouldLoadSegmentAnalysis(false), false);
+  assert.equal(ui.shouldLoadSegmentAnalysis(true), true);
+
+  const fullModeScope = ui.createSegmentAnalysisRequestScope();
+  assert.equal(fullModeScope.isActive(), true);
+  let applyStaleResult = null;
+  const unresolvedPoll = Promise.resolve().then(() => {
+    applyStaleResult = fullModeScope.isActive();
+  });
+  fullModeScope.dispose();
+  await unresolvedPoll;
+  assert.equal(fullModeScope.signal.aborted, true);
+  assert.equal(applyStaleResult, false);
+
+  const analysisHook = sourceByModule["editor/hooks/useSegmentAnalysis.js"];
+  const firstEffectStart = analysisHook.indexOf("useEffect(() => {");
+  const pollingEffectStart = analysisHook.indexOf("useEffect(() => {", firstEffectStart + 1);
+  const pollingEffect = analysisHook.slice(pollingEffectStart, analysisHook.indexOf("\n\n  return {", pollingEffectStart));
+  assert.match(analysisHook, /if \(!shouldLoadSegmentAnalysis\(fullMode\)\)[\s\S]{0,180}setAnalysisRun\(null\)/);
+  assert.match(pollingEffect, /if \(!shouldLoadSegmentAnalysis\(fullMode\)/);
+  assert.match(pollingEffect, /const scope = createSegmentAnalysisRequestScope\(\)/);
+  assert.match(pollingEffect, /if \(scope\.isActive\(\)\) timer = setTimeout/);
+  assert.match(pollingEffect, /clearTimeout\(timer\);\s*scope\.dispose\(\)/);
+  assert.match(pollingEffect, /\[analysisRun\?\.id, analysisRun\?\.status, fullMode\]/);
 });
 
 test("approved draft publishing is previewed by tag before conversion to native segments", () => {

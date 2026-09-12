@@ -1,6 +1,23 @@
 import { useEffect, useRef, useState } from "../../shared/runtime.js";
 import { createOperationId, requestJson } from "../../shared/api.js";
 
+function shouldLoadSegmentAnalysis(fullMode) {
+  return fullMode === true;
+}
+
+function createSegmentAnalysisRequestScope() {
+  const controller = new AbortController();
+  let active = true;
+  return {
+    signal: controller.signal,
+    isActive: () => active && !controller.signal.aborted,
+    dispose: () => {
+      active = false;
+      controller.abort();
+    },
+  };
+}
+
 function useSegmentAnalysis(
   videoId,
   onReload,
@@ -37,9 +54,12 @@ function useSegmentAnalysis(
     }
   }
 
-  async function refreshAnalysisRun() {
+  async function refreshAnalysisRun(scope) {
     try {
-      const runs = await requestJson(`/videos/${videoId}/analysis-runs`);
+      const runs = await requestJson(`/videos/${videoId}/analysis-runs`, {
+        signal: scope.signal,
+      });
+      if (!scope.isActive()) return null;
       const run = runs?.[0] || null;
       setAnalysisRun(run);
       if (run?.status === "completed" && analysisReloadedRunRef.current !== run.id) {
@@ -50,7 +70,8 @@ function useSegmentAnalysis(
         setAnalysisError(run.errorMessage || "Video analysis did not complete.");
       return run;
     } catch (error) {
-      setAnalysisError(error.message || "Unable to load video analysis status.");
+      if (scope.isActive() && error.name !== "AbortError")
+        setAnalysisError(error.message || "Unable to load video analysis status.");
       return null;
     }
   }
@@ -84,20 +105,40 @@ function useSegmentAnalysis(
   }
 
   useEffect(() => {
-    refreshAnalysisRun();
-    requestJson("/analysis/status")
+    if (!shouldLoadSegmentAnalysis(fullMode)) {
+      setAnalysisRun(null);
+      setAnalysisStatus(null);
+      setAnalysisError("");
+      return undefined;
+    }
+    const scope = createSegmentAnalysisRequestScope();
+    refreshAnalysisRun(scope);
+    requestJson("/analysis/status", { signal: scope.signal })
       .then((status) => {
+        if (!scope.isActive()) return;
         setAnalysisStatus(status);
         if (!status.configured) setAnalysisError("");
       })
-      .catch((error) => setAnalysisError(error.message || "Unable to check video analysis readiness."));
+      .catch((error) => {
+        if (scope.isActive() && error.name !== "AbortError")
+          setAnalysisError(error.message || "Unable to check video analysis readiness.");
+      });
+    return scope.dispose;
   }, [videoId, fullMode]);
 
   useEffect(() => {
-    if (analysisRun?.status !== "queued" && analysisRun?.status !== "running") return undefined;
-    const timer = setInterval(refreshAnalysisRun, 2500);
-    return () => clearInterval(timer);
-  }, [analysisRun?.id, analysisRun?.status]);
+    if (!shouldLoadSegmentAnalysis(fullMode)
+      || (analysisRun?.status !== "queued" && analysisRun?.status !== "running")) return undefined;
+    const scope = createSegmentAnalysisRequestScope();
+    let timer = setTimeout(async function pollAnalysisRun() {
+      await refreshAnalysisRun(scope);
+      if (scope.isActive()) timer = setTimeout(pollAnalysisRun, 2500);
+    }, 2500);
+    return () => {
+      clearTimeout(timer);
+      scope.dispose();
+    };
+  }, [analysisRun?.id, analysisRun?.status, fullMode]);
 
   return {
     analysisError,
@@ -109,4 +150,4 @@ function useSegmentAnalysis(
   };
 }
 
-export { useSegmentAnalysis };
+export { createSegmentAnalysisRequestScope, shouldLoadSegmentAnalysis, useSegmentAnalysis };
