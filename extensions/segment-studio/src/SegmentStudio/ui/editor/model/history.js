@@ -97,6 +97,23 @@ export function segmentsHistoryState(
   };
 }
 
+export function incorrectExampleHistoryState(completed, collected) {
+  return {
+    type: "incorrectExamples",
+    collected,
+    entries: (completed || []).map(({ segment, result, example }) => ({
+      exampleId: result?.exampleId ?? example?.id ?? null,
+      originalIdentity: segmentHistoryIdentity(segment),
+      collectedIdentity: {
+        itemId: result?.itemId ?? example?.itemId ?? null,
+        nativeSegmentId: result?.nativeSegmentId ?? null,
+        published: result?.nativeSegmentId != null,
+        revision: result?.revision ?? null,
+      },
+    })),
+  };
+}
+
 export function performerSlotHistoryState(targets) {
   return {
     type: "performerSlots",

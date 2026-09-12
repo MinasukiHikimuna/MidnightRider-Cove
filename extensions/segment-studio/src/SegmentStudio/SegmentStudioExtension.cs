@@ -4106,14 +4106,19 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 {
                     if (await SegmentStudioCompatibilityService.RequiresLegacyUiAsync(db, ct))
                         return LegacyUiRequiredResult();
+                    if (principalAccessor.Current?.UserId is not int userId)
+                        return Results.Unauthorized();
+                    var profile = await SegmentStudioFeatureProfileService.GetAsync(
+                        db, userId, ct);
                     var strategy = db.Database.CreateExecutionStrategy();
                     var result = await strategy.ExecuteAsync(async () =>
                     {
                         await using var transaction = db.Database.IsRelational()
                             ? await db.Database.BeginTransactionAsync(ct)
                             : null;
-                        var transition = await BasicNativeRecycleBinService.RestoreAsync(
-                            db, itemId, request, principalAccessor.Current, authorization, blobs, ct);
+                        var transition = await SegmentStudioRejectedSegmentRestoreService.RestoreAsync(
+                            db, profile.EffectiveMode, itemId, request,
+                            principalAccessor.Current, authorization, blobs, ct);
                         if (transition.Status == SegmentTransitionStatus.Updated && transaction is not null)
                             await transaction.CommitAsync(ct);
                         return transition;

@@ -181,6 +181,15 @@ public sealed class SegmentOwnershipTransitionServiceTests
         Assert.Equal("unreviewed", (await fixture.Context.Set<SegmentStudioItem>().SingleAsync()).ReviewState);
     }
 
+    [Theory]
+    [InlineData(SegmentStudioModes.Basic, true)]
+    [InlineData(SegmentStudioModes.Full, false)]
+    public void RejectedSegmentRestoreSelectsStorageForMode(
+        string mode, bool usesBasicStorage) =>
+        Assert.Equal(
+            usesBasicStorage,
+            SegmentStudioRejectedSegmentRestoreService.UsesBasicStorage(mode));
+
     [Fact]
     public async Task IncorrectExampleSetOperationsNeverReverseStaleIntent()
     {

@@ -4,9 +4,10 @@ import { historyActionsForTarget } from "../model/history.js";
 import { calculateEditorPanelMaximum, calculateTimelineRatioBounds, calculateTimelineRatioFromPointer, clampEditorPanelWidth, clampTimelineRatioForHeight } from "../model/timeline.js";
 import { DEFAULT_EDITOR_LAYOUT } from "../../shared/constants.js";
 import { normalizeCollapsedSegmentGroups } from "../model/swimlanes.js";
+import { applyFeedbackEditorDelta } from "../model/feedback.js";
 
 function createHistoryAndLayoutActions(context) {
-  const { acceptHistory, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setSaveMessage, setSavingSegmentId, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
+  const { acceptHistory, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, setSavingSegmentId, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
 
   async function applySegmentHistoryState(targetState, sourceState, loaded) {
       const targets = targetState.type === "segment" ? [targetState] : targetState.segments || [];
@@ -130,6 +131,69 @@ function createHistoryAndLayoutActions(context) {
       return loaded;
     }
 
+    async function applyIncorrectExampleHistoryState(state, loaded, step) {
+      if (!compatibilityMode)
+        throw new Error("AI feedback history is only available in Full mode.");
+      let currentDetail = loaded;
+      let examples = await requestJson(`/videos/${video.id}/incorrect-examples`);
+      const findExample = (entry) => examples.find((example) =>
+        example.id === entry.exampleId
+        || (entry.collectedIdentity?.itemId != null
+          && example.itemId === entry.collectedIdentity.itemId));
+      for (const [index, entry] of (state.entries || []).entries()) {
+        const operationKey = `history-feedback:${video.id}:${step.action.sequence}:${step.direction}:${index}`;
+        const existing = findExample(entry);
+        if (state.collected && existing) {
+          completeOperation(operationKey);
+          continue;
+        }
+        let result;
+        if (state.collected) {
+          const segment = findSegmentByStableIdentity(
+            currentDetail.segments, entry.collectedIdentity)
+            || findSegmentByStableIdentity(
+              currentDetail.segments, entry.originalIdentity);
+          if (!segment)
+            throw new Error("A segment in this AI feedback history no longer exists.");
+          const native = segment.nativeSegmentId != null;
+          result = await requestJson(`/videos/${video.id}/incorrect-examples/collect`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              operationId: operationIdFor(operationKey),
+              nativeSegmentId: native ? segment.nativeSegmentId : null,
+              itemId: native ? null : segment.itemId,
+              expectedUpdatedAt: native ? segment.updatedAt : null,
+              expectedRevision: native ? null : segment.revision,
+            }),
+          });
+        } else {
+          if (!existing) {
+            completeOperation(operationKey);
+            continue;
+          }
+          result = await requestJson(
+            `/videos/${video.id}/incorrect-examples/${existing.id}/remove`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                operationId: operationIdFor(operationKey),
+                expectedExampleRevision: existing.revision,
+                expectedRepresentationRevision:
+                  existing.representationRevision,
+              }),
+            });
+        }
+        completeOperation(operationKey);
+        currentDetail = applyFeedbackEditorDelta(
+          currentDetail, result.editorDelta);
+        examples = await requestJson(
+          `/videos/${video.id}/incorrect-examples`);
+      }
+      setIncorrectExamples(examples);
+      return currentDetail;
+    }
+
     async function applyHistoryState(
       step,
       loaded,
@@ -188,6 +252,8 @@ function createHistoryAndLayoutActions(context) {
         );
       if (state?.type === "performerSlots")
         return applyPerformerSlotHistoryState(state, loaded);
+      if (state?.type === "incorrectExamples")
+        return applyIncorrectExampleHistoryState(state, loaded, step);
       if (state?.type === "shots") {
         const currentFingerprint = shotBoundaryFingerprint(loaded.shotBoundaries || []);
         const updated = await requestJson(`/videos/${video.id}/shot-boundaries/restore`, {

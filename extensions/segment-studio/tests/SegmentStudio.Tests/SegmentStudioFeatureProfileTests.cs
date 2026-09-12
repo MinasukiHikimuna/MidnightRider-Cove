@@ -56,6 +56,7 @@ public sealed class SegmentStudioFeatureProfileTests
         Assert.True(profile.Has(SegmentStudioCapabilities.SettingsPerformerSlots));
         Assert.True(profile.Has(SegmentStudioCapabilities.SettingsDerivation));
         Assert.True(profile.Has(SegmentStudioCapabilities.FeedbackManage));
+        Assert.True(profile.Has(SegmentStudioCapabilities.RecyclingBinRestore));
         Assert.False(profile.Has(SegmentStudioCapabilities.RecyclingBinView));
         Assert.False(profile.Has(SegmentStudioCapabilities.RecyclingBinMove));
     }

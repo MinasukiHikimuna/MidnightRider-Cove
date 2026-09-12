@@ -292,6 +292,21 @@ test("C and Shift+C use durable incorrect-example feedback", () => {
   assert.equal(ui.feedbackResultMatchesAction("remove", { collected: false }), true);
   assert.equal(ui.feedbackResultMatchesAction("remove", { collected: true }), false);
   assert.deepEqual(
+    ui.incorrectExampleHistoryState([{
+      segment: { id: 20, nativeSegmentId: 20 },
+      result: { exampleId: 101, itemId: 31 },
+    }], true),
+    {
+      type: "incorrectExamples",
+      collected: true,
+      entries: [{
+        exampleId: 101,
+        originalIdentity: { itemId: null, nativeSegmentId: 20, published: true, revision: null },
+        collectedIdentity: { itemId: 31, nativeSegmentId: null, published: false, revision: null },
+      }],
+    },
+  );
+  assert.deepEqual(
     ui.applyFeedbackEditorDelta(
       {
         approvedSetVersion: "before",
@@ -334,7 +349,35 @@ test("C and Shift+C use durable incorrect-example feedback", () => {
   assert.match(collectHandler, /applyFeedbackEditorDelta/);
   assert.match(collectHandler, /workingDetail[\s\S]*findSegmentByStableIdentity/);
   assert.match(collectHandler, /workingDetail = applyFeedbackEditorDelta/);
+  assert.match(collectHandler, /recordHistoryAction\([\s\S]*"feedback\.remove"[\s\S]*"feedback\.collect"/);
+  assert.match(collectHandler, /incorrectExampleHistoryState\(completed, beforeCollected\)/);
+  assert.match(collectHandler, /Collected \$\{count\} incorrect AI example/);
+  assert.ok(
+    collectHandler.indexOf("await recordHistoryAction(")
+      < collectHandler.indexOf("const examples = await requestJson"),
+    "feedback history must be recorded before the ancillary examples refresh",
+  );
+  assert.match(collectHandler, /if \(historyWarning\)[\s\S]*editor history could not be updated/);
   assert.doesNotMatch(collectHandler, /const loaded = await onReload\(\)/);
+  const removeHandler = source.slice(
+    source.indexOf("async function removeIncorrectExample"),
+    source.indexOf("async function captureTrainingExport"),
+  );
+  assert.ok(
+    removeHandler.indexOf("await recordHistoryAction(")
+      < removeHandler.indexOf("const refreshed = await requestJson"),
+    "dialog feedback history must be recorded before the ancillary examples refresh",
+  );
+  assert.match(removeHandler, /if \(!historyRecorded\)[\s\S]*editor history could not be updated/);
+  assert.match(removeHandler, /error\.payload\?\.result\?\.code !== "OPERATION_REPLAYED"[\s\S]*result = error\.payload\.result[\s\S]*await recordHistoryAction/);
+  assert.match(removeHandler, /findSegmentByStableIdentity\(detail\.segments[\s\S]*\|\| \{[\s\S]*itemId: example\.itemId/);
+  assert.match(removeHandler, /if \(replayed\)[\s\S]*await onReload\(\)[\s\S]*else[\s\S]*applyFeedbackEditorDelta/);
+  const historyHandler = sourceByModule["editor/actions/history-and-layout.js"];
+  assert.match(historyHandler, /state\?\.type === "incorrectExamples"/);
+  assert.match(historyHandler, /incorrect-examples\/collect/);
+  assert.match(historyHandler, /incorrect-examples\/\$\{existing\.id\}\/remove/);
+  assert.match(historyHandler, /state\.collected && existing\)[\s\S]*completeOperation\(operationKey\)[\s\S]*continue/);
+  assert.match(historyHandler, /if \(!existing\)[\s\S]*completeOperation\(operationKey\)[\s\S]*continue/);
   assert.match(source, /segment\.nativeSegmentId != null/);
   assert.match(source, /selectedSegments\.length === 0/);
   assert.match(source, /Partially collected \$\{completed\.length\} of \$\{candidates\.length\} selected segments/);

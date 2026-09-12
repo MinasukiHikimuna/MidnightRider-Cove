@@ -780,6 +780,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setCollapsedSegmentGroups,
     setEditorLayout,
     setHistorySaving,
+    setIncorrectExamples,
     setSaveMessage,
     setSavingSegmentId,
     setSavingShot,

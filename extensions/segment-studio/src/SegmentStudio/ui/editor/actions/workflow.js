@@ -1,7 +1,7 @@
 import { completeOperation, confirmEmptyRecyclingBin, dependencyDeletionAllowed, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestDownload, requestJson } from "../../shared/api.js";
 import { findSegmentByStableIdentity, shouldRestoreTransitionSelection } from "../model/shortcuts.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
-import { segmentsHistoryState } from "../model/history.js";
+import { incorrectExampleHistoryState, segmentsHistoryState } from "../model/history.js";
 import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
@@ -26,6 +26,7 @@ function createWorkflowActions(context) {
         || identities[0];
       const completed = [];
       const failures = [];
+      let historyWarning = false;
       let workingDetail = detail;
       setSavingSegmentId(activeIdentity.id);
       setSaveMessage(plan.action === "remove"
@@ -116,11 +117,25 @@ function createWorkflowActions(context) {
             if (identity && result.itemId != null) identity.itemId = result.itemId;
             workingDetail = applyFeedbackEditorDelta(
               workingDetail, result.editorDelta);
-            completed.push({ segment, result });
+            const completion = { segment, result, example };
+            completed.push(completion);
           } catch (error) {
             failures.push(error);
             if (![400, 404, 409].includes(error.status)) break;
           }
+        }
+        if (compatibilityMode && completed.length > 0) {
+          const beforeCollected = plan.action === "remove";
+          const count = completed.length;
+          const recorded = await recordHistoryAction(
+            beforeCollected ? "feedback.remove" : "feedback.collect",
+            beforeCollected
+              ? `Removed ${count} incorrect AI example${count === 1 ? "" : "s"}`
+              : `Collected ${count} incorrect AI example${count === 1 ? "" : "s"}`,
+            incorrectExampleHistoryState(completed, beforeCollected),
+            incorrectExampleHistoryState(completed, !beforeCollected),
+          );
+          if (!recorded) historyWarning = true;
         }
         if (completed.some(({ result }) =>
           result.representation === "basicNativeBin"))
@@ -205,6 +220,8 @@ function createWorkflowActions(context) {
             ? `${completed.length} incorrect AI example${completed.length === 1 ? "" : "s"} collected and moved to the recycling bin.`
             : `${completed.length} incorrect AI example${completed.length === 1 ? "" : "s"} collected and ${completed.length === 1 ? "segment rejected" : "segments rejected"}.`);
         }
+        if (historyWarning)
+          setSaveMessage("The change saved, but editor history could not be updated.");
       } catch (error) {
         setSaveMessage(error.message || "Unable to update the selected incorrect examples.");
       } finally {
@@ -218,42 +235,72 @@ function createWorkflowActions(context) {
       const operationKey =
         `incorrect-example-remove:${video.id}:${example.id}:${example.revision}:${example.representationRevision}`;
       try {
-        const result = await requestJson(
-          `/videos/${video.id}/incorrect-examples/${example.id}/remove`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              operationId: operationIdFor(operationKey),
-              expectedExampleRevision: example.revision,
-              expectedRepresentationRevision:
-                example.representationRevision,
-            }),
-          },
-        );
+        let result;
+        let replayed = false;
+        try {
+          result = await requestJson(
+            `/videos/${video.id}/incorrect-examples/${example.id}/remove`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                operationId: operationIdFor(operationKey),
+                expectedExampleRevision: example.revision,
+                expectedRepresentationRevision:
+                  example.representationRevision,
+              }),
+            },
+          );
+        } catch (error) {
+          if (error.status !== 409
+            || error.payload?.result?.code !== "OPERATION_REPLAYED")
+            throw error;
+          result = error.payload.result;
+          replayed = true;
+        }
         completeOperation(operationKey);
+        let historyRecorded = true;
+        if (compatibilityMode) {
+          const segment = findSegmentByStableIdentity(detail.segments, {
+            itemId: example.itemId,
+          }) || {
+            id: example.itemId == null ? null : -example.itemId,
+            itemId: example.itemId,
+            nativeSegmentId: null,
+            published: false,
+            revision: example.representationRevision,
+          };
+          const completed = [{ segment, result, example }];
+          historyRecorded = await recordHistoryAction(
+            "feedback.remove",
+            "Removed 1 incorrect AI example",
+            incorrectExampleHistoryState(completed, true),
+            incorrectExampleHistoryState(completed, false),
+          );
+        }
         const refreshed = await requestJson(
           `/videos/${video.id}/incorrect-examples`);
         setIncorrectExamples(refreshed);
-        onDetailChange(
-          applyFeedbackEditorDelta(detail, result.editorDelta),
-          video.id,
-        );
+        if (replayed)
+          await onReload();
+        else
+          onDetailChange(
+            applyFeedbackEditorDelta(detail, result.editorDelta),
+            video.id,
+          );
         if (example.representation === "basicNativeBin")
           notifyRecyclingBinChanged();
-        setSaveMessage(example.representation === "basicNativeBin"
-          ? "Incorrect example removed and its native segment restored."
-          : "Incorrect example removed and segment returned to unreviewed.");
+        if (!historyRecorded)
+          setSaveMessage("The change saved, but editor history could not be updated.");
+        else if (replayed)
+          setSaveMessage(compatibilityMode
+            ? "Incorrect example removal was already applied and added to history."
+            : "Incorrect example removal was already applied.");
+        else
+          setSaveMessage(example.representation === "basicNativeBin"
+            ? "Incorrect example removed and its native segment restored."
+            : "Incorrect example removed and segment returned to unreviewed.");
       } catch (error) {
-        if (error.status === 409
-          && error.payload?.result?.code === "OPERATION_REPLAYED") {
-          completeOperation(operationKey);
-          setIncorrectExamples(await requestJson(
-            `/videos/${video.id}/incorrect-examples`));
-          await onReload();
-          setSaveMessage("Incorrect example removal was already applied.");
-          return;
-        }
         if (error.status === 409) await onConflict();
         setSaveMessage(error.message || "Unable to remove the incorrect example.");
       } finally {

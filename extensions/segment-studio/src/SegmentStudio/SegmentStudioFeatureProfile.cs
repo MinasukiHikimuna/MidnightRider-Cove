@@ -127,7 +127,6 @@ public static class SegmentStudioFeatureProfileService
         SegmentStudioCapabilities.NativeSegmentsCreate,
         SegmentStudioCapabilities.RecyclingBinView,
         SegmentStudioCapabilities.RecyclingBinMove,
-        SegmentStudioCapabilities.RecyclingBinRestore,
         SegmentStudioCapabilities.RecyclingBinEmpty,
     ];
 
