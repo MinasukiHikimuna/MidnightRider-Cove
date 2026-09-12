@@ -16,8 +16,17 @@ import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
 import { ChevronDown } from "@cove/runtime/lucide-react";
 
+function restoreDisabledToolbarActionFocus(trigger, toolbar, fallbackActionId) {
+  if (!trigger?.disabled || !fallbackActionId) return false;
+  const fallback = toolbar?.querySelector(`[data-action-id="${fallbackActionId}"]:not(:disabled)`)
+    || toolbar?.querySelector("button:not(:disabled)");
+  if (!fallback) return false;
+  fallback.focus();
+  return true;
+}
+
 function SegmentEditorView(props) {
-  const { activeFilterCount, allSwimlanes, analysisError, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, cancelQueuedReviewsForSegments, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closePublishApprovedDialog, closeTagEditing, collapsedSegmentGroups, compatibilityMode, configuringTag, createSegment, currentTime, deleteRejectedSegments, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onDetailChange, onNavigate, onReload, onSlotsChanged, openPublishApprovedDialog, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, publishApprovedCancelButtonRef, publishApprovedDrafts, publishApprovedError, publishApprovedOpen, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, rejectedDeletionPreview, removeIncorrectExample, removingExampleId, restoreHistoryTarget, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setRejectedDeletionPreview, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
+  const { activeFilterCount, allSwimlanes, analysisError, analysisRun, analysisStatus, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, cancelQueuedReviewsForSegments, canMoveSelectionToBin, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closePublishApprovedDialog, closeTagEditing, collapsedSegmentGroups, commonActionsRef, compatibilityMode, configuringTag, createSegment, currentTime, deleteRejectedSegments, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hasNextUnreviewed, hasPreviousUnreviewed, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSavingRef, mergeSelectedSwimlane, nativeImportState, onDetailChange, onNavigate, onReload, onSlotsChanged, openPublishApprovedDialog, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, publishApprovedCancelButtonRef, publishApprovedDrafts, publishApprovedError, publishApprovedOpen, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, rejectedDeletionPreview, removeIncorrectExample, removingExampleId, restoreHistoryTarget, runEditorAction, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setRejectedDeletionPreview, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, startFullAnalysis, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
   const approvedDrafts = useMemo(
     () => segments.filter((segment) => !segment.published && segment.reviewState === "approved"),
     [segments],
@@ -27,6 +36,27 @@ function SegmentEditorView(props) {
   const materializeChangeCount = materializePreview
     ? materializePreview.createCount + materializePreview.linkCount
     : null;
+  const selectionBusy = savingSegmentId != null;
+  const hasSelection = selectedSegments.length > 0;
+  const hasSingleSelection = selectedSegments.length === 1;
+  const allSelectedApproved = hasSelection && selectedSegments.every((segment) => segment.reviewState === "approved");
+  const allSelectedRejected = hasSelection && selectedSegments.every((segment) => segment.reviewState === "rejected");
+  const commonActions = [
+    { id: "marker.create", label: "New segment", disabled: selectionBusy },
+    { id: "marker.editTag", label: "Edit tag", disabled: selectionBusy || !hasSelection },
+    { id: "marker.setStart", label: "Set start", disabled: selectionBusy || !hasSingleSelection },
+    { id: "marker.setEnd", label: "Set end", disabled: selectionBusy || !hasSingleSelection },
+    { id: "marker.split", label: "Split", disabled: selectionBusy || !hasSingleSelection },
+    ...(compatibilityMode ? [
+      { id: "navigation.previousUnreviewedGlobal", label: "Previous unreviewed", disabled: !hasPreviousUnreviewed, focusWhenDisabled: "navigation.nextUnreviewedGlobal" },
+      { id: "marker.confirm", label: allSelectedApproved ? "Unapprove" : "Approve", disabled: selectionBusy || !hasSelection, tone: "approve" },
+      { id: "marker.reject", label: allSelectedRejected ? "Unreject" : "Reject", disabled: selectionBusy || !hasSelection, tone: "reject" },
+      { id: "navigation.nextUnreviewedGlobal", label: "Next unreviewed", disabled: !hasNextUnreviewed, focusWhenDisabled: "navigation.previousUnreviewedGlobal" },
+    ] : []),
+    ...(!compatibilityMode ? [
+      { id: "marker.moveToBin", label: "Move to bin", disabled: selectionBusy || !canMoveSelectionToBin, tone: "reject" },
+    ] : []),
+  ];
 
   function renderSegmentRailItem(segment) {
       const selected = selectedSegmentIds.includes(segment.id);
@@ -500,7 +530,7 @@ function SegmentEditorView(props) {
             ref: mediaStackRef,
             className: `${splitLayout ? "min-h-0 flex-1" : ""} grid`,
             style: splitLayout ? {
-              gridTemplateRows: `minmax(16rem, ${(1 - editorLayout.timelineRatio) * 100}fr) 0.5rem minmax(14rem, ${editorLayout.timelineRatio * 100}fr)`,
+              gridTemplateRows: `minmax(16rem, ${(1 - editorLayout.timelineRatio) * 100}fr) auto 0.5rem minmax(14rem, ${editorLayout.timelineRatio * 100}fr)`,
             } : { rowGap: "0.5rem" },
           }, [
             h("div", {
@@ -581,6 +611,41 @@ function SegmentEditorView(props) {
                 ? h("div", { key: "rail-placeholder", "aria-hidden": "true" })
                 : null,
             ]),
+            h("div", {
+              key: "common-actions",
+              ref: commonActionsRef,
+              role: "toolbar",
+              "aria-label": "Common segment actions",
+              className: "flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1.5",
+            }, commonActions.map((action) => {
+              const shortcut = shortcutBindings[action.id]?.[0];
+              const toneClass = action.tone === "approve"
+                ? "border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20"
+                : action.tone === "reject"
+                  ? "border-red-500/50 bg-red-500/10 hover:bg-red-500/20"
+                  : "border-border bg-card hover:bg-muted/50";
+              return h("button", {
+                key: action.id,
+                type: "button",
+                disabled: action.disabled,
+                "data-action-id": action.id,
+                onClick: (event) => {
+                  const trigger = event.currentTarget;
+                  runEditorAction(action.id, { target: trigger, preserveFocus: true });
+                  if (action.focusWhenDisabled) requestAnimationFrame(() => {
+                    restoreDisabledToolbarActionFocus(trigger, commonActionsRef.current, action.focusWhenDisabled);
+                  });
+                },
+                title: shortcut ? `${action.label} (${shortcut})` : action.label,
+                className: `inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-40 ${toneClass}`,
+              }, [
+                h("span", { key: "label" }, action.label),
+                shortcut ? h("kbd", {
+                  key: "shortcut",
+                  className: "rounded border border-border/70 bg-background/70 px-1 py-0.5 font-mono text-[10px] leading-none text-secondary",
+                }, shortcut) : null,
+              ]);
+            })),
             splitLayout ? h("div", {
               key: "separator",
               role: "separator",
@@ -679,4 +744,4 @@ function SegmentEditorView(props) {
     ]);
 }
 
-export { SegmentEditorView };
+export { restoreDisabledToolbarActionFocus, SegmentEditorView };

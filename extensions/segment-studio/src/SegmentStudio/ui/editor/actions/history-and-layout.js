@@ -7,7 +7,7 @@ import { normalizeCollapsedSegmentGroups } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta } from "../model/feedback.js";
 
 function createHistoryAndLayoutActions(context) {
-  const { acceptHistory, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, setSavingSegmentId, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
+  const { acceptHistory, commonActionsRef, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, setSavingSegmentId, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
 
   async function applySegmentHistoryState(targetState, sourceState, loaded) {
       const targets = targetState.type === "segment" ? [targetState] : targetState.segments || [];
@@ -321,7 +321,12 @@ function createHistoryAndLayoutActions(context) {
     function updateTimelineRatioFromPointer(event) {
       const bounds = mediaStackRef.current?.getBoundingClientRect();
       if (!bounds) return;
-      updateTimelineRatio(calculateTimelineRatioFromPointer(event.clientY, bounds.top, bounds.height));
+      const controlsHeight = commonActionsRef.current?.offsetHeight || 0;
+      updateTimelineRatio(calculateTimelineRatioFromPointer(
+        event.clientY,
+        bounds.top + controlsHeight,
+        Math.max(0, bounds.height - controlsHeight),
+      ));
     }
 
     function handleSeparatorPointerDown(event) {

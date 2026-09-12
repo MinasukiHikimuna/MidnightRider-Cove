@@ -12,7 +12,7 @@ import { findUniquePerformerSlotAssignment } from "../discovery/model.js";
 
 import { buildSegmentRailRows, expandedSwimlanes, groupSegmentsIntoSwimlanes, groupSelectedSwimlanes, groupSwimlanesBySegmentGroup, reconcileSegmentGroupKey, revealCollapsedSegmentGroup, segmentGroupKeyForSegment, visibleVirtualRows } from "./model/swimlanes.js";
 
-import { calculateTimelineRatioBounds, clampEditorPanelWidth, clampTimelineRatioForHeight, findInitialSegmentSelection } from "./model/timeline.js";
+import { calculateTimelineRatioBounds, clampEditorPanelWidth, clampTimelineRatioForHeight, findInitialSegmentSelection, findUnreviewedSelection } from "./model/timeline.js";
 
 import { indexPerformerSlotsBySegment, performerSlotStatusFromSegmentSlots } from "./model/history.js";
 
@@ -121,6 +121,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const pendingInitialSeekRef = useRef(initialSegmentId);
   const centerTimelineRef = useRef(null);
   const mediaStackRef = useRef(null);
+  const commonActionsRef = useRef(null);
   const focusRowRef = useRef(null);
   const workspaceRef = useRef(null);
   const editorRef = useRef(null);
@@ -339,7 +340,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     const element = mediaStackRef.current;
     if (!splitLayout || !element || typeof ResizeObserver === "undefined") return undefined;
     const update = () => {
-      const height = element.clientHeight;
+      const height = Math.max(0, element.clientHeight - (commonActionsRef.current?.offsetHeight || 0));
       setMediaStackHeight(height);
       setEditorLayout((layout) => {
         const timelineRatio = clampTimelineRatioForHeight(layout.timelineRatio, height);
@@ -348,6 +349,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     };
     const observer = new ResizeObserver(update);
     observer.observe(element);
+    if (commonActionsRef.current) observer.observe(commonActionsRef.current);
     update();
     return () => observer.disconnect();
   }, [splitLayout]);
@@ -451,6 +453,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     () => expandedSwimlanes(allSwimlanes, collapsedSegmentGroups),
     [allSwimlanes, collapsedSegmentGroups],
   );
+  const hasPreviousUnreviewed = findUnreviewedSelection(swimlanes, selectedSegment?.id, -1, true) != null;
+  const hasNextUnreviewed = findUnreviewedSelection(swimlanes, selectedSegment?.id, 1, true) != null;
   const selectedSegmentGroupForSegment = selectedSegment ? segmentGroupKeyForSegment(allSwimlanes, selectedSegment.id) : null;
   const segmentGroupKeys = segmentGroups.length > 0 ? groupedSegmentRail.map((group) => group.key) : [];
   const segmentGroupKeysFingerprint = segmentGroupKeys.join("|");
@@ -770,6 +774,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     horizontalLayoutSize,
     mediaStackHeight,
     mediaStackRef,
+    commonActionsRef,
     onDetailChange,
     onReload,
     railToggleRef,
@@ -860,6 +865,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     autoAssignOpen,
     autoAssignPerformers,
     autoAssigning,
+    canMoveSelectionToBin,
     captureTrainingExport,
     cancelQueuedReviewsForSegments,
     removeIncorrectExample,
@@ -872,6 +878,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     closePublishApprovedDialog,
     closeTagEditing,
     collapsedSegmentGroups,
+    commonActionsRef,
     compatibilityMode,
     configuringTag,
     createSegment,
@@ -896,6 +903,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     history,
     historyOpen,
     historySaving,
+    hasNextUnreviewed,
+    hasPreviousUnreviewed,
     horizontalLayoutSize,
     importNativeSegments,
     incorrectExamples,
@@ -939,6 +948,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     railToggleRef,
     recordHistoryAction,
     restoreHistoryTarget,
+    runEditorAction: executeShortcutById,
     saveMessage,
     setSaveMessage,
     saveTag,

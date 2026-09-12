@@ -1025,8 +1025,18 @@ test("editor mode gates compatibility approval and performer-slot workflow", () 
   assert.doesNotMatch(editor, /approve\/unapprove/);
   assert.match(editor, /slotsOpen && compatibilityMode && selectedSegment/);
   assert.match(editor, /h\(PerformerSlotAssignmentEditor/);
-  assert.doesNotMatch(editor, /Move to bin/);
+  assert.match(editor, /!compatibilityMode[\s\S]{0,240}marker\.moveToBin/);
   assert.doesNotMatch(editor, /onMoveToBin/);
+});
+
+test("common action height is excluded from the resizable media ratio", () => {
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  const layoutActions = sourceByModule["editor/actions/history-and-layout.js"];
+
+  assert.match(controller, /element\.clientHeight - \(commonActionsRef\.current\?\.offsetHeight \|\| 0\)/);
+  assert.match(controller, /observer\.observe\(commonActionsRef\.current\)/);
+  assert.match(layoutActions, /bounds\.top \+ controlsHeight/);
+  assert.match(layoutActions, /bounds\.height - controlsHeight/);
 });
 
 test("clicking a marker preserves button focus while keyboard navigation can return focus to the editor", () => {

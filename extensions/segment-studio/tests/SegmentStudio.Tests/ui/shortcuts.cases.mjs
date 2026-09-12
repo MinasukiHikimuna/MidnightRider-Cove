@@ -331,11 +331,52 @@ test("native shortcut registrations keep keyboard ownership with the mounted edi
   assert.match(shortcutActionsSource, /shortcut\.id === "video\.playSelected"[\s\S]*requestAnimationFrame\(\(\) => editorRef\.current\?\.focus/);
 });
 
+test("clickable unreviewed navigation preserves toolbar focus", () => {
+  const shortcuts = sourceByModule["editor/actions/shortcuts.js"];
+  const navigation = shortcuts.slice(
+    shortcuts.indexOf('if (shortcut.id.includes("Unreviewed"))'),
+    shortcuts.indexOf('if (shortcut.id === "navigation.nextTouchingPlayhead"'),
+  );
+
+  assert.match(navigation, /focusEditor: !invocation\.preserveFocus/);
+});
+
+test("disabled endpoint navigation moves focus to the opposite toolbar action", () => {
+  let focused = false;
+  const fallback = { focus: () => { focused = true; } };
+  const toolbar = {
+    querySelector: (selector) => selector === '[data-action-id="navigation.previousUnreviewedGlobal"]:not(:disabled)'
+      ? fallback
+      : null,
+  };
+
+  assert.equal(ui.restoreDisabledToolbarActionFocus(
+    { disabled: true },
+    toolbar,
+    "navigation.previousUnreviewedGlobal",
+  ), true);
+  assert.equal(focused, true);
+  assert.equal(ui.restoreDisabledToolbarActionFocus(
+    { disabled: false },
+    toolbar,
+    "navigation.previousUnreviewedGlobal",
+  ), false);
+
+  focused = false;
+  assert.equal(ui.restoreDisabledToolbarActionFocus(
+    { disabled: true },
+    { querySelector: (selector) => selector === "button:not(:disabled)" ? fallback : null },
+    "navigation.previousUnreviewedGlobal",
+  ), true);
+  assert.equal(focused, true);
+});
+
 test("segment selection does not move or autoplay the playhead", () => {
   assert.match(source, /function selectSegment\(segment, \{[\s\S]*focusEditor = false,[\s\S]*seekToSegment = false,[\s\S]*additive = false,[\s\S]*rangeSegmentIds = null,[\s\S]*\} = \{\}\)/);
   assert.match(source, /if \(seekToSegment\) seekRef\.current\?\.\(segment\.startSec, false\)/);
   const keyboardSelections = source.match(/selectSegment\(target, \{ focusEditor: true, seekToSegment: false \}\)/g) || [];
-  assert.equal(keyboardSelections.length, 6);
+  assert.equal(keyboardSelections.length, 5);
+  assert.match(source, /selectSegment\(target, \{ focusEditor: !invocation\.preserveFocus, seekToSegment: false \}\)/);
   assert.match(source, /onClick: \(event\) => selectSegment\(segment, \{ additive: event\.metaKey \|\| event\.ctrlKey \}\)/);
   assert.match(source, /onSelect: \(segment, options\) => selectSegment\(segment, options\)/);
   assert.match(source, /seekRef\.current\?\.\(selectedSegment\.startSec, true\)/);

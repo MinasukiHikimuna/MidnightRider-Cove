@@ -91,6 +91,42 @@ test("segment creation inserts and selects a temporary marker before persistence
   assert.match(create, /setFirstSegmentTagOpen\(true\)/);
 });
 
+test("common segment actions are clickable between the player and swimlanes", () => {
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+  const playerIndex = view.indexOf('data-segment-player": "true"');
+  const actionsIndex = view.indexOf('key: "common-actions"');
+  const timelineIndex = view.indexOf('key: "timeline"');
+  const actionDefinitions = view.slice(view.indexOf("const commonActions"), view.indexOf("function renderSegmentRailItem"));
+  const actions = view.slice(actionsIndex, timelineIndex);
+
+  assert.ok(playerIndex >= 0 && actionsIndex > playerIndex && timelineIndex > actionsIndex);
+  assert.match(controller, /runEditorAction: executeShortcutById/);
+  assert.match(actions, /role: "toolbar"/);
+  assert.match(actions, /aria-label": "Common segment actions"/);
+  for (const [shortcutId, label] of [
+    ["marker.create", "New segment"],
+    ["marker.editTag", "Edit tag"],
+    ["marker.setStart", "Set start"],
+    ["marker.setEnd", "Set end"],
+    ["marker.split", "Split"],
+  ]) {
+    assert.match(actionDefinitions, new RegExp(`id: "${shortcutId.replace(".", "\\.")}"[\\s\\S]{0,160}label: "${label}"`));
+  }
+  assert.match(actionDefinitions, /compatibilityMode[\s\S]*navigation\.previousUnreviewedGlobal[\s\S]*marker\.confirm[\s\S]*marker\.reject[\s\S]*navigation\.nextUnreviewedGlobal/);
+  assert.match(actionDefinitions, /allSelectedApproved \? "Unapprove" : "Approve"/);
+  assert.match(actionDefinitions, /allSelectedRejected \? "Unreject" : "Reject"/);
+  assert.match(actionDefinitions, /disabled: !hasPreviousUnreviewed/);
+  assert.match(actionDefinitions, /disabled: !hasNextUnreviewed/);
+  assert.match(actionDefinitions, /!compatibilityMode[\s\S]*marker\.moveToBin/);
+  assert.match(actionDefinitions, /disabled: selectionBusy \|\| !canMoveSelectionToBin/);
+  assert.match(actions, /const trigger = event\.currentTarget;[\s\S]*runEditorAction\(action\.id, \{ target: trigger, preserveFocus: true \}\)/);
+  assert.match(actions, /restoreDisabledToolbarActionFocus\(trigger, commonActionsRef\.current, action\.focusWhenDisabled\)/);
+  assert.match(actions, /shortcutBindings\[action\.id\]\?\.\[0\]/);
+  assert.match(actions, /disabled: action\.disabled/);
+  assert.match(actions, /ref: commonActionsRef/);
+});
+
 test("optimistic rollback preserves unrelated refreshed editor data", () => {
   const original = { id: 1, startSec: 4, endSec: 8, reviewState: "unreviewed", tagId: 2 };
   const refreshed = {
@@ -1060,7 +1096,7 @@ test("desktop editor uses compact workspace gutters", () => {
   assert.match(source, /flex shrink-0 flex-col items-stretch gap-2 rounded-md border border-border bg-surface px-3 py-2/);
   assert.match(source, /min-h-0 flex-1" : ""} relative grid gap-2/);
   assert.doesNotMatch(source, /key: "rail-tools"/);
-  assert.match(source, /\) 0\.5rem minmax\(14rem/);
+  assert.match(source, /\) auto 0\.5rem minmax\(14rem/);
   assert.match(source, /space-y-2 overflow-y-auto rounded-md border border-border bg-card p-3/);
 });
 

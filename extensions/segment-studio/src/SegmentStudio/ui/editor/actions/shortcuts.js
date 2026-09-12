@@ -90,7 +90,7 @@ function createShortcutHandler(context) {
           shortcut.id.startsWith("navigation.previous") ? -1 : 1,
           shortcut.id.endsWith("Global"),
         );
-        if (target) selectSegment(target, { focusEditor: true, seekToSegment: false });
+        if (target) selectSegment(target, { focusEditor: !invocation.preserveFocus, seekToSegment: false });
       };
       if (shortcut.id === "navigation.nextTouchingPlayhead" || shortcut.id === "navigation.previousTouchingPlayhead") action = () => {
         const target = findSegmentNearPlayhead(swimlanes, currentTime, shortcut.id === "navigation.previousTouchingPlayhead" ? -1 : 1, selectedSegment?.id);

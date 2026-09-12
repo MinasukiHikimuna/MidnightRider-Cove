@@ -11,6 +11,7 @@ export { applyFeedbackEditorDelta, feedbackFrameTimestamps, feedbackResultMatche
 export { insertSegmentProjection, mergeSegmentsProjection, patchPerformerSlotProjection, patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "./editor/model/optimistic.js";
 export { shouldReloadAfterSegmentMutation } from "./editor/actions/primary.js";
 export { restorePublishApprovedFocus } from "./editor/SegmentEditor.js";
+export { restoreDisabledToolbarActionFocus } from "./editor/SegmentEditorView.js";
 export { provenanceSourceLabel, compactProvenanceSummary } from "./editor/SegmentDetails.js";
 export { groupMaterializationOutputs } from "./editor/dialogs/MaterializationDialog.js";
 export { groupApprovedDraftsForPublishing } from "./editor/dialogs/EditorDialogs.js";
