@@ -89,6 +89,8 @@ import { OccurrenceSettings } from "./OccurrenceReview";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
+import { objectFiltersEqual } from "./objectFiltersEqual";
+export { objectFiltersEqual } from "./objectFiltersEqual";
 import "./styles.css";
 import {
   usePresentationTags,
@@ -170,37 +172,6 @@ function writeSelectedReviewId(reviewId: string) {
 
 function pageFilter(value: Record<string, unknown>) {
   return boundedFilter({ ...value, page: 1 });
-}
-
-export function objectFiltersEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((value, index) => objectFiltersEqual(value, right[index]))
-    );
-  }
-  if (
-    !left ||
-    !right ||
-    typeof left !== "object" ||
-    typeof right !== "object"
-  )
-    return false;
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord).sort();
-  const rightKeys = Object.keys(rightRecord).sort();
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key, index) =>
-        key === rightKeys[index] &&
-        objectFiltersEqual(leftRecord[key], rightRecord[key]),
-    )
-  );
 }
 
 function videoTitle(video: Video) {

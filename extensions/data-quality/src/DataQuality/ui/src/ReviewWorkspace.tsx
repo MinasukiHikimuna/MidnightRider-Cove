@@ -9,17 +9,19 @@ import {
   VIDEO_SORT_OPTIONS,
   VideoPlayer,
 } from "@cove/runtime/components";
-import { Save } from "@cove/runtime/lucide-react";
+import { RotateCcw, Save } from "@cove/runtime/lucide-react";
 import { findVideos, request, videoCoverUrl, videoStreamUrl } from "./api";
 import {
   reviewValidation,
   actionShortcut,
   boundedFilter,
   isReviewShortcutTarget,
+  queueSignature,
   type OccurrenceReview,
   type VideoReviewAction,
 } from "./model";
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
+import { objectFiltersEqual } from "./objectFiltersEqual";
 import {
   defaultQuery,
   effectiveReview,
@@ -324,6 +326,12 @@ export function ReviewWorkspace({
   );
   const reviewRef = useRef(review);
   reviewRef.current = review;
+  const queueDefaultsChanged =
+    query.startFrom !== (saved.view.startFrom ?? "end") ||
+    !objectFiltersEqual(
+      JSON.parse(queueSignature(effectiveReview(saved, query))),
+      JSON.parse(queueSignature(effectiveReview(saved, defaultQuery(saved)))),
+    );
   const blocked = pending || loading || editing;
   const page = Number(query.filter.page);
 
@@ -811,6 +819,25 @@ export function ReviewWorkspace({
       endOperation();
     }
   }
+  async function saveQueryDefaults() {
+    if (!onSaveDefaults || lock.current) return;
+    const updated = effectiveReview(saved, {
+      ...queryRef.current,
+      filter: { ...queryRef.current.filter, page: 1 },
+    });
+    lock.current = true;
+    setPending(true);
+    setError("");
+    try {
+      const result = await onSaveDefaults(updated);
+      if (result === false) throw new Error("Could not save review.");
+      setNotice("Queue saved to this review.");
+    } catch (error) {
+      setError("Could not save queue. " + errorText(error));
+    } finally {
+      endOperation();
+    }
+  }
   const scope = query.performerScope;
   const updateScope = (
     change: Partial<NonNullable<ReviewQuery["performerScope"]>>,
@@ -898,6 +925,7 @@ export function ReviewWorkspace({
       >
         <legend>Scene filters</legend>
         <div
+          className="dq-queue-toolbar"
           onKeyDownCapture={(event) => {
             if (event.key === "Escape") allowCustomFieldRemoval.current = false;
             if (
@@ -970,6 +998,32 @@ export function ReviewWorkspace({
               });
             }}
           />
+          {!ruleDraft && queueDefaultsChanged && (
+            <div className="dq-review-defaults">
+              <button
+                type="button"
+                className="dq-button"
+                aria-label="Save changes to review filters"
+                title="Save changes to review filters"
+                disabled={!onSaveDefaults}
+                onClick={() => void saveQueryDefaults()}
+              >
+                <Save aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="dq-button"
+                aria-label="Reset to default review filters"
+                title="Reset to default review filters"
+                onClick={() => {
+                  const defaults = defaultQuery(saved);
+                  replaceQuery(defaults, defaults.startFrom === "end");
+                }}
+              >
+                <RotateCcw aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
         {scope && (
           <div className="dq-scope-controls">
@@ -1059,29 +1113,6 @@ export function ReviewWorkspace({
                   Include subtags
                 </label>
               </>
-            )}
-          </div>
-        )}
-        {!ruleDraft && (
-          <div className="dq-row">
-            <button
-              type="button"
-              className="dq-button"
-              onClick={() => {
-                const defaults = defaultQuery(saved);
-                replaceQuery(defaults, defaults.startFrom === "end");
-              }}
-            >
-              Reset to review defaults
-            </button>
-            {onSaveDefaults && (
-              <button
-                type="button"
-                className="dq-button"
-                onClick={beginRuleEdit}
-              >
-                Save as review defaults
-              </button>
             )}
           </div>
         )}

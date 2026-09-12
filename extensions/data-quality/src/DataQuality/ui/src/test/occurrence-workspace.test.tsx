@@ -126,6 +126,7 @@ function open(
   rule: OccurrenceReview | VideoReview = review,
   canWrite = true,
   onSaveDefaults = vi.fn().mockResolvedValue(undefined),
+  editRequest = 0,
 ) {
   return render(
     <ReviewWorkspace
@@ -133,6 +134,7 @@ function open(
       canWrite={canWrite}
       onBusy={() => {}}
       onSaveDefaults={onSaveDefaults}
+      editRequest={editRequest}
     />,
   );
 }
@@ -387,6 +389,7 @@ it("lets users toggle subtags and save the choice as review defaults", async () 
   const save = vi.fn().mockResolvedValue(true);
   open({ ...review, occurrence: { ...review.occurrence, condition: "includes", conditionTagIds: [21] } }, true, save);
   await ready();
+  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Include subtags" })).toBeChecked();
   fireEvent.click(screen.getByRole("checkbox", { name: "Include subtags" }));
   await waitFor(() => expect(api.loadOccurrencePage).toHaveBeenLastCalledWith(
@@ -394,11 +397,117 @@ it("lets users toggle subtags and save the choice as review defaults", async () 
     null, 1, expect.anything(),
   ));
   expect(JSON.parse(new URLSearchParams(window.location.search).get("performerScope")!).includeSubtags).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(
     expect.objectContaining({ occurrence: expect.objectContaining({ includeSubtags: false }) }),
   ));
+  expect(screen.queryByRole("region", { name: "Edit review rule" })).not.toBeInTheDocument();
+});
+
+it("gives single-video reviews the same compact save and reset controls", async () => {
+  const rule: VideoReview = { ...review, entityType: "video" };
+  const save = vi.fn().mockResolvedValue(true);
+  open(rule, true, save);
+  await ready();
+  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "temporary" },
+  });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Save changes to review filters" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      entityType: "video",
+      view: expect.objectContaining({
+        filter: expect.objectContaining({ q: "temporary", page: 1 }),
+      }),
+    }),
+  ));
+  expect(screen.queryByRole("region", { name: "Edit review rule" })).not.toBeInTheDocument();
+});
+
+it("keeps changed queue criteria available when a compact save fails", async () => {
+  const rule: VideoReview = { ...review, entityType: "video" };
+  const save = vi.fn()
+    .mockRejectedValueOnce(new Error("Temporary failure"))
+    .mockResolvedValueOnce(true);
+  open(rule, true, save);
+  await ready();
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "temporary" },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "Save changes to review filters" }));
+
+  expect(await screen.findByText("Could not save queue. Temporary failure")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
+  expect(screen.getByRole("button", { name: "Save changes to review filters" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Reset to default review filters" })).toBeEnabled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("Queue saved to this review.")).toBeInTheDocument();
+});
+
+it("shows compact controls when only the review direction differs", async () => {
+  const params = new URLSearchParams({
+    review: review.id,
+    q: "",
+    page: "1",
+    perPage: "2",
+    sort: "date",
+    direction: "desc",
+    filters: "{}",
+    searchMode: "text",
+    startFrom: "end",
+    performerScope: JSON.stringify({
+      targetMode: "all",
+      performerIds: [],
+      performerFilter: {},
+      condition: "any",
+      conditionTagIds: [],
+      includeSubtags: true,
+    }),
+  });
+  window.history.replaceState(null, "", `/data-quality?${params}`);
+
+  open();
+  await ready();
+
+  expect(screen.getByRole("button", { name: "Save changes to review filters" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Reset to default review filters" }));
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get("startFrom")).toBe("beginning"));
+  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+});
+
+it("does not show compact controls for a canonical URL matching the review defaults", async () => {
+  const params = new URLSearchParams({
+    review: review.id,
+    q: "",
+    page: "1",
+    perPage: "2",
+    sort: "date",
+    direction: "desc",
+    filters: "{}",
+    searchMode: "text",
+    startFrom: "beginning",
+    performerScope: JSON.stringify({
+      targetMode: "all",
+      performerIds: [],
+      performerFilter: {},
+      condition: "any",
+      conditionTagIds: [],
+      includeSubtags: true,
+    }),
+  });
+  window.history.replaceState(null, "", `/data-quality?${params}`);
+
+  open();
+  await ready();
+
+  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset to default review filters" })).not.toBeInTheDocument();
 });
 
 it("keeps saved defaults separate from reset and restores browser URL state", async () => {
@@ -423,11 +532,7 @@ it("keeps saved defaults separate from reset and restores browser URL state", as
       expect.anything(),
     ),
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Save as review defaults" }),
-  );
-  expect(save).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
   await waitFor(() =>
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -439,7 +544,7 @@ it("keeps saved defaults separate from reset and restores browser URL state", as
   );
   await ready();
   fireEvent.click(
-    screen.getByRole("button", { name: "Reset to review defaults" }),
+    screen.getByRole("button", { name: "Reset to default review filters" }),
   );
   await waitFor(() =>
     expect(new URLSearchParams(window.location.search).get("q")).toBe(""),
@@ -831,10 +936,13 @@ it("keeps only native pagination in the queue before the player", async () => {
 });
 
 it("cancels rule criteria without changing saved defaults or the selected partner", async () => {
-  const save = vi.fn(); open(review, true, save); await ready();
+  const save = vi.fn();
+  const rendered = open(review, true, save);
+  await ready();
   fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
   const before = window.location.search;
-  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
+  rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />);
+  await screen.findByRole("region", { name: "Edit review rule" });
   fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft search" } });
   await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
@@ -850,8 +958,8 @@ it("keeps a failed rule save open and persists performer scope when retried", as
   const female = { genderCriterion: { value: "Female", modifier: "EQUALS" } };
   testFilterControls.result = female;
   const save = vi.fn().mockRejectedValueOnce(new Error("Denied")).mockResolvedValueOnce(true);
-  open(review, true, save); await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
+  open(review, true, save, 1);
+  await screen.findByRole("region", { name: "Edit review rule" });
   fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
   fireEvent.click(screen.getByRole("button", { name: "Edit performer criteria" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
@@ -1014,7 +1122,9 @@ it("does not restart a paused autoplay video when a query reload returns the sam
   await screen.findByRole("link", { name: "Next scene" });
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Pause review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "temporary" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Reset to default review filters" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Reset to default review filters" }));
   await ready();
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
 });
@@ -1052,13 +1162,14 @@ it("continues into the preceding page when Apply & stay clamps a removed last sc
 it("restores the pinned cursor when cancelling a rule edit after a queue reload", async () => {
   api.loadOccurrencePage.mockResolvedValueOnce({ items: [first, second, third], totalCount: 2 });
   api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
-  open(); await ready();
+  const rendered = open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Save as review defaults" }));
+  rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
+  await screen.findByRole("region", { name: "Edit review rule" });
   const loads = api.loadOccurrencePage.mock.calls.length;
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft" } });
   await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads));
@@ -1072,7 +1183,9 @@ it("autoplays after an action even when query navigation remounted a paused play
   api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
   open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "Reset to review defaults" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "temporary" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Reset to default review filters" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Reset to default review filters" }));
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });

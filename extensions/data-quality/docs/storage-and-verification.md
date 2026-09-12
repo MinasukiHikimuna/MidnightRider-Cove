@@ -24,4 +24,4 @@ Final verification records the current automated test totals in the task handoff
 
 ## Filter-driven media workspace
 
-Video and performer occurrence reviews now ignore the legacy progress records described above. Those records remain untouched for compatibility; only tag-group reviews continue to use their progress workflow. Media review queries are serialized completely in the URL, including explicit empty criteria and `performerScope`. Reset reads current review defaults; Save as review defaults explicitly updates review configuration. Local tag drafts live only in the open workspace and are never written as progress.
+Video and performer occurrence reviews now ignore the legacy progress records described above. Those records remain untouched for compatibility; only tag-group reviews continue to use their progress workflow. Media review queries are serialized completely in the URL, including explicit empty criteria and `performerScope`. The compact reset control reads current review defaults; the adjacent save control explicitly updates the review's queue criteria. Local tag drafts live only in the open workspace and are never written as progress.
