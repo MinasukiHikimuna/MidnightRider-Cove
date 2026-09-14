@@ -744,6 +744,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     acquireSaveLock,
     dispatchPendingChanges,
     enqueueSave,
+    stableSaveIdentity,
     setSelectedSegmentId,
     setSelectedSegmentIds,
     video,
@@ -753,8 +754,11 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     saveQueue.cancel((task) => task.kind === "review" && targetsOverlap(task.targets, cancelledTargets));
   };
   // Queued saves start only after the previous save's results have rendered, so they read fresh data.
+  // The settles this render has seen; the commit below lets queued saves start only if it saw them all.
+  const renderedSettleCount = saveQueue.settledCount();
   useLayoutEffect(() => {
     // Captured after commit, so queued saves never read data from a render that did not happen.
+    saveQueue.markCommitted(renderedSettleCount);
     saveContextRef.current = {
       detail,
       segments,

@@ -9,7 +9,7 @@ import { createPendingChangeId } from "../model/pending-changes.js";
 import { mergeSegmentsProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, stableSaveIdentity, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -151,7 +151,7 @@ function createReviewActions(context) {
       // Read the queue directly: a save started earlier in this render is not in `savingSegmentId` yet.
       const queueSnapshot = getSaveQueueSnapshot();
       const waiting = savingSegmentIdFrom(queueSnapshot) != null
-        || queueSnapshot.queued.some((task) => targetsOverlap(task.targets, request.identities));
+        || queueSnapshot.queued.some((task) => targetsOverlap(task.targets, request.identities.map(stableSaveIdentity)));
       const task = enqueueSave({
         kind: "review",
         lockId: request.activeIdentity.id,

@@ -197,6 +197,7 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     render() {
       state.pendingChanges = pendingChangesReducer(state.pendingChanges, { type: "prune", detail: state.detail });
       committedContext = editor.context();
+      saveQueue.markCommitted();
       saveQueue.poke();
     },
     select(ids, activeId = ids[0] ?? null) {

@@ -164,6 +164,13 @@ test("save queue waiting for a render starts nothing until poked, even from a lo
   assert.equal(queue.getSnapshot().running, null);
   context = { version: 2 };
   queue.poke();
+  assert.equal(queue.getSnapshot().running, null);
+  // Only a commit whose render saw the settle lets the queued review start.
+  queue.markCommitted(queue.settledCount() - 1);
+  queue.poke();
+  assert.equal(queue.getSnapshot().running, null);
+  queue.markCommitted(queue.settledCount());
+  queue.poke();
   assert.deepEqual(await review.done, { status: "fulfilled", value: 2 });
 });
 

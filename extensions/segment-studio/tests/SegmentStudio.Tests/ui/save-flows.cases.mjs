@@ -1073,3 +1073,80 @@ test("editor reloads never resolve with a reload for another video", { timeout: 
   gates[0].resolve({ video: 7 });
   assert.equal(await onA, null);
 });
+
+test("save flow: re-picking a held tag keeps the earlier choice when the new one is refused", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const post = api.hold("POST", "/videos/7/segments");
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const creating = actionsFor(editor).createSegment();
+    await post.arrived();
+    await actionsFor(editor).saveTag(9, "First choice");
+    // Nothing new can be queued (as during a history restore), so the second choice is refused.
+    const refusing = actionsFor(editor, { enqueueSave: () => null });
+    await refusing.saveTag(12, "Second choice");
+
+    assert.equal(editor.state.saveMessage, "Wait for the history restore to finish.");
+    assert.equal(editor.displayedSegments.find((item) => item.id === -1).tagId, 9);
+    assert.equal(editor.saveQueue.getSnapshot().queued.map((task) => task.kind).join(), "held-tag");
+    post.fail(500, { error: "stop" });
+    await creating;
+  });
+});
+
+test("save flow: a held tag whose segment disappeared says it was not saved", { timeout: 5000 }, async () => {
+  const created = segment({ id: 205, nativeSegmentId: 205, startSec: 0, endSec: 20 });
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const post = api.hold("POST", "/videos/7/segments");
+  let server;
+  const editor = createFakeEditor({ server: () => server.serve() });
+  server = createdSegmentServer(editor, created);
+  await withEditorGlobals(api, async () => {
+    const creating = actionsFor(editor).createSegment();
+    await post.arrived();
+    await actionsFor(editor).saveTag(9, "Held tag");
+    server.create();
+    post.release({ id: 205 });
+    await creating;
+    // The created segment was removed (for example undone elsewhere) before the held tag could save.
+    editor.context().onDetailChange((current) => ({ ...current, segments: current.segments.filter((item) => item.id !== 205) }), 7);
+    editor.state.tagEditing = false;
+    editor.render();
+    await editor.saveQueue.whenIdle();
+
+    assert.equal(editor.state.saveMessage, "The new segment was not retagged to Held tag. Choose its tag again.");
+    assert.equal(api.sent("PUT", /\/segments\/\d+$/).length, 0);
+  });
+});
+
+test("save flow: a history restore replays the history current when it starts", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const restore = api.hold("POST", "/videos/7/history/native-state");
+  const editor = createFakeEditor();
+  const older = {
+    revision: 2,
+    cursorSequence: 2,
+    baselineSequence: 0,
+    actions: [{ sequence: 2, kind: "segment.update", beforeState: { type: "segment" }, afterState: { type: "segment" } }],
+  };
+  editor.state.history = older;
+  editor.refs.historyRef.current = older;
+  await withEditorGlobals(api, async () => {
+    const historyActions = historyActionsFor(editor, actionsFor(editor));
+    // A save recorded one more action after the dialog rendered.
+    editor.refs.historyRef.current = {
+      ...older,
+      revision: 3,
+      cursorSequence: 3,
+      actions: [...older.actions, { sequence: 3, kind: "segment.update", beforeState: { type: "segment" }, afterState: { type: "segment" } }],
+    };
+    const restoring = historyActions.restoreHistoryTarget(1);
+    const first = await restore.arrived();
+    assert.equal(first.body.actionSequence, 3);
+    restore.release({ history: { ...editor.refs.historyRef.current, cursorSequence: 2 } });
+    const second = await restore.arrived();
+    assert.equal(second.body.actionSequence, 2);
+    restore.release({ history: { ...editor.refs.historyRef.current, cursorSequence: 1 } });
+    await restoring;
+  });
+});

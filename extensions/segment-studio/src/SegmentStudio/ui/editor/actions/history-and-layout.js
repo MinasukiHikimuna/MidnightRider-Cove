@@ -270,12 +270,14 @@ function createHistoryAndLayoutActions(context) {
       throw new Error("This history action cannot be restored.");
     }
 
-    // A restore replays several requests against the history revision, so it runs alone: it waits for
-    // queued saves and no new save can be queued until it finishes.
+    // A restore replays several requests against the history revision, so it runs alone: it is refused
+    // while other saves are running or queued, and no new save can be queued until it finishes.
     async function restoreHistoryTarget(targetSequence) {
-      if (historySaving || savingSegmentId != null
-          || targetSequence === history.cursorSequence)
+      if (historySaving || targetSequence === history.cursorSequence) return;
+      if (savingSegmentId != null) {
+        setSaveMessage("Finish the pending saves before restoring history.");
         return;
+      }
       const steps = historyActionsForTarget(history, targetSequence);
       if (steps.length === 0) return;
       const task = enqueueSave({

@@ -56,8 +56,11 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
   let queued = [];
   let lastFailure = null;
   let disposed = false;
-  // Set when a task settles and the host must render before the next task reads its context.
-  let awaitingRender = false;
+  // Counts settles, and the settle count seen by the render the host last committed. Queued tasks
+  // start only once a commit reflects every settle, so they never read context from an older render.
+  let settleCount = 0;
+  let committedSettleCount = 0;
+  const awaitingRender = () => !drainAfterSettle && committedSettleCount < settleCount;
   const retargets = new Map();
   let snapshot = IDLE_SNAPSHOT;
   const outcomes = new Map();
@@ -120,12 +123,12 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     running = null;
     if (outcome.status === "rejected") lastFailure = Object.freeze({ id: task.id, kind: task.kind, error: outcome.error });
     publish();
+    settleCount += 1;
     if (drainAfterSettle) pump();
-    else awaitingRender = true;
   }
 
   function pump() {
-    if (disposed || running != null || awaitingRender) return;
+    if (disposed || running != null || awaitingRender()) return;
     let changed = false;
     for (let index = 0; index < queued.length; index += 1) {
       const task = queued[index];
@@ -156,7 +159,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     // Tasks parked on `ready` or a dependency do not make the editor busy; only a running save does.
     if (blockedByExclusive || (running != null && spec.whenBusy !== "enqueue")) return null;
     // An exclusive task runs alone, so it is refused rather than left waiting behind queued work.
-    if (spec.exclusive && (running != null || queued.length > 0 || awaitingRender)) return null;
+    if (spec.exclusive && (running != null || queued.length > 0 || awaitingRender())) return null;
     let resolve;
     const done = new Promise((resolvePromise) => { resolve = resolvePromise; });
     const task = {
@@ -197,7 +200,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
       if (released) return;
       released = true;
       release();
-      // Settle now rather than on a microtask, so the caller can take the lock again immediately.
+      // Settle now rather than on a microtask, so the lock is visibly free before the caller continues.
       if (running?.id === handle.id) settle(running, { status: "fulfilled", value: undefined });
     };
   }
@@ -239,10 +242,12 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     cancel,
     retarget,
     stableIdentity,
-    poke() {
-      awaitingRender = false;
-      pump();
+    // The host reads `settledCount()` while rendering and reports it here once that render commits.
+    settledCount: () => settleCount,
+    markCommitted(renderedSettleCount = settleCount) {
+      committedSettleCount = Math.max(committedSettleCount, renderedSettleCount);
     },
+    poke: () => pump(),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
