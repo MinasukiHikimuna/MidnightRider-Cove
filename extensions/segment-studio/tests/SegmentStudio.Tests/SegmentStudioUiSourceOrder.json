@@ -13,6 +13,7 @@
   "editor/model/feedback.js",
   "editor/model/optimistic.js",
   "editor/model/save-queue.js",
+  "editor/model/pending-changes.js",
   "editor/model/layout.js",
   "editor/PerformerSlotEditors.js",
   "editor/SwimlaneTimeline.js",

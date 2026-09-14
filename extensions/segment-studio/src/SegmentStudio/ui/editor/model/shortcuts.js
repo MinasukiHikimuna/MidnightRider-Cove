@@ -1,3 +1,4 @@
+import { addPendingChange, applyPendingChanges } from "./pending-changes.js";
 import { DEFAULT_PLAYBACK_SHORTCUT_CONFIG, PLAYBACK_SHORTCUTS_STORAGE_KEY, PLAYHEAD_ROUNDING_TOLERANCE_SECONDS, REVIEW_FILTER_STORAGE_KEY, REVIEW_STATES } from "../../shared/constants.js";
 
 export const SEGMENT_STUDIO_SHORTCUTS = [
@@ -363,9 +364,11 @@ export function queueCreatedSegmentTagChoice(queued, segment, tagId, tagName = n
 
 export function displayHeldSegmentTag(segments, queued) {
   if (!queued) return segments;
-  return (segments || []).map((segment) => segment.id === queued.segmentId
-    ? { ...segment, tagId: queued.tagId, tagName: queued.tagName || "Tag segment", tagSortName: null }
-    : segment);
+  return applyPendingChanges(segments, addPendingChange([], {
+    op: "patch",
+    targets: [{ id: queued.segmentId }],
+    values: { tagId: queued.tagId, tagName: queued.tagName || "Tag segment", tagSortName: null },
+  }));
 }
 
 export function resolveQueuedCreatedSegmentTag(queued, { segments, savingSegmentId, reviewSaving, tagEditing, selectedSegmentIds, activeSegmentId }) {

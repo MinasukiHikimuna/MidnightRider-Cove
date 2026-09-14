@@ -10,6 +10,7 @@ export { historyActionsForTarget, segmentHistoryIdentity, segmentHistoryState, s
 export { applyFeedbackEditorDelta, feedbackFrameTimestamps, feedbackResultMatchesAction, feedbackSelectionPlan, groupIncorrectExamplesByTag, hideCollectedFeedbackSegments } from "./editor/model/feedback.js";
 export { insertSegmentProjection, mergeSegmentsProjection, patchPerformerSlotProjection, patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "./editor/model/optimistic.js";
 export { createSaveQueue, isKindRunning, isSaveQueueBusy, resolveSegmentTarget, sameSegmentIdentity, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./editor/model/save-queue.js";
+export { addPendingChange, applyPendingChanges, discardPendingChange, pendingChangesReducer, prunePendingChanges, retargetPendingChanges, settlePendingChange } from "./editor/model/pending-changes.js";
 export { shouldReloadAfterSegmentMutation } from "./editor/actions/primary.js";
 export { restorePublishApprovedFocus } from "./editor/SegmentEditor.js";
 export { restoreDisabledToolbarActionFocus } from "./editor/SegmentEditorView.js";
