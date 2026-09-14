@@ -7,7 +7,7 @@ import { normalizeCollapsedSegmentGroups } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta } from "../model/feedback.js";
 
 function createHistoryAndLayoutActions(context) {
-  const { acceptHistory, commonActionsRef, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, setSavingSegmentId, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
+  const { acceptHistory, acquireSaveLock, commonActionsRef, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
 
   async function applySegmentHistoryState(targetState, sourceState, loaded) {
       const targets = targetState.type === "segment" ? [targetState] : targetState.segments || [];
@@ -276,8 +276,9 @@ function createHistoryAndLayoutActions(context) {
         return;
       const steps = historyActionsForTarget(history, targetSequence);
       if (steps.length === 0) return;
+      const releaseSaveLock = acquireSaveLock("history", -1);
+      if (!releaseSaveLock) return;
       setHistorySaving(true);
-      setSavingSegmentId(-1);
       setSaveMessage(`Restoring ${steps.length} history ${steps.length === 1 ? "action" : "actions"}…`);
       try {
         let loaded = detail;
@@ -309,7 +310,7 @@ function createHistoryAndLayoutActions(context) {
         await onReload();
         setSaveMessage(error.message || "Unable to restore editor history.");
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
         setHistorySaving(false);
       }
     }

@@ -20,10 +20,16 @@ function SegmentActiveEditor({
   saveTag,
   saveTiming,
   slotStatus, performerSlotsAvailable, selectedPerformerSlots, performerSlots, detail, video, slotButtonRef, tagSearchRef,
-  onDetailChange, setSaveMessage, setSavingSegmentId, onSlotsChanged, onRecordHistory, onCancelQueuedReview, splitSegment, duplicateSegment, provenance, lineage, onNavigateLineageItem,
+  onDetailChange, setSaveMessage, acquireSaveLock, onSlotsChanged, onRecordHistory, onCancelQueuedReview, splitSegment, duplicateSegment, provenance, lineage, onNavigateLineageItem,
   tagEditing, onCancelTagEditing, detailPanelRef, onReduceSelection,
 }) {
   const scrollRef = useRef(null);
+  // The performer slot editor owns its request, so the save lock is held across its callbacks.
+  const releaseSlotSaveLockRef = useRef(null);
+  const releaseSlotSaveLock = () => {
+    releaseSlotSaveLockRef.current?.();
+    releaseSlotSaveLockRef.current = null;
+  };
   const slotDialogRef = useRef(null);
   const confirmSlotButtonRef = useRef(null);
   const recommendationShortcutRef = useRef(null);
@@ -366,7 +372,8 @@ function SegmentActiveEditor({
                 selectedSegment.id,
                 optimisticSlots,
               ), video.id);
-              setSavingSegmentId(selectedSegment.id);
+              releaseSlotSaveLock();
+              releaseSlotSaveLockRef.current = acquireSaveLock("slots", selectedSegment.id);
               setSaveMessage("Saving performer slots…");
               closeSlots();
             },
@@ -388,7 +395,7 @@ function SegmentActiveEditor({
                 const loaded = await onSlotsChanged(saved);
                 if (!loaded) onCancelQueuedReview([selectedSegment]);
               } finally {
-                setSavingSegmentId(null);
+                releaseSlotSaveLock();
               }
             },
             onRollback: async (originalSlots, error) => {
@@ -403,7 +410,7 @@ function SegmentActiveEditor({
               try {
                 if (error.status === 409) await onSlotsChanged();
               } finally {
-                setSavingSegmentId(null);
+                releaseSlotSaveLock();
               }
             },
             onConflict: onSlotsChanged,

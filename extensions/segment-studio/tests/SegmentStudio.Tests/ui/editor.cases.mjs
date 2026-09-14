@@ -968,7 +968,7 @@ test("individual performer assignment updates its local slot projection before s
   const activeEditor = sourceByModule["editor/SegmentActiveEditor.js"];
   assert.match(activeEditor, /disabled: savingSegmentId != null \|\| !performerSlotsAvailable/);
   assert.match(activeEditor, /slotsEditable: slotTargets\.length > 0 && savingSegmentId == null/);
-  assert.match(activeEditor, /await onSlotsChanged\(saved\)[\s\S]*setSavingSegmentId\(null\)/);
+  assert.match(activeEditor, /await onSlotsChanged\(saved\)[\s\S]*releaseSlotSaveLock\(\)/);
 });
 
 test("selected segment details mirror segment groups and swimlanes", () => {

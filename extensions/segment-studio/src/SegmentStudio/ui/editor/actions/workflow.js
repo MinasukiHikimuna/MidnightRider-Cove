@@ -9,7 +9,7 @@ import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesA
 import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, exportingExamples, hideDerivedSegments, heldCreatedSegmentTag, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHeldCreatedSegmentTag, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, exportingExamples, hideDerivedSegments, heldCreatedSegmentTag, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHeldCreatedSegmentTag, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -31,7 +31,8 @@ function createWorkflowActions(context) {
       // Replay deltas onto the latest projection unless a refetch already replaced it.
       let refetchedDetail = false;
       const appliedDeltas = [];
-      setSavingSegmentId(activeIdentity.id);
+      const releaseSaveLock = acquireSaveLock("feedback", activeIdentity.id);
+      if (!releaseSaveLock) return;
       setSaveMessage(plan.action === "remove"
         ? `Removing ${candidates.length} selected incorrect example${candidates.length === 1 ? "" : "s"}…`
         : `Collecting ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"} as incorrect AI feedback…`);
@@ -235,7 +236,7 @@ function createWorkflowActions(context) {
       } catch (error) {
         setSaveMessage(error.message || "Unable to update the selected incorrect examples.");
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -375,7 +376,8 @@ function createWorkflowActions(context) {
         return;
       }
       if (confirmedPreview == null) {
-        setSavingSegmentId(-1);
+        const releaseSaveLock = acquireSaveLock("delete-rejected", -1);
+        if (!releaseSaveLock) return;
         setSaveMessage("Preparing deletion summary…");
         try {
           const preview = await requestJson(`/videos/${video.id}/rejected/deletion/preview`, { method: "POST" });
@@ -398,7 +400,7 @@ function createWorkflowActions(context) {
         } catch (error) {
           setSaveMessage(error.message || "Unable to prepare rejected segment deletion.");
         } finally {
-          setSavingSegmentId(null);
+          releaseSaveLock();
         }
         return;
       }
@@ -411,8 +413,9 @@ function createWorkflowActions(context) {
       const nextSelectedSegment = optimisticDetail.segments.find((segment) => segment.reviewState === "unreviewed")
         || optimisticDetail.segments[0]
         || null;
+      const releaseSaveLock = acquireSaveLock("delete-rejected", -1);
+      if (!releaseSaveLock) return;
       setRejectedDeletionPreview(null);
-      setSavingSegmentId(-1);
       setSaveMessage("Deleting rejected segments…");
       if (deferredCount === 0) {
         onDetailChange(optimisticDetail, video.id);
@@ -450,7 +453,7 @@ function createWorkflowActions(context) {
         selectionRangeBaseIdsRef.current = [];
         setSaveMessage(error.message || "Unable to delete rejected segments.");
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -554,7 +557,8 @@ function createWorkflowActions(context) {
             ? `native:${segment.nativeSegmentId}:${segment.updatedAt}`
             : `item:${segment.itemId}:${segment.revision}`).sort().join(",");
         const operationKey = `bulk-tag:${video.id}:${tagId}:${signature}`;
-        setSavingSegmentId(selectedSegment?.id ?? candidates[0].id);
+        const releaseSaveLock = acquireSaveLock("tag", selectedSegment?.id ?? candidates[0].id);
+        if (!releaseSaveLock) return;
         setSaveMessage(`Changing tag for ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
         const optimisticDetail = patchSegmentProjection(
           detail,
@@ -632,7 +636,7 @@ function createWorkflowActions(context) {
           if (error.status === 409) await onConflict();
           setSaveMessage(error.message || "Unable to change the selected segment tags.");
         } finally {
-          setSavingSegmentId(null);
+          releaseSaveLock();
         }
         return;
       }
@@ -665,7 +669,8 @@ function createWorkflowActions(context) {
         return;
       }
       if (selectedSegment.itemId != null && lineage.data?.children?.length > 0) {
-        setSavingSegmentId(selectedSegment.id);
+        const releaseSaveLock = acquireSaveLock("lineage-tag", selectedSegment.id);
+        if (!releaseSaveLock) return;
         setSaveMessage("Checking lineage impact…");
         try {
           const preview = await requestJson(`/items/${selectedSegment.itemId}/tag-change/preview`, {
@@ -719,7 +724,7 @@ function createWorkflowActions(context) {
             setSaveMessage(error.message || "Unable to reconcile the lineage.");
           }
         } finally {
-          setSavingSegmentId(null);
+          releaseSaveLock();
         }
         return;
       }
@@ -757,7 +762,8 @@ function createWorkflowActions(context) {
       const signature = candidates
         .map((segment) => `${segment.nativeSegmentId ?? segment.id}:${segment.updatedAt}`)
         .join("|");
-      setSavingSegmentId(selectedSegment.id);
+      const releaseSaveLock = acquireSaveLock("bin", selectedSegment.id);
+      if (!releaseSaveLock) return;
       setSaveMessage(`Moving ${candidates.length} segment${candidates.length === 1 ? "" : "s"} to recycling bin…`);
       const operationKey = `bulk-move:${video.id}:${signature}`;
       const operationId = operationIdFor(operationKey);
@@ -833,7 +839,7 @@ function createWorkflowActions(context) {
         else
           setSaveMessage(error.message || "Unable to move the selected segments to the recycling bin.");
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 

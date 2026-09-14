@@ -1,4 +1,4 @@
-import { h, useEffect, useMemo, useRef, useRegisterExtensionKeyboardActions, useState } from "../shared/runtime.js";
+import { h, useEffect, useMemo, useRef, useRegisterExtensionKeyboardActions, useState, useSyncExternalStore } from "../shared/runtime.js";
 
 import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 
@@ -29,6 +29,7 @@ import { createHistoryAndLayoutActions } from "./actions/history-and-layout.js";
 import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
+import { createSaveQueue, isKindRunning, savingSegmentIdFrom } from "./model/save-queue.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
 
@@ -53,7 +54,12 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [hideDerivedSegments, setHideDerivedSegments] = useState(readHideDerivedSegmentsPreference);
   const [currentTime, setCurrentTime] = useState(0);
-  const [savingSegmentId, setSavingSegmentId] = useState(null);
+  // Every editor save runs through one queue; the saving segment id is derived from what it is running.
+  const [saveQueue] = useState(() => createSaveQueue());
+  const saveQueueSnapshot = useSyncExternalStore(saveQueue.subscribe, saveQueue.getSnapshot);
+  const savingSegmentId = savingSegmentIdFrom(saveQueueSnapshot);
+  const acquireSaveLock = (kind, lockId) => saveQueue.acquire({ kind, lockId });
+  const getSaveQueueSnapshot = saveQueue.getSnapshot;
   const [savingShot, setSavingShot] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [startInput, setStartInput] = useState("");
@@ -73,7 +79,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   // A tag picked for a new segment before it can be saved; it is displayed but saved only once the segment is idle.
   const [heldCreatedSegmentTag, setHeldCreatedSegmentTag] = useState(null);
   const [firstSegmentTagOpen, setFirstSegmentTagOpen] = useState(false);
-  const mergeSavingRef = useRef(false);
   const [mergeConfirmation, setMergeConfirmation] = useState(null);
   const [rejectedDeletionPreview, setRejectedDeletionPreview] = useState(null);
   const mergeCancelButtonRef = useRef(null);
@@ -81,7 +86,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [publishApprovedError, setPublishApprovedError] = useState("");
   const publishApprovedCancelButtonRef = useRef(null);
   const publishApprovedRestoreFocusRef = useRef(null);
-  const reviewSavingRef = useRef(false);
   const pendingReviewStateRef = useRef([]);
   const binEmptyingRef = useRef(false);
   const [collapsedSegmentGroups, setCollapsedSegmentGroups] = useState(readCollapsedSegmentGroups);
@@ -647,7 +651,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setHistoryOpen,
     setPublishApprovedError,
     setSaveMessage,
-    setSavingSegmentId,
+    acquireSaveLock,
     setSelectedSegmentGroupKey,
     setSelectedSegmentId,
     setSelectedSegmentIds,
@@ -692,15 +696,14 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     compatibilityMode,
     detail,
     detailPanelRef,
+    getSaveQueueSnapshot,
     historyRef,
-    mergeSavingRef,
     onConflict,
     onDetailChange,
     onReload,
     pendingReviewStateRef,
     recordHistoryAction,
     revealSegmentGroupForSelection,
-    reviewSavingRef,
     savingSegmentId,
     selectedGroups,
     selectedSegment,
@@ -710,7 +713,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     selectionRangeBaseIdsRef,
     setMergeConfirmation,
     setSaveMessage,
-    setSavingSegmentId,
+    acquireSaveLock,
     setSelectedSegmentId,
     setSelectedSegmentIds,
     video,
@@ -722,7 +725,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     );
   };
   useEffect(() => {
-    if (savingSegmentId != null || reviewSavingRef.current) return;
+    // Read the queue directly: a save this render started is not reflected in `savingSegmentId` yet.
+    if (savingSegmentIdFrom(saveQueue.getSnapshot()) != null) return;
     let missedRequest = false;
     while (pendingReviewStateRef.current.length > 0) {
       const request = pendingReviewStateRef.current.shift();
@@ -796,7 +800,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setRemovingExampleId,
     setRejectedDeletionPreview,
     setSaveMessage,
-    setSavingSegmentId,
+    acquireSaveLock,
     setSelectedSegmentGroupKey,
     setSelectedSegmentId,
     setSelectedSegmentIds,
@@ -806,8 +810,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     const queued = heldCreatedSegmentTag;
     const action = resolveQueuedCreatedSegmentTag(queued, {
       segments,
-      savingSegmentId,
-      reviewSaving: reviewSavingRef.current,
+      savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
+      reviewSaving: isKindRunning(saveQueue.getSnapshot(), "review"),
       tagEditing,
       selectedSegmentIds,
       activeSegmentId: selectedSegment?.id,
@@ -842,7 +846,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setHistorySaving,
     setIncorrectExamples,
     setSaveMessage,
-    setSavingSegmentId,
+    acquireSaveLock,
     setSavingShot,
     shotBoundaries,
     timelineDuration,
@@ -978,7 +982,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     mediaStackRef,
     mergeCancelButtonRef,
     mergeConfirmation,
-    mergeSavingRef,
+    mergeSaving: isKindRunning(saveQueueSnapshot, "merge"),
     mergeSelectedSwimlane,
     nativeImportState,
     onNavigate,
@@ -1010,7 +1014,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     saveTag,
     saveTiming,
     savingSegmentId,
-    setSavingSegmentId,
+    acquireSaveLock,
     seekRef,
     segmentGroups,
     segmentRailLayout,

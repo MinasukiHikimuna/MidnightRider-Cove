@@ -244,8 +244,8 @@ test("R merges the current same-swimlane selection", () => {
   assert.equal(ui.findEditorShortcut(event(true), true), null);
   assert.doesNotMatch(source, /mergeSourceSegmentId|marker\.copyForMerge|marker\.merge"/);
   assert.match(source, /shortcut\.id === "marker\.mergeSelection"[\s\S]*mergeSelectedSwimlane/);
-  assert.match(source, /if \(mergeSavingRef\.current \|\| savingSegmentId != null\) return/);
-  assert.match(source, /mergeSavingRef\.current = true[\s\S]*finally \{[\s\S]*mergeSavingRef\.current = false/);
+  // Merge holds the editor save lock for its whole request; see the save-flow cases for behaviour.
+  assert.match(source, /const releaseSaveLock = acquireSaveLock\("merge", merge\.segments\[0\]\.id\);/);
 });
 
 test("C and Shift+C use durable incorrect-example feedback", () => {

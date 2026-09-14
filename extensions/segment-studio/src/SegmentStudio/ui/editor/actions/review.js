@@ -4,10 +4,11 @@ import { completeOperation, formatTime, operationIdFor, requestJson } from "../.
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { createQueuedReviewRequest, findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
+import { isKindRunning, savingSegmentIdFrom } from "../model/save-queue.js";
 import { mergeSegmentsProjection, patchSegmentProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, compatibilityMode, detail, detailPanelRef, historyRef, mergeSavingRef, onConflict, onDetailChange, onReload, pendingReviewStateRef, recordHistoryAction, revealSegmentGroupForSelection, reviewSavingRef, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSavingSegmentId, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, getSaveQueueSnapshot, historyRef, onConflict, onDetailChange, onReload, pendingReviewStateRef, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -19,7 +20,7 @@ function createReviewActions(context) {
       skipFutureConfirmation = false,
       confirmedMerge = null,
     ) {
-      if (mergeSavingRef.current || savingSegmentId != null) return;
+      if (savingSegmentId != null) return;
       const merge = confirmedMerge || selectedSwimlaneMerge(
         selectedGroups,
         { nativeOnly: !compatibilityMode },
@@ -34,10 +35,11 @@ function createReviewActions(context) {
       }
       if (skipFutureConfirmation)
         writeMergeConfirmationPreference(false);
+      const releaseSaveLock = acquireSaveLock("merge", merge.segments[0].id);
+      if (!releaseSaveLock) return;
       closeMergeConfirmation();
       const endLabel = merge.endSec == null ? "open end" : formatTime(merge.endSec);
 
-      mergeSavingRef.current = true;
       let survivor = merge.segments[0];
       const basicBeforeState = !compatibilityMode
         ? segmentsHistoryState(merge.segments, false)
@@ -47,7 +49,6 @@ function createReviewActions(context) {
         : null;
       const originalSelectionIds = merge.segments.map((segment) => segment.id);
       const optimisticDetail = mergeSegmentsProjection(detail, merge.segments);
-      setSavingSegmentId(survivor.id);
       onDetailChange(optimisticDetail, video.id);
       setSelectedSegmentIds([survivor.id]);
       setSelectedSegmentId(survivor.id);
@@ -122,8 +123,7 @@ function createReviewActions(context) {
         if (error.status === 409) await onConflict();
         else setSaveMessage(error.message || "Unable to merge selected segments.");
       } finally {
-        mergeSavingRef.current = false;
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -132,8 +132,11 @@ function createReviewActions(context) {
       reviewSegments = selectedSegments,
       reviewSegment = selectedSegment,
     ) {
-      if (reviewSegments.length === 0 || reviewSavingRef.current) return;
-      if (savingSegmentId != null) {
+      if (reviewSegments.length === 0) return;
+      // Read the queue directly: a save started earlier in this render is not in `savingSegmentId` yet.
+      const saveQueueSnapshot = getSaveQueueSnapshot();
+      if (isKindRunning(saveQueueSnapshot, "review")) return;
+      if (savingSegmentIdFrom(saveQueueSnapshot) != null) {
         pendingReviewStateRef.current.push(createQueuedReviewRequest(
           requestedState,
           reviewSegments,
@@ -166,8 +169,8 @@ function createReviewActions(context) {
         selectionAnchorIdRef.current = reloadedActive?.id ?? null;
         selectionRangeBaseIdsRef.current = [];
       };
-      reviewSavingRef.current = true;
-      setSavingSegmentId(reviewSegment?.id ?? candidates[0].id);
+      const releaseSaveLock = acquireSaveLock("review", reviewSegment?.id ?? candidates[0].id);
+      if (!releaseSaveLock) return;
       setSaveMessage(`Updating ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
       const optimisticDetail = patchSegmentProjection(
         detail,
@@ -252,8 +255,7 @@ function createReviewActions(context) {
         restoreSelection(restoredDetail, true);
         setSaveMessage(error.message || "Unable to update the selected segments.");
       } finally {
-        reviewSavingRef.current = false;
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 

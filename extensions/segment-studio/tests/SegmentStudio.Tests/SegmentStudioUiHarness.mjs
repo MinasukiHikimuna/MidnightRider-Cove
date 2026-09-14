@@ -51,7 +51,8 @@ globalThis.__segmentStudioReact = {
   useId: () => "test-id",
   useMemo: (factory) => factory(),
   useRef: (value) => ({ current: value }),
-  useState: (value) => [value, () => {}],
+  useState: (value) => [typeof value === "function" ? value() : value, () => {}],
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
 };
 
 register(new URL("./SegmentStudioRuntimeLoader.mjs", import.meta.url));

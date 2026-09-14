@@ -652,7 +652,7 @@ test("a tag chosen while a new segment saves waits for every save and then saves
   const primary = sourceByModule["editor/actions/primary.js"];
   assert.match(primary, /if \(optimistic && restoreSelectionOnFailure\) \{\n\s*setSelectedSegmentIds\(previousSelectionIds\);/);
   const controller = sourceByModule["editor/SegmentEditor.js"];
-  assert.match(controller, /reviewSaving: reviewSavingRef\.current/);
+  assert.match(controller, /reviewSaving: isKindRunning\(saveQueue\.getSnapshot\(\), "review"\)/);
   assert.match(controller, /if \(action === "apply"\) void applyHeldCreatedSegmentTag\(queued\);/);
   assert.match(controller, /ownerDocument\.activeElement === ownerDocument\.body/);
 });

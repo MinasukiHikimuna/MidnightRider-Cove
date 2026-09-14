@@ -13,7 +13,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, heldCreatedSegmentTag, setHeldCreatedSegmentTag, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
+  const { acquireSaveLock, compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, heldCreatedSegmentTag, setHeldCreatedSegmentTag, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -56,7 +56,8 @@ function createPrimarySegmentActions(context) {
       const previousActiveId = selectedSegmentIdRef.current;
       const historyReceiptId =
         recordHistory && !compatibilityMode ? crypto.randomUUID() : null;
-      setSavingSegmentId(segment.id);
+      const releaseSaveLock = acquireSaveLock("segment", segment.id);
+      if (!releaseSaveLock) return null;
       setSaveMessage(recordHistory ? "Saving directly to Cove…" : "Restoring history…");
       const optimisticDetail = optimistic
         ? patchSegmentProjection(detail, [segment.id], optimisticValues)
@@ -167,7 +168,7 @@ function createPrimarySegmentActions(context) {
         }
         return null;
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -176,8 +177,9 @@ function createPrimarySegmentActions(context) {
       const approvedDraftCount = segments.filter((segment) => !segment.published && segment.reviewState === "approved").length;
       if (approvedDraftCount === 0 || savingSegmentId != null) return false;
       const operationKey = `complete-review:${video.id}:${detail.approvedSetVersion}`;
+      const releaseSaveLock = acquireSaveLock("publish", -1);
+      if (!releaseSaveLock) return false;
       setPublishApprovedError("");
-      setSavingSegmentId(-1);
       setSaveMessage(`Publishing ${approvedDraftCount} Approved draft${approvedDraftCount === 1 ? "" : "s"}…`);
       try {
         const result = await requestJson(`/videos/${video.id}/complete-review`, {
@@ -212,7 +214,7 @@ function createPrimarySegmentActions(context) {
         setSaveMessage(message);
         return false;
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -261,8 +263,9 @@ function createPrimarySegmentActions(context) {
         confidence: null,
         isDerived: false,
       };
+      const releaseSaveLock = acquireSaveLock("create", -1);
+      if (!releaseSaveLock) return;
       const optimisticDetail = insertSegmentProjection(detail, optimisticSegment);
-      setSavingSegmentId(-1);
       setFirstSegmentTagOpen(false);
       onDetailChange(optimisticDetail, video.id);
       if (creation.openTagEditor) {
@@ -351,7 +354,7 @@ function createPrimarySegmentActions(context) {
       } finally {
         setHeldCreatedSegmentTag((current) => current?.segmentId === optimisticSegment.id ? null : current);
         setCreatingSegmentId(null);
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -375,7 +378,8 @@ function createPrimarySegmentActions(context) {
       const historyReceiptId = !compatibilityMode
         ? crypto.randomUUID()
         : null;
-      setSavingSegmentId(selectedSegment.id);
+      const releaseSaveLock = acquireSaveLock("split", selectedSegment.id);
+      if (!releaseSaveLock) return;
       try {
         let splitIdentity = null;
         if (compatibilityMode && selectedSegment.nativeSegmentId == null) {
@@ -428,7 +432,7 @@ function createPrimarySegmentActions(context) {
         if (error.status === 409) await onConflict();
         else setSaveMessage(error.message || "Unable to split the draft.");
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 
@@ -439,7 +443,8 @@ function createPrimarySegmentActions(context) {
       const historyReceiptId = !compatibilityMode
         ? crypto.randomUUID()
         : null;
-      setSavingSegmentId(selectedSegment.id);
+      const releaseSaveLock = acquireSaveLock("duplicate", selectedSegment.id);
+      if (!releaseSaveLock) return;
       try {
         const pendingDuplicate = pendingDuplicateRef.current?.operationKey === operationKey
           ? pendingDuplicateRef.current
@@ -515,7 +520,7 @@ function createPrimarySegmentActions(context) {
         else if (error.status === 409) await onConflict();
         else setSaveMessage(error.message || "Unable to duplicate the draft.");
       } finally {
-        setSavingSegmentId(null);
+        releaseSaveLock();
       }
     }
 

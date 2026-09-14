@@ -1,6 +1,7 @@
 // Drives the real editor action factories against a scripted API and an in-memory editor state,
 // so save ordering, rollback and selection behaviour can be tested without rendering React.
 import { EMPTY_EDITOR_HISTORY } from "../../src/SegmentStudio/ui/shared/constants.js";
+import { createSaveQueue, savingSegmentIdFrom } from "../../src/SegmentStudio/ui/editor/model/save-queue.js";
 
 const API_ROOT = "/api/plugins/segment-studio";
 
@@ -148,7 +149,6 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     detail: { video, segments, segmentGroups: [], performerSlots: [], shotBoundaries: [] },
     selectedSegmentId: segments[0]?.id ?? null,
     selectedSegmentIds: segments[0] ? [segments[0].id] : [],
-    savingSegmentId: null,
     creatingSegmentId: null,
     heldCreatedSegmentTag: null,
     tagEditing: false,
@@ -169,9 +169,7 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     pendingFirstSegmentStartSecRef: { current: null },
     pendingTagEditSegmentIdRef: { current: null },
     tagEditingRef: { current: false },
-    reviewSavingRef: { current: false },
     pendingReviewStateRef: { current: [] },
-    mergeSavingRef: { current: false },
     detailPanelRef: { current: null },
     editorRef: { current: null },
   };
@@ -181,9 +179,12 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
   };
   const serverDetail = server || (() => state.detail);
 
+  const saveQueue = createSaveQueue();
   const editor = {
     state,
     refs,
+    saveQueue,
+    get savingSegmentId() { return savingSegmentIdFrom(saveQueue.getSnapshot()); },
     detailChanges,
     get segments() { return state.detail.segments; },
     select(ids, activeId = ids[0] ?? null) {
@@ -209,7 +210,9 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         performerSlots: state.detail.performerSlots,
         selectedSegment,
         selectedSegments: state.selectedSegmentIds.map((id) => byId.get(id)).filter(Boolean),
-        savingSegmentId: state.savingSegmentId,
+        savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
+        acquireSaveLock: (kind, lockId) => saveQueue.acquire({ kind, lockId }),
+        getSaveQueueSnapshot: saveQueue.getSnapshot,
         creatingSegmentId: state.creatingSegmentId,
         heldCreatedSegmentTag: state.heldCreatedSegmentTag,
         editorFilters: state.editorFilters,
@@ -240,7 +243,6 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         closeTagEditing: () => { state.tagEditing = false; },
         setSelectedSegmentId,
         setSelectedSegmentIds,
-        setSavingSegmentId: apply("savingSegmentId"),
         setCreatingSegmentId: apply("creatingSegmentId"),
         setHeldCreatedSegmentTag: apply("heldCreatedSegmentTag"),
         setSaveMessage: apply("saveMessage"),
