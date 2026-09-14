@@ -244,6 +244,9 @@ test("approved draft publishing is previewed by tag before conversion to native 
   assert.match(publishDialog, /group\.drafts\.map/);
   assert.match(publishDialog, /handleModalKey\(event,[\s\S]{0,180}onConfirm/);
   assert.match(publishDialog, /trapModalFocus/);
+  assert.doesNotMatch(publishDialog, /autoFocus/);
+  assert.match(publishDialog, /useDialogDefaultFocus\(\{ confirmRef, cancelRef: cancelButtonRef, confirmReady: !processing && draftCount > 0 \}\)/);
+  assert.match(publishDialog, /key: "confirm",\s*ref: confirmRef,/);
 
   let triggerFocuses = 0;
   let fallbackFocuses = 0;
@@ -826,8 +829,9 @@ test("one selected swimlane can be merged into its full selected time span", () 
     source.indexOf("function DerivedSegmentMaterializationDialog"),
   );
   assert.match(mergeDialog, /onKeyDownCapture: trapModalFocus/);
-  assert.match(mergeDialog, /ref: cancelButtonRef[\s\S]*autoFocus: true/);
-  assert.doesNotMatch(mergeDialog, /key: "confirm"[\s\S]*autoFocus: true/);
+  assert.doesNotMatch(mergeDialog, /autoFocus/);
+  assert.match(mergeDialog, /useDialogDefaultFocus\(\{ confirmRef, cancelRef: cancelButtonRef, confirmReady: !processing \}\)/);
+  assert.match(mergeDialog, /key: "confirm",\s*ref: confirmRef,/);
   const mergeHandler = source.slice(
     source.indexOf("async function mergeSelectedSwimlane"),
     source.indexOf("async function saveSelectedReviewState"),

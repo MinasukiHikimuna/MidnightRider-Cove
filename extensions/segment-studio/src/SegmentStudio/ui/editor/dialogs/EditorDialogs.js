@@ -6,7 +6,7 @@ import { formatTime } from "../../shared/api.js";
 
 import { filterSegmentQuickSearch, groupAutoAssignCandidates, shouldShowQuickSearchGroups } from "../../discovery/model.js";
 
-import { SegmentStateBadge, handleModalKey, segmentGroupHeaderBackground, trapModalFocus } from "../../shared/presentation.js";
+import { SegmentStateBadge, handleModalKey, segmentGroupHeaderBackground, trapModalFocus, useDialogDefaultFocus } from "../../shared/presentation.js";
 
 import { PerformerAvatar, PerformerSublaneAvatars } from "../model/swimlanes.js";
 
@@ -317,6 +317,8 @@ function ApprovedDraftPublishingDialog({
   const groups = useMemo(() => groupApprovedDraftsForPublishing(drafts), [drafts]);
   const [expandedGroupKeys, setExpandedGroupKeys] = useState([]);
   const draftCount = groups.reduce((total, group) => total + group.drafts.length, 0);
+  const confirmRef = useRef(null);
+  useDialogDefaultFocus({ confirmRef, cancelRef: cancelButtonRef, confirmReady: !processing && draftCount > 0 });
   const toggleGroup = (key) => setExpandedGroupKeys((current) =>
     current.includes(key)
       ? current.filter((candidate) => candidate !== key)
@@ -403,13 +405,13 @@ function ApprovedDraftPublishingDialog({
         key: "cancel",
         ref: cancelButtonRef,
         type: "button",
-        autoFocus: true,
         disabled: processing,
         onClick: onClose,
         className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50",
       }, "Cancel"),
       h("button", {
         key: "confirm",
+        ref: confirmRef,
         type: "button",
         disabled: processing || draftCount === 0,
         onClick: onConfirm,
@@ -593,8 +595,8 @@ function RejectedSegmentsDeletionDialog({ preview, onConfirm, onClose }) {
       h("p", { key: "warning", className: "font-medium text-foreground" }, "This cannot be undone."),
     ]),
     h("footer", { key: "footer", className: "flex justify-end gap-2 border-t border-border px-5 py-4" }, [
-      h("button", { key: "cancel", type: "button", autoFocus: true, onClick: onClose, className: "rounded-md border border-border px-3 py-1.5 text-sm" }, "Cancel"),
-      h("button", { key: "confirm", type: "button", onClick: onConfirm, className: "rounded-md border border-destructive/60 bg-destructive/15 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-destructive/25" }, "Delete permanently"),
+      h("button", { key: "cancel", type: "button", onClick: onClose, className: "rounded-md border border-border px-3 py-1.5 text-sm" }, "Cancel"),
+      h("button", { key: "confirm", type: "button", autoFocus: true, onClick: onConfirm, className: "rounded-md border border-destructive/60 bg-destructive/15 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-destructive/25" }, "Delete permanently"),
     ]),
   ]));
 }
@@ -608,6 +610,8 @@ function MergeSelectionDialog({
   onClose,
 }) {
   const [skipFuture, setSkipFuture] = useState(false);
+  const confirmRef = useRef(null);
+  useDialogDefaultFocus({ confirmRef, cancelRef: cancelButtonRef, confirmReady: !processing });
   if (!merge) return null;
   const endLabel = merge.endSec == null ? "open end" : formatTime(merge.endSec);
   return h("div", {
@@ -656,13 +660,13 @@ function MergeSelectionDialog({
         key: "cancel",
         ref: cancelButtonRef,
         type: "button",
-        autoFocus: true,
         disabled: processing,
         onClick: onClose,
         className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50",
       }, "Cancel"),
       h("button", {
         key: "confirm",
+        ref: confirmRef,
         type: "button",
         disabled: processing,
         onClick: () => onConfirm(skipFuture),

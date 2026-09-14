@@ -184,6 +184,19 @@ test("timing and tag editing shortcuts match Stash Marker Studio", () => {
   assert.match(source, /const mediaDuration = Number\(video\.videoFile\?\.duration\) > 0/);
 });
 
+test("dialogs focus the confirm button when it is usable and fall back to Cancel", () => {
+  const focused = [];
+  const button = (name, disabled = false) => ({ name, disabled, focus: (options) => focused.push([name, options?.preventScroll]) });
+  const confirm = button("confirm");
+  const cancel = button("cancel");
+  assert.equal(ui.focusDialogDefaultButton({ confirm, cancel, confirmReady: true }), confirm);
+  assert.equal(ui.focusDialogDefaultButton({ confirm, cancel, confirmReady: false }), cancel);
+  assert.equal(ui.focusDialogDefaultButton({ confirm: button("confirm", true), cancel, confirmReady: true }), cancel);
+  assert.equal(ui.focusDialogDefaultButton({ confirm, cancel: button("cancel", true), confirmReady: false }), null);
+  assert.equal(ui.focusDialogDefaultButton({ confirm: null, cancel: null, confirmReady: true }), null);
+  assert.deepEqual(focused, [["confirm", true], ["cancel", true], ["cancel", true]]);
+});
+
 test("modal Enter and Escape take priority over editor shortcuts", () => {
   let confirmed = 0;
   let canceled = 0;
@@ -205,6 +218,18 @@ test("modal Enter and Escape take priority over editor shortcuts", () => {
   assert.equal(ui.handleModalKey({ ...event("Enter"), target: { tagName: "SELECT" } }, { onConfirm: () => confirmed++ }), false);
   assert.equal(ui.handleModalKey({ ...event("Enter"), target: { tagName: "BUTTON" } }, { onConfirm: () => confirmed++ }), false);
   assert.equal(ui.handleModalKey({ ...event("Enter"), repeat: true }, { onConfirm: () => confirmed++ }), false);
+  const heldOnButton = { ...event("Enter"), repeat: true, target: { tagName: "BUTTON" } };
+  assert.equal(ui.handleModalKey(heldOnButton, { onConfirm: () => confirmed++ }), false);
+  assert.equal(heldOnButton.defaultPrevented, true, "a held Enter must not natively activate a focused dialog button");
+  const heldOnLink = { ...event("Enter"), repeat: true, target: { tagName: "A" } };
+  assert.equal(ui.handleModalKey(heldOnLink, { onConfirm: () => confirmed++ }), false);
+  assert.equal(heldOnLink.defaultPrevented, true);
+  const heldInsideButton = { ...event("Enter"), repeat: true, target: { tagName: "SPAN", closest: () => ({ tagName: "BUTTON" }) } };
+  assert.equal(ui.handleModalKey(heldInsideButton, { onConfirm: () => confirmed++ }), false);
+  assert.equal(heldInsideButton.defaultPrevented, true);
+  const pressOnButton ={ ...event("Enter"), target: { tagName: "BUTTON" } };
+  ui.handleModalKey(pressOnButton, { onConfirm: () => confirmed++ });
+  assert.notEqual(pressOnButton.defaultPrevented, true);
   assert.equal(ui.handleModalKey({ ...event("Enter"), isComposing: true }, { onConfirm: () => confirmed++ }), false);
   assert.equal(ui.handleModalKey({ ...event("Escape"), target: { tagName: "OPTION" } }, { onCancel: () => canceled++ }), false);
   assert.equal(confirmed, 1);
@@ -506,6 +531,17 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
   assert.match(source, /rejected\/deletion\/execute/);
   assert.match(source, /function RejectedSegmentsDeletionDialog/);
   assert.match(source, /rejectedDeletionPreview \? h\(RejectedSegmentsDeletionDialog/);
+  const dialogs = sourceByModule["editor/dialogs/EditorDialogs.js"];
+  const rejectedDialog = dialogs.slice(
+    dialogs.indexOf("function RejectedSegmentsDeletionDialog"),
+    dialogs.indexOf("function MergeSelectionDialog"),
+  );
+  // Enter on a focused button activates that button natively, so the confirm action must own focus.
+  assert.match(rejectedDialog, /handleModalKey\(event, \{ onCancel: onClose, onConfirm \}\)/);
+  assert.equal(rejectedDialog.match(/autoFocus/g)?.length, 1);
+  assert.match(rejectedDialog, /key: "confirm", type: "button", autoFocus: true, onClick: onConfirm/);
+  const rejectedDialogMount = source.slice(source.indexOf("rejectedDeletionPreview ? h(RejectedSegmentsDeletionDialog"));
+  assert.match(rejectedDialogMount, /onConfirm: \(\) => \{\s*deleteRejectedSegments\(rejectedDeletionPreview\);\s*requestAnimationFrame\(\(\) => editorRef\.current\?\.focus/);
   assert.match(source, /role: "dialog"/);
   assert.match(source, /onKeyDownCapture: trapModalFocus/);
   const workflow = sourceByModule["editor/actions/workflow.js"];
@@ -634,7 +670,11 @@ test("editor previews and materializes derived segments like Marker Studio", () 
   ]);
   assert.match(source, /`\$\{group\.rootTagName\} @ \$\{formatTime\(group\.rootStartSec\)\}`/);
   assert.match(source, /Math\.max\(0, output\.depth - 1\) \* 1\.25/);
-  assert.match(source, /key: "cancel", ref: cancelButtonRef, type: "button", autoFocus: true/);
+  const materializeDialog = sourceByModule["editor/dialogs/MaterializationDialog.js"];
+  assert.doesNotMatch(materializeDialog, /autoFocus/);
+  assert.match(materializeDialog, /useDialogDefaultFocus\(\{ confirmRef, cancelRef: cancelButtonRef, confirmReady: !loading && !processing && changeCount > 0 && !error \}\)/);
+  assert.match(materializeDialog, /key: "confirm",\s*ref: confirmRef,/);
+  assert.match(materializeDialog, /key: "cancel", ref: cancelButtonRef, type: "button", disabled: processing/);
   assert.match(editor, /Derived segments were materialized, but the editor could not refresh/);
   assert.match(editor, /createCount: 0, linkCount: 0/);
 });

@@ -742,7 +742,10 @@ function SegmentEditorView(props) {
       rejectedDeletionPreview ? h(RejectedSegmentsDeletionDialog, {
         key: "rejected-deletion-dialog",
         preview: rejectedDeletionPreview,
-        onConfirm: () => deleteRejectedSegments(rejectedDeletionPreview),
+        onConfirm: () => {
+          deleteRejectedSegments(rejectedDeletionPreview);
+          requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
+        },
         onClose: () => {
           setRejectedDeletionPreview(null);
           requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));

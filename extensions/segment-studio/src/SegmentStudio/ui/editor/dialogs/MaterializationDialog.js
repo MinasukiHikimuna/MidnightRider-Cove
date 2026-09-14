@@ -1,8 +1,8 @@
-import { h } from "../../shared/runtime.js";
+import { h, useRef } from "../../shared/runtime.js";
 
 import { formatTime } from "../../shared/api.js";
 
-import { handleModalKey, trapModalFocus } from "../../shared/presentation.js";
+import { handleModalKey, trapModalFocus, useDialogDefaultFocus } from "../../shared/presentation.js";
 
 export function groupMaterializationOutputs(outputs) {
   const groups = new Map();
@@ -21,6 +21,8 @@ export function groupMaterializationOutputs(outputs) {
 
 function DerivedSegmentMaterializationDialog({ preview, loading, processing, error, cancelButtonRef, onConfirm, onClose }) {
   const changeCount = preview ? preview.createCount + preview.linkCount : 0;
+  const confirmRef = useRef(null);
+  useDialogDefaultFocus({ confirmRef, cancelRef: cancelButtonRef, confirmReady: !loading && !processing && changeCount > 0 && !error });
   const visibleOutputs = preview?.outputs?.slice(0, 200) || [];
   const outputGroups = groupMaterializationOutputs(visibleOutputs);
   return h("div", {
@@ -100,9 +102,10 @@ function DerivedSegmentMaterializationDialog({ preview, loading, processing, err
           ]) : null),
     error ? h("p", { key: "error", role: "alert", className: "mx-5 mb-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive" }, error) : null,
     h("footer", { key: "footer", className: "flex items-center justify-end gap-2 border-t border-border px-5 py-4" }, [
-      h("button", { key: "cancel", ref: cancelButtonRef, type: "button", autoFocus: true, disabled: processing, onClick: onClose, className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50" }, "Cancel"),
+      h("button", { key: "cancel", ref: cancelButtonRef, type: "button", disabled: processing, onClick: onClose, className: "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50" }, "Cancel"),
       h("button", {
         key: "confirm",
+        ref: confirmRef,
         type: "button",
         disabled: loading || processing || changeCount === 0,
         onClick: onConfirm,

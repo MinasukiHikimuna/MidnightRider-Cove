@@ -1,4 +1,4 @@
-import { h } from "./runtime.js";
+import { h, useEffect } from "./runtime.js";
 
 import { findEditorShortcut } from "../editor/model/shortcuts.js";
 
@@ -204,6 +204,11 @@ export function handleModalKey(event, { onCancel, onConfirm } = {}) {
     : event.target;
   const tagName = String(actionableTarget?.tagName || "").toLowerCase();
   if (tagName === "select" || tagName === "option") return false;
+  if (event.key === "Enter" && event.repeat && (tagName === "button" || tagName === "a")) {
+    // A held Enter must not natively activate whichever dialog button receives focus.
+    event.preventDefault();
+    return false;
+  }
   if (event.key === "Enter" && (event.repeat || ["button", "a", "textarea"].includes(tagName))) return false;
   const action = event.key === "Escape" ? onCancel : event.key === "Enter" ? onConfirm : null;
   if (!action) return false;
@@ -226,6 +231,25 @@ export function shouldAcceptCurrentTagFromEnter(event, currentTagName) {
   return !event.currentTarget.querySelector?.(
     '[role="option"][aria-selected="true"], [role="option"][data-active="true"], [role="option"][data-highlighted="true"]',
   );
+}
+
+export function focusDialogDefaultButton({ confirm, cancel, confirmReady }) {
+  // Enter on a focused button activates it natively, so the confirm action owns focus whenever it is usable.
+  const target = confirmReady && confirm && !confirm.disabled ? confirm : cancel;
+  if (!target || target.disabled) return null;
+  target.focus({ preventScroll: true });
+  return target;
+}
+
+export function useDialogDefaultFocus({ confirmRef, cancelRef, confirmReady }) {
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => focusDialogDefaultButton({
+      confirm: confirmRef.current,
+      cancel: cancelRef?.current,
+      confirmReady,
+    }));
+    return () => cancelAnimationFrame(frame);
+  }, [confirmReady]);
 }
 
 export function trapModalFocus(event) {
