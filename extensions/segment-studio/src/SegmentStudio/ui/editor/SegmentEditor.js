@@ -70,7 +70,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const getSaveQueueSnapshot = saveQueue.getSnapshot;
   // Unconfirmed edits shown on top of the server projection; actions keep reading server segments.
   const [pendingChanges, dispatchPendingChanges] = useReducer(pendingChangesReducer, []);
-  const [savingShot, setSavingShot] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [startInput, setStartInput] = useState("");
   const [endInput, setEndInput] = useState("");
@@ -150,7 +149,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const pendingFirstSegmentStartSecRef = useRef(null);
   const optimisticSegmentIdRef = useRef(-1_000_000_000_000);
   const pendingDuplicateRef = useRef(null);
-  const savingShotRef = useRef(false);
   const railScrollRef = useRef(null);
   const [railViewport, setRailViewport] = useState({ scrollTop: 0, height: 512 });
   useEffect(() => {
@@ -819,7 +817,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentIds,
     video,
   });
-  const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary, restoreShotBoundaries } = createHistoryAndLayoutActions({
+  const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary } = createHistoryAndLayoutActions({
     acceptHistory,
     compatibilityMode,
     currentTime,
@@ -838,15 +836,14 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     railToggleRef,
     recordHistoryAction,
     savingSegmentId,
-    savingShot,
-    savingShotRef,
     setCollapsedSegmentGroups,
     setEditorLayout,
     setHistorySaving,
     setIncorrectExamples,
     setSaveMessage,
     acquireSaveLock,
-    setSavingShot,
+    enqueueSave,
+    getSaveQueueSnapshot,
     shotBoundaries,
     timelineDuration,
     video,

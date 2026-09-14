@@ -141,9 +141,7 @@ test("shot-boundary shortcuts are registered from the shared shortcut map", () =
   assert.equal(ui.findEditorShortcut({ key: "V", shiftKey: true }, true).id, "shot.merge");
   assert.match(source, /recordHistoryAction\(\s*"shots\.update"/);
   assert.match(source, /History restored\./);
-  assert.match(source, /shot-boundaries\/restore/);
   assert.match(source, /type: "shots"/);
-  assert.match(source, /savingShotRef\.current/);
   assert.match(source, /typeof nextDetail === "function"/);
 });
 

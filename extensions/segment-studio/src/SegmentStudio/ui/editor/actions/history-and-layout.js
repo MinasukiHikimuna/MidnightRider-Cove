@@ -7,7 +7,7 @@ import { normalizeCollapsedSegmentGroups } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta } from "../model/feedback.js";
 
 function createHistoryAndLayoutActions(context) {
-  const { acceptHistory, acquireSaveLock, commonActionsRef, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, savingShot, savingShotRef, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, setSavingShot, shotBoundaries, timelineDuration, video, workspaceRef } = context;
+  const { acceptHistory, acquireSaveLock, enqueueSave, getSaveQueueSnapshot, commonActionsRef, compatibilityMode, currentTime, detail, editorLayout, focusRowRef, history, historyRef, historySaving, horizontalLayoutSize, mediaStackHeight, mediaStackRef, onDetailChange, onReload, railToggleRef, recordHistoryAction, savingSegmentId, setCollapsedSegmentGroups, setEditorLayout, setHistorySaving, setIncorrectExamples, setSaveMessage, shotBoundaries, timelineDuration, video, workspaceRef } = context;
 
   async function applySegmentHistoryState(targetState, sourceState, loaded) {
       const targets = targetState.type === "segment" ? [targetState] : targetState.segments || [];
@@ -271,7 +271,7 @@ function createHistoryAndLayoutActions(context) {
     }
 
     async function restoreHistoryTarget(targetSequence) {
-      if (historySaving || savingSegmentId != null || savingShot
+      if (historySaving || savingSegmentId != null
           || targetSequence === history.cursorSequence)
         return;
       const steps = historyActionsForTarget(history, targetSequence);
@@ -427,21 +427,31 @@ function createHistoryAndLayoutActions(context) {
         : normalizeCollapsedSegmentGroups([...current, groupKey]));
     }
 
-    async function mutateShotBoundary(kind, recordHistory = true, timeSec = currentTime) {
-      if (savingShotRef.current) return null;
+    // Shot edits share the history revision with segment saves, so they wait their turn in the save queue.
+    function mutateShotBoundary(kind, recordHistory = true, timeSec = currentTime) {
+      const waiting = getSaveQueueSnapshot().running != null;
+      const task = enqueueSave({
+        kind: "shots",
+        lockId: -1,
+        whenBusy: "enqueue",
+        run: (saveContext) => runShotBoundaryEdit(saveContext.detail, kind, recordHistory, timeSec),
+      });
+      if (!task) return Promise.resolve(null);
+      if (waiting) setSaveMessage(kind === "split" ? "Shot boundary queued…" : "Shot merge queued…");
+      return task.done.then((outcome) => outcome.value ?? null);
+    }
+
+    async function runShotBoundaryEdit(currentDetail, kind, recordHistory, timeSec) {
+      const currentShotBoundaries = currentDetail?.shotBoundaries || [];
       const duration = Number(video.videoFile?.duration) || timelineDuration;
-      const shotRevision = shotBoundaryFingerprint(shotBoundaries);
+      const shotRevision = shotBoundaryFingerprint(currentShotBoundaries);
       const operationKey = `shot-${kind}:${video.id}:${timeSec.toFixed(3)}:${duration.toFixed(3)}:${shotRevision}`;
-      savingShotRef.current = true;
-      setSavingShot(true);
       setSaveMessage(kind === "split" ? "Adding shot boundary…" : "Merging shots…");
       try {
         const updated = await requestJson(`/videos/${video.id}/shot-boundaries/${kind}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(kind === "split"
-            ? { operationId: operationIdFor(operationKey), timeSec }
-            : { operationId: operationIdFor(operationKey), timeSec }),
+          body: JSON.stringify({ operationId: operationIdFor(operationKey), timeSec }),
         });
         completeOperation(operationKey);
         onDetailChange((current) => ({ ...current, shotBoundaries: updated }), video.id);
@@ -451,7 +461,7 @@ function createHistoryAndLayoutActions(context) {
             kind === "split" ? "Added shot boundary" : "Merged shots",
             {
               type: "shots",
-              boundaries: shotBoundaries,
+              boundaries: currentShotBoundaries,
               fingerprint: shotRevision,
             },
             {
@@ -465,41 +475,10 @@ function createHistoryAndLayoutActions(context) {
       } catch (error) {
         setSaveMessage(error.message || "Unable to edit shot boundaries.");
         return null;
-      } finally {
-        savingShotRef.current = false;
-        setSavingShot(false);
       }
     }
 
-    async function restoreShotBoundaries(entry) {
-      if (savingShotRef.current) return null;
-      const operationKey = `shot-restore:${video.id}:${entry.afterFingerprint}`;
-      savingShotRef.current = true;
-      setSavingShot(true);
-      setSaveMessage("Undoing shot edit…");
-      try {
-        const updated = await requestJson(`/videos/${video.id}/shot-boundaries/restore`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            operationId: operationIdFor(operationKey),
-            expectedFingerprint: entry.afterFingerprint,
-            boundaries: entry.before,
-          }),
-        });
-        completeOperation(operationKey);
-        onDetailChange((current) => ({ ...current, shotBoundaries: updated }), video.id);
-        return updated;
-      } catch (error) {
-        setSaveMessage(error.message || "Unable to undo the shot edit.");
-        return null;
-      } finally {
-        savingShotRef.current = false;
-        setSavingShot(false);
-      }
-    }
-
-  return { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary, restoreShotBoundaries };
+  return { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary };
 }
 
 export { createHistoryAndLayoutActions };

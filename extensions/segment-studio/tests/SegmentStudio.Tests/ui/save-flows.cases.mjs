@@ -7,6 +7,18 @@ const actionsRoot = new URL("../../../src/SegmentStudio/ui/editor/actions/", imp
 const { createPrimarySegmentActions } = await import(new URL("primary.js", actionsRoot));
 const { createReviewActions } = await import(new URL("review.js", actionsRoot));
 const { createWorkflowActions } = await import(new URL("workflow.js", actionsRoot));
+const { createHistoryAndLayoutActions } = await import(new URL("history-and-layout.js", actionsRoot));
+
+function historyActionsFor(editor, actions) {
+  return createHistoryAndLayoutActions(editor.context({
+    acceptHistory: actions.acceptHistory,
+    recordHistoryAction: actions.recordHistoryAction,
+    history: editor.state.history,
+    historySaving: false,
+    editorLayout: {},
+    shotBoundaries: editor.state.detail.shotBoundaries,
+  }));
+}
 
 function actionsFor(editor, extra = {}) {
   const primary = createPrimarySegmentActions(editor.context(extra));
@@ -682,4 +694,32 @@ test("editor reloads replaced by a newer reload resolve with the newer result in
   requestCounter += 1;
   gates[3].resolve({ version: 3 });
   assert.equal(await stale, null);
+});
+
+test("save flow: a shot edit requested during a segment save waits and records history against the saved revision", { timeout: 5000 }, async () => {
+  const api = createFakeApi()
+    .on("POST", "/videos/7/history/actions", (request) => ({ ...historyReply, revision: request.body.expectedRevision + 1 }))
+    .on("POST", "/videos/7/shot-boundaries/split", [{ timeSec: 0 }, { timeSec: 30 }]);
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor();
+  editor.state.detail = { ...editor.state.detail, shotBoundaries: [{ timeSec: 0 }] };
+  await withEditorGlobals(api, async () => {
+    const actions = actionsFor(editor);
+    const saving = actions.mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+    await put.arrived();
+    const splitting = historyActionsFor(editor, actions).mutateShotBoundary("split", true, 30);
+    assert.equal(editor.state.saveMessage, "Shot boundary queued…");
+    assert.equal(api.sent("POST", "/videos/7/shot-boundaries/split").length, 0);
+
+    put.release({ ...segment(), startSec: 12 });
+    await saving;
+    editor.render();
+    assert.deepEqual(await splitting, [{ timeSec: 0 }, { timeSec: 30 }]);
+
+    const history = api.sent("POST", "/videos/7/history/actions");
+    assert.deepEqual(history.map((request) => [request.body.kind, request.body.expectedRevision]), [["segment.update", 0], ["shots.update", 1]]);
+    assert.deepEqual(history[1].body.beforeState.boundaries, [{ timeSec: 0 }]);
+    assert.deepEqual(editor.state.detail.shotBoundaries, [{ timeSec: 0 }, { timeSec: 30 }]);
+    assert.equal(editor.state.saveMessage, "Shot boundary added.");
+  });
 });
