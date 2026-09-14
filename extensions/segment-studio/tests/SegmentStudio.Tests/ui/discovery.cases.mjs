@@ -620,25 +620,77 @@ test("new segments open the tag editor while their creation is still saving", ()
   assert.match(editor, /if \(document\.activeElement === input\) return;/);
 });
 
-test("a tag chosen while a new segment saves waits for every save and applies only to that segment", () => {
+test("a tag chosen while a new segment saves waits for every save and then saves to that segment", () => {
   const queued = { segmentId: 42, tagId: 9, tagName: "Tag" };
-  const idle = { savingSegmentId: null, reviewSaving: false, selectedSegmentIds: [42], activeSegmentId: 42 };
+  const segments = [{ id: 42, tagId: 1 }, { id: 7, tagId: 1 }];
+  const idle = { segments, savingSegmentId: null, reviewSaving: false, selectedSegmentIds: [42], activeSegmentId: 42 };
 
   assert.equal(ui.resolveQueuedCreatedSegmentTag(null, idle), "none");
   assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, savingSegmentId: -1 }), "wait");
   assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, reviewSaving: true }), "wait");
   assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, idle), "apply");
-  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, activeSegmentId: 7, selectedSegmentIds: [7] }), "drop");
-  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, selectedSegmentIds: [42, 7] }), "drop");
+  // A reopened tag field defers the save only while it is open on the held segment alone.
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, tagEditing: true }), "wait");
+  // Moving on keeps the displayed choice by saving it to the held segment.
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, tagEditing: true, activeSegmentId: 7, selectedSegmentIds: [7] }), "apply");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, tagEditing: true, selectedSegmentIds: [42, 7] }), "apply");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, activeSegmentId: 7, selectedSegmentIds: [7] }), "apply");
+  // Nothing is left to save when the segment is gone or already carries the choice.
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, segments: [segments[1]] }), "drop");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, segments: [{ id: 42, tagId: 9 }] }), "drop");
 
   const workflow = sourceByModule["editor/actions/workflow.js"];
   const singleTag = workflow.slice(workflow.indexOf("if (selectedSegments.length !== 1 || !selectedSegment) return;"));
-  assert.ok(singleTag.indexOf("selectedSegment.id === creatingSegmentId") < singleTag.indexOf("if (tagId === selectedSegment.tagId)"));
-  assert.match(singleTag, /queuedCreatedSegmentTagRef\.current = tagId === selectedSegment\.tagId\s*\? null/);
+  assert.ok(singleTag.indexOf("heldCreatedSegmentTag?.segmentId === selectedSegment.id") < singleTag.indexOf("if (tagId === selectedSegment.tagId)"));
+  const apply = workflow.slice(workflow.indexOf("async function applyHeldCreatedSegmentTag"), workflow.indexOf("async function moveToBin"));
+  assert.match(apply, /segments\.find\(\(candidate\) => candidate\.id === queued\.segmentId\)/);
+  assert.match(apply, /mutateSegment\(segment,/);
+  assert.doesNotMatch(apply, /closeTagEditing/);
+  // A background save must not drag the selection back, and a failure names the unsaved choice.
+  assert.match(apply, /tagSortName: null,\n\s*\}, false\);/);
+  assert.match(apply, /if \(!saved\)\n\s*setSaveMessage\(`The new segment was not retagged/);
+  const primary = sourceByModule["editor/actions/primary.js"];
+  assert.match(primary, /if \(optimistic && restoreSelectionOnFailure\) \{\n\s*setSelectedSegmentIds\(previousSelectionIds\);/);
   const controller = sourceByModule["editor/SegmentEditor.js"];
   assert.match(controller, /reviewSaving: reviewSavingRef\.current/);
-  assert.match(controller, /The queued tag change was not applied/);
+  assert.match(controller, /if \(action === "apply"\) void applyHeldCreatedSegmentTag\(queued\);/);
   assert.match(controller, /ownerDocument\.activeElement === ownerDocument\.body/);
+});
+
+test("a held tag is only displayed and is saved against the server tag", () => {
+  const segment = { id: -5, tagId: 1, tagName: "Original", tagSortName: "original" };
+  const first = ui.queueCreatedSegmentTagChoice(null, segment, 2, "Held");
+  assert.deepEqual(first, { segmentId: -5, tagId: 2, tagName: "Held" });
+  // Accepting the displayed tag without a label keeps the held label.
+  assert.deepEqual(ui.queueCreatedSegmentTagChoice(first, segment, 2), first);
+  assert.deepEqual(ui.queueCreatedSegmentTagChoice(first, segment, 3, "Other"), { segmentId: -5, tagId: 3, tagName: "Other" });
+  assert.equal(ui.queueCreatedSegmentTagChoice(first, segment, 1, "Original"), null);
+
+  const other = { id: 8, tagId: 1, tagName: "Original" };
+  const segments = [segment, other];
+  assert.equal(ui.displayHeldSegmentTag(segments, null), segments);
+  const displayed = ui.displayHeldSegmentTag(segments, first);
+  assert.deepEqual(displayed[0], { ...segment, tagId: 2, tagName: "Held", tagSortName: null });
+  assert.equal(displayed[1], other);
+  assert.deepEqual(segments[0], { id: -5, tagId: 1, tagName: "Original", tagSortName: "original" });
+
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  assert.match(controller, /displayHeldSegmentTag\(segments, heldCreatedSegmentTag\)/);
+  assert.match(controller, /filterEditorSegments\(\s*displayedSegments,/);
+  assert.match(controller, /segments\.find\(\(segment\) => segment\.id === displayedSelectedSegment\.id\)/);
+  assert.match(controller, /selectedSegment: displayedSelectedSegment,/);
+  const workflow = sourceByModule["editor/actions/workflow.js"];
+  const held = workflow.slice(workflow.indexOf("const queue = queueCreatedSegmentTagChoice"), workflow.indexOf("if (tagId === selectedSegment.tagId)"));
+  assert.match(held, /editorVisibilityIncludingSegment\(\s*\{ \.\.\.selectedSegment, tagId: queue\.tagId \}/);
+  assert.match(held, /setEditorFilters\(visibility\.filters\)/);
+  assert.doesNotMatch(held, /onDetailChange/);
+  const primary = sourceByModule["editor/actions/primary.js"];
+  const create = primary.slice(primary.indexOf("async function createSegment"), primary.indexOf("function blockedByHeldTag"));
+  assert.ok(create.indexOf("segmentId: createdSegment.id") < create.indexOf("replaceSegmentSelection(createdSegment.id)"));
+  assert.match(create, /finally \{\n\s*setHeldCreatedSegmentTag\(\(current\) => current\?\.segmentId === optimisticSegment\.id \? null : current\);/);
+  for (const action of ["createSegment", "splitSegment", "duplicateSegment"])
+    assert.match(primary, new RegExp(`async function ${action}\\([^)]*\\) \\{\\n\\s*if \\([^\\n]*blockedByHeldTag\\(\\)\\) return;`));
+  assert.match(controller, /const wasEditing = tagEditingRef\.current;[\s\S]*if \(wasEditing\) requestAnimationFrame/);
 });
 
 test("empty videos choose a tag before creating their first swimlane", () => {

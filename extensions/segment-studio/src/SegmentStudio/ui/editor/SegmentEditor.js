@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from
 
 import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, removeQueuedReviewsForSegments, resolveQueuedCreatedSegmentTag, resolveQueuedReviewRequest, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, displayHeldSegmentTag, readPlaybackShortcutConfig, removeQueuedReviewsForSegments, resolveQueuedCreatedSegmentTag, resolveQueuedReviewRequest, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -70,7 +70,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const tagEditingRef = useRef(false);
   tagEditingRef.current = tagEditing;
   const [creatingSegmentId, setCreatingSegmentId] = useState(null);
-  const queuedCreatedSegmentTagRef = useRef(null);
+  // A tag picked for a new segment before it can be saved; it is displayed but saved only once the segment is idle.
+  const [heldCreatedSegmentTag, setHeldCreatedSegmentTag] = useState(null);
   const [firstSegmentTagOpen, setFirstSegmentTagOpen] = useState(false);
   const mergeSavingRef = useRef(false);
   const [mergeConfirmation, setMergeConfirmation] = useState(null);
@@ -241,8 +242,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   [segments, performerSlotsBySegment, videoPerformers]);
   const videoFrameRate = Number(video.videoFile?.frameRate) > 0 ? Number(video.videoFile.frameRate) : 30;
   function closeTagEditing() {
+    // Only reclaim focus from an open tag field; a deferred save must not pull focus from wherever the user moved on to.
+    const wasEditing = tagEditingRef.current;
     setTagEditing(false);
-    requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
+    if (wasEditing) requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
   }
 
   function closeFirstSegmentTagDialog() {
@@ -307,6 +310,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setFiltersOpen(false);
     pendingFirstSegmentStartSecRef.current = null;
     setFirstSegmentTagOpen(false);
+    setHeldCreatedSegmentTag(null);
     setTimelineZoom(1);
     setSaveMessage("");
     setHistory(EMPTY_EDITOR_HISTORY);
@@ -385,10 +389,14 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     return () => observer.disconnect();
   }, [wideLayout, editorLayout.markerRailOpen]);
 
+  const displayedSegments = useMemo(
+    () => displayHeldSegmentTag(segments, heldCreatedSegmentTag),
+    [segments, heldCreatedSegmentTag],
+  );
   const visibleSegments = useMemo(
     () => hideCollectedFeedbackSegments(
       filterEditorSegments(
-        segments,
+        displayedSegments,
         performerSlots,
         editorFilters,
         compatibilityMode && hideDerivedSegments,
@@ -398,7 +406,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       true,
     ),
     [
-      segments,
+      displayedSegments,
       performerSlots,
       editorFilters,
       hideDerivedSegments,
@@ -411,7 +419,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     [state, visibleSegments.filter((segment) => segment.reviewState === state).length]));
   const approvalFacetSegments = hideCollectedFeedbackSegments(
     filterEditorSegments(
-      segments,
+      displayedSegments,
       performerSlots,
       { ...editorFilters, reviewStates: REVIEW_STATES },
       compatibilityMode && hideDerivedSegments,
@@ -432,12 +440,17 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     () => groupSegmentsIntoSwimlanes(visibleSegments, segmentGroups, performerSlots),
     [visibleSegments, segmentGroups, performerSlots],
   );
-  const selectedSegment = resolveEditorSegmentSelection(
+  const displayedSelectedSegment = resolveEditorSegmentSelection(
     allSwimlanes,
     selectedSegmentId,
     initialSegmentId,
   );
-  const selectedSegments = resolveSelectedSegments(visibleSegments, selectedSegmentIds);
+  // Visibility follows the displayed tag, but actions read and write the server projection.
+  const selectedSegment = displayedSelectedSegment == null
+    ? null
+    : segments.find((segment) => segment.id === displayedSelectedSegment.id) || displayedSelectedSegment;
+  const selectedSegments = resolveSelectedSegments(segments, resolveSelectedSegments(visibleSegments, selectedSegmentIds)
+    .map((segment) => segment.id));
   const canMoveSelectionToBin = !compatibilityMode
     && selectedSegments.length > 0
     && selectedSegments.every((segment) => segment.nativeSegmentId != null);
@@ -616,7 +629,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     pendingDuplicateRef,
     pendingFirstSegmentStartSecRef,
     pendingTagEditSegmentIdRef,
-    queuedCreatedSegmentTagRef,
+    heldCreatedSegmentTag,
+    setHeldCreatedSegmentTag,
     replaceSegmentSelection,
     savingSegmentId,
     segments,
@@ -727,7 +741,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     if (missedRequest)
       setSaveMessage("The queued review could not find its segment after refreshing.");
   }, [savingSegmentId, segments]);
-  const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
+  const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, applyHeldCreatedSegmentTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
     acceptHistory,
     allSwimlanes,
     autoAssignCandidates,
@@ -738,8 +752,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     compatibilityMode,
     creatingSegmentId,
     detail,
+    editorFilters,
     editorRef,
     exportingExamples,
+    hideDerivedSegments,
     incorrectExamples,
     lineage,
     materializeButtonRef,
@@ -750,12 +766,15 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onConflict,
     onDetailChange,
     onReload,
-    queuedCreatedSegmentTagRef,
+    performerSlots,
+    heldCreatedSegmentTag,
+    setHeldCreatedSegmentTag,
     recordHistoryAction,
     refreshMaterializationPreview,
     removingExampleId,
     revealSegmentGroupForSelection,
     savingSegmentId,
+    segmentGroups,
     segments,
     selectedSegment,
     selectedSegmentIdRef,
@@ -765,7 +784,9 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setAutoAssignError,
     setAutoAssignOpen,
     setAutoAssigning,
+    setEditorFilters,
     setExportingExamples,
+    setHideDerivedSegments,
     setIncorrectExamples,
     setMaterializeError,
     setMaterializeLoading,
@@ -782,18 +803,19 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     video,
   });
   useEffect(() => {
-    const queued = queuedCreatedSegmentTagRef.current;
+    const queued = heldCreatedSegmentTag;
     const action = resolveQueuedCreatedSegmentTag(queued, {
+      segments,
       savingSegmentId,
       reviewSaving: reviewSavingRef.current,
+      tagEditing,
       selectedSegmentIds,
       activeSegmentId: selectedSegment?.id,
     });
     if (action === "none" || action === "wait") return;
-    queuedCreatedSegmentTagRef.current = null;
-    if (action === "apply") void saveTag(queued.tagId, queued.tagName);
-    else setSaveMessage("The queued tag change was not applied because the new segment is no longer the only selection.");
-  }, [savingSegmentId, selectedSegment?.id, selectedSegmentIds]);
+    setHeldCreatedSegmentTag(null);
+    if (action === "apply") void applyHeldCreatedSegmentTag(queued);
+  }, [heldCreatedSegmentTag, segments, savingSegmentId, selectedSegment?.id, selectedSegmentIds, tagEditing]);
   const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary, restoreShotBoundaries } = createHistoryAndLayoutActions({
     acceptHistory,
     compatibilityMode,
@@ -998,7 +1020,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     selectSegmentCollection,
     selectedGroups,
     selectedPerformerSlots,
-    selectedSegment,
+    selectedSegment: displayedSelectedSegment,
     selectedSegmentGroupKey,
     selectedSegmentIds,
     selectedSegments,

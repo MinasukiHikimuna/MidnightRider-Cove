@@ -13,7 +13,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, queuedCreatedSegmentTagRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
+  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, heldCreatedSegmentTag, setHeldCreatedSegmentTag, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -50,7 +50,7 @@ function createPrimarySegmentActions(context) {
       }
     }
 
-    async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false, optimisticValues = values) {
+    async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false, optimisticValues = values, restoreSelectionOnFailure = true) {
       if (!segment || savingSegmentId != null) return null;
       const previousSelectionIds = selectedSegments.map((item) => item.id);
       const previousActiveId = selectedSegmentIdRef.current;
@@ -149,6 +149,8 @@ function createPrimarySegmentActions(context) {
             [segment],
             Object.keys(optimisticValues),
           ), video.id);
+        }
+        if (optimistic && restoreSelectionOnFailure) {
           setSelectedSegmentIds(previousSelectionIds);
           setSelectedSegmentId(previousActiveId);
           selectionAnchorIdRef.current = previousActiveId;
@@ -212,7 +214,7 @@ function createPrimarySegmentActions(context) {
     }
 
     async function createSegment(requestedTagId = null, requestedTagName = null) {
-      if (savingSegmentId != null) return;
+      if (savingSegmentId != null || blockedByHeldTag()) return;
       const pendingStartSec = requestedTagId != null ? pendingFirstSegmentStartSecRef.current : null;
       const startSec = Number.isFinite(pendingStartSec) ? pendingStartSec : currentTime;
       const endSec = Math.min(timelineDuration, startSec + 20);
@@ -303,7 +305,7 @@ function createPrimarySegmentActions(context) {
             [optimisticSegment.id],
           ), video.id);
           replaceSegmentSelection(previousSelectionId);
-          setSaveMessage("Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment.");
+          setSaveMessage(`Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment${creation.openTagEditor ? " and choose its tag again if you picked one" : ""}.`);
           return;
         }
         const createdSegment = findSegmentByStableIdentity(loaded?.segments, createdIdentity);
@@ -311,8 +313,10 @@ function createPrimarySegmentActions(context) {
           if (creation.openTagEditor) {
             if (tagEditingRef.current)
               pendingTagEditSegmentIdRef.current = createdSegment.id;
-            if (queuedCreatedSegmentTagRef.current?.segmentId === optimisticSegment.id)
-              queuedCreatedSegmentTagRef.current = { ...queuedCreatedSegmentTagRef.current, segmentId: createdSegment.id };
+            // Move the held choice to the saved identity in the same batch as the reload so its display never flashes back.
+            setHeldCreatedSegmentTag((current) => current?.segmentId === optimisticSegment.id
+              ? { ...current, segmentId: createdSegment.id }
+              : current);
             setCreatingSegmentId(createdSegment.id);
           }
           // Swap selection in the same batch as the reload so the editor never shows a fallback segment.
@@ -331,7 +335,7 @@ function createPrimarySegmentActions(context) {
             );
         } else {
           setTagEditing(false);
-          setSaveMessage("Segment created, but it could not be selected.");
+          setSaveMessage(`Segment created, but it could not be selected${creation.openTagEditor ? "; choose its tag again if you picked one" : ""}.`);
         }
       } catch (error) {
         onDetailChange((current) => removeSegmentsProjection(
@@ -342,15 +346,20 @@ function createPrimarySegmentActions(context) {
         if (requestedTagId != null) setFirstSegmentTagOpen(true);
         setSaveMessage(error.message || "Unable to create the draft.");
       } finally {
-        if (queuedCreatedSegmentTagRef.current?.segmentId === optimisticSegment.id)
-          queuedCreatedSegmentTagRef.current = null;
+        setHeldCreatedSegmentTag((current) => current?.segmentId === optimisticSegment.id ? null : current);
         setCreatingSegmentId(null);
         setSavingSegmentId(null);
       }
     }
 
+    function blockedByHeldTag() {
+      if (heldCreatedSegmentTag == null || heldCreatedSegmentTag.segmentId !== selectedSegment?.id) return false;
+      setSaveMessage("Close the tag field to save the new segment's tag first.");
+      return true;
+    }
+
     async function splitSegment() {
-      if (selectedSegments.length !== 1 || !selectedSegment || savingSegmentId != null) return;
+      if (selectedSegments.length !== 1 || !selectedSegment || savingSegmentId != null || blockedByHeldTag()) return;
       const splitSec = currentTime;
       if (splitSec <= selectedSegment.startSec || (selectedSegment.endSec != null && splitSec >= selectedSegment.endSec)) {
         setSaveMessage("Move the playhead inside the selected segment before splitting.");
@@ -421,7 +430,7 @@ function createPrimarySegmentActions(context) {
     }
 
     async function duplicateSegment(atPlayhead = false) {
-      if (selectedSegments.length !== 1 || !selectedSegment || savingSegmentId != null) return;
+      if (selectedSegments.length !== 1 || !selectedSegment || savingSegmentId != null || blockedByHeldTag()) return;
       const startSec = atPlayhead ? currentTime : selectedSegment.startSec;
       const operationKey = duplicateOperationKey(video.id, selectedSegment, atPlayhead, startSec);
       const historyReceiptId = !compatibilityMode

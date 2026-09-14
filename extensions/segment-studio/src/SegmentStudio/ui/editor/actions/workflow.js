@@ -1,15 +1,15 @@
 import { completeOperation, confirmEmptyRecyclingBin, dependencyDeletionAllowed, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestDownload, requestJson } from "../../shared/api.js";
-import { findSegmentByStableIdentity, shouldRestoreTransitionSelection } from "../model/shortcuts.js";
+import { findSegmentByStableIdentity, queueCreatedSegmentTagChoice, shouldRestoreTransitionSelection } from "../model/shortcuts.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { incorrectExampleHistoryState, segmentsHistoryState } from "../model/history.js";
 import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
-import { CLEARED_SEGMENT_SELECTION_ID, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
+import { CLEARED_SEGMENT_SELECTION_ID, editorVisibilityIncludingSegment, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
 import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, queuedCreatedSegmentTagRef, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, exportingExamples, hideDerivedSegments, heldCreatedSegmentTag, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHeldCreatedSegmentTag, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -525,6 +525,8 @@ function createWorkflowActions(context) {
       const optimisticValues = {
         tagId,
         ...(tagName ? { tagName } : {}),
+        // The previous tag's sort name would misplace the destination lane until the reload.
+        tagSortName: null,
       };
       if (selectedSegments.length > 1) {
         const candidates = selectedSegments.filter((segment) => segment.tagId !== tagId);
@@ -625,14 +627,26 @@ function createWorkflowActions(context) {
         return;
       }
       if (selectedSegments.length !== 1 || !selectedSegment) return;
-      if (selectedSegment.id === creatingSegmentId) {
-        // The new segment is still saving; apply this choice once it has a stable identity.
-        const hadQueuedTag = queuedCreatedSegmentTagRef.current != null;
-        queuedCreatedSegmentTagRef.current = tagId === selectedSegment.tagId
-          ? null
-          : { segmentId: selectedSegment.id, tagId, tagName };
-        if (queuedCreatedSegmentTagRef.current) setSaveMessage("Tag change queued…");
-        else if (hadQueuedTag) setSaveMessage("");
+      if (selectedSegment.id === creatingSegmentId || heldCreatedSegmentTag?.segmentId === selectedSegment.id) {
+        // The new segment is still saving or its held choice is not saved yet: show the choice now and save it once possible.
+        const hadQueuedTag = heldCreatedSegmentTag != null;
+        const queue = queueCreatedSegmentTagChoice(heldCreatedSegmentTag, selectedSegment, tagId, tagName);
+        setHeldCreatedSegmentTag(queue);
+        if (queue) {
+          // Keep the held segment selected even when the displayed tag falls outside the active filters.
+          const visibility = editorVisibilityIncludingSegment(
+            { ...selectedSegment, tagId: queue.tagId },
+            performerSlots,
+            editorFilters,
+            hideDerivedSegments,
+            segmentGroups,
+          );
+          setEditorFilters(visibility.filters);
+          setHideDerivedSegments(visibility.hideDerivedSegments);
+          setSaveMessage("Tag change queued…");
+        } else if (hadQueuedTag) {
+          setSaveMessage("");
+        }
         closeTagEditing();
         return;
       }
@@ -705,6 +719,24 @@ function createWorkflowActions(context) {
         endSec: selectedSegment.endSec,
         tagId,
       }, true, null, true, optimisticValues);
+    }
+
+    async function applyHeldCreatedSegmentTag(queued) {
+      // Save against the held segment itself, whatever is selected now; a brand-new segment has no lineage to reconcile.
+      const segment = segments.find((candidate) => candidate.id === queued.segmentId);
+      if (!segment) return;
+      // The user may have moved on, so a failure must not pull the selection back to where the save started.
+      const saved = await mutateSegment(segment, {
+        startSec: segment.startSec,
+        endSec: segment.endSec,
+        tagId: queued.tagId,
+      }, true, null, true, {
+        tagId: queued.tagId,
+        ...(queued.tagName ? { tagName: queued.tagName } : {}),
+        tagSortName: null,
+      }, false);
+      if (!saved)
+        setSaveMessage(`The new segment was not retagged${queued.tagName ? ` to ${queued.tagName}` : ""}. Choose its tag again.`);
     }
 
     async function moveToBin() {
@@ -817,7 +849,7 @@ function createWorkflowActions(context) {
       }
     }
 
-  return { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, moveToBin, emptyRecyclingBin };
+  return { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, applyHeldCreatedSegmentTag, moveToBin, emptyRecyclingBin };
 }
 
 export { createWorkflowActions };

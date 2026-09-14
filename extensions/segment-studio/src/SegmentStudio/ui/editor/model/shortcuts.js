@@ -350,14 +350,36 @@ export function tagEditorLockedBySave(savingSegmentId, segmentId, creatingSegmen
   return savingSegmentId != null && (creatingSegmentId == null || segmentId !== creatingSegmentId);
 }
 
-export function resolveQueuedCreatedSegmentTag(queued, { savingSegmentId, reviewSaving, selectedSegmentIds, activeSegmentId }) {
+export function queueCreatedSegmentTagChoice(queued, segment, tagId, tagName = null) {
+  // `segment` comes from the server projection, so its tag is the one a held choice replaces.
+  if (tagId === segment.tagId) return null;
+  const held = queued?.segmentId === segment.id ? queued : null;
+  return {
+    segmentId: segment.id,
+    tagId,
+    tagName: tagName || (held?.tagId === tagId ? held.tagName : null),
+  };
+}
+
+export function displayHeldSegmentTag(segments, queued) {
+  if (!queued) return segments;
+  return (segments || []).map((segment) => segment.id === queued.segmentId
+    ? { ...segment, tagId: queued.tagId, tagName: queued.tagName || "Tag segment", tagSortName: null }
+    : segment);
+}
+
+export function resolveQueuedCreatedSegmentTag(queued, { segments, savingSegmentId, reviewSaving, tagEditing, selectedSegmentIds, activeSegmentId }) {
   if (!queued) return "none";
   if (savingSegmentId != null || reviewSaving) return "wait";
-  return activeSegmentId === queued.segmentId
+  const segment = (segments || []).find((candidate) => candidate.id === queued.segmentId);
+  // The segment was removed (for example by undo) or already carries the choice.
+  if (!segment || segment.tagId === queued.tagId) return "drop";
+  // The user reopened the tag editor on this segment to reconsider; save only the choice they close it with.
+  const editingHeldSegment = tagEditing
+    && activeSegmentId === queued.segmentId
     && selectedSegmentIds?.length === 1
-    && selectedSegmentIds[0] === queued.segmentId
-    ? "apply"
-    : "drop";
+    && selectedSegmentIds[0] === queued.segmentId;
+  return editingHeldSegment ? "wait" : "apply";
 }
 
 export function shouldRestoreTransitionSelection(currentSelectionId, operatedSelectionId) {
