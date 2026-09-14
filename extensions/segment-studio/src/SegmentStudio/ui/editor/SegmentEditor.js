@@ -30,7 +30,7 @@ import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
 import { createSaveQueue, isKindRunning, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./model/save-queue.js";
-import { applyPendingChanges, pendingChangesReducer } from "./model/pending-changes.js";
+import { applyPendingChanges, pendingChangesReducer, prunePendingChanges } from "./model/pending-changes.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
 
@@ -406,7 +406,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   );
   useLayoutEffect(() => {
     // Confirmed changes are dropped before paint in the render that carries the confirmed data.
-    if (pendingChanges.length > 0) dispatchPendingChanges({ type: "prune", detail });
+    if (prunePendingChanges(pendingChanges, detail) !== pendingChanges) dispatchPendingChanges({ type: "prune", detail });
   }, [detail, pendingChanges]);
   const visibleSegments = useMemo(
     () => hideCollectedFeedbackSegments(

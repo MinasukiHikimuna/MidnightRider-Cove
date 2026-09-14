@@ -10,10 +10,10 @@ const { createReviewActions } = await import(new URL("review.js", actionsRoot));
 function actionsFor(editor, extra = {}) {
   const primary = createPrimarySegmentActions(editor.context(extra));
   const review = createReviewActions(editor.context({
+    selectedGroups: [],
     ...extra,
     acceptHistory: primary.acceptHistory,
     recordHistoryAction: primary.recordHistoryAction,
-    selectedGroups: [],
   }));
   return { ...primary, ...review };
 }
@@ -62,9 +62,11 @@ test("save flow: Full-mode drafts save through the draft endpoint with their rev
 test("save flow: a busy editor refuses another segment save without sending it", { timeout: 5000 }, async () => {
   const api = createFakeApi();
   const editor = createFakeEditor();
+  // Build the actions first so their render still sees an idle editor and must be stopped by the lock.
+  const actions = actionsFor(editor);
   editor.saveQueue.acquire({ kind: "timing", lockId: 999 });
   await withEditorGlobals(api, async () => {
-    const result = await actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+    const result = await actions.mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
 
     assert.equal(result, null);
     assert.equal(api.requests.length, 0);
@@ -323,9 +325,13 @@ test("save flow: a confirmed timing edit stays displayed until the confirmed dat
     assert.equal(editor.state.pendingChanges[0].settled, true);
     assert.equal(editor.displayedSegments[0].startSec, 12);
     editor.render();
-    assert.deepEqual(editor.state.pendingChanges, []);
     assert.equal(editor.displayedSegments[0].startSec, 12);
     assert.equal(editor.displayedSegments[0].updatedAt, "2026-01-02T00:00:00Z");
+    // The next projection change retires the confirmed entry.
+    editor.context().onDetailChange((current) => ({ ...current }), 7);
+    editor.render();
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.displayedSegments[0].startSec, 12);
   });
 });
 
@@ -408,6 +414,7 @@ test("save flow: a rejection reloads the projection and keeps the selection on t
     assert.equal(editor.state.selectedSegmentId, 900);
     assert.equal(editor.state.saveMessage, "1 selected segment rejected.");
     editor.render();
+    // The reloaded projection no longer has the reviewed segment's old identity, so its decision is retired.
     assert.deepEqual(editor.state.pendingChanges, []);
   });
 });
@@ -427,5 +434,48 @@ test("save flow: a failed review discards its decision and restores the selectio
     assert.equal(editor.displayedSegments.find((item) => item.id === 101).reviewState, "unreviewed");
     assert.equal(editor.state.selectedSegmentId, 101);
     assert.equal(editor.state.saveMessage, "Review failed.");
+  });
+});
+
+test("save flow: a saved tag change keeps showing when the reload after it fails", { timeout: 5000 }, async () => {
+  const api = createFakeApi()
+    .on("PUT", "/videos/7/segments/101", (request) => ({ ...segment(), ...request.body, updatedAt: "2026-01-02T00:00:00Z" }))
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const actions = actionsFor(editor, { onReload: async () => null });
+    await actions.mutateSegment(editor.segments[0], { startSec: 10, endSec: 20, tagId: 9 }, true, null, true, { tagId: 9, tagName: "Saved tag" });
+    editor.render();
+    editor.render();
+
+    assert.equal(editor.segments[0].tagId, 1);
+    assert.equal(editor.displayedSegments[0].tagId, 9);
+    assert.equal(editor.displayedSegments[0].tagName, "Saved tag");
+  });
+});
+
+test("save flow: a native swimlane merge collapses the selection and applies the returned survivor", { timeout: 5000 }, async () => {
+  const first = segment({ startSec: 10, endSec: 14 });
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 20, endSec: 26, updatedAt: "2026-01-01T00:01:00Z" });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/segments/merge-selection", {
+      survivor: { ...first, endSec: 26, updatedAt: "2026-01-02T00:00:00Z" },
+      removedSegmentIds: [102],
+    })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor({ segments: [first, second] });
+  editor.select([101, 102], 101);
+  await withEditorGlobals(api, async () => {
+    const lane = { key: "tag:1", tagId: 1, markers: [{ segment: first }, { segment: second }] };
+    const actions = actionsFor(editor, { selectedGroups: [{ key: "group:1", lanes: [lane] }] });
+    await actions.mergeSelectedSwimlane(true);
+
+    const [request] = api.sent("POST", "/videos/7/segments/merge-selection");
+    assert.equal(request.body.survivorSegmentId, 101);
+    assert.deepEqual(request.body.consumedSegments.map((consumed) => consumed.segmentId), [102]);
+    assert.equal(api.sent("POST", "/videos/7/history/actions")[0].body.receiptId, request.body.historyReceiptId);
+    assert.deepEqual(editor.segments.map((item) => [item.id, item.startSec, item.endSec]), [[101, 10, 26]]);
+    assert.deepEqual(editor.state.selectedSegmentIds, [101]);
+    assert.equal(editor.savingSegmentId, null);
   });
 });

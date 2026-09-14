@@ -266,9 +266,13 @@ function createPrimarySegmentActions(context) {
         confidence: null,
         isDerived: false,
       };
+      const optimisticDetail = insertSegmentProjection(detail, optimisticSegment);
+      const optimisticGroupKey = segmentGroupKeyForSegment(
+        groupSegmentsIntoSwimlanes(optimisticDetail.segments, optimisticDetail.segmentGroups || [], optimisticDetail.performerSlots || []),
+        optimisticSegment.id,
+      );
       const releaseSaveLock = acquireSaveLock("create", -1);
       if (!releaseSaveLock) return;
-      const optimisticDetail = insertSegmentProjection(detail, optimisticSegment);
       setFirstSegmentTagOpen(false);
       onDetailChange(optimisticDetail, video.id);
       if (creation.openTagEditor) {
@@ -278,10 +282,7 @@ function createPrimarySegmentActions(context) {
         setTagEditing(true);
       }
       replaceSegmentSelection(optimisticSegment.id);
-      setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
-        groupSegmentsIntoSwimlanes(optimisticDetail.segments, optimisticDetail.segmentGroups || [], optimisticDetail.performerSlots || []),
-        optimisticSegment.id,
-      ));
+      setSelectedSegmentGroupKey(optimisticGroupKey);
       try {
         let createdIdentity;
         if (compatibilityMode) {

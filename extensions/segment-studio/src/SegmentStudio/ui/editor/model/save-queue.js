@@ -153,7 +153,8 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     const task = {
       id: nextId++,
       kind: spec.kind,
-      lockId: spec.lockId ?? null,
+      // Every running task holds the editor; -1 stands for "not tied to one segment".
+      lockId: spec.lockId ?? -1,
       targets: Object.freeze([...(spec.targets || [])]),
       exclusive: spec.exclusive === true,
       dependsOn: spec.dependsOn ?? null,
@@ -220,6 +221,9 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
       disposed = true;
       for (const task of cancelled) finish(task, { status: "cancelled" });
       listeners.clear();
+      const waiters = idleWaiters;
+      idleWaiters = [];
+      for (const resolve of waiters) resolve();
     },
   };
 }

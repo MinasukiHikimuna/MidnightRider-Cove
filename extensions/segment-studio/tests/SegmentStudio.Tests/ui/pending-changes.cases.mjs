@@ -65,7 +65,8 @@ test("pending changes follow a created segment from its temporary id to its save
   const saved = native(205, 0);
   list = ui.settlePendingChange(list, 1);
   list = ui.retargetPendingChanges(list, -3, identity(saved));
-  list = ui.prunePendingChanges(list, { segments: [saved] });
+  const reloaded = { segments: [saved] };
+  list = ui.prunePendingChanges(ui.prunePendingChanges(list, reloaded), { segments: [saved] });
   assert.deepEqual(list.map((entry) => entry.taskId), [2]);
   assert.deepEqual(ui.applyPendingChanges([saved], list), [{ ...saved, tagId: 7 }]);
   // Retargeting leaves unrelated lists untouched.
@@ -81,10 +82,15 @@ test("pending changes are discarded by entry or task and settled entries are pru
   assert.equal(ui.discardPendingChange(list, "missing"), list);
 
   const settled = ui.settlePendingChange(list, 5);
-  // A confirmed change keeps showing until the render that carries the confirmed data prunes it.
-  assert.equal(ui.applyPendingChanges(segments, settled)[0].reviewState, "approved");
-  assert.deepEqual(ui.prunePendingChanges(settled, { segments }).map((entry) => entry.id), ["a"]);
   assert.equal(ui.settlePendingChange(settled, 5), settled);
+  // A confirmed change records the projection it was confirmed on and keeps showing until that changes,
+  // so a reload that fails or is superseded does not flash back to the unconfirmed value.
+  const confirmedOn = { segments };
+  const recorded = ui.prunePendingChanges(settled, confirmedOn);
+  assert.deepEqual(recorded.map((entry) => entry.id), ["a", "b"]);
+  assert.equal(ui.prunePendingChanges(recorded, confirmedOn), recorded);
+  assert.equal(ui.applyPendingChanges(segments, recorded)[0].reviewState, "approved");
+  assert.deepEqual(ui.prunePendingChanges(recorded, { segments: [...segments] }).map((entry) => entry.id), ["a"]);
 });
 
 test("pending changes for segments that no longer exist are pruned", () => {
@@ -116,7 +122,9 @@ test("pending changes reducer routes every action", () => {
   assert.equal(list.length, 1);
   list = ui.pendingChangesReducer(list, { type: "settle", key: 1 });
   assert.equal(list[0].settled, true);
-  assert.deepEqual(ui.pendingChangesReducer(list, { type: "prune", detail: { segments: [segment] } }), []);
+  const marked = ui.pendingChangesReducer(list, { type: "prune", detail: { segments: [segment] } });
+  assert.equal(marked.length, 1);
+  assert.deepEqual(ui.pendingChangesReducer(marked, { type: "prune", detail: { segments: [segment] } }), []);
   assert.deepEqual(ui.pendingChangesReducer(list, { type: "discard", key: "x" }), []);
   assert.deepEqual(ui.pendingChangesReducer(list, { type: "reset" }), []);
   assert.equal(ui.pendingChangesReducer(list, { type: "unknown" }), list);

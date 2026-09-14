@@ -557,14 +557,14 @@ function createWorkflowActions(context) {
             ? `native:${segment.nativeSegmentId}:${segment.updatedAt}`
             : `item:${segment.itemId}:${segment.revision}`).sort().join(",");
         const operationKey = `bulk-tag:${video.id}:${tagId}:${signature}`;
-        const releaseSaveLock = acquireSaveLock("tag", selectedSegment?.id ?? candidates[0].id);
-        if (!releaseSaveLock) return;
-        setSaveMessage(`Changing tag for ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
         const optimisticDetail = patchSegmentProjection(
           detail,
           candidates.map((segment) => segment.id),
           optimisticValues,
         );
+        const releaseSaveLock = acquireSaveLock("tag", selectedSegment?.id ?? candidates[0].id);
+        if (!releaseSaveLock) return;
+        setSaveMessage(`Changing tag for ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
         onDetailChange(optimisticDetail, video.id);
         closeTagEditing();
         try {

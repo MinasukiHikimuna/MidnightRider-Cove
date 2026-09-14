@@ -92,7 +92,10 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
           performerName: performer?.name || null,
         };
       });
-      onOptimisticSave(optimisticSlots);
+      if (onOptimisticSave(optimisticSlots) === false) {
+        setMessage("");
+        return;
+      }
       const saved = await requestJson(itemId != null
         ? `/videos/${videoId}/drafts/${itemId}/slots`
         : `/videos/${videoId}/segments/${segmentId}/slots`, {

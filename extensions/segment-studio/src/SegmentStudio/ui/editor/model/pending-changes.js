@@ -45,13 +45,14 @@ export function discardPendingChange(list, key) {
   return next.length === (list || []).length ? list : next;
 }
 
-// The server confirmed the change; it stays applied until the render that shows the confirmed data.
+// The server confirmed the change. It stays applied until the projection changes after the settle,
+// so a reload that fails or is superseded does not flash back to the unconfirmed value.
 export function settlePendingChange(list, key) {
   let changed = false;
   const next = (list || []).map((entry) => {
     if (entry.settled || !matchesKey(entry, key)) return entry;
     changed = true;
-    return { ...entry, settled: true };
+    return { ...entry, settled: true, settledDetail: null };
   });
   return changed ? next : list;
 }
@@ -91,19 +92,36 @@ export function applyPendingChanges(segments, list) {
   return orderSegments(result);
 }
 
-// Drops confirmed entries and entries whose segments no longer exist (for example after an undo).
+// Drops confirmed entries once a newer projection has rendered, and entries whose segments no longer
+// exist (for example after an undo). A confirmed entry first records the projection it was confirmed on.
 export function prunePendingChanges(list, detail) {
   if (!list || list.length === 0) return list;
   const available = [
     ...(detail?.segments || []),
     ...list.filter((entry) => entry.op === "insert" && !entry.settled).map((entry) => entry.segment),
   ];
-  const next = list.filter((entry) => {
-    if (entry.settled) return false;
-    if (entry.op === "insert") return true;
-    return entry.targets.some((target) => available.some((segment) => sameSegmentIdentity(target, segment)));
-  });
-  return next.length === list.length ? list : next;
+  let changed = false;
+  const next = [];
+  for (const entry of list) {
+    if (entry.op !== "insert"
+        && !entry.targets.some((target) => available.some((segment) => sameSegmentIdentity(target, segment)))) {
+      changed = true;
+      continue;
+    }
+    if (entry.settled) {
+      if (entry.settledDetail == null) {
+        next.push({ ...entry, settledDetail: detail });
+        changed = true;
+      } else if (entry.settledDetail !== detail) {
+        changed = true;
+      } else {
+        next.push(entry);
+      }
+      continue;
+    }
+    next.push(entry);
+  }
+  return changed ? next : list;
 }
 
 export function pendingChangesReducer(list, action) {

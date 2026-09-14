@@ -36,11 +36,7 @@ function createReviewActions(context) {
       }
       if (skipFutureConfirmation)
         writeMergeConfirmationPreference(false);
-      const releaseSaveLock = acquireSaveLock("merge", merge.segments[0].id);
-      if (!releaseSaveLock) return;
-      closeMergeConfirmation();
       const endLabel = merge.endSec == null ? "open end" : formatTime(merge.endSec);
-
       let survivor = merge.segments[0];
       const basicBeforeState = !compatibilityMode
         ? segmentsHistoryState(merge.segments, false)
@@ -50,6 +46,9 @@ function createReviewActions(context) {
         : null;
       const originalSelectionIds = merge.segments.map((segment) => segment.id);
       const optimisticDetail = mergeSegmentsProjection(detail, merge.segments);
+      const releaseSaveLock = acquireSaveLock("merge", merge.segments[0].id);
+      if (!releaseSaveLock) return;
+      closeMergeConfirmation();
       onDetailChange(optimisticDetail, video.id);
       setSelectedSegmentIds([survivor.id]);
       setSelectedSegmentId(survivor.id);

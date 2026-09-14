@@ -372,8 +372,12 @@ function SegmentActiveEditor({
                 selectedSegment.id,
                 optimisticSlots,
               ), video.id);
-              releaseSlotSaveLock();
-              releaseSlotSaveLockRef.current = acquireSaveLock("slots", selectedSegment.id);
+              const release = acquireSaveLock("slots", selectedSegment.id);
+              if (!release) {
+                setSaveMessage("Wait for the current save to finish before saving performer slots.");
+                return false;
+              }
+              releaseSlotSaveLockRef.current = release;
               setSaveMessage("Saving performer slots…");
               closeSlots();
             },
