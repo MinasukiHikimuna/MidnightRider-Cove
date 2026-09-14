@@ -99,13 +99,14 @@ function createPrimarySegmentActions(context) {
           if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) {
             await onReload();
           } else {
-            onDetailChange({
-              ...detail,
-              approvedSetVersion: result.approvedSetVersion || detail.approvedSetVersion,
-              segments: segments
+            // Apply to the latest projection so changes that landed during the save are kept.
+            onDetailChange((current) => ({
+              ...current,
+              approvedSetVersion: result.approvedSetVersion || current.approvedSetVersion,
+              segments: (current.segments || [])
                 .map((item) => item.id === segment.id ? updatedDraft : item)
                 .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
-            }, video.id);
+            }), video.id);
           }
           setSaveMessage(result.draft?.reviewState === "approved" ? "Approved draft saved" : "Draft saved");
           return updatedDraft;
@@ -124,11 +125,13 @@ function createPrimarySegmentActions(context) {
           ...saved,
           reviewState: values.reviewState ?? segment.reviewState,
         };
-        const nextSegments = segments
-          .map((item) => item.id === segment.id ? updatedSegment : item)
-          .sort((left, right) => left.startSec - right.startSec || left.id - right.id);
         if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) await onReload();
-        else onDetailChange({ ...detail, segments: nextSegments }, video.id);
+        else onDetailChange((current) => ({
+          ...current,
+          segments: (current.segments || [])
+            .map((item) => item.id === segment.id ? updatedSegment : item)
+            .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
+        }), video.id);
         if (recordHistory)
           await recordHistoryAction(
             "segment.update",

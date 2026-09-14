@@ -28,6 +28,9 @@ function createWorkflowActions(context) {
       const failures = [];
       let historyWarning = false;
       let workingDetail = detail;
+      // Replay deltas onto the latest projection unless a refetch already replaced it.
+      let refetchedDetail = false;
+      const appliedDeltas = [];
       setSavingSegmentId(activeIdentity.id);
       setSaveMessage(plan.action === "remove"
         ? `Removing ${candidates.length} selected incorrect example${candidates.length === 1 ? "" : "s"}…`
@@ -100,6 +103,8 @@ function createWorkflowActions(context) {
                 && error.payload?.result?.code === "OPERATION_REPLAYED") {
                 workingDetail = await requestJson(
                   `/videos/${video.id}/editor`);
+                refetchedDetail = true;
+                appliedDeltas.length = 0;
                 completeOperation(error.operationKey);
                 result = error.payload.result;
               } else {
@@ -107,6 +112,8 @@ function createWorkflowActions(context) {
                 const refreshed = await requestJson(
                   `/videos/${video.id}/editor`);
                 workingDetail = refreshed;
+                refetchedDetail = true;
+                appliedDeltas.length = 0;
                 const current = findSegmentByStableIdentity(
                   refreshed?.segments, identity);
                 if (!current) throw error;
@@ -117,6 +124,7 @@ function createWorkflowActions(context) {
             if (identity && result.itemId != null) identity.itemId = result.itemId;
             workingDetail = applyFeedbackEditorDelta(
               workingDetail, result.editorDelta);
+            appliedDeltas.push(result.editorDelta);
             const completion = { segment, result, example };
             completed.push(completion);
           } catch (error) {
@@ -162,7 +170,9 @@ function createWorkflowActions(context) {
         const examples = await requestJson(`/videos/${video.id}/incorrect-examples`);
         setIncorrectExamples(examples);
         const updatedDetail = workingDetail;
-        onDetailChange(updatedDetail, video.id);
+        onDetailChange(refetchedDetail
+          ? updatedDetail
+          : (current) => appliedDeltas.reduce(applyFeedbackEditorDelta, current), video.id);
         if (transitionSelectionOwned && shouldRestoreTransitionSelection(
           selectedSegmentIdRef.current, selectionGuardId,
         )) {
@@ -285,7 +295,7 @@ function createWorkflowActions(context) {
           await onReload();
         else
           onDetailChange(
-            applyFeedbackEditorDelta(detail, result.editorDelta),
+            (current) => applyFeedbackEditorDelta(current, result.editorDelta),
             video.id,
           );
         if (example.representation === "basicNativeBin")
@@ -801,9 +811,11 @@ function createWorkflowActions(context) {
           }), false),
           historyReceiptId,
         );
-        const nextSegments = segments.filter((segment) => !selectedIds.has(segment.id));
         const nextSelection = nextSegmentAfterRemoval(allSwimlanes, selectedIds, selectedSegment.id);
-        onDetailChange({ ...detail, segments: nextSegments }, video.id);
+        onDetailChange((current) => ({
+          ...current,
+          segments: (current.segments || []).filter((segment) => !selectedIds.has(segment.id)),
+        }), video.id);
         setSelectedSegmentIds(nextSelection ? [nextSelection.id] : []);
         setSelectedSegmentId(nextSelection?.id ?? null);
         selectionAnchorIdRef.current = nextSelection?.id ?? null;

@@ -667,9 +667,9 @@ test("selection review shortcuts apply a state and reset only when every segment
   assert.match(handler, /segments:\s*reviewSegments\.map/);
   assert.match(handler, /expectedHistoryRevision:\s*historyRef\.current\.revision/);
   assert.match(handler, /if \(result\.history\) acceptHistory\(result\.history\)/);
-  assert.match(handler, /onDetailChange\(updatedDetail, video\.id\)/);
+  assert.match(handler, /onDetailChange\(applyReviewResult, video\.id\)/);
   assert.match(handler, /approvedSetVersion: result\.approvedSetVersion/);
-  assert.match(handler, /restoreSelection\(updatedDetail\)/);
+  assert.match(handler, /restoreSelection\(applyReviewResult\(detail\)\)/);
   assert.doesNotMatch(handler, /for \(const segment of candidates/);
   assert.doesNotMatch(handler, /Partially updated/);
 });
@@ -743,7 +743,7 @@ test("bulk review patches safe decisions locally and reloads cascading or identi
   assert.match(saveReview, /restoreSelection\(await onReload\(\)\)/);
   assert.match(saveReview, /id: item\.nativeSegmentId != null \? item\.nativeSegmentId : -item\.itemId/);
   assert.match(saveReview, /revision: item\.nativeSegmentId != null \? segment\.revision : item\.revision/);
-  assert.match(saveReview, /restoreSelection\(updatedDetail\)/);
+  assert.match(saveReview, /restoreSelection\(applyReviewResult\(detail\)\)/);
   assert.doesNotMatch(saveReview, /error\.status === 409 \? await onConflict\(\) : await onReload\(\)/);
 });
 
@@ -840,7 +840,7 @@ test("one selected swimlane can be merged into its full selected time span", () 
   assert.doesNotMatch(mergeHandler, /window\.confirm/);
   assert.match(mergeHandler, /confirmedMerge \|\| selectedSwimlaneMerge\([\s\S]*nativeOnly: !compatibilityMode/);
   assert.match(mergeHandler, /!compatibilityMode \|\| survivor\.nativeSegmentId != null/);
-  assert.match(mergeHandler, /applySegmentMergeDelta\(detail, delta\)/);
+  assert.match(mergeHandler, /applySegmentMergeDelta\(current, delta\)/);
   assert.doesNotMatch(mergeHandler, /await onReload\(\)/);
   assert.match(source, /mergeSelectedSwimlane\(true, skipFuture, mergeConfirmation\)/);
   assert.match(source, /requestAnimationFrame\(\(\) => detailPanelRef\.current\?\.focus/);

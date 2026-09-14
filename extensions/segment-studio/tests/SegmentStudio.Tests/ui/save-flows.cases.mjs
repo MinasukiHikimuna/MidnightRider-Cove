@@ -169,3 +169,47 @@ test("save flow: a failed create removes the temporary segment and restores the 
     assert.equal(editor.state.savingSegmentId, null);
   });
 });
+
+test("save flow: a timing save keeps editor changes that landed while it was in flight", async () => {
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+    await put.arrived();
+    // A performer slot save finished meanwhile.
+    const slot = { segmentId: 101, slotDefinitionId: "giver", performerId: 3 };
+    editor.context().onDetailChange((current) => ({ ...current, performerSlots: [slot] }), 7);
+    put.release({ ...segment(), startSec: 12, updatedAt: "2026-01-02T00:00:00Z" });
+    await saving;
+
+    assert.deepEqual(editor.state.detail.performerSlots, [slot]);
+    assert.equal(editor.segments[0].startSec, 12);
+    assert.equal(editor.segments[0].updatedAt, "2026-01-02T00:00:00Z");
+  });
+});
+
+test("save flow: an approval keeps editor changes that landed while it was in flight", async () => {
+  const api = createFakeApi();
+  const put = api.hold("PUT", "/videos/7/segments/review-state");
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const reviewing = actionsFor(editor).saveSelectedReviewState("approved");
+    const request = await put.arrived();
+    assert.equal(request.body.reviewState, "approved");
+    assert.equal(editor.segments[0].reviewState, "approved");
+    const slot = { segmentId: 101, slotDefinitionId: "giver", performerId: 3 };
+    editor.context().onDetailChange((current) => ({ ...current, performerSlots: [slot] }), 7);
+    put.release({
+      updatedCount: 1,
+      items: [{ requestedNativeSegmentId: 101, nativeSegmentId: 101, itemId: null, updatedAt: "2026-01-02T00:00:00Z" }],
+    });
+    await reviewing;
+
+    assert.deepEqual(editor.state.detail.performerSlots, [slot]);
+    assert.equal(editor.segments[0].reviewState, "approved");
+    assert.equal(editor.segments[0].updatedAt, "2026-01-02T00:00:00Z");
+    assert.equal(editor.state.selectedSegmentId, 101);
+    assert.equal(editor.state.saveMessage, "1 selected segment approved.");
+  });
+});

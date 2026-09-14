@@ -71,7 +71,7 @@ function createReviewActions(context) {
               }),
             });
           survivor = delta.survivor;
-          onDetailChange(applySegmentMergeDelta(detail, delta), video.id);
+          onDetailChange((current) => applySegmentMergeDelta(current, delta), video.id);
           operations.forEach(({ key }) => completeOperation(key));
         } else {
           const operations = consumedSegments.map((consumed) => {
@@ -88,7 +88,7 @@ function createReviewActions(context) {
             }),
           });
           survivor = delta.survivor;
-          onDetailChange(applySegmentMergeDelta(detail, delta), video.id);
+          onDetailChange((current) => applySegmentMergeDelta(current, delta), video.id);
           operations.forEach(({ key }) => completeOperation(key));
         }
         setSelectedSegmentIds([survivor.id]);
@@ -217,10 +217,10 @@ function createReviewActions(context) {
           setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
           return;
         }
-        const updatedDetail = {
-            ...detail,
-            approvedSetVersion: result.approvedSetVersion || detail.approvedSetVersion,
-            segments: (detail.segments || []).map((segment) => {
+        const applyReviewResult = (base) => ({
+            ...base,
+            approvedSetVersion: result.approvedSetVersion || base.approvedSetVersion,
+            segments: (base.segments || []).map((segment) => {
               const item = resultByIdentity.get(segment.nativeSegmentId != null
                 ? `native:${segment.nativeSegmentId}`
                 : `item:${segment.itemId}`);
@@ -235,9 +235,10 @@ function createReviewActions(context) {
                 updatedAt: item.updatedAt,
               } : segment;
             }),
-          };
-        onDetailChange(updatedDetail, video.id);
-        restoreSelection(updatedDetail);
+          });
+        // Apply to the latest projection so changes that landed during the save are kept.
+        onDetailChange(applyReviewResult, video.id);
+        restoreSelection(applyReviewResult(detail));
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
         onDetailChange((current) => restoreSegmentFieldsProjection(
