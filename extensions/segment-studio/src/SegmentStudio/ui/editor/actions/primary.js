@@ -13,7 +13,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, startInput, timelineDuration, video } = context;
+  const { compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, queuedCreatedSegmentTagRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -260,6 +260,12 @@ function createPrimarySegmentActions(context) {
       setSavingSegmentId(-1);
       setFirstSegmentTagOpen(false);
       onDetailChange(optimisticDetail, video.id);
+      if (creation.openTagEditor) {
+        // Open the tag editor on the optimistic segment so typing can start before the save round-trip.
+        setCreatingSegmentId(optimisticSegment.id);
+        pendingTagEditSegmentIdRef.current = optimisticSegment.id;
+        setTagEditing(true);
+      }
       replaceSegmentSelection(optimisticSegment.id);
       setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
         groupSegmentsIntoSwimlanes(optimisticDetail.segments, optimisticDetail.segmentGroups || [], optimisticDetail.performerSlots || []),
@@ -302,6 +308,19 @@ function createPrimarySegmentActions(context) {
         }
         const createdSegment = findSegmentByStableIdentity(loaded?.segments, createdIdentity);
         if (createdSegment) {
+          if (creation.openTagEditor) {
+            if (tagEditingRef.current)
+              pendingTagEditSegmentIdRef.current = createdSegment.id;
+            if (queuedCreatedSegmentTagRef.current?.segmentId === optimisticSegment.id)
+              queuedCreatedSegmentTagRef.current = { ...queuedCreatedSegmentTagRef.current, segmentId: createdSegment.id };
+            setCreatingSegmentId(createdSegment.id);
+          }
+          // Swap selection in the same batch as the reload so the editor never shows a fallback segment.
+          replaceSegmentSelection(createdSegment.id);
+          setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
+            groupSegmentsIntoSwimlanes(loaded.segments || [], loaded.segmentGroups || [], loaded.performerSlots || []),
+            createdSegment.id,
+          ));
           if (!compatibilityMode)
             await recordHistoryAction(
               "segment.create",
@@ -310,14 +329,8 @@ function createPrimarySegmentActions(context) {
               segmentsHistoryState([createdSegment], false),
               historyReceiptId,
             );
-          if (creation.openTagEditor)
-            pendingTagEditSegmentIdRef.current = createdSegment.id;
-          replaceSegmentSelection(createdSegment.id);
-          setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
-            groupSegmentsIntoSwimlanes(loaded.segments || [], loaded.segmentGroups || [], loaded.performerSlots || []),
-            createdSegment.id,
-          ));
         } else {
+          setTagEditing(false);
           setSaveMessage("Segment created, but it could not be selected.");
         }
       } catch (error) {
@@ -329,6 +342,9 @@ function createPrimarySegmentActions(context) {
         if (requestedTagId != null) setFirstSegmentTagOpen(true);
         setSaveMessage(error.message || "Unable to create the draft.");
       } finally {
+        if (queuedCreatedSegmentTagRef.current?.segmentId === optimisticSegment.id)
+          queuedCreatedSegmentTagRef.current = null;
+        setCreatingSegmentId(null);
         setSavingSegmentId(null);
       }
     }

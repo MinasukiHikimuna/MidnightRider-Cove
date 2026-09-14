@@ -9,7 +9,7 @@ import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesA
 import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorRef, exportingExamples, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, onConflict, onDetailChange, onReload, queuedCreatedSegmentTagRef, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setExportingExamples, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSavingSegmentId, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -626,6 +626,13 @@ function createWorkflowActions(context) {
       }
       if (selectedSegments.length !== 1 || !selectedSegment) return;
       if (tagId === selectedSegment.tagId) {
+        closeTagEditing();
+        return;
+      }
+      if (selectedSegment.id === creatingSegmentId) {
+        // The new segment is still saving; apply this choice once it has a stable identity.
+        queuedCreatedSegmentTagRef.current = { segmentId: selectedSegment.id, tagId, tagName };
+        setSaveMessage("Tag change queued…");
         closeTagEditing();
         return;
       }

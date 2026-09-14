@@ -346,6 +346,10 @@ export function resolveSegmentCreationAction(segments, selectedSegment, requeste
     : { kind: "invalid-selection" };
 }
 
+export function tagEditorLockedBySave(savingSegmentId, segmentId, creatingSegmentId) {
+  return savingSegmentId != null && (creatingSegmentId == null || segmentId !== creatingSegmentId);
+}
+
 export function shouldRestoreTransitionSelection(currentSelectionId, operatedSelectionId) {
   return currentSelectionId === operatedSelectionId;
 }

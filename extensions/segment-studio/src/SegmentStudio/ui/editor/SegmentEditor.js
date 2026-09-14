@@ -67,6 +67,10 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySaving, setHistorySaving] = useState(false);
   const [tagEditing, setTagEditing] = useState(false);
+  const tagEditingRef = useRef(false);
+  tagEditingRef.current = tagEditing;
+  const [creatingSegmentId, setCreatingSegmentId] = useState(null);
+  const queuedCreatedSegmentTagRef = useRef(null);
   const [firstSegmentTagOpen, setFirstSegmentTagOpen] = useState(false);
   const mergeSavingRef = useRef(false);
   const [mergeConfirmation, setMergeConfirmation] = useState(null);
@@ -272,6 +276,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   useEffect(() => {
     if (!tagEditing) return;
     const input = tagSearchRef.current?.querySelector("input");
+    // Keep text typed while a new segment was still saving when its selection moves to the saved id.
+    if (document.activeElement === input) return;
     input?.focus({ preventScroll: true });
     input?.select();
   }, [tagEditing, selectedSegmentId]);
@@ -602,6 +608,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     pendingDuplicateRef,
     pendingFirstSegmentStartSecRef,
     pendingTagEditSegmentIdRef,
+    queuedCreatedSegmentTagRef,
     replaceSegmentSelection,
     savingSegmentId,
     segments,
@@ -610,6 +617,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     selectedSegments,
     selectionAnchorIdRef,
     selectionRangeBaseIdsRef,
+    setCreatingSegmentId,
     setEditorFilters,
     setFirstSegmentTagOpen,
     setHideDerivedSegments,
@@ -621,7 +629,9 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentGroupKey,
     setSelectedSegmentId,
     setSelectedSegmentIds,
+    setTagEditing,
     startInput,
+    tagEditingRef,
     timelineDuration,
     video,
   });
@@ -718,6 +728,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     canMoveSelectionToBin,
     closeTagEditing,
     compatibilityMode,
+    creatingSegmentId,
     detail,
     editorRef,
     exportingExamples,
@@ -731,6 +742,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onConflict,
     onDetailChange,
     onReload,
+    queuedCreatedSegmentTagRef,
     recordHistoryAction,
     refreshMaterializationPreview,
     removingExampleId,
@@ -761,6 +773,12 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentIds,
     video,
   });
+  useEffect(() => {
+    const queued = queuedCreatedSegmentTagRef.current;
+    if (!queued || savingSegmentId != null) return;
+    queuedCreatedSegmentTagRef.current = null;
+    if (selectedSegment?.id === queued.segmentId) void saveTag(queued.tagId, queued.tagName);
+  }, [savingSegmentId, selectedSegment?.id]);
   const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary, restoreShotBoundaries } = createHistoryAndLayoutActions({
     acceptHistory,
     compatibilityMode,
@@ -994,6 +1012,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     splitSegment,
     startFullAnalysis,
     tagEditing,
+    creatingSegmentId,
     tagSearchRef,
     timelineDuration,
     timelineRatioBounds,

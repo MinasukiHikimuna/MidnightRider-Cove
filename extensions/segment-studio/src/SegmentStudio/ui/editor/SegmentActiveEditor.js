@@ -13,8 +13,10 @@ import { MultiPerformerSlotAssignmentEditor, PerformerSlotAssignmentEditor, Perf
 
 import { DerivedSegmentIcon, MultiSegmentSelectionDetails, SegmentProvenanceDisclosure } from "./SegmentDetails.js";
 
+import { tagEditorLockedBySave } from "./model/shortcuts.js";
+
 function SegmentActiveEditor({
-  compatibilityMode, selectedSegment, selectedSegments = [], selectedGroups = [], saveMessage, savingSegmentId,
+  compatibilityMode, selectedSegment, selectedSegments = [], selectedGroups = [], saveMessage, savingSegmentId, creatingSegmentId = null,
   saveTag,
   saveTiming,
   slotStatus, performerSlotsAvailable, selectedPerformerSlots, performerSlots, detail, video, slotButtonRef, tagSearchRef,
@@ -204,7 +206,7 @@ function SegmentActiveEditor({
             selectedDisplay: "input",
             selectedLabel: selectedSegment.tagName,
             onChange: (tagId, option) => tagId == null ? onCancelTagEditing() : saveTag(tagId, option?.label),
-            disabled: savingSegmentId != null || lineage.data?.tagReadOnly === true,
+            disabled: tagEditorLockedBySave(savingSegmentId, selectedSegment.id, creatingSegmentId) || lineage.data?.tagReadOnly === true,
             placeholder: "Find a tag…",
             inputClassName: "w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground",
             creatable: false,

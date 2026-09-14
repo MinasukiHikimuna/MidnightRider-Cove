@@ -316,7 +316,7 @@ test("selected segments use preloaded lineage and derived tags are read-only", (
   assert.match(source, /"aria-label": "Derived segment"/);
   assert.match(source, /segment\.isDerived \? h\(DerivedSegmentIcon/);
   assert.match(source, /selectedSegment\?\.isDerived \? h\(DerivedSegmentIcon/);
-  assert.match(source, /disabled: savingSegmentId != null \|\| lineage\.data\?\.tagReadOnly === true/);
+  assert.match(source, /disabled: tagEditorLockedBySave\(savingSegmentId, selectedSegment\.id, creatingSegmentId\) \|\| lineage\.data\?\.tagReadOnly === true/);
   assert.match(source, /This tag is read-only because it is set by a derivation rule\./);
   assert.match(source, /onNavigateLineageItem\(parent\.itemId\)/);
 });
@@ -601,6 +601,26 @@ test("manual segment creation matches the Stash Marker Studio shortcut contract"
   assert.match(editor, /\[tagEditing, selectedSegmentId\]/);
 });
 
+test("new segments open the tag editor while their creation is still saving", () => {
+  assert.equal(ui.tagEditorLockedBySave(null, 7, null), false);
+  assert.equal(ui.tagEditorLockedBySave(-1, -5, -5), false);
+  assert.equal(ui.tagEditorLockedBySave(-1, 7, -5), true);
+  assert.equal(ui.tagEditorLockedBySave(-1, 7, null), true);
+  assert.equal(ui.tagEditorLockedBySave(7, 7, null), true);
+
+  const editor = source.slice(source.indexOf("function SegmentEditor"), source.indexOf("const DISCOVERY_URL_OPTIONS"));
+  const creation = editor.slice(editor.indexOf("async function createSegment"), editor.indexOf("async function splitSegment"));
+  const optimisticOpen = creation.indexOf("pendingTagEditSegmentIdRef.current = optimisticSegment.id");
+  assert.ok(optimisticOpen > 0);
+  assert.ok(optimisticOpen < creation.indexOf("await requestJson"));
+  assert.match(creation, /setCreatingSegmentId\(optimisticSegment\.id\)/);
+  assert.match(creation, /tagEditingRef\.current[\s\S]*pendingTagEditSegmentIdRef\.current = createdSegment\.id/);
+  assert.ok(creation.indexOf("replaceSegmentSelection(createdSegment.id)") < creation.indexOf("await recordHistoryAction"));
+  assert.match(source, /tagEditorLockedBySave\(savingSegmentId, selectedSegment\.id, creatingSegmentId\)/);
+  assert.match(editor, /queuedCreatedSegmentTagRef\.current = \{ segmentId: selectedSegment\.id, tagId, tagName \}/);
+  assert.match(editor, /if \(document\.activeElement === input\) return;/);
+});
+
 test("empty videos choose a tag before creating their first swimlane", () => {
   assert.deepEqual(ui.resolveSegmentCreationAction([], null), { kind: "choose-tag" });
   assert.deepEqual(
@@ -630,7 +650,6 @@ test("empty videos choose a tag before creating their first swimlane", () => {
   assert.match(editor, /if \(creation\.kind === "choose-tag"\)/);
   assert.match(editor, /pendingFirstSegmentStartSecRef\.current = startSec/);
   assert.match(editor, /Number\.isFinite\(pendingStartSec\) \? pendingStartSec : currentTime/);
-  assert.match(editor, /if \(creation\.openTagEditor\)\s*pendingTagEditSegmentIdRef\.current = createdSegment\.id/);
 });
 
 test("Enter accepts an unchanged tag only when autocomplete and IME are idle", () => {
