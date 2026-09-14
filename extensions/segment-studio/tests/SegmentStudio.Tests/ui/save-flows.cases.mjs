@@ -771,3 +771,45 @@ test("save flow: auto-assign holds the save lock until its reload finishes", { t
     assert.equal(editor.state.saveMessage, "1 segment received 2 performer-slot assignments.");
   });
 });
+
+test("save flow: deleting rejected segments hides them until the deletion is confirmed", { timeout: 5000 }, async () => {
+  const kept = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const rejected = segment({ reviewState: "rejected" });
+  let serverSegments = [rejected, kept];
+  const api = createFakeApi();
+  const execute = api.hold("POST", "/videos/7/rejected/deletion/execute");
+  const editor = createFakeEditor({ segments: [rejected, kept], server: () => ({ ...editor.state.detail, segments: serverSegments }) });
+  const preview = { fingerprint: "fp", deletedSegmentCount: 1, deferredRejectedSegmentCount: 0 };
+  await withEditorGlobals(api, async () => {
+    const actions = actionsFor(editor, { incorrectExamples: [], setRejectedDeletionPreview: () => {} });
+    const deleting = actions.deleteRejectedSegments(preview);
+    await execute.arrived();
+    assert.deepEqual(editor.displayedSegments.map((item) => item.id), [102]);
+    assert.deepEqual(editor.segments.map((item) => item.id), [101, 102]);
+    assert.equal(editor.state.selectedSegmentId, 102);
+
+    serverSegments = [kept];
+    execute.release({ deletedSegmentCount: 1 });
+    await deleting;
+    editor.render();
+    assert.deepEqual(editor.displayedSegments.map((item) => item.id), [102]);
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.state.saveMessage, "1 segment permanently deleted.");
+  });
+});
+
+test("save flow: a failed rejected-segment deletion shows the segments again", { timeout: 5000 }, async () => {
+  const kept = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const rejected = segment({ reviewState: "rejected" });
+  const api = createFakeApi().on("POST", "/videos/7/rejected/deletion/execute", reply(409, { error: "Deletion changed." }));
+  const editor = createFakeEditor({ segments: [rejected, kept] });
+  const preview = { fingerprint: "fp", deletedSegmentCount: 1, deferredRejectedSegmentCount: 0 };
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor, { incorrectExamples: [], setRejectedDeletionPreview: () => {} }).deleteRejectedSegments(preview);
+
+    assert.deepEqual(editor.displayedSegments.map((item) => item.id), [101, 102]);
+    assert.equal(editor.state.selectedSegmentId, 101);
+    assert.equal(editor.state.saveMessage, "Deletion changed.");
+    assert.equal(editor.savingSegmentId, null);
+  });
+});

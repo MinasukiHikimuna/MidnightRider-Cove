@@ -550,7 +550,7 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
   assert.doesNotMatch(deleteRejected, /confirmDependencyDeletion/);
   assert.ok(deleteRejected.indexOf("onDetailChange(optimisticDetail") < deleteRejected.indexOf("/rejected/deletion/execute"));
   assert.match(deleteRejected, /deferredCount === 0[\s\S]*removeSegmentsProjection/);
-  assert.match(deleteRejected, /restoreSegmentsProjection\([\s\S]*rejectedSegments/);
+  // Hiding and restoring the rejected segments is covered by the save-flow cases.
   const controller = sourceByModule["editor/SegmentEditor.js"];
   const reviewSetup = controller.slice(
     controller.indexOf("createReviewActions"),

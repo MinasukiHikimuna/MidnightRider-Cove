@@ -8,7 +8,7 @@ import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, editorVisibilityIncludingSegment, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
-import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
+import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
   const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -433,8 +433,13 @@ function createWorkflowActions(context) {
       if (!releaseSaveLock) return;
       setRejectedDeletionPreview(null);
       setSaveMessage("Deleting rejected segments…");
-      if (deferredCount === 0) {
-        onDetailChange(optimisticDetail, video.id);
+      // Hide the rejected segments until the deletion is confirmed; a failure only drops this entry.
+      const pendingChangeId = deferredCount === 0 ? createPendingChangeId() : null;
+      if (pendingChangeId) {
+        dispatchPendingChanges({
+          type: "add",
+          entry: { id: pendingChangeId, op: "remove", targets: rejectedSegments.map(segmentIdentity) },
+        });
         setSelectedSegmentIds(nextSelectedSegment ? [nextSelectedSegment.id] : []);
         setSelectedSegmentId(nextSelectedSegment?.id ?? null);
         selectionAnchorIdRef.current = nextSelectedSegment?.id ?? null;
@@ -452,6 +457,7 @@ function createWorkflowActions(context) {
         });
         completeOperation(operationKey);
         await onReload();
+        if (pendingChangeId) dispatchPendingChanges({ type: "settle", key: pendingChangeId });
         if (result.deletedSegmentCount > 0)
           acceptHistory(EMPTY_EDITOR_HISTORY);
         const retainedMessage = deferredCount > 0
@@ -459,10 +465,7 @@ function createWorkflowActions(context) {
           : "";
         setSaveMessage(`${result.deletedSegmentCount} segment${result.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${retainedMessage}`);
       } catch (error) {
-        if (deferredCount === 0) onDetailChange((current) => restoreSegmentsProjection(
-          current,
-          rejectedSegments,
-        ), video.id);
+        if (pendingChangeId) dispatchPendingChanges({ type: "discard", key: pendingChangeId });
         setSelectedSegmentIds(previousSelectionId == null ? [] : [previousSelectionId]);
         setSelectedSegmentId(previousSelectionId);
         selectionAnchorIdRef.current = previousSelectionId;
