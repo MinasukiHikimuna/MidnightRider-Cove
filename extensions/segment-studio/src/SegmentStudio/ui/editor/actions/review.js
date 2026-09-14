@@ -162,7 +162,10 @@ function createReviewActions(context) {
           activeIdentity: saveContext.targets[activeIndex],
         }),
       });
-      if (!task) return Promise.resolve(null);
+      if (!task) {
+        setSaveMessage("Wait for the history restore to finish.");
+        return Promise.resolve(null);
+      }
       if (waiting) setSaveMessage(`${requestedState === "approved" ? "Approval" : "Rejection"} queued…`);
       return task.done;
     }

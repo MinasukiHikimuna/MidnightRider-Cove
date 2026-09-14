@@ -694,7 +694,10 @@ function createWorkflowActions(context) {
           cancelSaveTasks((task) => task.meta?.pendingChangeId === heldChange.id);
           dispatchPendingChanges({ type: "discard", key: heldChange.id });
         }
-        if (queue) holdCreatedSegmentTag(selectedSegment, queue);
+        if (queue && !holdCreatedSegmentTag(selectedSegment, queue)) {
+          closeTagEditing();
+          return;
+        }
         if (queue) {
           // Keep the held segment selected even when the displayed tag falls outside the active filters.
           const visibility = editorVisibilityIncludingSegment(
@@ -814,7 +817,7 @@ function createWorkflowActions(context) {
         },
       });
       const createChange = pendingChanges.find((entry) => entry.op === "insert" && entry.segment.id === segment.id);
-      enqueueSave({
+      const task = enqueueSave({
         kind: "held-tag",
         whenBusy: "enqueue",
         targets: [segmentIdentity(segment)],
@@ -826,6 +829,12 @@ function createWorkflowActions(context) {
         },
         run: (saveContext) => applyHeldCreatedSegmentTag(saveContext, pendingChangeId, choice),
       });
+      if (!task) {
+        dispatchPendingChanges({ type: "discard", key: pendingChangeId });
+        setSaveMessage("Wait for the history restore to finish.");
+        return false;
+      }
+      return true;
     }
 
     async function applyHeldCreatedSegmentTag(saveContext, pendingChangeId, choice) {

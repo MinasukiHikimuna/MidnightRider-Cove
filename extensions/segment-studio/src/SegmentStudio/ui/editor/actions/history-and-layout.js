@@ -270,18 +270,28 @@ function createHistoryAndLayoutActions(context) {
       throw new Error("This history action cannot be restored.");
     }
 
+    // A restore replays several requests against the history revision, so it runs alone: it waits for
+    // queued saves and no new save can be queued until it finishes.
     async function restoreHistoryTarget(targetSequence) {
       if (historySaving || savingSegmentId != null
           || targetSequence === history.cursorSequence)
         return;
       const steps = historyActionsForTarget(history, targetSequence);
       if (steps.length === 0) return;
-      const releaseSaveLock = acquireSaveLock("history", -1);
-      if (!releaseSaveLock) return;
+      const task = enqueueSave({
+        kind: "history",
+        lockId: -1,
+        exclusive: true,
+        run: (saveContext) => runHistoryRestore(saveContext.detail, targetSequence, steps),
+      });
+      if (task) await task.done;
+    }
+
+    async function runHistoryRestore(currentDetail, targetSequence, steps) {
       setHistorySaving(true);
       setSaveMessage(`Restoring ${steps.length} history ${steps.length === 1 ? "action" : "actions"}…`);
       try {
-        let loaded = detail;
+        let loaded = currentDetail;
         const pendingOperationKeys = [];
         for (const step of steps)
           loaded = await applyHistoryState(
@@ -310,7 +320,6 @@ function createHistoryAndLayoutActions(context) {
         await onReload();
         setSaveMessage(error.message || "Unable to restore editor history.");
       } finally {
-        releaseSaveLock();
         setHistorySaving(false);
       }
     }
@@ -436,7 +445,10 @@ function createHistoryAndLayoutActions(context) {
         whenBusy: "enqueue",
         run: (saveContext) => runShotBoundaryEdit(saveContext.detail, kind, recordHistory, timeSec),
       });
-      if (!task) return Promise.resolve(null);
+      if (!task) {
+        setSaveMessage("Wait for the history restore to finish.");
+        return Promise.resolve(null);
+      }
       if (waiting) setSaveMessage(kind === "split" ? "Shot boundary queued…" : "Shot merge queued…");
       return task.done.then((outcome) => outcome.value ?? null);
     }

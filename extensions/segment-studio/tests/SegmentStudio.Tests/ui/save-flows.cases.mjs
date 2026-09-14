@@ -15,6 +15,7 @@ function historyActionsFor(editor, actions) {
     recordHistoryAction: actions.recordHistoryAction,
     history: editor.state.history,
     historySaving: false,
+    setHistorySaving: () => {},
     editorLayout: {},
     shotBoundaries: editor.state.detail.shotBoundaries,
   }));
@@ -951,5 +952,37 @@ test("save flow: a merge shows the merged span until confirmed and a failure res
     assert.deepEqual(editor.state.selectedSegmentIds, [101, 102]);
     assert.equal(editor.state.saveMessage, "Merge failed.");
     assert.equal(editor.savingSegmentId, null);
+  });
+});
+
+test("save flow: a history restore runs alone and refuses new saves until it finishes", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", { updatedCount: 1, items: [] });
+  const restore = api.hold("POST", "/videos/7/history/native-state");
+  const editor = createFakeEditor();
+  const history = {
+    revision: 2,
+    cursorSequence: 2,
+    baselineSequence: 0,
+    actions: [{ sequence: 2, kind: "segment.update", beforeState: { type: "segment" }, afterState: { type: "segment" } }],
+  };
+  editor.state.history = history;
+  editor.refs.historyRef.current = history;
+  await withEditorGlobals(api, async () => {
+    const actions = actionsFor(editor);
+    const restoring = historyActionsFor(editor, actions).restoreHistoryTarget(1);
+    const request = await restore.arrived();
+    assert.equal(request.body.expectedHistoryRevision, 2);
+    assert.equal(editor.savingSegmentId, -1);
+
+    // Neither a queued review nor a shot edit can be added behind a running restore.
+    assert.equal(await actionsFor(editor).saveSelectedReviewState("approved"), null);
+    assert.equal(editor.state.saveMessage, "Wait for the history restore to finish.");
+    assert.equal(editor.saveQueue.getSnapshot().queued.length, 0);
+
+    restore.release({ history: { ...history, cursorSequence: 1 } });
+    await restoring;
+    assert.equal(editor.savingSegmentId, null);
+    assert.equal(editor.state.saveMessage, "History restored.");
+    assert.equal(api.sent("PUT", "/videos/7/segments/review-state").length, 0);
   });
 });
