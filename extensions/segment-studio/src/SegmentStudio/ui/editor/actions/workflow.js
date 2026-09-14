@@ -8,7 +8,7 @@ import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
 import { CLEARED_SEGMENT_SELECTION_ID, editorVisibilityIncludingSegment, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
-import { patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection } from "../model/optimistic.js";
+import { removeSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
   const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -718,29 +718,48 @@ function createWorkflowActions(context) {
         return;
       }
       if (selectedSegment.itemId != null && lineage.data?.children?.length > 0) {
-        const releaseSaveLock = acquireSaveLock("lineage-tag", selectedSegment.id);
-        if (!releaseSaveLock) return;
+        // Preview and execute each hold the save lock, but the confirmation is asked without it so a
+        // pending decision does not block other saves; a change made meanwhile makes the execute conflict.
+        const releasePreviewLock = acquireSaveLock("lineage-tag", selectedSegment.id);
+        if (!releasePreviewLock) return;
         setSaveMessage("Checking lineage impact…");
+        let preview;
         try {
-          const preview = await requestJson(`/items/${selectedSegment.itemId}/tag-change/preview`, {
+          preview = await requestJson(`/items/${selectedSegment.itemId}/tag-change/preview`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ expectedRevision: selectedSegment.revision, tagId }),
           });
-          const destructive = preview.deletedItemIds.length > 0 || preview.removedEdgeIds.length > 0;
-          if (destructive && !window.confirm(
-            `Changing this tag removes ${preview.removedEdgeIds.length} lineage edge${preview.removedEdgeIds.length === 1 ? "" : "s"} and permanently deletes ${preview.deletedItemIds.length} derived segment${preview.deletedItemIds.length === 1 ? "" : "s"}. Continue?`,
-          )) {
-            setSaveMessage("Tag change canceled.");
-            return;
+        } catch (error) {
+          if (error.status === 409) {
+            setSaveMessage("Lineage changed — loading the latest segments…");
+            await onConflict();
+          } else {
+            setSaveMessage(error.message || "Unable to reconcile the lineage.");
           }
-          const optimisticDetail = patchSegmentProjection(
-            detail,
-            [selectedSegment.id],
-            optimisticValues,
-          );
-          onDetailChange(optimisticDetail, video.id);
-          closeTagEditing();
+          return;
+        } finally {
+          releasePreviewLock();
+        }
+        const destructive = preview.deletedItemIds.length > 0 || preview.removedEdgeIds.length > 0;
+        if (destructive && !window.confirm(
+          `Changing this tag removes ${preview.removedEdgeIds.length} lineage edge${preview.removedEdgeIds.length === 1 ? "" : "s"} and permanently deletes ${preview.deletedItemIds.length} derived segment${preview.deletedItemIds.length === 1 ? "" : "s"}. Continue?`,
+        )) {
+          setSaveMessage("Tag change canceled.");
+          return;
+        }
+        const releaseSaveLock = acquireSaveLock("lineage-tag", selectedSegment.id);
+        if (!releaseSaveLock) {
+          setSaveMessage("Wait for the current save to finish before changing the tag.");
+          return;
+        }
+        const pendingChangeId = createPendingChangeId();
+        dispatchPendingChanges({
+          type: "add",
+          entry: { id: pendingChangeId, op: "patch", targets: [segmentIdentity(selectedSegment)], values: optimisticValues },
+        });
+        closeTagEditing();
+        try {
           const operationKey = `tag-change:${selectedSegment.itemId}:${selectedSegment.revision}:${preview.componentFingerprint}:${tagId}`;
           await requestJson(`/items/${selectedSegment.itemId}/tag-change/execute`, {
             method: "POST",
@@ -754,14 +773,11 @@ function createWorkflowActions(context) {
           });
           completeOperation(operationKey);
           await onReload();
+          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
           closeTagEditing();
           setSaveMessage(destructive ? "Tag changed and lineage reconciled." : "Tag changed.");
         } catch (error) {
-          onDetailChange((current) => restoreSegmentFieldsProjection(
-            current,
-            [selectedSegment],
-            Object.keys(optimisticValues),
-          ), video.id);
+          dispatchPendingChanges({ type: "discard", key: pendingChangeId });
           setSelectedSegmentIds([selectedSegment.id]);
           setSelectedSegmentId(selectedSegment.id);
           selectionAnchorIdRef.current = selectedSegment.id;

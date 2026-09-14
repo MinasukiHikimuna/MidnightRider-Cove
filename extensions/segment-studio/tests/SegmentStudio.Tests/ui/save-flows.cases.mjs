@@ -860,3 +860,72 @@ test("save flow: a failed bulk tag change leaves newer reloaded values in place"
     assert.equal(editor.state.saveMessage, "Retag failed.");
   });
 });
+
+function lineageEditor(extraSegments = []) {
+  const owned = segment({ id: -55, itemId: 55, nativeSegmentId: null, published: false, revision: 3 });
+  const editor = createFakeEditor({ segments: [owned, ...extraSegments], compatibilityMode: true });
+  return { owned, editor, extra: { lineage: { data: { children: [{ itemId: 56 }] } } } };
+}
+
+test("save flow: a lineage tag change asks for confirmation without holding the save lock", { timeout: 5000 }, async () => {
+  const { editor, extra } = lineageEditor();
+  let lockedDuringConfirm = null;
+  const api = createFakeApi()
+    .on("POST", "/items/55/tag-change/preview", { deletedItemIds: [56], removedEdgeIds: [7], componentFingerprint: "c1" })
+    .on("POST", "/items/55/tag-change/execute", { ok: true });
+  await withEditorGlobals(api, async () => {
+    globalThis.window.confirm = () => {
+      lockedDuringConfirm = editor.savingSegmentId;
+      return true;
+    };
+    const saving = actionsFor(editor, extra).saveTag(9, "Lineage tag");
+    await saving;
+
+    assert.equal(lockedDuringConfirm, null);
+    const [execute] = api.sent("POST", "/items/55/tag-change/execute");
+    assert.equal(execute.body.expectedRevision, 3);
+    assert.equal(execute.body.componentFingerprint, "c1");
+    assert.equal(execute.body.tagId, 9);
+    assert.equal(editor.state.saveMessage, "Tag changed and lineage reconciled.");
+    assert.equal(editor.savingSegmentId, null);
+  });
+});
+
+test("save flow: a save made while a lineage change is being confirmed makes the change conflict", { timeout: 5000 }, async () => {
+  const { editor, extra } = lineageEditor();
+  const api = createFakeApi()
+    .on("POST", "/items/55/tag-change/preview", { deletedItemIds: [], removedEdgeIds: [7], componentFingerprint: "c1" })
+    .on("POST", "/items/55/tag-change/execute", reply(409, { error: "Lineage changed." }));
+  const reloads = [];
+  await withEditorGlobals(api, async () => {
+    globalThis.window.confirm = () => {
+      // Another save takes and releases the lock while the dialog is open.
+      const release = editor.saveQueue.acquire({ kind: "timing", lockId: -55 });
+      assert.equal(typeof release, "function");
+      release();
+      return true;
+    };
+    await actionsFor(editor, { ...extra, onConflict: async () => { reloads.push("conflict"); return editor.state.detail; } }).saveTag(9, "Lineage tag");
+
+    assert.deepEqual(reloads, ["conflict"]);
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.displayedSegments[0].tagId, 1);
+    assert.equal(editor.state.saveMessage, "Lineage changed — loading the latest segments…");
+    assert.equal(editor.savingSegmentId, null);
+  });
+});
+
+test("save flow: cancelling a destructive lineage change sends nothing and leaves the tag", { timeout: 5000 }, async () => {
+  const { editor, extra } = lineageEditor();
+  const api = createFakeApi()
+    .on("POST", "/items/55/tag-change/preview", { deletedItemIds: [56], removedEdgeIds: [], componentFingerprint: "c1" });
+  await withEditorGlobals(api, async () => {
+    globalThis.window.confirm = () => false;
+    await actionsFor(editor, extra).saveTag(9, "Lineage tag");
+
+    assert.equal(api.sent("POST", "/items/55/tag-change/execute").length, 0);
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.state.saveMessage, "Tag change canceled.");
+    assert.equal(editor.savingSegmentId, null);
+  });
+});

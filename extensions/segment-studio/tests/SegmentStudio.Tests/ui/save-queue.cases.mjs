@@ -228,3 +228,13 @@ test("save queue keeps draining after a task throws synchronously", async () => 
   assert.equal((await broken.done).status, "rejected");
   assert.equal((await next.done).status, "fulfilled");
 });
+
+test("save queue locks are free again as soon as they are released", () => {
+  const queue = ui.createSaveQueue();
+  const release = queue.acquire({ kind: "preview", lockId: 1 });
+  release();
+  assert.equal(ui.savingSegmentIdFrom(queue.getSnapshot()), null);
+  const next = queue.acquire({ kind: "execute", lockId: 1 });
+  assert.equal(typeof next, "function");
+  next();
+});

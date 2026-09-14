@@ -110,6 +110,8 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
   }
 
   function settle(task, outcome) {
+    if (task.settled) return;
+    task.settled = true;
     finish(task, outcome);
     if (disposed) return;
     running = null;
@@ -189,6 +191,8 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
       if (released) return;
       released = true;
       release();
+      // Settle now rather than on a microtask, so the caller can take the lock again immediately.
+      if (running?.id === handle.id) settle(running, { status: "fulfilled", value: undefined });
     };
   }
 
