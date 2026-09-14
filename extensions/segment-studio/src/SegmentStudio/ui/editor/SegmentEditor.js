@@ -65,6 +65,18 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const savingSegmentId = savingSegmentIdFrom(saveQueueSnapshot);
   const acquireSaveLock = (kind, lockId) => saveQueue.acquire({ kind, lockId });
   const enqueueSave = (spec) => saveQueue.enqueue(spec);
+  const stableSaveIdentity = (identity) => saveQueue.stableIdentity(identity);
+  const saveQueueMountedRef = useRef(false);
+  useEffect(() => {
+    saveQueueMountedRef.current = true;
+    return () => {
+      saveQueueMountedRef.current = false;
+      // StrictMode remounts synchronously; only a real unmount leaves the flag false.
+      queueMicrotask(() => {
+        if (!saveQueueMountedRef.current) saveQueue.dispose();
+      });
+    };
+  }, []);
   const cancelSaveTasks = (predicate) => saveQueue.cancel(predicate);
   const retargetSaveTasks = (temporaryId, identity) => saveQueue.retarget(temporaryId, identity);
   const getSaveQueueSnapshot = saveQueue.getSnapshot;
@@ -741,16 +753,19 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     saveQueue.cancel((task) => task.kind === "review" && targetsOverlap(task.targets, cancelledTargets));
   };
   // Queued saves start only after the previous save's results have rendered, so they read fresh data.
-  saveContextRef.current = {
-    detail,
-    segments,
-    onConflict,
-    onDetailChange,
-    onReload,
-    tagEditing,
-    selectedSegmentIds,
-    activeSegmentId: selectedSegment?.id ?? null,
-  };
+  useLayoutEffect(() => {
+    // Captured after commit, so queued saves never read data from a render that did not happen.
+    saveContextRef.current = {
+      detail,
+      segments,
+      onConflict,
+      onDetailChange,
+      onReload,
+      tagEditing,
+      selectedSegmentIds,
+      activeSegmentId: selectedSegment?.id ?? null,
+    };
+  });
   useEffect(() => {
     saveQueue.poke();
   });
@@ -783,6 +798,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     cancelSaveTasks,
     dispatchPendingChanges,
     enqueueSave,
+    stableSaveIdentity,
     pendingChanges,
     runSegmentMutation,
     recordHistoryAction,

@@ -181,7 +181,8 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
   const serverDetail = server || (() => state.detail);
 
   // Like the editor, queued saves wait for a render (`render()`) before reading context.
-  const saveQueue = createSaveQueue({ getContext: () => editor.context(), drainAfterSettle: false });
+  let committedContext = null;
+  const saveQueue = createSaveQueue({ getContext: () => committedContext, drainAfterSettle: false });
   const editor = {
     state,
     refs,
@@ -192,8 +193,10 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     // What the editor shows: server segments plus unconfirmed changes.
     get displayedSegments() { return applyPendingChanges(state.detail.segments, state.pendingChanges); },
     // Models the layout effect that prunes confirmed changes after a render.
+    // Models a commit: prune confirmed changes, capture the save context, then let queued saves start.
     render() {
       state.pendingChanges = pendingChangesReducer(state.pendingChanges, { type: "prune", detail: state.detail });
+      committedContext = editor.context();
       saveQueue.poke();
     },
     select(ids, activeId = ids[0] ?? null) {
@@ -224,6 +227,7 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
         acquireSaveLock: (kind, lockId) => saveQueue.acquire({ kind, lockId }),
         enqueueSave: (spec) => saveQueue.enqueue(spec),
+        stableSaveIdentity: (identity) => saveQueue.stableIdentity(identity),
         cancelSaveTasks: (predicate) => saveQueue.cancel(predicate),
         retargetSaveTasks: (temporaryId, identity) => saveQueue.retarget(temporaryId, identity),
         dispatchPendingChanges(action) {
@@ -278,5 +282,6 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
       };
     },
   };
+  committedContext = editor.context();
   return editor;
 }

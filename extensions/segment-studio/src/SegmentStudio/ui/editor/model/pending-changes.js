@@ -138,8 +138,15 @@ export function prunePendingChanges(list, detail) {
   return changed ? next : list;
 }
 
+// When the confirming projection is applied alongside this action the entry goes at once; otherwise
+// (for example a reload that failed) it stays settled until the projection changes.
+export function confirmPendingChange(list, key, projectionApplied) {
+  return projectionApplied ? discardPendingChange(list, key) : settlePendingChange(list, key);
+}
+
 export function pendingChangesReducer(list, action) {
   switch (action.type) {
+    case "confirm": return confirmPendingChange(list, action.key, action.applied);
     case "add": return addPendingChange(list, action.entry);
     case "discard": return discardPendingChange(list, action.key);
     case "settle": return settlePendingChange(list, action.key);

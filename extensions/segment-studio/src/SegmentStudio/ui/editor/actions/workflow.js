@@ -11,7 +11,7 @@ import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesA
 import { removeSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, stableSaveIdentity, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -456,8 +456,8 @@ function createWorkflowActions(context) {
           }),
         });
         completeOperation(operationKey);
-        await onReload();
-        if (pendingChangeId) dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+        const loaded = await onReload();
+        if (pendingChangeId) dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: loaded != null });
         if (result.deletedSegmentCount > 0)
           acceptHistory(EMPTY_EDITOR_HISTORY);
         const retainedMessage = deferredCount > 0
@@ -641,7 +641,7 @@ function createWorkflowActions(context) {
             compatibilityMode,
           );
           const loaded = await onReload();
-          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+          dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: loaded != null });
           const changedSegments = identities
             .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
             .filter(Boolean);
@@ -690,13 +690,14 @@ function createWorkflowActions(context) {
           ? { segmentId: selectedSegment.id, tagId: heldChange.values.tagId, tagName: heldChange.meta.tagName }
           : null;
         const queue = queueCreatedSegmentTagChoice(heldChoice, selectedSegment, tagId, tagName);
-        if (heldChange) {
-          cancelSaveTasks((task) => task.meta?.pendingChangeId === heldChange.id);
-          dispatchPendingChanges({ type: "discard", key: heldChange.id });
-        }
+        // Queue the new choice before dropping the old one, so a refused choice keeps the previous hold.
         if (queue && !holdCreatedSegmentTag(selectedSegment, queue)) {
           closeTagEditing();
           return;
+        }
+        if (heldChange) {
+          cancelSaveTasks((task) => task.meta?.pendingChangeId === heldChange.id);
+          dispatchPendingChanges({ type: "discard", key: heldChange.id });
         }
         if (queue) {
           // Keep the held segment selected even when the displayed tag falls outside the active filters.
@@ -721,48 +722,31 @@ function createWorkflowActions(context) {
         return;
       }
       if (selectedSegment.itemId != null && lineage.data?.children?.length > 0) {
-        // Preview and execute each hold the save lock, but the confirmation is asked without it so a
-        // pending decision does not block other saves; a change made meanwhile makes the execute conflict.
-        const releasePreviewLock = acquireSaveLock("lineage-tag", selectedSegment.id);
-        if (!releasePreviewLock) return;
+        // One lock spans the preview, the confirmation and the execution: the confirmation blocks the page,
+        // so releasing the lock around it would only let queued work take the lock first.
+        const releaseSaveLock = acquireSaveLock("lineage-tag", selectedSegment.id);
+        if (!releaseSaveLock) return;
         setSaveMessage("Checking lineage impact…");
-        let preview;
+        let pendingChangeId = null;
         try {
-          preview = await requestJson(`/items/${selectedSegment.itemId}/tag-change/preview`, {
+          const preview = await requestJson(`/items/${selectedSegment.itemId}/tag-change/preview`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ expectedRevision: selectedSegment.revision, tagId }),
           });
-        } catch (error) {
-          if (error.status === 409) {
-            setSaveMessage("Lineage changed — loading the latest segments…");
-            await onConflict();
-          } else {
-            setSaveMessage(error.message || "Unable to reconcile the lineage.");
+          const destructive = preview.deletedItemIds.length > 0 || preview.removedEdgeIds.length > 0;
+          if (destructive && !window.confirm(
+            `Changing this tag removes ${preview.removedEdgeIds.length} lineage edge${preview.removedEdgeIds.length === 1 ? "" : "s"} and permanently deletes ${preview.deletedItemIds.length} derived segment${preview.deletedItemIds.length === 1 ? "" : "s"}. Continue?`,
+          )) {
+            setSaveMessage("Tag change canceled.");
+            return;
           }
-          return;
-        } finally {
-          releasePreviewLock();
-        }
-        const destructive = preview.deletedItemIds.length > 0 || preview.removedEdgeIds.length > 0;
-        if (destructive && !window.confirm(
-          `Changing this tag removes ${preview.removedEdgeIds.length} lineage edge${preview.removedEdgeIds.length === 1 ? "" : "s"} and permanently deletes ${preview.deletedItemIds.length} derived segment${preview.deletedItemIds.length === 1 ? "" : "s"}. Continue?`,
-        )) {
-          setSaveMessage("Tag change canceled.");
-          return;
-        }
-        const releaseSaveLock = acquireSaveLock("lineage-tag", selectedSegment.id);
-        if (!releaseSaveLock) {
-          setSaveMessage("Wait for the current save to finish before changing the tag.");
-          return;
-        }
-        const pendingChangeId = createPendingChangeId();
-        dispatchPendingChanges({
-          type: "add",
-          entry: { id: pendingChangeId, op: "patch", targets: [segmentIdentity(selectedSegment)], values: optimisticValues },
-        });
-        closeTagEditing();
-        try {
+          pendingChangeId = createPendingChangeId();
+          dispatchPendingChanges({
+            type: "add",
+            entry: { id: pendingChangeId, op: "patch", targets: [segmentIdentity(selectedSegment)], values: optimisticValues },
+          });
+          closeTagEditing();
           const operationKey = `tag-change:${selectedSegment.itemId}:${selectedSegment.revision}:${preview.componentFingerprint}:${tagId}`;
           await requestJson(`/items/${selectedSegment.itemId}/tag-change/execute`, {
             method: "POST",
@@ -775,12 +759,12 @@ function createWorkflowActions(context) {
             }),
           });
           completeOperation(operationKey);
-          await onReload();
-          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+          const loaded = await onReload();
+          dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: loaded != null });
           closeTagEditing();
           setSaveMessage(destructive ? "Tag changed and lineage reconciled." : "Tag changed.");
         } catch (error) {
-          dispatchPendingChanges({ type: "discard", key: pendingChangeId });
+          if (pendingChangeId) dispatchPendingChanges({ type: "discard", key: pendingChangeId });
           setSelectedSegmentIds([selectedSegment.id]);
           setSelectedSegmentId(selectedSegment.id);
           selectionAnchorIdRef.current = selectedSegment.id;
@@ -806,12 +790,14 @@ function createWorkflowActions(context) {
 
     function holdCreatedSegmentTag(segment, choice) {
       const pendingChangeId = createPendingChangeId();
+      // A render that still shows the temporary segment maps it to the saved identity the create returned.
+      const target = stableSaveIdentity(segmentIdentity(segment));
       dispatchPendingChanges({
         type: "add",
         entry: {
           id: pendingChangeId,
           op: "patch",
-          targets: [segmentIdentity(segment)],
+          targets: [target],
           values: { tagId: choice.tagId, tagName: choice.tagName || "Tag segment", tagSortName: null },
           meta: { kind: "held-tag", tagName: choice.tagName },
         },
@@ -820,7 +806,7 @@ function createWorkflowActions(context) {
       const task = enqueueSave({
         kind: "held-tag",
         whenBusy: "enqueue",
-        targets: [segmentIdentity(segment)],
+        targets: [target],
         dependsOn: createChange?.taskId ?? null,
         meta: { pendingChangeId },
         ready: (saveContext, task) => {
@@ -840,7 +826,12 @@ function createWorkflowActions(context) {
     async function applyHeldCreatedSegmentTag(saveContext, pendingChangeId, choice) {
       // Save against the held segment itself, whatever is selected now; a brand-new segment has no lineage to reconcile.
       const [segment] = saveContext.resolveTargets();
-      if (!segment || segment.tagId === choice.tagId) {
+      if (!segment) {
+        dispatchPendingChanges({ type: "discard", key: pendingChangeId });
+        setSaveMessage(`The new segment was not retagged${choice.tagName ? ` to ${choice.tagName}` : ""}. Choose its tag again.`);
+        return;
+      }
+      if (segment.tagId === choice.tagId) {
         dispatchPendingChanges({ type: "discard", key: pendingChangeId });
         return;
       }

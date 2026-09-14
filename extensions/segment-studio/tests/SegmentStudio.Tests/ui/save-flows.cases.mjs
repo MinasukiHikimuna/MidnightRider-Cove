@@ -328,34 +328,44 @@ test("save flow: the save lock is released when a save fails", { timeout: 5000 }
   await withEditorGlobals(api, async () => {
     await actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
     assert.equal(editor.savingSegmentId, null);
+    editor.render();
     assert.ok(editor.saveQueue.acquire({ kind: "timing", lockId: 101 }));
   });
 });
 
-test("save flow: a confirmed timing edit stays displayed until the confirmed data renders", { timeout: 5000 }, async () => {
+test("save flow: a confirmed timing edit is replaced by the saved segment in the same update", { timeout: 5000 }, async () => {
   const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
   const put = api.hold("PUT", "/videos/7/segments/101");
   const editor = createFakeEditor();
   await withEditorGlobals(api, async () => {
     const saving = actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
     await put.arrived();
-    const displayedDuringSave = editor.displayedSegments[0];
+    assert.equal(editor.displayedSegments[0].startSec, 12);
     put.release({ ...segment(), startSec: 12, updatedAt: "2026-01-02T00:00:00Z" });
     await saving;
 
-    assert.equal(displayedDuringSave.startSec, 12);
-    // Before the prune the settled entry is still applied, so no frame shows the old timing.
-    assert.equal(editor.state.pendingChanges.length, 1);
-    assert.equal(editor.state.pendingChanges[0].settled, true);
-    assert.equal(editor.displayedSegments[0].startSec, 12);
-    editor.render();
-    assert.equal(editor.displayedSegments[0].startSec, 12);
-    assert.equal(editor.displayedSegments[0].updatedAt, "2026-01-02T00:00:00Z");
-    // The next projection change retires the confirmed entry.
-    editor.context().onDetailChange((current) => ({ ...current }), 7);
-    editor.render();
+    // The saved segment and the removal of the pending edit land together, so the display never falls back.
     assert.deepEqual(editor.state.pendingChanges, []);
     assert.equal(editor.displayedSegments[0].startSec, 12);
+    assert.equal(editor.displayedSegments[0].updatedAt, "2026-01-02T00:00:00Z");
+  });
+});
+
+test("save flow: a reload that confirms a tag change shows the server's values, not the local guess", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  let serverSegments = [first, second];
+  const api = createFakeApi()
+    .on("POST", "/videos/7/history/actions", historyReply)
+    .on("PUT", "/videos/7/segments/tag", () => {
+      serverSegments = serverSegments.map((item) => ({ ...item, tagId: 9, tagName: "Bulk tag", tagSortName: "bulk" }));
+    });
+  const editor = createFakeEditor({ segments: [first, second], server: () => ({ ...editor.state.detail, segments: serverSegments }) });
+  editor.select([101, 102], 101);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).saveTag(9, "Bulk tag");
+    editor.render();
+    assert.deepEqual(editor.displayedSegments.map((item) => item.tagSortName), ["bulk", "bulk"]);
   });
 });
 
@@ -868,7 +878,7 @@ function lineageEditor(extraSegments = []) {
   return { owned, editor, extra: { lineage: { data: { children: [{ itemId: 56 }] } } } };
 }
 
-test("save flow: a lineage tag change asks for confirmation without holding the save lock", { timeout: 5000 }, async () => {
+test("save flow: a lineage tag change holds the save lock through its confirmation", { timeout: 5000 }, async () => {
   const { editor, extra } = lineageEditor();
   let lockedDuringConfirm = null;
   const api = createFakeApi()
@@ -879,10 +889,10 @@ test("save flow: a lineage tag change asks for confirmation without holding the 
       lockedDuringConfirm = editor.savingSegmentId;
       return true;
     };
-    const saving = actionsFor(editor, extra).saveTag(9, "Lineage tag");
-    await saving;
+    await actionsFor(editor, extra).saveTag(9, "Lineage tag");
 
-    assert.equal(lockedDuringConfirm, null);
+    // The confirmation blocks the page, so keeping the lock lets nothing else take it in between.
+    assert.equal(lockedDuringConfirm, -55);
     const [execute] = api.sent("POST", "/items/55/tag-change/execute");
     assert.equal(execute.body.expectedRevision, 3);
     assert.equal(execute.body.componentFingerprint, "c1");
@@ -892,20 +902,14 @@ test("save flow: a lineage tag change asks for confirmation without holding the 
   });
 });
 
-test("save flow: a save made while a lineage change is being confirmed makes the change conflict", { timeout: 5000 }, async () => {
+test("save flow: a lineage conflict discards the pending tag and loads the latest segments", { timeout: 5000 }, async () => {
   const { editor, extra } = lineageEditor();
   const api = createFakeApi()
     .on("POST", "/items/55/tag-change/preview", { deletedItemIds: [], removedEdgeIds: [7], componentFingerprint: "c1" })
     .on("POST", "/items/55/tag-change/execute", reply(409, { error: "Lineage changed." }));
   const reloads = [];
   await withEditorGlobals(api, async () => {
-    globalThis.window.confirm = () => {
-      // Another save takes and releases the lock while the dialog is open.
-      const release = editor.saveQueue.acquire({ kind: "timing", lockId: -55 });
-      assert.equal(typeof release, "function");
-      release();
-      return true;
-    };
+    globalThis.window.confirm = () => true;
     await actionsFor(editor, { ...extra, onConflict: async () => { reloads.push("conflict"); return editor.state.detail; } }).saveTag(9, "Lineage tag");
 
     assert.deepEqual(reloads, ["conflict"]);
@@ -985,4 +989,87 @@ test("save flow: a history restore runs alone and refuses new saves until it fin
     assert.equal(editor.state.saveMessage, "History restored.");
     assert.equal(api.sent("PUT", "/videos/7/segments/review-state").length, 0);
   });
+});
+
+test("save flow: a history restore is refused while a held tag waits for its tag field", { timeout: 5000 }, async () => {
+  const created = segment({ id: 205, nativeSegmentId: 205, startSec: 0, endSec: 20 });
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const post = api.hold("POST", "/videos/7/segments");
+  let server;
+  const editor = createFakeEditor({ server: () => server.serve() });
+  server = createdSegmentServer(editor, created);
+  const history = {
+    revision: 2,
+    cursorSequence: 2,
+    baselineSequence: 0,
+    actions: [{ sequence: 2, kind: "segment.update", beforeState: { type: "segment" }, afterState: { type: "segment" } }],
+  };
+  await withEditorGlobals(api, async () => {
+    const creating = actionsFor(editor).createSegment();
+    await post.arrived();
+    await actionsFor(editor).saveTag(9, "Held tag");
+    editor.state.tagEditing = true;
+    server.create();
+    post.release({ id: 205 });
+    await creating;
+    editor.render();
+    editor.state.history = history;
+    editor.refs.historyRef.current = history;
+
+    const actions = actionsFor(editor);
+    await historyActionsFor(editor, actions).restoreHistoryTarget(1);
+    assert.equal(editor.state.saveMessage, "Finish the pending saves before restoring history.");
+    assert.equal(api.sent("POST", "/videos/7/history/native-state").length, 0);
+    // The held choice is still waiting and still shown.
+    assert.equal(editor.displayedSegments.find((item) => item.id === 205).tagId, 9);
+    assert.equal(editor.saveQueue.getSnapshot().queued.map((task) => task.kind).join(), "held-tag");
+  });
+});
+
+test("save flow: a tag picked from a render that still shows the temporary segment is saved to the created segment", { timeout: 5000 }, async () => {
+  const created = segment({ id: 205, nativeSegmentId: 205, startSec: 0, endSec: 20 });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/history/actions", historyReply)
+    .on("PUT", "/videos/7/segments/205", (request) => ({ ...created, ...request.body }));
+  const post = api.hold("POST", "/videos/7/segments");
+  let server;
+  const editor = createFakeEditor({ server: () => server.serve() });
+  server = createdSegmentServer(editor, created);
+  await withEditorGlobals(api, async () => {
+    const creating = actionsFor(editor).createSegment();
+    await post.arrived();
+    // Actions from the render that still shows the temporary segment.
+    const staleActions = actionsFor(editor);
+    server.create();
+    post.release({ id: 205 });
+    await creating;
+    editor.state.tagEditing = false;
+
+    await staleActions.saveTag(9, "Late tag");
+    editor.render();
+    await editor.saveQueue.whenIdle();
+    assert.equal(api.sent("PUT", "/videos/7/segments/205")[0]?.body.tagId, 9);
+  });
+});
+
+test("editor reloads never resolve with a reload for another video", { timeout: 5000 }, async () => {
+  let requestCounter = 0;
+  let currentVideo = 7;
+  const gates = [];
+  const reload = ui.createEditorReloader({
+    beginRequest: () => ({ requestId: ++requestCounter, videoId: currentVideo }),
+    fetchDetail: (request) => new Promise((resolve) => gates.push({ request, resolve })),
+    isCurrent: (request) => request.requestId === requestCounter && request.videoId === currentVideo,
+    isSameVideo: (request) => request.videoId === currentVideo,
+  });
+  const callbacks = { onLoaded: () => {}, onError: () => {} };
+  const onA = reload(callbacks);
+  currentVideo = 8;
+  const onB = reload(callbacks);
+  gates[1].resolve({ video: 8 });
+  assert.deepEqual(await onB, { video: 8 });
+  // The editor went back to the first video before its reload finished.
+  currentVideo = 7;
+  gates[0].resolve({ video: 7 });
+  assert.equal(await onA, null);
 });

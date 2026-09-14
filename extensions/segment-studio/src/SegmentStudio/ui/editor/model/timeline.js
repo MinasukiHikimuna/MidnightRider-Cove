@@ -265,6 +265,7 @@ export function isCurrentEditorRequest(requestId, currentRequestId, videoId, cur
 // it resolves null only when the reload failed or the editor moved to another video.
 export function createEditorReloader({ beginRequest, fetchDetail, isCurrent, isSameVideo }) {
   let latest = null;
+  let latestRequest = null;
   return function reload({ onLoaded, onError }) {
     const request = beginRequest();
     const run = (async () => {
@@ -280,9 +281,10 @@ export function createEditorReloader({ beginRequest, fetchDetail, isCurrent, isS
           return null;
         }
       }
-      return isSameVideo(request) && latest !== run ? latest : null;
+      return isSameVideo(request) && latest !== run && latestRequest.videoId === request.videoId ? latest : null;
     })();
     latest = run;
+    latestRequest = request;
     return run;
   };
 }

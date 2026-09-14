@@ -56,6 +56,9 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
   let queued = [];
   let lastFailure = null;
   let disposed = false;
+  // Set when a task settles and the host must render before the next task reads its context.
+  let awaitingRender = false;
+  const retargets = new Map();
   let snapshot = IDLE_SNAPSHOT;
   const outcomes = new Map();
   const listeners = new Set();
@@ -118,10 +121,11 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     if (outcome.status === "rejected") lastFailure = Object.freeze({ id: task.id, kind: task.kind, error: outcome.error });
     publish();
     if (drainAfterSettle) pump();
+    else awaitingRender = true;
   }
 
   function pump() {
-    if (disposed || running != null) return;
+    if (disposed || running != null || awaitingRender) return;
     let changed = false;
     for (let index = 0; index < queued.length; index += 1) {
       const task = queued[index];
@@ -151,6 +155,8 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     const blockedByExclusive = running?.exclusive || queued.some((task) => task.exclusive);
     // Tasks parked on `ready` or a dependency do not make the editor busy; only a running save does.
     if (blockedByExclusive || (running != null && spec.whenBusy !== "enqueue")) return null;
+    // An exclusive task runs alone, so it is refused rather than left waiting behind queued work.
+    if (spec.exclusive && (running != null || queued.length > 0 || awaitingRender)) return null;
     let resolve;
     const done = new Promise((resolvePromise) => { resolve = resolvePromise; });
     const task = {
@@ -158,7 +164,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
       kind: spec.kind,
       // Every running task holds the editor; -1 stands for "not tied to one segment".
       lockId: spec.lockId ?? -1,
-      targets: Object.freeze([...(spec.targets || [])]),
+      targets: Object.freeze((spec.targets || []).map(stableIdentity)),
       exclusive: spec.exclusive === true,
       dependsOn: spec.dependsOn ?? null,
       ready: spec.ready || null,
@@ -196,8 +202,16 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     };
   }
 
-  // A created segment received its saved identity: queued work aimed at its temporary id follows it.
+  // A temporary segment that has been saved resolves to its saved identity.
+  function stableIdentity(target) {
+    if (target?.id == null || target.itemId != null || target.nativeSegmentId != null) return target;
+    return retargets.get(target.id) || target;
+  }
+
+  // A created segment received its saved identity: queued work aimed at its temporary id follows it, and
+  // work requested later from a render that still shows the temporary segment is mapped on arrival.
   function retarget(temporaryId, identity) {
+    retargets.set(temporaryId, { ...identity });
     let changed = false;
     for (const task of queued) {
       if (!task.targets.some((target) => target.id === temporaryId && target.itemId == null && target.nativeSegmentId == null))
@@ -224,7 +238,11 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     acquire,
     cancel,
     retarget,
-    poke: pump,
+    stableIdentity,
+    poke() {
+      awaitingRender = false;
+      pump();
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

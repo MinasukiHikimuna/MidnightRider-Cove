@@ -368,17 +368,17 @@ function SegmentActiveEditor({
             confirmRef: confirmSlotButtonRef,
             shortcutRef: recommendationShortcutRef,
             onOptimisticSave: (optimisticSlots) => {
-              onDetailChange((current) => patchPerformerSlotProjection(
-                current,
-                selectedSegment.id,
-                optimisticSlots,
-              ), video.id);
               const release = acquireSaveLock("slots", selectedSegment.id);
               if (!release) {
                 setSaveMessage("Wait for the current save to finish before saving performer slots.");
                 return false;
               }
               releaseSlotSaveLockRef.current = release;
+              onDetailChange((current) => patchPerformerSlotProjection(
+                current,
+                selectedSegment.id,
+                optimisticSlots,
+              ), video.id);
               setSaveMessage("Saving performer slots…");
               closeSlots();
             },

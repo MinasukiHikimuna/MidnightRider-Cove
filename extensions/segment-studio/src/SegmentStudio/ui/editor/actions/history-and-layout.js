@@ -282,12 +282,18 @@ function createHistoryAndLayoutActions(context) {
         kind: "history",
         lockId: -1,
         exclusive: true,
-        run: (saveContext) => runHistoryRestore(saveContext.detail, targetSequence, steps),
+        run: (saveContext) => runHistoryRestore(saveContext.detail, targetSequence),
       });
-      if (task) await task.done;
+      if (!task) {
+        setSaveMessage("Finish the pending saves before restoring history.");
+        return;
+      }
+      await task.done;
     }
 
-    async function runHistoryRestore(currentDetail, targetSequence, steps) {
+    async function runHistoryRestore(currentDetail, targetSequence) {
+      const steps = historyActionsForTarget(historyRef.current, targetSequence);
+      if (steps.length === 0) return;
       setHistorySaving(true);
       setSaveMessage(`Restoring ${steps.length} history ${steps.length === 1 ? "action" : "actions"}…`);
       try {

@@ -4,7 +4,7 @@ import { completeOperation, formatTime, operationIdFor, requestJson } from "../.
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { createQueuedReviewRequest, findSegmentByStableIdentity, resolveQueuedReviewRequest, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
-import { savingSegmentIdFrom, segmentIdentity } from "../model/save-queue.js";
+import { savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "../model/save-queue.js";
 import { createPendingChangeId } from "../model/pending-changes.js";
 import { mergeSegmentsProjection } from "../model/optimistic.js";
 
@@ -87,7 +87,7 @@ function createReviewActions(context) {
             });
           survivor = delta.survivor;
           onDetailChange((current) => applySegmentMergeDelta(current, delta), video.id);
-          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+          dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: true });
           operations.forEach(({ key }) => completeOperation(key));
         } else {
           const operations = consumedSegments.map((consumed) => {
@@ -105,7 +105,7 @@ function createReviewActions(context) {
           });
           survivor = delta.survivor;
           onDetailChange((current) => applySegmentMergeDelta(current, delta), video.id);
-          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+          dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: true });
           operations.forEach(({ key }) => completeOperation(key));
         }
         setSelectedSegmentIds([survivor.id]);
@@ -149,7 +149,9 @@ function createReviewActions(context) {
       const request = createQueuedReviewRequest(requestedState, requestedSegments, requestedSegment);
       const activeIndex = Math.max(0, request.identities.indexOf(request.activeIdentity));
       // Read the queue directly: a save started earlier in this render is not in `savingSegmentId` yet.
-      const waiting = savingSegmentIdFrom(getSaveQueueSnapshot()) != null;
+      const queueSnapshot = getSaveQueueSnapshot();
+      const waiting = savingSegmentIdFrom(queueSnapshot) != null
+        || queueSnapshot.queued.some((task) => targetsOverlap(task.targets, request.identities));
       const task = enqueueSave({
         kind: "review",
         lockId: request.activeIdentity.id,
@@ -245,8 +247,9 @@ function createReviewActions(context) {
           || (result.items || []).some((item) => item.requestedNativeSegmentId != null
             && item.nativeSegmentId !== item.requestedNativeSegmentId);
         if (requiresProjectionReload) {
-          restoreSelection(await onReload());
-          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+          const loaded = await onReload();
+          dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: loaded != null });
+          restoreSelection(loaded);
           setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
           return;
         }
@@ -271,7 +274,7 @@ function createReviewActions(context) {
           });
         // Apply to the latest projection so changes that landed during the save are kept.
         onDetailChange(applyReviewResult, video.id);
-        dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+        dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: true });
         restoreSelection(applyReviewResult(detail));
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {

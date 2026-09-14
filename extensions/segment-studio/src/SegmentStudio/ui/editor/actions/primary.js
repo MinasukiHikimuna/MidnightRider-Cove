@@ -90,8 +90,8 @@ function createPrimarySegmentActions(context) {
         type: "add",
         entry: { id: pendingChangeId, op: "patch", targets: [segmentIdentity(segment)], values: optimisticValues },
       });
-      const settlePendingChange = () => {
-        if (pendingChangeId) dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+      const confirmPendingChange = (applied) => {
+        if (pendingChangeId) dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied });
       };
       try {
         if (compatibilityMode
@@ -128,7 +128,7 @@ function createPrimarySegmentActions(context) {
               ),
             );
           if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) {
-            await reload();
+            confirmPendingChange((await reload()) != null);
           } else {
             // Apply to the latest projection so changes that landed during the save are kept.
             onDetailChange((current) => ({
@@ -138,8 +138,8 @@ function createPrimarySegmentActions(context) {
                 .map((item) => item.id === segment.id ? updatedDraft : item)
                 .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
             }), video.id);
+            confirmPendingChange(true);
           }
-          settlePendingChange();
           setSaveMessage(result.draft?.reviewState === "approved" ? "Approved draft saved" : "Draft saved");
           return updatedDraft;
         }
@@ -157,14 +157,17 @@ function createPrimarySegmentActions(context) {
           ...saved,
           reviewState: values.reviewState ?? segment.reviewState,
         };
-        if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) await reload();
-        else onDetailChange((current) => ({
-          ...current,
-          segments: (current.segments || [])
-            .map((item) => item.id === segment.id ? updatedSegment : item)
-            .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
-        }), video.id);
-        settlePendingChange();
+        if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) {
+          confirmPendingChange((await reload()) != null);
+        } else {
+          onDetailChange((current) => ({
+            ...current,
+            segments: (current.segments || [])
+              .map((item) => item.id === segment.id ? updatedSegment : item)
+              .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
+          }), video.id);
+          confirmPendingChange(true);
+        }
         if (recordHistory)
           await recordHistoryAction(
             "segment.update",

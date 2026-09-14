@@ -126,19 +126,54 @@ test("save queue cancels queued work by segment identity across a draft approval
   assert.deepEqual(await other.done, { status: "fulfilled", value: "kept" });
 });
 
-test("save queue exclusive tasks wait for earlier work and block new requests while pending", async () => {
+test("save queue exclusive tasks run alone: refused behind other work and blocking new work while they run", async () => {
   const queue = ui.createSaveQueue();
   const { events, task } = recorder();
   const running = gate();
   queue.enqueue({ kind: "timing", lockId: 1, run: task("timing", () => running.promise) });
-  queue.enqueue({ kind: "review", whenBusy: "enqueue", run: task("review") });
-  const restore = queue.enqueue({ kind: "history", lockId: -1, exclusive: true, whenBusy: "enqueue", run: task("restore") });
+  assert.equal(queue.enqueue({ kind: "history", exclusive: true, run: task("refused") }), null);
+  running.resolve();
+  await queue.whenIdle();
+
+  // A parked task would keep an exclusive task waiting forever, so it is refused as well.
+  const parked = queue.enqueue({ kind: "tag", whenBusy: "enqueue", targets: [{ id: 5 }], ready: () => false, run: task("parked") });
+  assert.equal(queue.enqueue({ kind: "history", exclusive: true, run: task("refused") }), null);
+  queue.cancel((entry) => entry.id === parked.id);
+
+  const restoreGate = gate();
+  const restore = queue.enqueue({ kind: "history", lockId: -1, exclusive: true, run: task("restore", () => restoreGate.promise) });
   assert.ok(restore);
   assert.equal(queue.enqueue({ kind: "review", whenBusy: "enqueue", run: task("late") }), null);
-  running.resolve();
+  restoreGate.resolve();
   await restore.done;
-  assert.deepEqual(events, ["start:timing", "end:timing", "start:review", "end:review", "start:restore", "end:restore"]);
+  assert.deepEqual(events, ["start:timing", "end:timing", "start:restore", "end:restore"]);
   assert.ok(queue.enqueue({ kind: "review", run: task("after") }));
+});
+
+test("save queue waiting for a render starts nothing until poked, even from a lock request", async () => {
+  let context = { version: 1 };
+  const queue = ui.createSaveQueue({ getContext: () => context, drainAfterSettle: false });
+  const running = gate();
+  queue.enqueue({ kind: "timing", lockId: 1, run: () => running.promise });
+  const review = queue.enqueue({ kind: "review", whenBusy: "enqueue", run: (ctx) => ctx.version });
+  running.resolve();
+  await flush();
+
+  // The settled save has not rendered yet: a lock request must not start the queued review early.
+  assert.equal(queue.acquire({ kind: "slots", lockId: 2 }), null);
+  assert.equal(queue.getSnapshot().running, null);
+  context = { version: 2 };
+  queue.poke();
+  assert.deepEqual(await review.done, { status: "fulfilled", value: 2 });
+});
+
+test("save queue maps work requested for a saved temporary segment to its saved identity", async () => {
+  const queue = ui.createSaveQueue();
+  queue.retarget(-3, { id: 205, itemId: null, nativeSegmentId: 205 });
+  assert.deepEqual(queue.stableIdentity({ id: -3, itemId: null, nativeSegmentId: null }), { id: 205, itemId: null, nativeSegmentId: 205 });
+  assert.deepEqual(queue.stableIdentity({ id: 7, itemId: null, nativeSegmentId: 7 }), { id: 7, itemId: null, nativeSegmentId: 7 });
+  const task = queue.enqueue({ kind: "tag", targets: [{ id: -3, itemId: null, nativeSegmentId: null }], run: (ctx) => ctx.targets });
+  assert.deepEqual((await task.done).value, [{ id: 205, itemId: null, nativeSegmentId: 205 }]);
 });
 
 test("save queue reads editor context when a task starts, not when it was requested", async () => {
