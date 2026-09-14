@@ -929,3 +929,27 @@ test("save flow: cancelling a destructive lineage change sends nothing and leave
     assert.equal(editor.savingSegmentId, null);
   });
 });
+
+test("save flow: a merge shows the merged span until confirmed and a failure restores both segments", { timeout: 5000 }, async () => {
+  const first = segment({ startSec: 10, endSec: 14 });
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 20, endSec: 26 });
+  const api = createFakeApi();
+  const post = api.hold("POST", "/videos/7/segments/merge-selection");
+  const editor = createFakeEditor({ segments: [first, second] });
+  editor.select([101, 102], 101);
+  const lane = { key: "tag:1", tagId: 1, markers: [{ segment: first }, { segment: second }] };
+  await withEditorGlobals(api, async () => {
+    const merging = actionsFor(editor, { selectedGroups: [{ key: "group:1", lanes: [lane] }] }).mergeSelectedSwimlane(true);
+    await post.arrived();
+    assert.deepEqual(editor.displayedSegments.map((item) => [item.id, item.startSec, item.endSec]), [[101, 10, 26]]);
+    assert.deepEqual(editor.segments.map((item) => item.id), [101, 102]);
+    assert.deepEqual(editor.state.selectedSegmentIds, [101]);
+
+    post.fail(500, { error: "Merge failed." });
+    await merging;
+    assert.deepEqual(editor.displayedSegments.map((item) => [item.id, item.startSec, item.endSec]), [[101, 10, 14], [102, 20, 26]]);
+    assert.deepEqual(editor.state.selectedSegmentIds, [101, 102]);
+    assert.equal(editor.state.saveMessage, "Merge failed.");
+    assert.equal(editor.savingSegmentId, null);
+  });
+});

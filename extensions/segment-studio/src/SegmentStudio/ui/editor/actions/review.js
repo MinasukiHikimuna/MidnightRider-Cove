@@ -6,7 +6,7 @@ import { createQueuedReviewRequest, findSegmentByStableIdentity, resolveQueuedRe
 import { segmentsHistoryState } from "../model/history.js";
 import { savingSegmentIdFrom, segmentIdentity } from "../model/save-queue.js";
 import { createPendingChangeId } from "../model/pending-changes.js";
-import { mergeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
+import { mergeSegmentsProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
   const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -45,11 +45,25 @@ function createReviewActions(context) {
         ? crypto.randomUUID()
         : null;
       const originalSelectionIds = merge.segments.map((segment) => segment.id);
-      const optimisticDetail = mergeSegmentsProjection(detail, merge.segments);
+      // Show the merged span on top of the server projection until the merge is confirmed or fails.
+      const mergedSurvivor = mergeSegmentsProjection(detail, merge.segments).segments
+        .find((segment) => segment.id === survivor.id);
+      const mergeValues = {
+        startSec: mergedSurvivor.startSec,
+        endSec: mergedSurvivor.endSec,
+        sourceKey: mergedSurvivor.sourceKey,
+        sourceRunId: mergedSurvivor.sourceRunId,
+        confidence: mergedSurvivor.confidence,
+        isDerived: mergedSurvivor.isDerived,
+      };
       const releaseSaveLock = acquireSaveLock("merge", merge.segments[0].id);
       if (!releaseSaveLock) return;
       closeMergeConfirmation();
-      onDetailChange(optimisticDetail, video.id);
+      const pendingChangeId = createPendingChangeId();
+      dispatchPendingChanges({
+        type: "add",
+        entry: { id: pendingChangeId, op: "merge", targets: merge.segments.map(segmentIdentity), values: mergeValues },
+      });
       setSelectedSegmentIds([survivor.id]);
       setSelectedSegmentId(survivor.id);
       selectionAnchorIdRef.current = survivor.id;
@@ -73,6 +87,7 @@ function createReviewActions(context) {
             });
           survivor = delta.survivor;
           onDetailChange((current) => applySegmentMergeDelta(current, delta), video.id);
+          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
           operations.forEach(({ key }) => completeOperation(key));
         } else {
           const operations = consumedSegments.map((consumed) => {
@@ -90,6 +105,7 @@ function createReviewActions(context) {
           });
           survivor = delta.survivor;
           onDetailChange((current) => applySegmentMergeDelta(current, delta), video.id);
+          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
           operations.forEach(({ key }) => completeOperation(key));
         }
         setSelectedSegmentIds([survivor.id]);
@@ -110,12 +126,7 @@ function createReviewActions(context) {
         revealSegmentGroupForSelection(survivor.id);
         setSaveMessage(`${merge.segments.length} segments merged into ${formatTime(merge.startSec)} – ${endLabel}.`);
       } catch (error) {
-        onDetailChange((current) => restoreSegmentsProjection(
-          restoreSegmentFieldsProjection(current, [merge.segments[0]], [
-            "startSec", "endSec", "sourceKey", "sourceRunId", "confidence", "isDerived",
-          ]),
-          merge.segments.slice(1),
-        ), video.id);
+        dispatchPendingChanges({ type: "discard", key: pendingChangeId });
         setSelectedSegmentIds(originalSelectionIds);
         setSelectedSegmentId(selectedSegment?.id ?? originalSelectionIds[0] ?? null);
         selectionAnchorIdRef.current = selectedSegment?.id ?? originalSelectionIds[0] ?? null;

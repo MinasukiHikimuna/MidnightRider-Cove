@@ -845,13 +845,7 @@ test("segment merges collapse the local selection before the request settles", (
     { id: 2, startSec: 10, endSec: null },
   ]).segments[0].endSec, 10);
   assert.equal(detail.segments.length, 3);
-  const reviewActions = sourceByModule["editor/actions/review.js"];
-  const merge = reviewActions.slice(
-    reviewActions.indexOf("async function mergeSelectedSwimlane"),
-    reviewActions.indexOf("function saveSelectedReviewState("),
-  );
-  assert.ok(merge.indexOf("onDetailChange(optimisticDetail") < merge.indexOf("await requestJson"));
-  assert.match(merge, /restoreSegmentFieldsProjection\([\s\S]*merge\.segments\[0\][\s\S]*merge\.segments\.slice\(1\)/);
+  // The merge action's display, selection and rollback are covered by the save-flow cases.
 });
 
 test("bulk performer assignment requires every selected segment to share one slot shape", () => {
