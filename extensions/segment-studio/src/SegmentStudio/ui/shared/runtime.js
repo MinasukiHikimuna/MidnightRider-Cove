@@ -18,8 +18,8 @@ import {
   useListUrlState,
 } from "@cove/runtime/components";
 
-const { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } = React;
+const { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } = React;
 
 const h = React.createElement;
 
-export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ListPage, VideoPlayer, formatDuration, getDefaultFilter, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, h };
+export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ListPage, VideoPlayer, formatDuration, getDefaultFilter, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };

@@ -5,7 +5,9 @@ import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSele
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
-import { insertSegmentProjection, patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection } from "../model/optimistic.js";
+import { insertSegmentProjection, removeSegmentsProjection } from "../model/optimistic.js";
+import { createPendingChangeId } from "../model/pending-changes.js";
+import { segmentIdentity } from "../model/save-queue.js";
 
 function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
   return values.tagId !== segment.tagId
@@ -13,7 +15,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { acquireSaveLock, compatibilityMode, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, heldCreatedSegmentTag, setHeldCreatedSegmentTag, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
+  const { acquireSaveLock, compatibilityMode, dispatchPendingChanges, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, heldCreatedSegmentTag, setHeldCreatedSegmentTag, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -59,10 +61,15 @@ function createPrimarySegmentActions(context) {
       const releaseSaveLock = acquireSaveLock("segment", segment.id);
       if (!releaseSaveLock) return null;
       setSaveMessage(recordHistory ? "Saving directly to Cove…" : "Restoring history…");
-      const optimisticDetail = optimistic
-        ? patchSegmentProjection(detail, [segment.id], optimisticValues)
-        : null;
-      if (optimisticDetail) onDetailChange(optimisticDetail, video.id);
+      // Show the edit on top of the server projection until the save is confirmed or fails.
+      const pendingChangeId = optimistic ? createPendingChangeId() : null;
+      if (pendingChangeId) dispatchPendingChanges({
+        type: "add",
+        entry: { id: pendingChangeId, op: "patch", targets: [segmentIdentity(segment)], values: optimisticValues },
+      });
+      const settlePendingChange = () => {
+        if (pendingChangeId) dispatchPendingChanges({ type: "settle", key: pendingChangeId });
+      };
       try {
         if (compatibilityMode
             && segment.nativeSegmentId == null
@@ -109,6 +116,7 @@ function createPrimarySegmentActions(context) {
                 .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
             }), video.id);
           }
+          settlePendingChange();
           setSaveMessage(result.draft?.reviewState === "approved" ? "Approved draft saved" : "Draft saved");
           return updatedDraft;
         }
@@ -133,6 +141,7 @@ function createPrimarySegmentActions(context) {
             .map((item) => item.id === segment.id ? updatedSegment : item)
             .sort((left, right) => left.startSec - right.startSec || left.id - right.id),
         }), video.id);
+        settlePendingChange();
         if (recordHistory)
           await recordHistoryAction(
             "segment.update",
@@ -147,13 +156,7 @@ function createPrimarySegmentActions(context) {
         setSaveMessage(recordHistory ? "Saved to Cove" : "History restored");
         return updatedSegment;
       } catch (requestError) {
-        if (optimistic) {
-          onDetailChange((current) => restoreSegmentFieldsProjection(
-            current,
-            [segment],
-            Object.keys(optimisticValues),
-          ), video.id);
-        }
+        if (pendingChangeId) dispatchPendingChanges({ type: "discard", key: pendingChangeId });
         if (optimistic && restoreSelectionOnFailure) {
           setSelectedSegmentIds(previousSelectionIds);
           setSelectedSegmentId(previousActiveId);

@@ -1,4 +1,4 @@
-import { h, useEffect, useMemo, useRef, useRegisterExtensionKeyboardActions, useState, useSyncExternalStore } from "../shared/runtime.js";
+import { h, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useRegisterExtensionKeyboardActions, useState, useSyncExternalStore } from "../shared/runtime.js";
 
 import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 
@@ -30,6 +30,7 @@ import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
 import { createSaveQueue, isKindRunning, savingSegmentIdFrom } from "./model/save-queue.js";
+import { applyPendingChanges, pendingChangesReducer } from "./model/pending-changes.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
 
@@ -60,6 +61,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const savingSegmentId = savingSegmentIdFrom(saveQueueSnapshot);
   const acquireSaveLock = (kind, lockId) => saveQueue.acquire({ kind, lockId });
   const getSaveQueueSnapshot = saveQueue.getSnapshot;
+  // Unconfirmed edits shown on top of the server projection; actions keep reading server segments.
+  const [pendingChanges, dispatchPendingChanges] = useReducer(pendingChangesReducer, []);
   const [savingShot, setSavingShot] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [startInput, setStartInput] = useState("");
@@ -394,9 +397,13 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   }, [wideLayout, editorLayout.markerRailOpen]);
 
   const displayedSegments = useMemo(
-    () => displayHeldSegmentTag(segments, heldCreatedSegmentTag),
-    [segments, heldCreatedSegmentTag],
+    () => applyPendingChanges(displayHeldSegmentTag(segments, heldCreatedSegmentTag), pendingChanges),
+    [segments, heldCreatedSegmentTag, pendingChanges],
   );
+  useLayoutEffect(() => {
+    // Confirmed changes are dropped before paint in the render that carries the confirmed data.
+    if (pendingChanges.length > 0) dispatchPendingChanges({ type: "prune", detail });
+  }, [detail, pendingChanges]);
   const visibleSegments = useMemo(
     () => hideCollectedFeedbackSegments(
       filterEditorSegments(
@@ -434,7 +441,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   );
   const approvalFacetCounts = Object.fromEntries(REVIEW_STATES.map((state) =>
     [state, approvalFacetSegments.filter((segment) => segment.reviewState === state).length]));
-  const provenanceSources = [...new Set(segments.map((segment) => segment.sourceKey).filter(Boolean))]
+  const provenanceSources = [...new Set(displayedSegments.map((segment) => segment.sourceKey).filter(Boolean))]
     .sort((left, right) => provenanceSourceLabel(left).localeCompare(provenanceSourceLabel(right)));
   const activeFilterCount = activeEditorFilterCount(
     editorFilters,
@@ -492,7 +499,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const timelineDuration = Math.max(
     0,
     Number(video.videoFile?.duration) || 0,
-    ...segments.map((segment) => Number(segment.endSec ?? segment.startSec) || 0),
+    ...displayedSegments.map((segment) => Number(segment.endSec ?? segment.startSec) || 0),
   );
   const mediaDuration = Number(video.videoFile?.duration) > 0 ? Number(video.videoFile.duration) : null;
   const historyActions = history.actions || [];
@@ -551,9 +558,9 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       };
 
   useEffect(() => {
-    setStartInput(selectedSegment == null ? "" : String(selectedSegment.startSec));
-    setEndInput(selectedSegment?.endSec == null ? "" : String(selectedSegment.endSec));
-  }, [selectedSegment?.id, selectedSegment?.startSec, selectedSegment?.endSec]);
+    setStartInput(displayedSelectedSegment == null ? "" : String(displayedSelectedSegment.startSec));
+    setEndInput(displayedSelectedSegment?.endSec == null ? "" : String(displayedSelectedSegment.endSec));
+  }, [displayedSelectedSegment?.id, displayedSelectedSegment?.startSec, displayedSelectedSegment?.endSec]);
 
   useEffect(() => {
     if (!selectedSegmentGroupForSegment) return;
@@ -652,6 +659,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setPublishApprovedError,
     setSaveMessage,
     acquireSaveLock,
+    dispatchPendingChanges,
     setSelectedSegmentGroupKey,
     setSelectedSegmentId,
     setSelectedSegmentIds,
@@ -1018,7 +1026,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     seekRef,
     segmentGroups,
     segmentRailLayout,
-    segments,
+    segments: displayedSegments,
     selectAllVideoSegments,
     selectSegment,
     selectSegmentCollection,

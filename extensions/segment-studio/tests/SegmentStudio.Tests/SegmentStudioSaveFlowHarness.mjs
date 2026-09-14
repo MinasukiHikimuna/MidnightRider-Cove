@@ -2,6 +2,7 @@
 // so save ordering, rollback and selection behaviour can be tested without rendering React.
 import { EMPTY_EDITOR_HISTORY } from "../../src/SegmentStudio/ui/shared/constants.js";
 import { createSaveQueue, savingSegmentIdFrom } from "../../src/SegmentStudio/ui/editor/model/save-queue.js";
+import { applyPendingChanges, pendingChangesReducer } from "../../src/SegmentStudio/ui/editor/model/pending-changes.js";
 
 const API_ROOT = "/api/plugins/segment-studio";
 
@@ -151,6 +152,7 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     selectedSegmentIds: segments[0] ? [segments[0].id] : [],
     creatingSegmentId: null,
     heldCreatedSegmentTag: null,
+    pendingChanges: [],
     tagEditing: false,
     saveMessage: "",
     editorFilters: {},
@@ -187,6 +189,12 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     get savingSegmentId() { return savingSegmentIdFrom(saveQueue.getSnapshot()); },
     detailChanges,
     get segments() { return state.detail.segments; },
+    // What the editor shows: server segments plus unconfirmed changes.
+    get displayedSegments() { return applyPendingChanges(state.detail.segments, state.pendingChanges); },
+    // Models the layout effect that prunes confirmed changes after a render.
+    render() {
+      state.pendingChanges = pendingChangesReducer(state.pendingChanges, { type: "prune", detail: state.detail });
+    },
     select(ids, activeId = ids[0] ?? null) {
       state.selectedSegmentIds = ids;
       state.selectedSegmentId = activeId;
@@ -212,6 +220,9 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         selectedSegments: state.selectedSegmentIds.map((id) => byId.get(id)).filter(Boolean),
         savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
         acquireSaveLock: (kind, lockId) => saveQueue.acquire({ kind, lockId }),
+        dispatchPendingChanges(action) {
+          state.pendingChanges = pendingChangesReducer(state.pendingChanges, action);
+        },
         getSaveQueueSnapshot: saveQueue.getSnapshot,
         creatingSegmentId: state.creatingSegmentId,
         heldCreatedSegmentTag: state.heldCreatedSegmentTag,

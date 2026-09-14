@@ -80,14 +80,16 @@ test("save flow: a failed timing save rolls the projection back and restores the
   await withEditorGlobals(api, async () => {
     const saving = actionsFor(editor).mutateSegment(first, { startSec: 15, endSec: 20, tagId: 1 }, true, null, true);
     await put.arrived();
-    assert.equal(editor.segments.find((item) => item.id === 101).startSec, 15);
+    assert.equal(editor.displayedSegments.find((item) => item.id === 101).startSec, 15);
+    assert.equal(editor.segments.find((item) => item.id === 101).startSec, 10);
     assert.equal(editor.savingSegmentId, 101);
 
     editor.select([102]);
     put.fail(500, { error: "Storage unavailable." });
     assert.equal(await saving, null);
 
-    assert.equal(editor.segments.find((item) => item.id === 101).startSec, 10);
+    assert.equal(editor.displayedSegments.find((item) => item.id === 101).startSec, 10);
+    assert.deepEqual(editor.state.pendingChanges, []);
     assert.deepEqual(editor.state.selectedSegmentIds, [101]);
     assert.equal(editor.state.selectedSegmentId, 101);
     assert.equal(editor.state.saveMessage, "Storage unavailable.");
@@ -259,5 +261,60 @@ test("save flow: the save lock is released when a save fails", { timeout: 5000 }
     await actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
     assert.equal(editor.savingSegmentId, null);
     assert.ok(editor.saveQueue.acquire({ kind: "timing", lockId: 101 }));
+  });
+});
+
+test("save flow: a confirmed timing edit stays displayed until the confirmed data renders", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+    await put.arrived();
+    const displayedDuringSave = editor.displayedSegments[0];
+    put.release({ ...segment(), startSec: 12, updatedAt: "2026-01-02T00:00:00Z" });
+    await saving;
+
+    assert.equal(displayedDuringSave.startSec, 12);
+    // Before the prune the settled entry is still applied, so no frame shows the old timing.
+    assert.equal(editor.state.pendingChanges.length, 1);
+    assert.equal(editor.state.pendingChanges[0].settled, true);
+    assert.equal(editor.displayedSegments[0].startSec, 12);
+    editor.render();
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.displayedSegments[0].startSec, 12);
+    assert.equal(editor.displayedSegments[0].updatedAt, "2026-01-02T00:00:00Z");
+  });
+});
+
+test("save flow: a timing conflict discards the edit and loads the latest segment", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("PUT", "/videos/7/segments/101", reply(409, { error: "Segment changed." }));
+  const editor = createFakeEditor({
+    server: () => ({ ...editor.state.detail, segments: [segment({ startSec: 30, endSec: 40, updatedAt: "2026-01-03T00:00:00Z" })] }),
+  });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.displayedSegments[0].startSec, 30);
+    assert.equal(editor.state.saveMessage, "Conflict — loading the latest segment…");
+    assert.equal(editor.savingSegmentId, null);
+  });
+});
+
+test("save flow: a failed timing edit leaves newer reloaded values in place", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+    await put.arrived();
+    // A reload during the save brought a new tag for the same segment.
+    editor.context().onDetailChange((current) => ({ ...current, segments: [{ ...current.segments[0], tagId: 5, tagName: "Newer" }] }), 7);
+    put.fail(500, { error: "Unavailable." });
+    await saving;
+
+    assert.equal(editor.displayedSegments[0].tagId, 5);
+    assert.equal(editor.displayedSegments[0].startSec, 10);
   });
 });

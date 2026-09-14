@@ -48,6 +48,8 @@ globalThis.document = { querySelector: () => null };
 globalThis.__segmentStudioReact = {
   createElement: () => null,
   useEffect: () => {},
+  useLayoutEffect: () => {},
+  useReducer: (_reducer, initial) => [initial, () => {}],
   useId: () => "test-id",
   useMemo: (factory) => factory(),
   useRef: (value) => ({ current: value }),

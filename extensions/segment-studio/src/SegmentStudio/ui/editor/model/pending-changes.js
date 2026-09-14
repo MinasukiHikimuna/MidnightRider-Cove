@@ -12,6 +12,10 @@ import { sameSegmentIdentity } from "./save-queue.js";
 
 let nextPendingChangeId = 1;
 
+export function createPendingChangeId() {
+  return `pending-${nextPendingChangeId++}`;
+}
+
 function orderSegments(segments) {
   return segments.sort((left, right) => left.startSec - right.startSec || left.id - right.id);
 }
@@ -22,7 +26,7 @@ function matchesAny(segment, targets) {
 
 export function addPendingChange(list, entry) {
   return [...(list || []), {
-    id: entry.id ?? `pending-${nextPendingChangeId++}`,
+    id: entry.id ?? createPendingChangeId(),
     taskId: entry.taskId ?? null,
     op: entry.op,
     targets: entry.targets || (entry.segment ? [{ id: entry.segment.id }] : []),
