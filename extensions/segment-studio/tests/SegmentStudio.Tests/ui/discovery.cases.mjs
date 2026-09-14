@@ -490,7 +490,7 @@ test("Full editor opens owned and native items in the unified editor", () => {
   assert.match(source, /\/complete-review/);
   assert.doesNotMatch(source, /\?workflow=full/);
   assert.match(source, /const editorPath = \(requestedVideoId\)/);
-  assert.match(source, /requestJson\(editorPath\(requestedVideoId\)\)/);
+  assert.match(source, /requestJson\(editorPath\(request\.videoId\)\)/);
 });
 
 test("Full editor previews rejected dependency deletion through the Stash shortcut", () => {

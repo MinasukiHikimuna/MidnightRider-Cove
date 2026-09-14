@@ -259,3 +259,30 @@ export function findSegmentFromPlayhead(segments, currentTime, direction, select
 export function isCurrentEditorRequest(requestId, currentRequestId, videoId, currentVideoId) {
   return requestId === currentRequestId && videoId === currentVideoId;
 }
+
+// Runs editor reloads where only the newest one applies its data. A reload that a newer reload for the
+// same video replaced resolves with that newer reload's result, so callers do not treat it as a failure;
+// it resolves null only when the reload failed or the editor moved to another video.
+export function createEditorReloader({ beginRequest, fetchDetail, isCurrent, isSameVideo }) {
+  let latest = null;
+  return function reload({ onLoaded, onError }) {
+    const request = beginRequest();
+    const run = (async () => {
+      try {
+        const loaded = await fetchDetail(request);
+        if (isCurrent(request)) {
+          onLoaded(loaded);
+          return loaded;
+        }
+      } catch (error) {
+        if (isCurrent(request)) {
+          onError(error);
+          return null;
+        }
+      }
+      return isSameVideo(request) && latest !== run ? latest : null;
+    })();
+    latest = run;
+    return run;
+  };
+}

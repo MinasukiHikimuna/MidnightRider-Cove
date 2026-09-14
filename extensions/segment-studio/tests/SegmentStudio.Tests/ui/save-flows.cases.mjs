@@ -1,5 +1,5 @@
 import test from "node:test";
-import { assert } from "../SegmentStudioUiHarness.mjs";
+import { assert, ui } from "../SegmentStudioUiHarness.mjs";
 import { createFakeApi, createFakeEditor, reply, segment, withEditorGlobals } from "../SegmentStudioSaveFlowHarness.mjs";
 
 const actionsRoot = new URL("../../../src/SegmentStudio/ui/editor/actions/", import.meta.url);
@@ -648,4 +648,38 @@ test("save flow: a Full-mode draft being created shows the approved state the se
     post.fail(500, { error: "stop" });
     await creating;
   });
+});
+
+test("editor reloads replaced by a newer reload resolve with the newer result instead of failing", { timeout: 5000 }, async () => {
+  let requestCounter = 0;
+  let currentVideo = 7;
+  const gates = [];
+  const applied = [];
+  const reload = ui.createEditorReloader({
+    beginRequest: () => ({ requestId: ++requestCounter, videoId: currentVideo }),
+    fetchDetail: (request) => new Promise((resolve, reject) => gates.push({ request, resolve, reject })),
+    isCurrent: (request) => request.requestId === requestCounter && request.videoId === currentVideo,
+    isSameVideo: (request) => request.videoId === currentVideo,
+  });
+  const callbacks = { onLoaded: (loaded) => applied.push(loaded), onError: (error) => applied.push(error.message) };
+
+  const first = reload(callbacks);
+  const second = reload(callbacks);
+  gates[0].resolve({ version: 1 });
+  gates[1].resolve({ version: 2 });
+  assert.deepEqual(await first, { version: 2 });
+  assert.deepEqual(await second, { version: 2 });
+  // Only the newest reload applies its data.
+  assert.deepEqual(applied, [{ version: 2 }]);
+
+  const failing = reload(callbacks);
+  gates[2].reject(new Error("offline"));
+  assert.equal(await failing, null);
+  assert.deepEqual(applied.at(-1), "offline");
+
+  const stale = reload(callbacks);
+  currentVideo = 8;
+  requestCounter += 1;
+  gates[3].resolve({ version: 3 });
+  assert.equal(await stale, null);
 });

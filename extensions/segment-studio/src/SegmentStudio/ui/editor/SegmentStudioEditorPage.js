@@ -6,7 +6,7 @@ import { requestJson } from "../shared/api.js";
 
 import { requestedOwnedItemId, requestedSegmentId } from "../discovery/model.js";
 
-import { isCurrentEditorRequest } from "./model/timeline.js";
+import { createEditorReloader, isCurrentEditorRequest } from "./model/timeline.js";
 
 import { useSplitEditorLayout } from "./model/layout.js";
 
@@ -23,6 +23,12 @@ function SegmentStudioEditorPage({
   const currentVideoRef = useRef(videoId);
   const splitLayout = useSplitEditorLayout();
   currentVideoRef.current = videoId;
+  const [reloadEditor] = useState(() => createEditorReloader({
+    beginRequest: () => ({ requestId: ++actionRequestRef.current, videoId: currentVideoRef.current }),
+    fetchDetail: (request) => requestJson(editorPath(request.videoId)),
+    isCurrent: (request) => isCurrentEditorRequest(request.requestId, actionRequestRef.current, request.videoId, currentVideoRef.current),
+    isSameVideo: (request) => request.videoId === currentVideoRef.current,
+  }));
   const editorPath = (requestedVideoId) =>
     `/videos/${requestedVideoId}/editor`;
 
@@ -53,34 +59,24 @@ function SegmentStudioEditorPage({
     });
   }
 
-  async function reloadAfterConflict() {
-    const requestedVideoId = videoId;
-    const requestId = ++actionRequestRef.current;
-    try {
-      const loaded = await requestJson(editorPath(requestedVideoId));
-      if (!isCurrentEditorRequest(requestId, actionRequestRef.current, requestedVideoId, currentVideoRef.current)) return null;
-      setDetail(loaded);
-      setError("A newer canonical segment was loaded. Your stale change was not applied.");
-      return loaded;
-    } catch (requestError) {
-      if (isCurrentEditorRequest(requestId, actionRequestRef.current, requestedVideoId, currentVideoRef.current)) setError(requestError.message || "Unable to reload the latest segment.");
-      return null;
-    }
+  function reloadAfterConflict() {
+    return reloadEditor({
+      onLoaded: (loaded) => {
+        setDetail(loaded);
+        setError("A newer canonical segment was loaded. Your stale change was not applied.");
+      },
+      onError: (requestError) => setError(requestError.message || "Unable to reload the latest segment."),
+    });
   }
 
-  async function reloadAfterSlotChange() {
-    const requestedVideoId = videoId;
-    const requestId = ++actionRequestRef.current;
-    try {
-      const loaded = await requestJson(editorPath(requestedVideoId));
-      if (!isCurrentEditorRequest(requestId, actionRequestRef.current, requestedVideoId, currentVideoRef.current)) return null;
-      setDetail(loaded);
-      setError("");
-      return loaded;
-    } catch (requestError) {
-      if (isCurrentEditorRequest(requestId, actionRequestRef.current, requestedVideoId, currentVideoRef.current)) setError(requestError.message || "Unable to reload performer slots.");
-      return null;
-    }
+  function reloadAfterSlotChange() {
+    return reloadEditor({
+      onLoaded: (loaded) => {
+        setDetail(loaded);
+        setError("");
+      },
+      onError: (requestError) => setError(requestError.message || "Unable to reload performer slots."),
+    });
   }
 
   return h("div", {
