@@ -6,3 +6,4 @@ import "./ui/discovery.cases.mjs";
 import "./ui/rendering.cases.mjs";
 import "./ui/active-swimlane.cases.mjs";
 import "./ui/segment-playback-navigation.cases.mjs";
+import "./ui/save-flows.cases.mjs";
