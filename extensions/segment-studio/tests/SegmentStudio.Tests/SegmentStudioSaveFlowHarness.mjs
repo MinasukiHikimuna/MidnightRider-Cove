@@ -151,7 +151,6 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     selectedSegmentId: segments[0]?.id ?? null,
     selectedSegmentIds: segments[0] ? [segments[0].id] : [],
     creatingSegmentId: null,
-    heldCreatedSegmentTag: null,
     pendingChanges: [],
     tagEditing: false,
     saveMessage: "",
@@ -204,7 +203,9 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     },
     context(extra = {}) {
       const segmentsNow = state.detail.segments;
-      const byId = new Map(segmentsNow.map((item) => [item.id, item]));
+      // Like the editor, actions see temporary segments that exist only as pending inserts.
+      const inserted = state.pendingChanges.filter((entry) => entry.op === "insert" && !entry.settled).map((entry) => entry.segment);
+      const byId = new Map([...segmentsNow, ...inserted].map((item) => [item.id, item]));
       const selectedSegment = byId.get(state.selectedSegmentId) || null;
       refs.selectedSegmentIdRef.current = selectedSegment?.id ?? null;
       const setSelectedSegmentId = apply("selectedSegmentId");
@@ -223,12 +224,17 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
         acquireSaveLock: (kind, lockId) => saveQueue.acquire({ kind, lockId }),
         enqueueSave: (spec) => saveQueue.enqueue(spec),
+        cancelSaveTasks: (predicate) => saveQueue.cancel(predicate),
+        retargetSaveTasks: (temporaryId, identity) => saveQueue.retarget(temporaryId, identity),
         dispatchPendingChanges(action) {
           state.pendingChanges = pendingChangesReducer(state.pendingChanges, action);
         },
         getSaveQueueSnapshot: saveQueue.getSnapshot,
         creatingSegmentId: state.creatingSegmentId,
-        heldCreatedSegmentTag: state.heldCreatedSegmentTag,
+        pendingChanges: state.pendingChanges,
+        tagEditing: state.tagEditing,
+        selectedSegmentIds: state.selectedSegmentIds,
+        activeSegmentId: selectedSegment?.id ?? null,
         editorFilters: state.editorFilters,
         hideDerivedSegments: state.hideDerivedSegments,
         startInput: state.startInput,
@@ -258,7 +264,6 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         setSelectedSegmentId,
         setSelectedSegmentIds,
         setCreatingSegmentId: apply("creatingSegmentId"),
-        setHeldCreatedSegmentTag: apply("heldCreatedSegmentTag"),
         setSaveMessage: apply("saveMessage"),
         setTagEditing: (value) => { apply("tagEditing")(value); refs.tagEditingRef.current = state.tagEditing; },
         setEditorFilters: apply("editorFilters"),

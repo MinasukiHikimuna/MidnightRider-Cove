@@ -1,4 +1,3 @@
-import { addPendingChange, applyPendingChanges } from "./pending-changes.js";
 import { DEFAULT_PLAYBACK_SHORTCUT_CONFIG, PLAYBACK_SHORTCUTS_STORAGE_KEY, PLAYHEAD_ROUNDING_TOLERANCE_SECONDS, REVIEW_FILTER_STORAGE_KEY, REVIEW_STATES } from "../../shared/constants.js";
 
 export const SEGMENT_STUDIO_SHORTCUTS = [
@@ -362,27 +361,13 @@ export function queueCreatedSegmentTagChoice(queued, segment, tagId, tagName = n
   };
 }
 
-export function displayHeldSegmentTag(segments, queued) {
-  if (!queued) return segments;
-  return applyPendingChanges(segments, addPendingChange([], {
-    op: "patch",
-    targets: [{ id: queued.segmentId }],
-    values: { tagId: queued.tagId, tagName: queued.tagName || "Tag segment", tagSortName: null },
-  }));
-}
-
-export function resolveQueuedCreatedSegmentTag(queued, { segments, savingSegmentId, reviewSaving, tagEditing, selectedSegmentIds, activeSegmentId }) {
-  if (!queued) return "none";
-  if (savingSegmentId != null || reviewSaving) return "wait";
-  const segment = (segments || []).find((candidate) => candidate.id === queued.segmentId);
-  // The segment was removed (for example by undo) or already carries the choice.
-  if (!segment || segment.tagId === queued.tagId) return "drop";
-  // The user reopened the tag editor on this segment to reconsider; save only the choice they close it with.
+// A held tag waits while the tag field is open on its segment alone, so only the choice the user closes it with is saved.
+export function heldTagReady({ tagEditing, selectedSegmentIds, activeSegmentId }, segmentId) {
   const editingHeldSegment = tagEditing
-    && activeSegmentId === queued.segmentId
+    && activeSegmentId === segmentId
     && selectedSegmentIds?.length === 1
-    && selectedSegmentIds[0] === queued.segmentId;
-  return editingHeldSegment ? "wait" : "apply";
+    && selectedSegmentIds[0] === segmentId;
+  return !editingHeldSegment;
 }
 
 export function shouldRestoreTransitionSelection(currentSelectionId, operatedSelectionId) {

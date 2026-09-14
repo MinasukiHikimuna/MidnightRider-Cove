@@ -79,16 +79,7 @@ test("segment creation inserts and selects a temporary marker before persistence
 
   assert.deepEqual(optimistic.segments, [temporary, detail.segments[0]]);
   assert.deepEqual(detail.segments, [{ id: 1, startSec: 8 }]);
-  const primaryActions = sourceByModule["editor/actions/primary.js"];
-  const create = primaryActions.slice(
-    primaryActions.indexOf("async function createSegment"),
-    primaryActions.indexOf("async function splitSegment"),
-  );
-  assert.ok(create.indexOf("onDetailChange(optimisticDetail") < create.indexOf("await requestJson"));
-  assert.ok(create.indexOf("replaceSegmentSelection(optimisticSegment.id)") < create.indexOf("await requestJson"));
-  assert.match(create, /removeSegmentsProjection\([\s\S]*optimisticSegment\.id/);
-  assert.match(create, /if \(!loaded\)[\s\S]*replaceSegmentSelection\(previousSelectionId\)/);
-  assert.match(create, /setFirstSegmentTagOpen\(true\)/);
+  // Insert, selection and rollback behaviour of the create action is covered by the save-flow cases.
 });
 
 test("common segment actions are clickable between the player and swimlanes", () => {

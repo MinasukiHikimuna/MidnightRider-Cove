@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from
 
 import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { SEGMENT_STUDIO_SHORTCUTS, displayHeldSegmentTag, readPlaybackShortcutConfig, resolveQueuedCreatedSegmentTag, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -30,7 +30,7 @@ import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
 import { createSaveQueue, isKindRunning, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./model/save-queue.js";
-import { applyPendingChanges, pendingChangesReducer, prunePendingChanges } from "./model/pending-changes.js";
+import { applyPendingChanges, pendingChangesReducer, pendingInsertedSegments, prunePendingChanges } from "./model/pending-changes.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
 
@@ -65,6 +65,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const savingSegmentId = savingSegmentIdFrom(saveQueueSnapshot);
   const acquireSaveLock = (kind, lockId) => saveQueue.acquire({ kind, lockId });
   const enqueueSave = (spec) => saveQueue.enqueue(spec);
+  const cancelSaveTasks = (predicate) => saveQueue.cancel(predicate);
+  const retargetSaveTasks = (temporaryId, identity) => saveQueue.retarget(temporaryId, identity);
   const getSaveQueueSnapshot = saveQueue.getSnapshot;
   // Unconfirmed edits shown on top of the server projection; actions keep reading server segments.
   const [pendingChanges, dispatchPendingChanges] = useReducer(pendingChangesReducer, []);
@@ -85,7 +87,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   tagEditingRef.current = tagEditing;
   const [creatingSegmentId, setCreatingSegmentId] = useState(null);
   // A tag picked for a new segment before it can be saved; it is displayed but saved only once the segment is idle.
-  const [heldCreatedSegmentTag, setHeldCreatedSegmentTag] = useState(null);
   const [firstSegmentTagOpen, setFirstSegmentTagOpen] = useState(false);
   const [mergeConfirmation, setMergeConfirmation] = useState(null);
   const [rejectedDeletionPreview, setRejectedDeletionPreview] = useState(null);
@@ -321,7 +322,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setFiltersOpen(false);
     pendingFirstSegmentStartSecRef.current = null;
     setFirstSegmentTagOpen(false);
-    setHeldCreatedSegmentTag(null);
     setTimelineZoom(1);
     setSaveMessage("");
     setHistory(EMPTY_EDITOR_HISTORY);
@@ -401,8 +401,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   }, [wideLayout, editorLayout.markerRailOpen]);
 
   const displayedSegments = useMemo(
-    () => applyPendingChanges(displayHeldSegmentTag(segments, heldCreatedSegmentTag), pendingChanges),
-    [segments, heldCreatedSegmentTag, pendingChanges],
+    () => applyPendingChanges(segments, pendingChanges),
+    [segments, pendingChanges],
   );
   useLayoutEffect(() => {
     // Confirmed changes are dropped before paint in the render that carries the confirmed data.
@@ -461,10 +461,15 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     initialSegmentId,
   );
   // Visibility follows the displayed tag, but actions read and write the server projection.
+  // Temporary segments are only pending inserts, so actions see them alongside the server segments.
+  const actionSegments = useMemo(() => {
+    const inserted = pendingInsertedSegments(pendingChanges);
+    return inserted.length === 0 ? segments : [...segments, ...inserted];
+  }, [segments, pendingChanges]);
   const selectedSegment = displayedSelectedSegment == null
     ? null
-    : segments.find((segment) => segment.id === displayedSelectedSegment.id) || displayedSelectedSegment;
-  const selectedSegments = resolveSelectedSegments(segments, resolveSelectedSegments(visibleSegments, selectedSegmentIds)
+    : actionSegments.find((segment) => segment.id === displayedSelectedSegment.id) || displayedSelectedSegment;
+  const selectedSegments = resolveSelectedSegments(actionSegments, resolveSelectedSegments(visibleSegments, selectedSegmentIds)
     .map((segment) => segment.id));
   const canMoveSelectionToBin = !compatibilityMode
     && selectedSegments.length > 0
@@ -628,7 +633,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentId,
     setSelectedSegmentIds,
   });
-  const { acceptHistory, recordHistoryAction, mutateSegment, completeReview, createSegment, splitSegment, duplicateSegment, saveTiming, applyShortcutTiming } = createPrimarySegmentActions({
+  const { acceptHistory, recordHistoryAction, mutateSegment, runSegmentMutation, completeReview, createSegment, splitSegment, duplicateSegment, saveTiming, applyShortcutTiming } = createPrimarySegmentActions({
     compatibilityMode,
     currentTime,
     detail,
@@ -644,8 +649,9 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     pendingDuplicateRef,
     pendingFirstSegmentStartSecRef,
     pendingTagEditSegmentIdRef,
-    heldCreatedSegmentTag,
-    setHeldCreatedSegmentTag,
+    enqueueSave,
+    pendingChanges,
+    retargetSaveTasks,
     replaceSegmentSelection,
     savingSegmentId,
     segments,
@@ -736,11 +742,20 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     saveQueue.cancel((task) => task.kind === "review" && targetsOverlap(task.targets, cancelledTargets));
   };
   // Queued saves start only after the previous save's results have rendered, so they read fresh data.
-  saveContextRef.current = { detail, segments, onConflict, onDetailChange, onReload };
+  saveContextRef.current = {
+    detail,
+    segments,
+    onConflict,
+    onDetailChange,
+    onReload,
+    tagEditing,
+    selectedSegmentIds,
+    activeSegmentId: selectedSegment?.id ?? null,
+  };
   useEffect(() => {
     saveQueue.poke();
   });
-  const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, applyHeldCreatedSegmentTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
+  const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
     acceptHistory,
     allSwimlanes,
     autoAssignCandidates,
@@ -766,8 +781,11 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onDetailChange,
     onReload,
     performerSlots,
-    heldCreatedSegmentTag,
-    setHeldCreatedSegmentTag,
+    cancelSaveTasks,
+    dispatchPendingChanges,
+    enqueueSave,
+    pendingChanges,
+    runSegmentMutation,
     recordHistoryAction,
     refreshMaterializationPreview,
     removingExampleId,
@@ -801,20 +819,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentIds,
     video,
   });
-  useEffect(() => {
-    const queued = heldCreatedSegmentTag;
-    const action = resolveQueuedCreatedSegmentTag(queued, {
-      segments,
-      savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
-      reviewSaving: isKindRunning(saveQueue.getSnapshot(), "review"),
-      tagEditing,
-      selectedSegmentIds,
-      activeSegmentId: selectedSegment?.id,
-    });
-    if (action === "none" || action === "wait") return;
-    setHeldCreatedSegmentTag(null);
-    if (action === "apply") void applyHeldCreatedSegmentTag(queued);
-  }, [heldCreatedSegmentTag, segments, savingSegmentId, selectedSegment?.id, selectedSegmentIds, tagEditing]);
   const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary, restoreShotBoundaries } = createHistoryAndLayoutActions({
     acceptHistory,
     compatibilityMode,

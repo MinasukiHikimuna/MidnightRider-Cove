@@ -5,8 +5,8 @@ import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSele
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
-import { insertSegmentProjection, removeSegmentsProjection } from "../model/optimistic.js";
-import { createPendingChangeId } from "../model/pending-changes.js";
+import { insertSegmentProjection } from "../model/optimistic.js";
+import { createPendingChangeId, heldTagChangeFor } from "../model/pending-changes.js";
 import { segmentIdentity } from "../model/save-queue.js";
 
 function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
@@ -15,7 +15,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { acquireSaveLock, compatibilityMode, dispatchPendingChanges, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, heldCreatedSegmentTag, setHeldCreatedSegmentTag, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
+  const { acquireSaveLock, compatibilityMode, dispatchPendingChanges, enqueueSave, pendingChanges, retargetSaveTasks, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -54,16 +54,39 @@ function createPrimarySegmentActions(context) {
 
     async function mutateSegment(segment, values, recordHistory = true, historyLabel = null, optimistic = false, optimisticValues = values, restoreSelectionOnFailure = true) {
       if (!segment || savingSegmentId != null) return null;
+      const releaseSaveLock = acquireSaveLock("segment", segment.id);
+      if (!releaseSaveLock) return null;
+      try {
+        return await runSegmentMutation(segment, values, {
+          recordHistory,
+          historyLabel,
+          optimisticValues: optimistic ? optimisticValues : null,
+          restoreSelectionOnFailure,
+        });
+      } finally {
+        releaseSaveLock();
+      }
+    }
+
+    // Saves one segment without taking the save lock, for callers that already hold it (queue tasks).
+    // `pendingChangeId` reuses an entry that is already displayed; `optimisticValues` adds one.
+    async function runSegmentMutation(segment, values, {
+      recordHistory = true,
+      historyLabel = null,
+      optimisticValues = null,
+      pendingChangeId: existingPendingChangeId = null,
+      restoreSelectionOnFailure = true,
+      onReload: reload = onReload,
+      onConflict: conflict = onConflict,
+    } = {}) {
       const previousSelectionIds = selectedSegments.map((item) => item.id);
       const previousActiveId = selectedSegmentIdRef.current;
       const historyReceiptId =
         recordHistory && !compatibilityMode ? crypto.randomUUID() : null;
-      const releaseSaveLock = acquireSaveLock("segment", segment.id);
-      if (!releaseSaveLock) return null;
       setSaveMessage(recordHistory ? "Saving directly to Cove…" : "Restoring history…");
       // Show the edit on top of the server projection until the save is confirmed or fails.
-      const pendingChangeId = optimistic ? createPendingChangeId() : null;
-      if (pendingChangeId) dispatchPendingChanges({
+      const pendingChangeId = existingPendingChangeId ?? (optimisticValues ? createPendingChangeId() : null);
+      if (optimisticValues && !existingPendingChangeId) dispatchPendingChanges({
         type: "add",
         entry: { id: pendingChangeId, op: "patch", targets: [segmentIdentity(segment)], values: optimisticValues },
       });
@@ -105,7 +128,7 @@ function createPrimarySegmentActions(context) {
               ),
             );
           if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) {
-            await onReload();
+            await reload();
           } else {
             // Apply to the latest projection so changes that landed during the save are kept.
             onDetailChange((current) => ({
@@ -134,7 +157,7 @@ function createPrimarySegmentActions(context) {
           ...saved,
           reviewState: values.reviewState ?? segment.reviewState,
         };
-        if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) await onReload();
+        if (shouldReloadAfterSegmentMutation(segment, values, compatibilityMode)) await reload();
         else onDetailChange((current) => ({
           ...current,
           segments: (current.segments || [])
@@ -157,7 +180,7 @@ function createPrimarySegmentActions(context) {
         return updatedSegment;
       } catch (requestError) {
         if (pendingChangeId) dispatchPendingChanges({ type: "discard", key: pendingChangeId });
-        if (optimistic && restoreSelectionOnFailure) {
+        if (pendingChangeId && restoreSelectionOnFailure) {
           setSelectedSegmentIds(previousSelectionIds);
           setSelectedSegmentId(previousActiveId);
           selectionAnchorIdRef.current = previousActiveId;
@@ -165,13 +188,11 @@ function createPrimarySegmentActions(context) {
         }
         if (requestError.status === 409) {
           setSaveMessage("Conflict — loading the latest segment…");
-          await onConflict();
+          await conflict();
         } else {
           setSaveMessage(requestError.message || "Unable to save the segment.");
         }
         return null;
-      } finally {
-        releaseSaveLock();
       }
     }
 
@@ -258,7 +279,8 @@ function createPrimarySegmentActions(context) {
         tagSortName: tagId === selectedSegment?.tagId ? selectedSegment?.tagSortName || null : null,
         startSec,
         endSec,
-        reviewState: "unreviewed",
+        // Full mode creates manual drafts already approved; match it so a queued review toggles as displayed.
+        reviewState: compatibilityMode ? "approved" : "unreviewed",
         revision: 0,
         updatedAt: null,
         sourceKey: "user",
@@ -271,99 +293,102 @@ function createPrimarySegmentActions(context) {
         groupSegmentsIntoSwimlanes(optimisticDetail.segments, optimisticDetail.segmentGroups || [], optimisticDetail.performerSlots || []),
         optimisticSegment.id,
       );
-      const releaseSaveLock = acquireSaveLock("create", -1);
-      if (!releaseSaveLock) return;
-      setFirstSegmentTagOpen(false);
-      onDetailChange(optimisticDetail, video.id);
-      if (creation.openTagEditor) {
-        // Open the tag editor on the optimistic segment so typing can start before the save round-trip.
-        setCreatingSegmentId(optimisticSegment.id);
-        pendingTagEditSegmentIdRef.current = optimisticSegment.id;
-        setTagEditing(true);
-      }
-      replaceSegmentSelection(optimisticSegment.id);
-      setSelectedSegmentGroupKey(optimisticGroupKey);
-      try {
-        let createdIdentity;
-        if (compatibilityMode) {
-          const result = await requestJson(`/videos/${video.id}/drafts`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ operationId: operationIdFor(operationKey), tagId, startSec, endSec }),
-          });
-          completeOperation(operationKey);
-          createdIdentity = { itemId: result.draft?.itemId };
-        } else {
-          const created = await requestJson(`/videos/${video.id}/segments`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tagId,
-              startSec,
-              endSec,
-              historyReceiptId,
-            }),
-          });
-          createdIdentity = { nativeSegmentId: created.id };
-        }
-        pendingFirstSegmentStartSecRef.current = null;
+      // The create is a save-queue task so work requested for the new segment (a held tag, a review) waits for it.
+      const task = enqueueSave({
+        kind: "create",
+        lockId: -1,
+        run: (saveContext) => runCreate(saveContext),
+      });
+      if (!task) return;
+      await task.done;
+
+      async function runCreate({ onReload: reload, taskId }) {
+        const insertId = createPendingChangeId();
+        dispatchPendingChanges({ type: "add", entry: { id: insertId, taskId, op: "insert", segment: optimisticSegment } });
         setFirstSegmentTagOpen(false);
-        const loaded = await onReload();
-        if (!loaded) {
-          onDetailChange((current) => removeSegmentsProjection(
-            current,
-            [optimisticSegment.id],
-          ), video.id);
-          replaceSegmentSelection(previousSelectionId);
-          setSaveMessage(`Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment${creation.openTagEditor ? " and choose its tag again if you picked one" : ""}.`);
-          return;
+        if (creation.openTagEditor) {
+          // Open the tag editor on the optimistic segment so typing can start before the save round-trip.
+          setCreatingSegmentId(optimisticSegment.id);
+          pendingTagEditSegmentIdRef.current = optimisticSegment.id;
+          setTagEditing(true);
         }
-        const createdSegment = findSegmentByStableIdentity(loaded?.segments, createdIdentity);
-        if (createdSegment) {
-          if (creation.openTagEditor) {
-            if (tagEditingRef.current)
-              pendingTagEditSegmentIdRef.current = createdSegment.id;
-            // Move the held choice to the saved identity in the same batch as the reload so its display never flashes back.
-            setHeldCreatedSegmentTag((current) => current?.segmentId === optimisticSegment.id
-              ? { ...current, segmentId: createdSegment.id }
-              : current);
-            setCreatingSegmentId(createdSegment.id);
+        replaceSegmentSelection(optimisticSegment.id);
+        setSelectedSegmentGroupKey(optimisticGroupKey);
+        try {
+          let createdIdentity;
+          if (compatibilityMode) {
+            const result = await requestJson(`/videos/${video.id}/drafts`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ operationId: operationIdFor(operationKey), tagId, startSec, endSec }),
+            });
+            completeOperation(operationKey);
+            createdIdentity = { itemId: result.draft?.itemId };
+          } else {
+            const created = await requestJson(`/videos/${video.id}/segments`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tagId,
+                startSec,
+                endSec,
+                historyReceiptId,
+              }),
+            });
+            createdIdentity = { nativeSegmentId: created.id };
           }
-          // Swap selection in the same batch as the reload so the editor never shows a fallback segment.
-          replaceSegmentSelection(createdSegment.id);
-          setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
-            groupSegmentsIntoSwimlanes(loaded.segments || [], loaded.segmentGroups || [], loaded.performerSlots || []),
-            createdSegment.id,
-          ));
-          if (!compatibilityMode)
-            await recordHistoryAction(
-              "segment.create",
-              "Created segment",
-              segmentsHistoryState([], false),
-              segmentsHistoryState([createdSegment], false),
-              historyReceiptId,
-            );
-        } else {
-          setTagEditing(false);
-          setSaveMessage(`Segment created, but it could not be selected${creation.openTagEditor ? "; choose its tag again if you picked one" : ""}.`);
+          pendingFirstSegmentStartSecRef.current = null;
+          setFirstSegmentTagOpen(false);
+          const loaded = await reload();
+          // The reloaded projection carries the saved segment, so the temporary one goes in the same batch.
+          dispatchPendingChanges({ type: "discard", key: insertId });
+          if (!loaded) {
+            replaceSegmentSelection(previousSelectionId);
+            setSaveMessage(`Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment${creation.openTagEditor ? " and choose its tag again if you picked one" : ""}.`);
+            return;
+          }
+          const createdSegment = findSegmentByStableIdentity(loaded?.segments, createdIdentity);
+          if (createdSegment) {
+            // Work aimed at the temporary segment follows it to its saved identity.
+            dispatchPendingChanges({ type: "retarget", temporaryId: optimisticSegment.id, identity: segmentIdentity(createdSegment) });
+            retargetSaveTasks(optimisticSegment.id, segmentIdentity(createdSegment));
+            if (creation.openTagEditor) {
+              if (tagEditingRef.current)
+                pendingTagEditSegmentIdRef.current = createdSegment.id;
+              setCreatingSegmentId(createdSegment.id);
+            }
+            // Swap selection in the same batch as the reload so the editor never shows a fallback segment.
+            replaceSegmentSelection(createdSegment.id);
+            setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
+              groupSegmentsIntoSwimlanes(loaded.segments || [], loaded.segmentGroups || [], loaded.performerSlots || []),
+              createdSegment.id,
+            ));
+            if (!compatibilityMode)
+              await recordHistoryAction(
+                "segment.create",
+                "Created segment",
+                segmentsHistoryState([], false),
+                segmentsHistoryState([createdSegment], false),
+                historyReceiptId,
+              );
+          } else {
+            setTagEditing(false);
+            setSaveMessage(`Segment created, but it could not be selected${creation.openTagEditor ? "; choose its tag again if you picked one" : ""}.`);
+          }
+        } catch (error) {
+          dispatchPendingChanges({ type: "discard", key: insertId });
+          replaceSegmentSelection(previousSelectionId);
+          if (requestedTagId != null) setFirstSegmentTagOpen(true);
+          setSaveMessage(error.message || "Unable to create the draft.");
+          throw error;
+        } finally {
+          setCreatingSegmentId(null);
         }
-      } catch (error) {
-        onDetailChange((current) => removeSegmentsProjection(
-          current,
-          [optimisticSegment.id],
-        ), video.id);
-        replaceSegmentSelection(previousSelectionId);
-        if (requestedTagId != null) setFirstSegmentTagOpen(true);
-        setSaveMessage(error.message || "Unable to create the draft.");
-      } finally {
-        setHeldCreatedSegmentTag((current) => current?.segmentId === optimisticSegment.id ? null : current);
-        setCreatingSegmentId(null);
-        releaseSaveLock();
       }
     }
 
     function blockedByHeldTag() {
-      if (heldCreatedSegmentTag == null || heldCreatedSegmentTag.segmentId !== selectedSegment?.id) return false;
+      if (!heldTagChangeFor(pendingChanges, selectedSegment)) return false;
       setSaveMessage("Close the tag field to save the new segment's tag first.");
       return true;
     }
@@ -558,7 +583,7 @@ function createPrimarySegmentActions(context) {
       await mutateSegment(selectedSegment, { startSec, endSec, tagId: selectedSegment.tagId }, true, null, true);
     }
 
-  return { acceptHistory, recordHistoryAction, mutateSegment, completeReview, createSegment, splitSegment, duplicateSegment, saveTiming, applyShortcutTiming };
+  return { acceptHistory, recordHistoryAction, mutateSegment, runSegmentMutation, completeReview, createSegment, splitSegment, duplicateSegment, saveTiming, applyShortcutTiming };
 }
 
 export { createPrimarySegmentActions, shouldReloadAfterSegmentMutation };

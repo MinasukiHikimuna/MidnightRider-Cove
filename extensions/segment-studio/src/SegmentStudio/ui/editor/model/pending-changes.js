@@ -32,8 +32,22 @@ export function addPendingChange(list, entry) {
     targets: entry.targets || (entry.segment ? [{ id: entry.segment.id }] : []),
     values: entry.values || null,
     segment: entry.segment || null,
+    meta: entry.meta || null,
     settled: false,
   }];
+}
+
+// The unsaved tag chosen for a new segment, if one is waiting to be saved.
+export function heldTagChangeFor(list, segment) {
+  if (!segment) return null;
+  return (list || []).find((entry) => entry.meta?.kind === "held-tag"
+    && !entry.settled
+    && matchesAny(segment, entry.targets)) || null;
+}
+
+// Temporary segments that exist only as pending inserts until their create is saved.
+export function pendingInsertedSegments(list) {
+  return (list || []).filter((entry) => entry.op === "insert" && !entry.settled).map((entry) => entry.segment);
 }
 
 function matchesKey(entry, key) {

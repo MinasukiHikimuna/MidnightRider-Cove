@@ -44,6 +44,7 @@ function describe(task) {
     lockId: task.lockId,
     targets: task.targets,
     exclusive: task.exclusive,
+    meta: task.meta,
   });
 }
 
@@ -91,7 +92,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
 
   function start(task) {
     running = task;
-    const context = { ...getContext(), taskId: task.id };
+    const context = { ...getContext(), taskId: task.id, targets: task.targets };
     context.resolveTargets = () => task.targets
       .map((target) => resolveSegmentTarget(context.segments, target))
       .filter(Boolean);
@@ -135,7 +136,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
       if (task.exclusive && index > 0) continue;
       // Never overtake an earlier request for the same segment.
       if (queued.slice(0, index).some((earlier) => targetsOverlap(earlier.targets, task.targets))) continue;
-      if (task.ready && !task.ready(getContext())) continue;
+      if (task.ready && !task.ready(getContext(), describe(task))) continue;
       queued = queued.filter((candidate) => candidate !== task);
       start(task);
       return;
@@ -159,6 +160,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
       exclusive: spec.exclusive === true,
       dependsOn: spec.dependsOn ?? null,
       ready: spec.ready || null,
+      meta: spec.meta ?? null,
       run: spec.run,
       resolve,
     };
@@ -190,6 +192,19 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     };
   }
 
+  // A created segment received its saved identity: queued work aimed at its temporary id follows it.
+  function retarget(temporaryId, identity) {
+    let changed = false;
+    for (const task of queued) {
+      if (!task.targets.some((target) => target.id === temporaryId && target.itemId == null && target.nativeSegmentId == null))
+        continue;
+      task.targets = Object.freeze(task.targets.map((target) => target.id === temporaryId ? { ...identity } : target));
+      changed = true;
+    }
+    if (changed) publish();
+    return changed;
+  }
+
   function cancel(predicate) {
     const cancelled = queued.filter((task) => predicate(describe(task)));
     if (cancelled.length === 0) return 0;
@@ -204,6 +219,7 @@ export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = tr
     enqueue,
     acquire,
     cancel,
+    retarget,
     poke: pump,
     subscribe(listener) {
       listeners.add(listener);

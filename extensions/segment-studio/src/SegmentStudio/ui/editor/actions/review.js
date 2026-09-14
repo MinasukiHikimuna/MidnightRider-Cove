@@ -136,6 +136,7 @@ function createReviewActions(context) {
     ) {
       if (requestedSegments.length === 0) return Promise.resolve(null);
       const request = createQueuedReviewRequest(requestedState, requestedSegments, requestedSegment);
+      const activeIndex = Math.max(0, request.identities.indexOf(request.activeIdentity));
       // Read the queue directly: a save started earlier in this render is not in `savingSegmentId` yet.
       const waiting = savingSegmentIdFrom(getSaveQueueSnapshot()) != null;
       const task = enqueueSave({
@@ -143,7 +144,12 @@ function createReviewActions(context) {
         lockId: request.activeIdentity.id,
         targets: request.identities,
         whenBusy: "enqueue",
-        run: (saveContext) => runReviewDecision(saveContext, request),
+        // The queue may retarget identities (a created segment receiving its saved id), so read them when the task runs.
+        run: (saveContext) => runReviewDecision(saveContext, {
+          ...request,
+          identities: saveContext.targets,
+          activeIdentity: saveContext.targets[activeIndex],
+        }),
       });
       if (!task) return Promise.resolve(null);
       if (waiting) setSaveMessage(`${requestedState === "approved" ? "Approval" : "Rejection"} queued…`);
