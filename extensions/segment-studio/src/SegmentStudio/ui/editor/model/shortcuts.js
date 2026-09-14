@@ -350,6 +350,16 @@ export function tagEditorLockedBySave(savingSegmentId, segmentId, creatingSegmen
   return savingSegmentId != null && (creatingSegmentId == null || segmentId !== creatingSegmentId);
 }
 
+export function resolveQueuedCreatedSegmentTag(queued, { savingSegmentId, reviewSaving, selectedSegmentIds, activeSegmentId }) {
+  if (!queued) return "none";
+  if (savingSegmentId != null || reviewSaving) return "wait";
+  return activeSegmentId === queued.segmentId
+    && selectedSegmentIds?.length === 1
+    && selectedSegmentIds[0] === queued.segmentId
+    ? "apply"
+    : "drop";
+}
+
 export function shouldRestoreTransitionSelection(currentSelectionId, operatedSelectionId) {
   return currentSelectionId === operatedSelectionId;
 }

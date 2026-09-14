@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from
 
 import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, removeQueuedReviewsForSegments, resolveQueuedReviewRequest, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, removeQueuedReviewsForSegments, resolveQueuedCreatedSegmentTag, resolveQueuedReviewRequest, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -281,6 +281,14 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     input?.focus({ preventScroll: true });
     input?.select();
   }, [tagEditing, selectedSegmentId]);
+
+  useEffect(() => {
+    // A tag input that unmounts while focused (for example after a failed create) would strand focus on the page body.
+    if (tagEditing) return;
+    const ownerDocument = editorRef.current?.ownerDocument;
+    if (ownerDocument && ownerDocument.activeElement === ownerDocument.body)
+      editorRef.current.focus({ preventScroll: true });
+  }, [tagEditing]);
 
   useEffect(() => {
     const initialSwimlanes = groupSegmentsIntoSwimlanes(
@@ -775,10 +783,17 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   });
   useEffect(() => {
     const queued = queuedCreatedSegmentTagRef.current;
-    if (!queued || savingSegmentId != null) return;
+    const action = resolveQueuedCreatedSegmentTag(queued, {
+      savingSegmentId,
+      reviewSaving: reviewSavingRef.current,
+      selectedSegmentIds,
+      activeSegmentId: selectedSegment?.id,
+    });
+    if (action === "none" || action === "wait") return;
     queuedCreatedSegmentTagRef.current = null;
-    if (selectedSegment?.id === queued.segmentId) void saveTag(queued.tagId, queued.tagName);
-  }, [savingSegmentId, selectedSegment?.id]);
+    if (action === "apply") void saveTag(queued.tagId, queued.tagName);
+    else setSaveMessage("The queued tag change was not applied because the new segment is no longer the only selection.");
+  }, [savingSegmentId, selectedSegment?.id, selectedSegmentIds]);
   const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary, restoreShotBoundaries } = createHistoryAndLayoutActions({
     acceptHistory,
     compatibilityMode,

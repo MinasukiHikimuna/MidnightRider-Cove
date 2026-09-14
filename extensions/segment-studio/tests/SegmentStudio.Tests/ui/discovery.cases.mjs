@@ -617,8 +617,28 @@ test("new segments open the tag editor while their creation is still saving", ()
   assert.match(creation, /tagEditingRef\.current[\s\S]*pendingTagEditSegmentIdRef\.current = createdSegment\.id/);
   assert.ok(creation.indexOf("replaceSegmentSelection(createdSegment.id)") < creation.indexOf("await recordHistoryAction"));
   assert.match(source, /tagEditorLockedBySave\(savingSegmentId, selectedSegment\.id, creatingSegmentId\)/);
-  assert.match(editor, /queuedCreatedSegmentTagRef\.current = \{ segmentId: selectedSegment\.id, tagId, tagName \}/);
   assert.match(editor, /if \(document\.activeElement === input\) return;/);
+});
+
+test("a tag chosen while a new segment saves waits for every save and applies only to that segment", () => {
+  const queued = { segmentId: 42, tagId: 9, tagName: "Tag" };
+  const idle = { savingSegmentId: null, reviewSaving: false, selectedSegmentIds: [42], activeSegmentId: 42 };
+
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(null, idle), "none");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, savingSegmentId: -1 }), "wait");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, reviewSaving: true }), "wait");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, idle), "apply");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, activeSegmentId: 7, selectedSegmentIds: [7] }), "drop");
+  assert.equal(ui.resolveQueuedCreatedSegmentTag(queued, { ...idle, selectedSegmentIds: [42, 7] }), "drop");
+
+  const workflow = sourceByModule["editor/actions/workflow.js"];
+  const singleTag = workflow.slice(workflow.indexOf("if (selectedSegments.length !== 1 || !selectedSegment) return;"));
+  assert.ok(singleTag.indexOf("selectedSegment.id === creatingSegmentId") < singleTag.indexOf("if (tagId === selectedSegment.tagId)"));
+  assert.match(singleTag, /queuedCreatedSegmentTagRef\.current = tagId === selectedSegment\.tagId\s*\? null/);
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  assert.match(controller, /reviewSaving: reviewSavingRef\.current/);
+  assert.match(controller, /The queued tag change was not applied/);
+  assert.match(controller, /ownerDocument\.activeElement === ownerDocument\.body/);
 });
 
 test("empty videos choose a tag before creating their first swimlane", () => {

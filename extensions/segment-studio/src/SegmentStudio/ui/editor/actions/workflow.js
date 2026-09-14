@@ -625,14 +625,18 @@ function createWorkflowActions(context) {
         return;
       }
       if (selectedSegments.length !== 1 || !selectedSegment) return;
-      if (tagId === selectedSegment.tagId) {
+      if (selectedSegment.id === creatingSegmentId) {
+        // The new segment is still saving; apply this choice once it has a stable identity.
+        const hadQueuedTag = queuedCreatedSegmentTagRef.current != null;
+        queuedCreatedSegmentTagRef.current = tagId === selectedSegment.tagId
+          ? null
+          : { segmentId: selectedSegment.id, tagId, tagName };
+        if (queuedCreatedSegmentTagRef.current) setSaveMessage("Tag change queued…");
+        else if (hadQueuedTag) setSaveMessage("");
         closeTagEditing();
         return;
       }
-      if (selectedSegment.id === creatingSegmentId) {
-        // The new segment is still saving; apply this choice once it has a stable identity.
-        queuedCreatedSegmentTagRef.current = { segmentId: selectedSegment.id, tagId, tagName };
-        setSaveMessage("Tag change queued…");
+      if (tagId === selectedSegment.tagId) {
         closeTagEditing();
         return;
       }
