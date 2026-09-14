@@ -244,6 +244,20 @@ function createWorkflowActions(context) {
 
     async function removeIncorrectExample(example) {
       if (!example || removingExampleId != null || exportingExamples) return;
+      // Removal records editor history and changes segments, so it holds the save lock like other saves.
+      const releaseSaveLock = acquireSaveLock("feedback", -1);
+      if (!releaseSaveLock) {
+        setSaveMessage("Wait for the current save to finish before removing the incorrect example.");
+        return;
+      }
+      try {
+        await runIncorrectExampleRemoval(example);
+      } finally {
+        releaseSaveLock();
+      }
+    }
+
+    async function runIncorrectExampleRemoval(example) {
       setRemovingExampleId(example.id);
       const operationKey =
         `incorrect-example-remove:${video.id}:${example.id}:${example.revision}:${example.representationRevision}`;
@@ -461,6 +475,19 @@ function createWorkflowActions(context) {
 
     async function autoAssignPerformers(candidates = autoAssignCandidates) {
       if (autoAssigning || candidates.length === 0) return;
+      const releaseSaveLock = acquireSaveLock("auto-assign", -1);
+      if (!releaseSaveLock) {
+        setAutoAssignError("Wait for the current save to finish before assigning performers.");
+        return;
+      }
+      try {
+        await runAutoAssign(candidates);
+      } finally {
+        releaseSaveLock();
+      }
+    }
+
+    async function runAutoAssign(candidates) {
       setAutoAssigning(true);
       setAutoAssignError("");
       try {
@@ -500,6 +527,19 @@ function createWorkflowActions(context) {
       if (!materializePreview || materializing
           || materializePreview.createCount + materializePreview.linkCount === 0)
         return;
+      const releaseSaveLock = acquireSaveLock("materialize", -1);
+      if (!releaseSaveLock) {
+        setMaterializeError("Wait for the current save to finish before materializing derived segments.");
+        return;
+      }
+      try {
+        await runMaterialization();
+      } finally {
+        releaseSaveLock();
+      }
+    }
+
+    async function runMaterialization() {
       setMaterializing(true);
       setMaterializeError("");
       let result;

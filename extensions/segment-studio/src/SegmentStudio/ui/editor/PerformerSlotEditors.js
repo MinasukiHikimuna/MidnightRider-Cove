@@ -185,7 +185,7 @@ function PerformerSlotAssignmentEditor({ videoId, segmentId, itemId, slots, revi
   ]);
 }
 
-function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandidates, onSaved, onConflict, shortcutRef }) {
+function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandidates, onSaved, onConflict, shortcutRef, acquireSaveLock = () => () => {} }) {
   const commonSlots = targets[0]?.slots || [];
   const videoPerformers = videoPerformerOptions(performerCandidates);
   const recommendations = generatePerformerSlotAssignmentRecommendations(
@@ -211,6 +211,12 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
 
   async function save(nextAssignments = assignments) {
     if (savingRef.current) return;
+    // The slot requests and their history entry run under the editor save lock.
+    const releaseSaveLock = acquireSaveLock();
+    if (!releaseSaveLock) {
+      setMessage("Wait for the current save to finish before saving performer slots.");
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     setMessage(`Saving performer slots for ${targets.length} segments…`);
@@ -241,7 +247,7 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
         });
       }
       setMessage("Performer slots saved.");
-      onSaved({
+      await onSaved({
         beforeState: performerSlotHistoryState(targets),
         afterState: performerSlotHistoryState(savedTargets),
       });
@@ -259,6 +265,7 @@ function MultiPerformerSlotAssignmentEditor({ videoId, targets, performerCandida
     } finally {
       savingRef.current = false;
       setSaving(false);
+      releaseSaveLock();
     }
   }
 

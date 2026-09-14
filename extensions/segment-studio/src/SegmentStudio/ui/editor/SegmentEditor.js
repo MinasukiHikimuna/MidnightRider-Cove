@@ -116,6 +116,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     compatibilityMode,
     detail.shotBoundaries?.length || 0,
     shotBoundaryFingerprint(detail.shotBoundaries || []),
+    (kind, lockId) => saveQueue.acquire({ kind, lockId }),
   );
   const [materializeOpen, setMaterializeOpen] = useState(false);
   const [materializePreview, setMaterializePreview] = useState(null);

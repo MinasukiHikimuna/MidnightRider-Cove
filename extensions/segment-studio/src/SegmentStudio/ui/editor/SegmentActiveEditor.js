@@ -158,6 +158,7 @@ function SegmentActiveEditor({
           targets: slotTargets,
           performerCandidates: detail.performerCandidates || [],
           shortcutRef: multiRecommendationShortcutRef,
+          acquireSaveLock: () => acquireSaveLock("slots", -1),
           onSaved: async ({ beforeState, afterState }) => {
             await onRecordHistory(
               "performer-slots.assign",
@@ -166,7 +167,7 @@ function SegmentActiveEditor({
               afterState,
             );
             closeSlots();
-            onSlotsChanged();
+            await onSlotsChanged();
           },
           onConflict: onSlotsChanged,
         })),

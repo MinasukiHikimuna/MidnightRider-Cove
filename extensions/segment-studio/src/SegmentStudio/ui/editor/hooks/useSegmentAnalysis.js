@@ -24,6 +24,7 @@ function useSegmentAnalysis(
   fullMode = false,
   shotBoundaryCount = 0,
   shotBoundaryRevision = "",
+  acquireSaveLock = () => () => {},
 ) {
   const [analysisRun, setAnalysisRun] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState(null);
@@ -36,6 +37,11 @@ function useSegmentAnalysis(
   const analysisReloadedRunRef = useRef(null);
 
   async function importNativeSegments(reviewState) {
+    const releaseSaveLock = acquireSaveLock("import", -1);
+    if (!releaseSaveLock) {
+      setNativeImportState({ busy: false, reviewState: null, error: "Wait for the current save to finish before importing Cove segments." });
+      return;
+    }
     setNativeImportState({ busy: true, reviewState, error: "" });
     try {
       await requestJson(`/videos/${videoId}/native-segments/import`, {
@@ -51,6 +57,8 @@ function useSegmentAnalysis(
         reviewState: null,
         error: error.message || "Unable to import Cove segments.",
       });
+    } finally {
+      releaseSaveLock();
     }
   }
 

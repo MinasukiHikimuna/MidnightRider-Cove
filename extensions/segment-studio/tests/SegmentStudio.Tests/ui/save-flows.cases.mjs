@@ -723,3 +723,51 @@ test("save flow: a shot edit requested during a segment save waits and records h
     assert.equal(editor.state.saveMessage, "Shot boundary added.");
   });
 });
+
+test("save flow: work outside segment saves waits for the lock instead of racing a save", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const editor = createFakeEditor();
+  const errors = {};
+  const actions = actionsFor(editor, {
+    autoAssignCandidates: [segment()],
+    materializePreview: { createCount: 1, linkCount: 0, fingerprint: "f1" },
+    incorrectExamples: [],
+    setAutoAssignError: (message) => { errors.autoAssign = message; },
+    setMaterializeError: (message) => { errors.materialize = message; },
+    setAutoAssigning: () => {},
+    setMaterializing: () => {},
+    setRemovingExampleId: () => {},
+  });
+  editor.saveQueue.acquire({ kind: "timing", lockId: 101 });
+  await withEditorGlobals(api, async () => {
+    await actions.autoAssignPerformers();
+    await actions.materializeDerivedSegments();
+    await actions.removeIncorrectExample({ id: 3, itemId: 55, revision: 1, representationRevision: 1 });
+
+    assert.equal(api.requests.length, 0);
+    assert.equal(errors.autoAssign, "Wait for the current save to finish before assigning performers.");
+    assert.equal(errors.materialize, "Wait for the current save to finish before materializing derived segments.");
+    assert.equal(editor.state.saveMessage, "Wait for the current save to finish before removing the incorrect example.");
+  });
+});
+
+test("save flow: auto-assign holds the save lock until its reload finishes", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const post = api.hold("POST", "/videos/7/segments/auto-assign-performer-slots");
+  const editor = createFakeEditor();
+  const actions = actionsFor(editor, {
+    autoAssignCandidates: [segment()],
+    setAutoAssignError: () => {},
+    setAutoAssigning: () => {},
+    setAutoAssignOpen: () => {},
+  });
+  await withEditorGlobals(api, async () => {
+    const assigning = actions.autoAssignPerformers();
+    await post.arrived();
+    assert.equal(editor.savingSegmentId, -1);
+    post.release({ assignedSegmentCount: 1, assignedSlotCount: 2 });
+    await assigning;
+    assert.equal(editor.savingSegmentId, null);
+    assert.equal(editor.state.saveMessage, "1 segment received 2 performer-slot assignments.");
+  });
+});
