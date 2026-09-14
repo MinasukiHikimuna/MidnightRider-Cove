@@ -813,3 +813,50 @@ test("save flow: a failed rejected-segment deletion shows the segments again", {
     assert.equal(editor.savingSegmentId, null);
   });
 });
+
+test("save flow: a bulk tag change is shown until the reload confirms it and records history", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  let serverSegments = [first, second];
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const put = api.hold("PUT", "/videos/7/segments/tag");
+  const editor = createFakeEditor({ segments: [first, second], server: () => ({ ...editor.state.detail, segments: serverSegments }) });
+  editor.select([101, 102], 101);
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).saveTag(9, "Bulk tag");
+    const request = await put.arrived();
+    assert.deepEqual(request.body.segments.map((item) => item.nativeSegmentId), [101, 102]);
+    assert.deepEqual(editor.displayedSegments.map((item) => item.tagId), [9, 9]);
+    assert.deepEqual(editor.segments.map((item) => item.tagId), [1, 1]);
+
+    serverSegments = serverSegments.map((item) => ({ ...item, tagId: 9, tagName: "Bulk tag" }));
+    put.release(undefined);
+    await saving;
+    editor.render();
+    assert.deepEqual(editor.displayedSegments.map((item) => item.tagId), [9, 9]);
+    const [history] = api.sent("POST", "/videos/7/history/actions");
+    assert.equal(history.body.kind, "segments.tag");
+    assert.equal(history.body.receiptId, request.body.historyReceiptId);
+    assert.deepEqual(editor.state.selectedSegmentIds, [101, 102]);
+    assert.equal(editor.state.saveMessage, "2 selected segments retagged.");
+  });
+});
+
+test("save flow: a failed bulk tag change leaves newer reloaded values in place", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const api = createFakeApi();
+  const put = api.hold("PUT", "/videos/7/segments/tag");
+  const editor = createFakeEditor({ segments: [first, second] });
+  editor.select([101, 102], 101);
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).saveTag(9, "Bulk tag");
+    await put.arrived();
+    editor.context().onDetailChange((current) => ({ ...current, segments: current.segments.map((item) => ({ ...item, startSec: item.startSec + 1 })) }), 7);
+    put.fail(500, { error: "Retag failed." });
+    await saving;
+
+    assert.deepEqual(editor.displayedSegments.map((item) => [item.tagId, item.startSec]), [[1, 11], [1, 41]]);
+    assert.equal(editor.state.saveMessage, "Retag failed.");
+  });
+});

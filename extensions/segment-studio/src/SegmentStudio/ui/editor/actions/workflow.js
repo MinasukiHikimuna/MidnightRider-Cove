@@ -602,15 +602,15 @@ function createWorkflowActions(context) {
             ? `native:${segment.nativeSegmentId}:${segment.updatedAt}`
             : `item:${segment.itemId}:${segment.revision}`).sort().join(",");
         const operationKey = `bulk-tag:${video.id}:${tagId}:${signature}`;
-        const optimisticDetail = patchSegmentProjection(
-          detail,
-          candidates.map((segment) => segment.id),
-          optimisticValues,
-        );
         const releaseSaveLock = acquireSaveLock("tag", selectedSegment?.id ?? candidates[0].id);
         if (!releaseSaveLock) return;
         setSaveMessage(`Changing tag for ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
-        onDetailChange(optimisticDetail, video.id);
+        // Show the new tag on top of the server projection until the change is confirmed or fails.
+        const pendingChangeId = createPendingChangeId();
+        dispatchPendingChanges({
+          type: "add",
+          entry: { id: pendingChangeId, op: "patch", targets: candidates.map(segmentIdentity), values: optimisticValues },
+        });
         closeTagEditing();
         try {
           const historyReceiptId = !compatibilityMode
@@ -641,6 +641,7 @@ function createWorkflowActions(context) {
             compatibilityMode,
           );
           const loaded = await onReload();
+          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
           const changedSegments = identities
             .map((identity) => findSegmentByStableIdentity(loaded?.segments, identity))
             .filter(Boolean);
@@ -661,11 +662,7 @@ function createWorkflowActions(context) {
           closeTagEditing();
           setSaveMessage(`${candidates.length} selected segment${candidates.length === 1 ? "" : "s"} retagged.`);
         } catch (error) {
-          onDetailChange((current) => restoreSegmentFieldsProjection(
-            current,
-            candidates,
-            Object.keys(optimisticValues),
-          ), video.id);
+          dispatchPendingChanges({ type: "discard", key: pendingChangeId });
           const restoredSelection = identities
             .map((identity) => findSegmentByStableIdentity(detail.segments, identity))
             .filter(Boolean);
