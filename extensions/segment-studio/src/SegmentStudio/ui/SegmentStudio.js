@@ -9,6 +9,7 @@ export { validateSegmentTiming, findInitialSegmentSelection, findUnreviewedSelec
 export { historyActionsForTarget, segmentHistoryIdentity, segmentHistoryState, segmentsHistoryState, incorrectExampleHistoryState, performerSlotHistoryState, performerSlotsForSegment, indexPerformerSlotsBySegment, performerSlotStatusFromSegmentSlots, sharedPerformerSlotShape, sharedTagPerformerSlotShape, multiSelectionActionHint, performerSlotStatus, performerSlotLabel, suggestDerivationRuleSlotMappings, applyDerivationRuleSlotSuggestions, performerSlotPresentation, formatGenderHint } from "./editor/model/history.js";
 export { applyFeedbackEditorDelta, feedbackFrameTimestamps, feedbackResultMatchesAction, feedbackSelectionPlan, groupIncorrectExamplesByTag, hideCollectedFeedbackSegments } from "./editor/model/feedback.js";
 export { insertSegmentProjection, mergeSegmentsProjection, patchPerformerSlotProjection, patchSegmentProjection, removeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "./editor/model/optimistic.js";
+export { createSaveQueue, isKindRunning, isSaveQueueBusy, resolveSegmentTarget, sameSegmentIdentity, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./editor/model/save-queue.js";
 export { shouldReloadAfterSegmentMutation } from "./editor/actions/primary.js";
 export { restorePublishApprovedFocus } from "./editor/SegmentEditor.js";
 export { restoreDisabledToolbarActionFocus } from "./editor/SegmentEditorView.js";
