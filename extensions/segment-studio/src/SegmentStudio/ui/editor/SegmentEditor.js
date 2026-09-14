@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from
 
 import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { SEGMENT_STUDIO_SHORTCUTS, displayHeldSegmentTag, readPlaybackShortcutConfig, removeQueuedReviewsForSegments, resolveQueuedCreatedSegmentTag, resolveQueuedReviewRequest, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, displayHeldSegmentTag, readPlaybackShortcutConfig, resolveQueuedCreatedSegmentTag, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -29,7 +29,7 @@ import { createHistoryAndLayoutActions } from "./actions/history-and-layout.js";
 import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
-import { createSaveQueue, isKindRunning, savingSegmentIdFrom } from "./model/save-queue.js";
+import { createSaveQueue, isKindRunning, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./model/save-queue.js";
 import { applyPendingChanges, pendingChangesReducer } from "./model/pending-changes.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
@@ -56,10 +56,15 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [hideDerivedSegments, setHideDerivedSegments] = useState(readHideDerivedSegmentsPreference);
   const [currentTime, setCurrentTime] = useState(0);
   // Every editor save runs through one queue; the saving segment id is derived from what it is running.
-  const [saveQueue] = useState(() => createSaveQueue());
+  const saveContextRef = useRef(null);
+  const [saveQueue] = useState(() => createSaveQueue({
+    getContext: () => saveContextRef.current,
+    drainAfterSettle: false,
+  }));
   const saveQueueSnapshot = useSyncExternalStore(saveQueue.subscribe, saveQueue.getSnapshot);
   const savingSegmentId = savingSegmentIdFrom(saveQueueSnapshot);
   const acquireSaveLock = (kind, lockId) => saveQueue.acquire({ kind, lockId });
+  const enqueueSave = (spec) => saveQueue.enqueue(spec);
   const getSaveQueueSnapshot = saveQueue.getSnapshot;
   // Unconfirmed edits shown on top of the server projection; actions keep reading server segments.
   const [pendingChanges, dispatchPendingChanges] = useReducer(pendingChangesReducer, []);
@@ -89,7 +94,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [publishApprovedError, setPublishApprovedError] = useState("");
   const publishApprovedCancelButtonRef = useRef(null);
   const publishApprovedRestoreFocusRef = useRef(null);
-  const pendingReviewStateRef = useRef([]);
   const binEmptyingRef = useRef(false);
   const [collapsedSegmentGroups, setCollapsedSegmentGroups] = useState(readCollapsedSegmentGroups);
   const [selectedSegmentGroupKey, setSelectedSegmentGroupKey] = useState(null);
@@ -709,7 +713,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     onConflict,
     onDetailChange,
     onReload,
-    pendingReviewStateRef,
     recordHistoryAction,
     revealSegmentGroupForSelection,
     savingSegmentId,
@@ -722,37 +725,21 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setMergeConfirmation,
     setSaveMessage,
     acquireSaveLock,
+    dispatchPendingChanges,
+    enqueueSave,
     setSelectedSegmentId,
     setSelectedSegmentIds,
     video,
   });
   const cancelQueuedReviewsForSegments = (cancelledSegments) => {
-    pendingReviewStateRef.current = removeQueuedReviewsForSegments(
-      pendingReviewStateRef.current,
-      cancelledSegments,
-    );
+    const cancelledTargets = (cancelledSegments || []).map(segmentIdentity);
+    saveQueue.cancel((task) => task.kind === "review" && targetsOverlap(task.targets, cancelledTargets));
   };
+  // Queued saves start only after the previous save's results have rendered, so they read fresh data.
+  saveContextRef.current = { detail, segments, onConflict, onDetailChange, onReload };
   useEffect(() => {
-    // Read the queue directly: a save this render started is not reflected in `savingSegmentId` yet.
-    if (savingSegmentIdFrom(saveQueue.getSnapshot()) != null) return;
-    let missedRequest = false;
-    while (pendingReviewStateRef.current.length > 0) {
-      const request = pendingReviewStateRef.current.shift();
-      const resolved = resolveQueuedReviewRequest(request, segments);
-      if (!resolved) {
-        missedRequest = true;
-        continue;
-      }
-      void saveSelectedReviewState(
-        resolved.requestedState,
-        resolved.selectedSegments,
-        resolved.selectedSegment,
-      );
-      return;
-    }
-    if (missedRequest)
-      setSaveMessage("The queued review could not find its segment after refreshing.");
-  }, [savingSegmentId, segments]);
+    saveQueue.poke();
+  });
   const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, applyHeldCreatedSegmentTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
     acceptHistory,
     allSwimlanes,

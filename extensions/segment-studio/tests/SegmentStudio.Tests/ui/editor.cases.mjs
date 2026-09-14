@@ -658,19 +658,7 @@ test("selection review shortcuts apply a state and reset only when every segment
   assert.equal(ui.toggledSelectionReviewState(mixed, "rejected"), "rejected");
   assert.equal(ui.toggledSelectionReviewState([{ reviewState: "approved" }, { reviewState: "approved" }], "approved"), "unreviewed");
   assert.equal(ui.toggledSelectionReviewState([{ reviewState: "rejected" }, { reviewState: "rejected" }], "rejected"), "unreviewed");
-  const handler = source.slice(
-    source.indexOf("async function saveSelectedReviewState"),
-    source.indexOf("async function toggleIncorrectExample"),
-  );
-  assert.match(handler, /segments\/review-state/);
-  assert.match(handler, /segments:\s*reviewSegments\.map/);
-  assert.match(handler, /expectedHistoryRevision:\s*historyRef\.current\.revision/);
-  assert.match(handler, /if \(result\.history\) acceptHistory\(result\.history\)/);
-  assert.match(handler, /onDetailChange\(applyReviewResult, video\.id\)/);
-  assert.match(handler, /approvedSetVersion: result\.approvedSetVersion/);
-  assert.match(handler, /restoreSelection\(applyReviewResult\(detail\)\)/);
-  assert.doesNotMatch(handler, /for \(const segment of candidates/);
-  assert.doesNotMatch(handler, /Partially updated/);
+  // The request, history and projection behaviour is covered by the save-flow cases.
 });
 
 test("review decisions update the editor projection before the request settles", () => {
@@ -691,14 +679,6 @@ test("review decisions update the editor projection before the request settles",
     { id: 10, reviewState: "rejected" },
   ]);
   assert.equal(detail.segments[0].reviewState, "unreviewed");
-  const reviewActions = sourceByModule["editor/actions/review.js"];
-  const saveReview = reviewActions.slice(
-    reviewActions.indexOf("async function saveSelectedReviewState"),
-    reviewActions.indexOf("return { closeMergeConfirmation"),
-  );
-  assert.ok(saveReview.indexOf("onDetailChange(optimisticDetail") < saveReview.indexOf("await requestJson"));
-  assert.match(saveReview, /restoreSegmentFieldsProjection\([\s\S]*\["reviewState"\]/);
-  assert.match(saveReview, /restoreSelection\(restoredDetail, true\)/);
 });
 
 test("review shortcuts queue across an in-flight segment transition", () => {
@@ -718,32 +698,12 @@ test("review shortcuts queue across an in-flight segment transition", () => {
   const otherRequest = ui.createQueuedReviewRequest("approved", other, other[0]);
   assert.deepEqual(ui.removeQueuedReviewsForSegments([request, otherRequest], moved), [otherRequest]);
 
+  // Queued reviews live in the save queue; cancelling reviews for a segment removes only those tasks.
   const controller = sourceByModule["editor/SegmentEditor.js"];
-  assert.match(controller, /const pendingReviewStateRef = useRef\(\[\]\)/);
-  assert.match(controller, /resolveQueuedReviewRequest\(request, segments\)/);
-  assert.match(controller, /saveSelectedReviewState\([\s\S]*resolved\.selectedSegments[\s\S]*resolved\.selectedSegment/);
-  const reviewActions = sourceByModule["editor/actions/review.js"];
-  assert.match(reviewActions, /pendingReviewStateRef\.current\.push\(createQueuedReviewRequest/);
-  assert.match(reviewActions, /requestedState === "approved" \? "Approval" : "Rejection"/);
+  assert.match(controller, /saveQueue\.cancel\(\(task\) => task\.kind === "review" && targetsOverlap\(task\.targets, cancelledTargets\)\)/);
   const activeEditor = sourceByModule["editor/SegmentActiveEditor.js"];
   assert.match(activeEditor, /if \(!loaded\) onCancelQueuedReview\(\[selectedSegment\]\)/);
   assert.match(activeEditor, /onRollback:[\s\S]*onCancelQueuedReview\(\[selectedSegment\]\)/);
-});
-
-test("bulk review patches safe decisions locally and reloads cascading or identity-changing decisions", () => {
-  const reviewActions = sourceByModule["editor/actions/review.js"];
-  const saveReview = reviewActions.slice(
-    reviewActions.indexOf("async function saveSelectedReviewState"),
-    reviewActions.indexOf("return { closeMergeConfirmation"),
-  );
-
-  assert.match(saveReview, /reviewState === "rejected"/);
-  assert.match(saveReview, /item\.requestedNativeSegmentId != null/);
-  assert.match(saveReview, /restoreSelection\(await onReload\(\)\)/);
-  assert.match(saveReview, /id: item\.nativeSegmentId != null \? item\.nativeSegmentId : -item\.itemId/);
-  assert.match(saveReview, /revision: item\.nativeSegmentId != null \? segment\.revision : item\.revision/);
-  assert.match(saveReview, /restoreSelection\(applyReviewResult\(detail\)\)/);
-  assert.doesNotMatch(saveReview, /error\.status === 409 \? await onConflict\(\) : await onReload\(\)/);
 });
 
 test("one selected swimlane can be merged into its full selected time span", () => {
@@ -834,7 +794,7 @@ test("one selected swimlane can be merged into its full selected time span", () 
   assert.match(mergeDialog, /key: "confirm",\s*ref: confirmRef,/);
   const mergeHandler = source.slice(
     source.indexOf("async function mergeSelectedSwimlane"),
-    source.indexOf("async function saveSelectedReviewState"),
+    source.indexOf("function saveSelectedReviewState("),
   );
   assert.doesNotMatch(mergeHandler, /window\.confirm/);
   assert.match(mergeHandler, /confirmedMerge \|\| selectedSwimlaneMerge\([\s\S]*nativeOnly: !compatibilityMode/);
@@ -898,7 +858,7 @@ test("segment merges collapse the local selection before the request settles", (
   const reviewActions = sourceByModule["editor/actions/review.js"];
   const merge = reviewActions.slice(
     reviewActions.indexOf("async function mergeSelectedSwimlane"),
-    reviewActions.indexOf("async function saveSelectedReviewState"),
+    reviewActions.indexOf("function saveSelectedReviewState("),
   );
   assert.ok(merge.indexOf("onDetailChange(optimisticDetail") < merge.indexOf("await requestJson"));
   assert.match(merge, /restoreSegmentFieldsProjection\([\s\S]*merge\.segments\[0\][\s\S]*merge\.segments\.slice\(1\)/);

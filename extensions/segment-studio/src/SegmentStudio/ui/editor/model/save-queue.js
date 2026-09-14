@@ -47,7 +47,9 @@ function describe(task) {
   });
 }
 
-export function createSaveQueue({ getContext = () => ({}) } = {}) {
+// `drainAfterSettle: false` leaves queued tasks waiting for `poke()` after a task settles, so a host
+// such as React can render the settled task's results before the next task reads its context.
+export function createSaveQueue({ getContext = () => ({}), drainAfterSettle = true } = {}) {
   let nextId = 1;
   let running = null;
   let queued = [];
@@ -112,7 +114,7 @@ export function createSaveQueue({ getContext = () => ({}) } = {}) {
     running = null;
     if (outcome.status === "rejected") lastFailure = Object.freeze({ id: task.id, kind: task.kind, error: outcome.error });
     publish();
-    pump();
+    if (drainAfterSettle) pump();
   }
 
   function pump() {

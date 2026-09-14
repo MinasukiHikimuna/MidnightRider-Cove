@@ -2,13 +2,14 @@ import { applySegmentMergeDelta, selectedSwimlaneMerge } from "../model/swimlane
 import { readMergeConfirmationPreference, writeMergeConfirmationPreference } from "../model/selection.js";
 import { completeOperation, formatTime, operationIdFor, requestJson } from "../../shared/api.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
-import { createQueuedReviewRequest, findSegmentByStableIdentity, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
+import { createQueuedReviewRequest, findSegmentByStableIdentity, resolveQueuedReviewRequest, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
-import { isKindRunning, savingSegmentIdFrom } from "../model/save-queue.js";
-import { mergeSegmentsProjection, patchSegmentProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
+import { savingSegmentIdFrom, segmentIdentity } from "../model/save-queue.js";
+import { createPendingChangeId } from "../model/pending-changes.js";
+import { mergeSegmentsProjection, restoreSegmentFieldsProjection, restoreSegmentsProjection } from "../model/optimistic.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, getSaveQueueSnapshot, historyRef, onConflict, onDetailChange, onReload, pendingReviewStateRef, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -127,24 +128,36 @@ function createReviewActions(context) {
       }
     }
 
-    async function saveSelectedReviewState(
+    // Review decisions wait their turn behind any running save, including another review, and are
+    // resolved against the segments as they are when the decision runs.
+    function saveSelectedReviewState(
       requestedState,
-      reviewSegments = selectedSegments,
-      reviewSegment = selectedSegment,
+      requestedSegments = selectedSegments,
+      requestedSegment = selectedSegment,
     ) {
-      if (reviewSegments.length === 0) return;
+      if (requestedSegments.length === 0) return Promise.resolve(null);
+      const request = createQueuedReviewRequest(requestedState, requestedSegments, requestedSegment);
       // Read the queue directly: a save started earlier in this render is not in `savingSegmentId` yet.
-      const saveQueueSnapshot = getSaveQueueSnapshot();
-      if (isKindRunning(saveQueueSnapshot, "review")) return;
-      if (savingSegmentIdFrom(saveQueueSnapshot) != null) {
-        pendingReviewStateRef.current.push(createQueuedReviewRequest(
-          requestedState,
-          reviewSegments,
-          reviewSegment,
-        ));
-        setSaveMessage(`${requestedState === "approved" ? "Approval" : "Rejection"} queued…`);
+      const waiting = savingSegmentIdFrom(getSaveQueueSnapshot()) != null;
+      const task = enqueueSave({
+        kind: "review",
+        lockId: request.activeIdentity.id,
+        targets: request.identities,
+        whenBusy: "enqueue",
+        run: (saveContext) => runReviewDecision(saveContext, request),
+      });
+      if (!task) return Promise.resolve(null);
+      if (waiting) setSaveMessage(`${requestedState === "approved" ? "Approval" : "Rejection"} queued…`);
+      return task.done;
+    }
+
+    async function runReviewDecision({ detail, segments, onConflict, onReload }, request) {
+      const resolved = resolveQueuedReviewRequest(request, segments);
+      if (!resolved) {
+        setSaveMessage("The queued review could not find its segment after refreshing.");
         return;
       }
+      const { requestedState, selectedSegments: reviewSegments, selectedSegment: reviewSegment } = resolved;
       const reviewState = toggledSelectionReviewState(reviewSegments, requestedState);
       const candidates = reviewSegments.filter((segment) => segment.reviewState !== reviewState);
       if (candidates.length === 0) return;
@@ -169,15 +182,12 @@ function createReviewActions(context) {
         selectionAnchorIdRef.current = reloadedActive?.id ?? null;
         selectionRangeBaseIdsRef.current = [];
       };
-      const releaseSaveLock = acquireSaveLock("review", reviewSegment?.id ?? candidates[0].id);
-      if (!releaseSaveLock) return;
       setSaveMessage(`Updating ${candidates.length} selected segment${candidates.length === 1 ? "" : "s"}…`);
-      const optimisticDetail = patchSegmentProjection(
-        detail,
-        candidates.map((segment) => segment.id),
-        { reviewState },
-      );
-      onDetailChange(optimisticDetail, video.id);
+      const pendingChangeId = createPendingChangeId();
+      dispatchPendingChanges({
+        type: "add",
+        entry: { id: pendingChangeId, op: "patch", targets: candidates.map(segmentIdentity), values: { reviewState } },
+      });
       try {
         const result = await requestJson(`/videos/${video.id}/segments/review-state`, {
           method: "PUT",
@@ -217,6 +227,7 @@ function createReviewActions(context) {
             && item.nativeSegmentId !== item.requestedNativeSegmentId);
         if (requiresProjectionReload) {
           restoreSelection(await onReload());
+          dispatchPendingChanges({ type: "settle", key: pendingChangeId });
           setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
           return;
         }
@@ -241,21 +252,16 @@ function createReviewActions(context) {
           });
         // Apply to the latest projection so changes that landed during the save are kept.
         onDetailChange(applyReviewResult, video.id);
+        dispatchPendingChanges({ type: "settle", key: pendingChangeId });
         restoreSelection(applyReviewResult(detail));
         setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "approved" ? "approved" : reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
       } catch (error) {
-        onDetailChange((current) => restoreSegmentFieldsProjection(
-          current,
-          candidates,
-          ["reviewState"],
-        ), video.id);
+        dispatchPendingChanges({ type: "discard", key: pendingChangeId });
         if (error.status === 409 && error.payload?.currentHistory)
           acceptHistory(error.payload.currentHistory);
         const restoredDetail = error.status === 409 ? await onConflict() : detail;
         restoreSelection(restoredDetail, true);
         setSaveMessage(error.message || "Unable to update the selected segments.");
-      } finally {
-        releaseSaveLock();
       }
     }
 

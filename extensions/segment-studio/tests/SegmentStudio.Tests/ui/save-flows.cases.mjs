@@ -97,29 +97,69 @@ test("save flow: a failed timing save rolls the projection back and restores the
   });
 });
 
-test("save flow: a review requested while another segment saves is queued instead of sent", { timeout: 5000 }, async () => {
-  const api = createFakeApi();
+test("save flow: a review requested while another segment saves waits and then runs", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", { updatedCount: 1, items: [{ requestedNativeSegmentId: 101, nativeSegmentId: 101, itemId: null, updatedAt: "2026-01-02T00:00:00Z" }] });
   const editor = createFakeEditor();
-  editor.saveQueue.acquire({ kind: "timing", lockId: 101 });
+  const releaseTiming = editor.saveQueue.acquire({ kind: "timing", lockId: 101 });
   await withEditorGlobals(api, async () => {
-    await actionsFor(editor).saveSelectedReviewState("approved");
+    const reviewing = actionsFor(editor).saveSelectedReviewState("approved");
 
     assert.equal(api.requests.length, 0);
-    assert.equal(editor.refs.pendingReviewStateRef.current.length, 1);
-    assert.equal(editor.refs.pendingReviewStateRef.current[0].requestedState, "approved");
     assert.equal(editor.state.saveMessage, "Approval queued…");
+    assert.deepEqual(editor.saveQueue.getSnapshot().queued.map((task) => task.kind), ["review"]);
+    releaseTiming();
+    await new Promise((resolve) => setImmediate(resolve));
+    // The queued review starts only once the finished save has rendered.
+    assert.equal(api.requests.length, 0);
+    editor.render();
+    assert.equal((await reviewing).status, "fulfilled");
+    assert.equal(api.sent("PUT", "/videos/7/segments/review-state")[0].body.reviewState, "approved");
+    assert.equal(editor.segments[0].reviewState, "approved");
   });
 });
 
-test("save flow: a review requested while a review saves is dropped today", { timeout: 5000 }, async () => {
+test("save flow: a second decision during a review is queued and toggles against the saved result", { timeout: 5000 }, async () => {
   const api = createFakeApi();
+  const put = api.hold("PUT", "/videos/7/segments/review-state");
   const editor = createFakeEditor();
-  editor.saveQueue.acquire({ kind: "review", lockId: 101 });
   await withEditorGlobals(api, async () => {
-    await actionsFor(editor).saveSelectedReviewState("approved");
+    const actions = actionsFor(editor);
+    const first = actions.saveSelectedReviewState("approved");
+    await put.arrived();
+    const second = actions.saveSelectedReviewState("approved");
+    assert.equal(editor.state.saveMessage, "Approval queued…");
+    put.release({ updatedCount: 1, items: [{ requestedNativeSegmentId: 101, nativeSegmentId: 101, itemId: null, updatedAt: "2026-01-02T00:00:00Z" }] });
+    await first;
+    editor.render();
+    const secondRequest = await put.arrived();
+    // Pressing approve again on an approved segment resets it, as a toggle.
+    assert.equal(secondRequest.body.reviewState, "unreviewed");
+    assert.equal(secondRequest.body.segments[0].expectedUpdatedAt, "2026-01-02T00:00:00Z");
+    put.release({ updatedCount: 1, items: [{ requestedNativeSegmentId: 101, nativeSegmentId: 101, itemId: null, updatedAt: "2026-01-03T00:00:00Z" }] });
+    await second;
+    assert.equal(editor.segments[0].reviewState, "unreviewed");
+  });
+});
 
-    assert.equal(api.requests.length, 0);
-    assert.equal(editor.refs.pendingReviewStateRef.current.length, 0);
+test("save flow: a queued review still finds a draft whose id changed while it waited", { timeout: 5000 }, async () => {
+  const pendingDraft = segment({ id: -55, itemId: 55, nativeSegmentId: null, published: false, revision: 2 });
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", (request) => ({
+    updatedCount: 1,
+    items: [{ requestedItemId: 55, itemId: 55, nativeSegmentId: null, revision: 4, updatedAt: null }],
+  }));
+  const editor = createFakeEditor({ segments: [pendingDraft], compatibilityMode: true });
+  const releaseTiming = editor.saveQueue.acquire({ kind: "timing", lockId: -55 });
+  await withEditorGlobals(api, async () => {
+    const reviewing = actionsFor(editor).saveSelectedReviewState("rejected");
+    // The running save reloaded the draft with a new local id and revision.
+    editor.context().onDetailChange((current) => ({ ...current, segments: [{ ...pendingDraft, id: -56, revision: 3 }] }), 7);
+    editor.select([-56]);
+    releaseTiming();
+    await new Promise((resolve) => setImmediate(resolve));
+    editor.render();
+    await reviewing;
+    const [request] = api.sent("PUT", "/videos/7/segments/review-state");
+    assert.deepEqual(request.body.segments, [{ itemId: 55, expectedRevision: 3 }]);
   });
 });
 
@@ -199,7 +239,8 @@ test("save flow: an approval keeps editor changes that landed while it was in fl
     const reviewing = actionsFor(editor).saveSelectedReviewState("approved");
     const request = await put.arrived();
     assert.equal(request.body.reviewState, "approved");
-    assert.equal(editor.segments[0].reviewState, "approved");
+    assert.equal(editor.displayedSegments[0].reviewState, "approved");
+    assert.equal(editor.segments[0].reviewState, "unreviewed");
     const slot = { segmentId: 101, slotDefinitionId: "giver", performerId: 3 };
     editor.context().onDetailChange((current) => ({ ...current, performerSlots: [slot] }), 7);
     put.release({
@@ -244,11 +285,12 @@ test("save flow: a review from the same render as another save is queued, not dr
   await withEditorGlobals(api, async () => {
     const actions = actionsFor(editor);
     const saving = actions.mutateSegment(editor.segments[0], { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
-    await actions.saveSelectedReviewState("approved");
+    void actions.saveSelectedReviewState("approved");
 
     assert.equal(api.sent("PUT", "/videos/7/segments/review-state").length, 0);
-    assert.equal(editor.refs.pendingReviewStateRef.current.length, 1);
+    assert.deepEqual(editor.saveQueue.getSnapshot().queued.map((task) => task.kind), ["review"]);
     assert.equal(editor.state.saveMessage, "Approval queued…");
+    editor.saveQueue.cancel(() => true);
     put.fail(500, { error: "stop" });
     await saving;
   });
@@ -316,5 +358,74 @@ test("save flow: a failed timing edit leaves newer reloaded values in place", { 
 
     assert.equal(editor.displayedSegments[0].tagId, 5);
     assert.equal(editor.displayedSegments[0].startSec, 10);
+  });
+});
+
+test("save flow: a mixed review sends published and draft segments with the history revision", { timeout: 5000 }, async () => {
+  const published = segment();
+  const pendingDraft = segment({ id: -55, itemId: 55, nativeSegmentId: null, published: false, revision: 2, startSec: 30, endSec: 35 });
+  const nextHistory = { revision: 4, cursorSequence: 4, baselineSequence: 0, actions: [] };
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", {
+    updatedCount: 2,
+    approvedSetVersion: "v2",
+    history: nextHistory,
+    items: [
+      { requestedNativeSegmentId: 101, nativeSegmentId: 101, itemId: null, updatedAt: "2026-01-02T00:00:00Z" },
+      { requestedItemId: 55, itemId: 55, nativeSegmentId: null, revision: 3, updatedAt: null },
+    ],
+  });
+  const editor = createFakeEditor({ segments: [published, pendingDraft], compatibilityMode: true });
+  editor.refs.historyRef.current = { ...editor.refs.historyRef.current, revision: 3 };
+  editor.select([101, -55], 101);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).saveSelectedReviewState("approved");
+
+    const [request] = api.sent("PUT", "/videos/7/segments/review-state");
+    assert.equal(request.body.expectedHistoryRevision, 3);
+    assert.deepEqual(request.body.segments, [
+      { nativeSegmentId: 101, expectedUpdatedAt: "2026-01-01T00:00:00Z" },
+      { itemId: 55, expectedRevision: 2 },
+    ]);
+    assert.deepEqual(editor.refs.historyRef.current, nextHistory);
+    assert.equal(editor.state.detail.approvedSetVersion, "v2");
+    assert.deepEqual(editor.segments.map((item) => [item.id, item.reviewState, item.revision]), [[101, "approved", 1], [-55, "approved", 3]]);
+    assert.deepEqual(editor.state.selectedSegmentIds, [101, -55]);
+    assert.equal(editor.state.saveMessage, "2 selected segments approved.");
+  });
+});
+
+test("save flow: a rejection reloads the projection and keeps the selection on the reloaded segment", { timeout: 5000 }, async () => {
+  let serverSegments = [segment()];
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", () => {
+    serverSegments = [segment({ id: 900, nativeSegmentId: 900, reviewState: "rejected" })];
+    return { updatedCount: 1, items: [{ requestedNativeSegmentId: 101, nativeSegmentId: 900, itemId: null, updatedAt: null }] };
+  });
+  const editor = createFakeEditor({ server: () => ({ ...editor.state.detail, segments: serverSegments }) });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).saveSelectedReviewState("rejected");
+
+    assert.deepEqual(editor.segments.map((item) => [item.id, item.reviewState]), [[900, "rejected"]]);
+    assert.equal(editor.state.selectedSegmentId, 900);
+    assert.equal(editor.state.saveMessage, "1 selected segment rejected.");
+    editor.render();
+    assert.deepEqual(editor.state.pendingChanges, []);
+  });
+});
+
+test("save flow: a failed review discards its decision and restores the selection", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const put = api.hold("PUT", "/videos/7/segments/review-state");
+  const editor = createFakeEditor({ segments: [segment(), segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 })] });
+  await withEditorGlobals(api, async () => {
+    const reviewing = actionsFor(editor).saveSelectedReviewState("approved");
+    await put.arrived();
+    editor.select([102]);
+    put.fail(500, { error: "Review failed." });
+    await reviewing;
+
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.equal(editor.displayedSegments.find((item) => item.id === 101).reviewState, "unreviewed");
+    assert.equal(editor.state.selectedSegmentId, 101);
+    assert.equal(editor.state.saveMessage, "Review failed.");
   });
 });

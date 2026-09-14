@@ -181,7 +181,8 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
   };
   const serverDetail = server || (() => state.detail);
 
-  const saveQueue = createSaveQueue();
+  // Like the editor, queued saves wait for a render (`render()`) before reading context.
+  const saveQueue = createSaveQueue({ getContext: () => editor.context(), drainAfterSettle: false });
   const editor = {
     state,
     refs,
@@ -194,6 +195,7 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     // Models the layout effect that prunes confirmed changes after a render.
     render() {
       state.pendingChanges = pendingChangesReducer(state.pendingChanges, { type: "prune", detail: state.detail });
+      saveQueue.poke();
     },
     select(ids, activeId = ids[0] ?? null) {
       state.selectedSegmentIds = ids;
@@ -220,6 +222,7 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         selectedSegments: state.selectedSegmentIds.map((id) => byId.get(id)).filter(Boolean),
         savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
         acquireSaveLock: (kind, lockId) => saveQueue.acquire({ kind, lockId }),
+        enqueueSave: (spec) => saveQueue.enqueue(spec),
         dispatchPendingChanges(action) {
           state.pendingChanges = pendingChangesReducer(state.pendingChanges, action);
         },
