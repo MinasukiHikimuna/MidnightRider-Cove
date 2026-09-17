@@ -197,6 +197,13 @@ export function shouldHandleEditorShortcut(event, ownerDocument = document, revi
   return findEditorShortcut(event, reviewMode, overrides) != null;
 }
 
+/** Whether a pointer press on `target` lands outside an open popover and the control that opened it. */
+export function shouldDismissPopover(target, popover, anchor = null) {
+  if (!popover) return false;
+  if (target instanceof Element && (popover.contains(target) || anchor?.contains(target))) return false;
+  return true;
+}
+
 export function handleModalKey(event, { onCancel, onConfirm } = {}) {
   if (event.key === "Enter" && (event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229)) return false;
   const actionableTarget = typeof event.target?.closest === "function"

@@ -6,7 +6,7 @@ import { formatTime } from "../../shared/api.js";
 
 import { filterSegmentQuickSearch, groupAutoAssignCandidates, shouldShowQuickSearchGroups } from "../../discovery/model.js";
 
-import { SegmentStateBadge, handleModalKey, segmentGroupHeaderBackground, trapModalFocus, useDialogDefaultFocus } from "../../shared/presentation.js";
+import { SegmentStateBadge, handleModalKey, segmentGroupHeaderBackground, shouldDismissPopover, trapModalFocus, useDialogDefaultFocus } from "../../shared/presentation.js";
 
 import { PerformerAvatar, PerformerSublaneAvatars } from "../model/swimlanes.js";
 
@@ -15,6 +15,83 @@ import { LaneReviewCounts } from "../PerformerSlotEditors.js";
 import { provenanceSourceLabel } from "../SegmentDetails.js";
 
 import { groupIncorrectExamplesByTag } from "../model/feedback.js";
+
+const EDITOR_HISTORY_POPOVER_ID = "segment-studio-editor-history";
+
+// Deliberately not a dialog: Cove and the editor suspend keyboard shortcuts while a
+// `[role="dialog"]` exists, which must not happen while history is merely open.
+function EditorHistoryPopover({ history, historySaving, anchorRef, onRestore, onClose }) {
+  const popoverRef = useRef(null);
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (shouldDismissPopover(event.target, popoverRef.current, anchorRef?.current)) onClose();
+    };
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // A dialog stacked above the popover owns Escape.
+      if (document.querySelector("[role='dialog'], [aria-modal='true']")) return;
+      const active = document.activeElement;
+      const focusWasInside = active instanceof Element
+        && (popoverRef.current?.contains(active) || anchorRef?.current?.contains(active));
+      event.preventDefault();
+      onClose();
+      // Only pull focus back when the popover itself held it; leave other controls alone.
+      if (focusWasInside) anchorRef?.current?.focus({ preventScroll: true });
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [anchorRef, onClose]);
+  return h("div", {
+    ref: popoverRef,
+    id: EDITOR_HISTORY_POPOVER_ID,
+    role: "group",
+    "aria-label": "Editor history",
+    className: "absolute right-3 top-full z-30 mt-1 w-full max-w-md rounded-md border border-border bg-surface p-2 shadow-lg",
+  }, [
+    h("div", { key: "heading", className: "flex items-center justify-between gap-3 px-2 py-1" }, [
+      h("h2", { key: "title", className: "text-sm font-semibold text-foreground" }, "Editor history"),
+      h("button", {
+        key: "close",
+        type: "button",
+        onClick: onClose,
+        className: "rounded px-2 py-1 text-xs text-secondary hover:bg-muted/40",
+      }, "Close"),
+    ]),
+    h("div", { key: "actions", className: "max-h-72 overflow-y-auto" }, [
+      ...[...history.actions].reverse().map((action) => h("button", {
+        key: action.sequence,
+        type: "button",
+        disabled: historySaving,
+        onClick: () => onRestore(action.sequence),
+        "aria-current": history.cursorSequence === action.sequence ? "step" : undefined,
+        className: `flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${
+          action.sequence > history.cursorSequence ? "text-secondary" : "text-foreground"
+        } ${history.cursorSequence === action.sequence ? "bg-accent/15" : ""}`,
+      }, [
+        h("span", { key: "label", className: "min-w-0 flex-1 truncate" }, action.label),
+        h("time", {
+          key: "time",
+          dateTime: action.createdAt,
+          className: "shrink-0 text-[10px] text-secondary",
+        }, new Date(action.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
+      ])),
+      h("button", {
+        key: "baseline",
+        type: "button",
+        disabled: historySaving,
+        onClick: () => onRestore(history.baselineSequence),
+        "aria-current": history.cursorSequence === history.baselineSequence ? "step" : undefined,
+        className: `w-full rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${
+          history.cursorSequence === history.baselineSequence ? "bg-accent/15 text-foreground" : "text-secondary"
+        }`,
+      }, "Before recent changes"),
+    ]),
+  ]);
+}
 
 function KeyboardShortcutsDialog({ reviewMode, bindings, onClose }) {
   const visibleShortcuts = SEGMENT_STUDIO_SHORTCUTS
@@ -676,4 +753,4 @@ function MergeSelectionDialog({
   ]));
 }
 
-export { KeyboardShortcutsDialog, IncorrectExamplesDialog, SegmentQuickSearchDialog, ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, MergeSelectionDialog, RejectedSegmentsDeletionDialog, groupApprovedDraftsForPublishing };
+export { EDITOR_HISTORY_POPOVER_ID, EditorHistoryPopover, KeyboardShortcutsDialog, IncorrectExamplesDialog, SegmentQuickSearchDialog, ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, MergeSelectionDialog, RejectedSegmentsDeletionDialog, groupApprovedDraftsForPublishing };

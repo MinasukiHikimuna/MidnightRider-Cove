@@ -92,6 +92,38 @@ test("database-backed history computes backward and forward restoration steps", 
   assert.doesNotMatch(source, /UNDO_STORAGE_KEY|Undo recent/);
 });
 
+test("editor history opens as a popover instead of a dialog", () => {
+  const dialogs = sourceByModule["editor/dialogs/EditorDialogs.js"];
+  const popover = dialogs.slice(dialogs.indexOf("function EditorHistoryPopover"), dialogs.indexOf("function KeyboardShortcutsDialog"));
+  assert.ok(popover.length > 0, "EditorHistoryPopover must precede KeyboardShortcutsDialog");
+  // A dialog role suspends shortcuts in both Cove and the editor, which broke arrow navigation.
+  assert.doesNotMatch(popover, /role: "dialog"|"aria-modal":/);
+  assert.match(popover, /shouldDismissPopover\(event\.target, popoverRef\.current, anchorRef\?\.current\)/);
+  assert.match(popover, /addEventListener\("pointerdown"/);
+  assert.match(popover, /event\.key !== "Escape"[\s\S]*?onClose\(\)/);
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+  assert.match(view, /h\(EditorHistoryPopover, \{[\s\S]*?anchorRef: historyButtonRef/);
+  assert.doesNotMatch(view, /key: "history-panel"|"aria-haspopup": compatibilityMode \? "dialog"/);
+});
+
+test("popovers dismiss only on pointer presses outside the popover and its anchor", () => {
+  const popover = new TestElement("popover");
+  const anchor = new TestElement("button");
+  const inside = new TestElement("button");
+  popover.children.add(inside);
+  const anchorLabel = new TestElement("span");
+  anchor.children.add(anchorLabel);
+  const outside = new TestElement("div");
+  assert.equal(ui.shouldDismissPopover(outside, popover, anchor), true);
+  assert.equal(ui.shouldDismissPopover(inside, popover, anchor), false);
+  assert.equal(ui.shouldDismissPopover(popover, popover, anchor), false);
+  assert.equal(ui.shouldDismissPopover(anchor, popover, anchor), false);
+  assert.equal(ui.shouldDismissPopover(anchorLabel, popover, anchor), false);
+  assert.equal(ui.shouldDismissPopover(outside, popover, null), true);
+  assert.equal(ui.shouldDismissPopover(outside, null, anchor), false);
+  assert.equal(ui.shouldDismissPopover(null, popover, anchor), true);
+});
+
 test("selected discovery entities survive reload through Cove object-filter URL state", () => {
   const components = sourceByModule["discovery/components.js"];
   const page = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];

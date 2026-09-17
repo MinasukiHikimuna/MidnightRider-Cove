@@ -1,6 +1,6 @@
 import { formatTime } from "../shared/api.js";
 import { DerivedSegmentIcon, EditorToolbarIcon, provenanceSourceLabel } from "./SegmentDetails.js";
-import { h, useExtensionKeyboardBindings, useMemo, VideoPlayer } from "../shared/runtime.js";
+import { h, useExtensionKeyboardBindings, useMemo, useRef, VideoPlayer } from "../shared/runtime.js";
 import { segmentRailItemStyle, SegmentStateBadge } from "../shared/presentation.js";
 import { setBackLinkNavigation } from "../discovery/components.js";
 import { PerformerAvatar, PerformerSublaneAvatars, swimlaneDisplayLabel } from "./model/swimlanes.js";
@@ -8,7 +8,7 @@ import { buildSegmentQuickSearchEntries, performerOptionId, performInitialSegmen
 import { LaneReviewCounts } from "./PerformerSlotEditors.js";
 import { SegmentStudioBinAction, SegmentStudioSettingsAction } from "../shared/navigation.js";
 import { EditorFiltersDialog, FirstSegmentTagDialog } from "./dialogs/EditorFiltersDialog.js";
-import { ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, IncorrectExamplesDialog, KeyboardShortcutsDialog, MergeSelectionDialog, RejectedSegmentsDeletionDialog, SegmentQuickSearchDialog } from "./dialogs/EditorDialogs.js";
+import { ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, EDITOR_HISTORY_POPOVER_ID, EditorHistoryPopover, IncorrectExamplesDialog, KeyboardShortcutsDialog, MergeSelectionDialog, RejectedSegmentsDeletionDialog, SegmentQuickSearchDialog } from "./dialogs/EditorDialogs.js";
 import { DerivedSegmentMaterializationDialog } from "./dialogs/MaterializationDialog.js";
 import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
 import { DEFAULT_EDITOR_LAYOUT, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
@@ -33,6 +33,8 @@ function SegmentEditorView(props) {
   );
   const shortcutBindings = useExtensionKeyboardBindings(SEGMENT_STUDIO_EXTENSION_ID);
   const approvedDraftCount = approvedDrafts.length;
+  const historyButtonRef = useRef(null);
+  const closeHistory = useMemo(() => () => setHistoryOpen(false), [setHistoryOpen]);
   const materializeChangeCount = materializePreview
     ? materializePreview.createCount + materializePreview.linkCount
     : null;
@@ -100,7 +102,7 @@ function SegmentEditorView(props) {
       "aria-label": "Segment Studio segment editor",
       className: `${splitLayout ? "min-h-0 flex-1" : ""} flex flex-col gap-2 outline-none`,
     }, [
-      h("header", { key: "header", className: "flex shrink-0 flex-col items-stretch gap-2 rounded-md border border-border bg-surface px-3 py-2" }, [
+      h("header", { key: "header", className: "relative flex shrink-0 flex-col items-stretch gap-2 rounded-md border border-border bg-surface px-3 py-2" }, [
         h("div", { key: "title-row", className: "flex min-w-0 items-center gap-3" }, [
           h("div", { key: "identity", className: "flex min-w-0 flex-1 items-center gap-1.5" }, [
             h("a", {
@@ -305,6 +307,7 @@ function SegmentEditorView(props) {
             }, [h(EditorToolbarIcon, { key: "icon", name: "keyboard" }), h("span", { key: "label" }, "Shortcuts")]),
             h("button", {
               key: "history",
+              ref: historyButtonRef,
               type: "button",
               disabled: (compatibilityMode
                 ? history.actions.length === 0
@@ -316,7 +319,7 @@ function SegmentEditorView(props) {
                 : () => restoreHistoryTarget(
                     currentUndoAction.sequence - 1,
                   ),
-              "aria-haspopup": compatibilityMode ? "dialog" : undefined,
+              "aria-controls": compatibilityMode ? EDITOR_HISTORY_POPOVER_ID : undefined,
               "aria-expanded": compatibilityMode ? historyOpen : undefined,
               className: headerUtilityClass,
             }, [
@@ -341,52 +344,15 @@ function SegmentEditorView(props) {
             ]),
           ]),
         ]),
+        compatibilityMode && historyOpen ? h(EditorHistoryPopover, {
+          key: "history-popover",
+          history,
+          historySaving,
+          anchorRef: historyButtonRef,
+          onRestore: restoreHistoryTarget,
+          onClose: closeHistory,
+        }) : null,
       ]),
-      compatibilityMode && historyOpen ? h("section", {
-        key: "history-panel",
-        role: "dialog",
-        "aria-label": "Editor history",
-        className: "z-20 w-full max-w-md self-end rounded-md border border-border bg-surface p-2 shadow-lg",
-      }, [
-        h("div", { key: "heading", className: "flex items-center justify-between gap-3 px-2 py-1" }, [
-          h("h2", { key: "title", className: "text-sm font-semibold text-foreground" }, "Editor history"),
-          h("button", {
-            key: "close",
-            type: "button",
-            onClick: () => setHistoryOpen(false),
-            className: "rounded px-2 py-1 text-xs text-secondary hover:bg-muted/40",
-          }, "Close"),
-        ]),
-        h("div", { key: "actions", className: "max-h-72 overflow-y-auto" }, [
-          ...[...history.actions].reverse().map((action) => h("button", {
-            key: action.sequence,
-            type: "button",
-            disabled: historySaving,
-            onClick: () => restoreHistoryTarget(action.sequence),
-            "aria-current": history.cursorSequence === action.sequence ? "step" : undefined,
-            className: `flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${
-              action.sequence > history.cursorSequence ? "text-secondary" : "text-foreground"
-            } ${history.cursorSequence === action.sequence ? "bg-accent/15" : ""}`,
-          }, [
-            h("span", { key: "label", className: "min-w-0 flex-1 truncate" }, action.label),
-            h("time", {
-              key: "time",
-              dateTime: action.createdAt,
-              className: "shrink-0 text-[10px] text-secondary",
-            }, new Date(action.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
-          ])),
-          h("button", {
-            key: "baseline",
-            type: "button",
-            disabled: historySaving,
-            onClick: () => restoreHistoryTarget(history.baselineSequence),
-            "aria-current": history.cursorSequence === history.baselineSequence ? "step" : undefined,
-            className: `w-full rounded px-2 py-2 text-left text-sm hover:bg-muted/40 disabled:opacity-50 ${
-              history.cursorSequence === history.baselineSequence ? "bg-accent/15 text-foreground" : "text-secondary"
-            }`,
-          }, "Before recent changes"),
-        ]),
-      ]) : null,
       filtersOpen ? h(EditorFiltersDialog, {
         key: "editor-filters",
         filters: editorFilters,
