@@ -225,6 +225,57 @@ test("save flow: a native create selects the saved segment after the reload", { 
   });
 });
 
+function duplicateServer(editor, duplicated) {
+  let segments = null;
+  return {
+    serve: () => ({ ...editor.state.detail, segments: segments || editor.state.detail.segments }),
+    duplicate: () => { segments = [...editor.state.detail.segments, duplicated]; },
+  };
+}
+
+test("save flow: an in-place duplicate opens the tag editor on the copy like a new segment", { timeout: 5000 }, async () => {
+  const existing = segment();
+  const duplicated = segment({ id: 206, nativeSegmentId: 206, updatedAt: "2026-01-05T00:00:00Z" });
+  let server;
+  const api = createFakeApi()
+    .on("POST", "/videos/7/segments/101/duplicate", () => {
+      server.duplicate();
+      return { id: 206 };
+    })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor({ segments: [existing], server: () => server.serve() });
+  server = duplicateServer(editor, duplicated);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).duplicateSegment(false);
+
+    assert.equal(editor.state.selectedSegmentId, 206);
+    // The editor opens the tag field when the selection lands on the id held here.
+    assert.equal(editor.refs.pendingTagEditSegmentIdRef.current, 206);
+    assert.equal(editor.state.saveMessage, "Duplicate created in place.");
+  });
+});
+
+test("save flow: a duplicate at the playhead keeps the tag editor closed", { timeout: 5000 }, async () => {
+  const existing = segment();
+  const duplicated = segment({ id: 206, nativeSegmentId: 206, startSec: 0, updatedAt: "2026-01-05T00:00:00Z" });
+  let server;
+  const api = createFakeApi()
+    .on("POST", "/videos/7/segments/101/duplicate", () => {
+      server.duplicate();
+      return { id: 206 };
+    })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor({ segments: [existing], server: () => server.serve() });
+  server = duplicateServer(editor, duplicated);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).duplicateSegment(true);
+
+    assert.equal(editor.state.selectedSegmentId, 206);
+    assert.equal(editor.refs.pendingTagEditSegmentIdRef.current, null);
+    assert.equal(editor.state.saveMessage, "Duplicate created at the playhead.");
+  });
+});
+
 test("save flow: a failed create removes the temporary segment and restores the selection", { timeout: 5000 }, async () => {
   const api = createFakeApi().on("POST", "/videos/7/segments", reply(422, { error: "Tag is not allowed." }));
   const editor = createFakeEditor();

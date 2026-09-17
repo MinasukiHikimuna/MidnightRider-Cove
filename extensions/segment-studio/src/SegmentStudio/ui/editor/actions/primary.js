@@ -529,6 +529,8 @@ function createPrimarySegmentActions(context) {
           );
           setEditorFilters(visibility.filters);
           setHideDerivedSegments(visibility.hideDerivedSegments);
+          // An in-place copy usually wants a different tag, so open the tag field on it like a new segment.
+          if (!atPlayhead) pendingTagEditSegmentIdRef.current = duplicatedSegment.id;
           setSelectedSegmentIds([duplicatedSegment.id]);
           setSelectedSegmentId(duplicatedSegment.id);
           selectionAnchorIdRef.current = duplicatedSegment.id;
