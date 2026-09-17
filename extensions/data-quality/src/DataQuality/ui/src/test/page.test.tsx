@@ -465,6 +465,68 @@ describe("Data Quality extension page", () => {
       expect(screen.getByRole("article", { name: "Tag 12" })).toHaveFocus(),
     );
   });
+  it("keeps arrow keys navigating the grid after focus leaves the cards", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Review tags",
+      description: "List tags",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "list" as const,
+        searchMode: "text",
+      },
+      actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Tag 11" });
+    await waitFor(() => expect(first).toHaveFocus());
+
+    // Clicking blank page space leaves focus on the body.
+    first.blur();
+    expect(document.body).toHaveFocus();
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(screen.getByRole("article", { name: "Tag 12" })).toHaveFocus(),
+    );
+
+    // Buttons do not use arrow keys, so the grid keeps them.
+    const editReview = screen.getByRole("button", { name: "Edit review" });
+    editReview.focus();
+    fireEvent.keyDown(editReview, { key: "ArrowUp" });
+    await waitFor(() =>
+      expect(screen.getByRole("article", { name: "Tag 11" })).toHaveFocus(),
+    );
+
+    // Text inputs own their arrow keys.
+    const search = screen.getByRole("textbox", { name: "Search list" });
+    search.focus();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    await act(async () => {});
+    expect(search).toHaveFocus();
+    expect(first).toHaveAttribute("aria-current", "true");
+
+    // Host chrome outside the page keeps its arrow keys.
+    const outside = document.createElement("button");
+    outside.textContent = "Outside";
+    document.body.appendChild(outside);
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "ArrowDown" });
+    await act(async () => {});
+    expect(outside).toHaveFocus();
+    expect(first).toHaveAttribute("aria-current", "true");
+    outside.remove();
+  });
   it("locks the entity type when editing or duplicating a saved review", async () => {
     const tagReview = {
       id: "tags",

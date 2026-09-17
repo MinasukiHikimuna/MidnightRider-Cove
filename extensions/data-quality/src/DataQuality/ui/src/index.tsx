@@ -70,6 +70,8 @@ import {
   getReviewActionTargets,
   hasAssessmentSteps,
   isReviewShortcutTarget,
+  isReviewGridArrowTarget,
+  reviewGridArrowDelta,
   mergeReviews,
   parseReviews,
   reviewEntityType,
@@ -403,6 +405,7 @@ export function DataQualityPage({
   >({});
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const sidebarResizeRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1139,6 +1142,8 @@ export function DataQualityPage({
     return Math.max(1, template.split(" ").filter(Boolean).length);
   }
 
+  // Arrow keys are handled by the document listener below so they keep
+  // navigating the grid after focus drifts off the cards.
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (usesWorkspace) return;
     if (
@@ -1193,22 +1198,48 @@ export function DataQualityPage({
       else setPreviewOpen(true);
       return;
     }
-    const columns = gridColumnCount();
-    const delta =
-      event.key === "ArrowLeft"
-        ? -1
-        : event.key === "ArrowRight"
-          ? 1
-          : event.key === "ArrowUp"
-            ? -columns
-            : event.key === "ArrowDown"
-              ? columns
-              : 0;
-    if (delta) {
-      consumeShortcut(event);
-      moveFocus(delta);
-    }
   }
+
+  const gridArrowNavigationRef = useRef<(event: KeyboardEvent) => void>(
+    () => {},
+  );
+  gridArrowNavigationRef.current = (event) => {
+    if (usesWorkspace || managerOpen || previewOpen) return;
+    if (pending || queueLoading || !itemIds.length) return;
+    if (
+      event.defaultPrevented ||
+      event.repeat ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey
+    )
+      return;
+    // Only keys pressed inside this page, or with nothing focused at all,
+    // belong to the grid; host chrome outside the page keeps its own keys.
+    const target = event.target;
+    const withinPage =
+      target instanceof Node && pageRef.current?.contains(target) === true;
+    const unfocused =
+      target === document.body || target === document.documentElement;
+    if (!withinPage && !unfocused) return;
+    if (!event.key.startsWith("Arrow")) return;
+    if (!isReviewGridArrowTarget(target)) return;
+    const delta = reviewGridArrowDelta(event.key, gridColumnCount());
+    if (!delta) return;
+    event.preventDefault();
+    // Keys from inside the page were fully consumed before this refactor;
+    // keep that so host document listeners do not double-handle them.
+    if (withinPage) event.stopImmediatePropagation();
+    else event.stopPropagation();
+    moveFocus(delta);
+  };
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) =>
+      gridArrowNavigationRef.current(event);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, []);
 
   function chooseReview(id: string) {
     setLayoutOverride(null);
@@ -1286,7 +1317,7 @@ export function DataQualityPage({
     );
 
   return (
-    <div className="data-quality-page" onKeyDown={handleKeyDown}>
+    <div ref={pageRef} className="data-quality-page" onKeyDown={handleKeyDown}>
       <header className="data-quality-header">
         {review && (
           <button

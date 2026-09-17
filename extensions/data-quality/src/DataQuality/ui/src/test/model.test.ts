@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   getNextReviewFocus,
   getReviewActionTargets,
+  isReviewGridArrowTarget,
+  reviewGridArrowDelta,
   parseReviews,
   reviewEntityType,
   reviewValidation,
@@ -190,4 +192,58 @@ it("round-trips explicit video layouts and card tag parents and rejects unknown 
   const rule = { id: "layout", name: "Layout", description: "", view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text", reviewMode: "multiple" }, actions: [], presentation: { annotations: ["tags"], annotationParents: [100] } };
   expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
   expect(() => parseReviews(JSON.stringify([{ ...rule, view: { ...rule.view, reviewMode: "unknown" } }]))).toThrow(/could not be read/i);
+});
+
+describe("review grid arrow keys", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function element(html: string) {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    return host.querySelector("[data-target]") as HTMLElement;
+  }
+
+  it("maps arrow keys onto grid offsets", () => {
+    expect(reviewGridArrowDelta("ArrowLeft", 4)).toBe(-1);
+    expect(reviewGridArrowDelta("ArrowRight", 4)).toBe(1);
+    expect(reviewGridArrowDelta("ArrowUp", 4)).toBe(-4);
+    expect(reviewGridArrowDelta("ArrowDown", 4)).toBe(4);
+    expect(reviewGridArrowDelta("Enter", 4)).toBe(0);
+  });
+
+  it("yields arrow keys from the body and plain controls to the grid", () => {
+    expect(isReviewGridArrowTarget(document.body)).toBe(true);
+    expect(isReviewGridArrowTarget(element("<button data-target>Grid</button>"))).toBe(true);
+    expect(isReviewGridArrowTarget(element('<a href="/x" data-target>Link</a>'))).toBe(true);
+    expect(isReviewGridArrowTarget(element("<h1 data-target>Title</h1>"))).toBe(true);
+    expect(isReviewGridArrowTarget(null)).toBe(false);
+  });
+
+  it("leaves arrow keys to controls that own them", () => {
+    for (const html of [
+      "<input data-target />",
+      '<input type="range" data-target />',
+      "<textarea data-target></textarea>",
+      "<select data-target></select>",
+      "<div contenteditable data-target></div>",
+      '<div contenteditable="true" data-target></div>',
+      '<div role="combobox" data-target></div>',
+      '<div role="listbox"><div role="option" data-target></div></div>',
+      '<div role="menu"><button role="menuitem" data-target></button></div>',
+      '<div role="radiogroup"><button role="radio" data-target></button></div>',
+      '<div role="slider" data-target></div>',
+      '<div role="tablist"><button role="tab" data-target></button></div>',
+      '<div role="dialog"><button data-target></button></div>',
+      '<div aria-modal="true"><button data-target></button></div>',
+      "<div data-review-player-controls><button data-target></button></div>",
+    ]) {
+      expect(isReviewGridArrowTarget(element(html)), html).toBe(false);
+    }
+    expect(
+      isReviewGridArrowTarget(element('<div contenteditable="false" data-target></div>')),
+    ).toBe(true);
+  });
 });

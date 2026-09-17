@@ -427,6 +427,11 @@
   height: auto;
   flex: 1 1 auto;
 }
+/* The focused card draws the accent ring below; the browser default focus
+   ring on the article would otherwise stack a second ring around it. */
+.data-quality-page .dq-review-card:focus-visible {
+  outline: none;
+}
 .data-quality-page .dq-review-card.focused > .video-card {
   outline-width: 2px;
   outline-style: solid;

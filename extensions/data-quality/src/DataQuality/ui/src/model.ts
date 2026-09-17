@@ -418,9 +418,38 @@ export function toggleShownReviewSelection(
   return next;
 }
 
+// Gates letter, Space, Enter and Escape shortcuts. Arrow keys use the
+// narrower isReviewGridArrowTarget so plain buttons and links yield them.
 export function isReviewShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return !target.closest(
     'input, textarea, select, button, a, video, [contenteditable="true"], [role="combobox"], [data-review-player-controls]',
   );
+}
+
+/**
+ * Arrow keys keep navigating the review grid wherever focus has drifted,
+ * including the page body and plain controls such as buttons and links.
+ * Only elements with their own arrow-key semantics keep them.
+ */
+export function isReviewGridArrowTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return !target.closest(
+    'input, textarea, select, video, [contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="option"], [role="menu"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="radiogroup"], [role="slider"], [role="tablist"], [role="tree"], [role="dialog"], [role="alertdialog"], [aria-modal="true"], [data-review-player-controls]',
+  );
+}
+
+export function reviewGridArrowDelta(key: string, columns: number): number {
+  switch (key) {
+    case "ArrowLeft":
+      return -1;
+    case "ArrowRight":
+      return 1;
+    case "ArrowUp":
+      return -columns;
+    case "ArrowDown":
+      return columns;
+    default:
+      return 0;
+  }
 }
