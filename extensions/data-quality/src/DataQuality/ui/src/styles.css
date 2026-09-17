@@ -1033,7 +1033,25 @@
 /* Saving locks navigation without fading the queue as the next video appears. */
 .dq-review-queue-items button:disabled { opacity: 1; }
 .dq-review-workspace [aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-card); font-weight: 600; }
-.dq-review-workspace :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+/* Host components (list toolbar, filter dialog, criteria chips, entity
+   selectors) draw their own focus rings and must not be matched here; a
+   blanket :focus-visible rule doubled them. Only the extension's own controls
+   get an explicit accent ring, in the workspace and in the manager editor. */
+.dq-button:focus-visible,
+.dq-queue-fields label > select:focus-visible:not(.filter-dialog *),
+.dq-queue-fields label > input:focus-visible:not(.filter-dialog *),
+.dq-editor-section > label > :is(input, select, textarea):focus-visible,
+.dq-field-grid > label > :is(input, select):focus-visible,
+.dq-action-heading > button:focus-visible,
+.dq-action-step > select:focus-visible,
+.dq-action-step > button:focus-visible,
+.dq-rule-editor > fieldset > label > select:focus-visible,
+.dq-scope-controls > label > select:focus-visible,
+.dq-checkbox > input:focus-visible,
+.dq-review-feedback button:focus-visible,
+.dq-review-video-title > a:focus-visible,
+.dq-tag-choices > label > input:focus-visible,
+.dq-tag-choices > button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .dq-tag-editor { display: grid; gap: .6rem; padding: .5rem; border: 1px solid var(--color-border); }
 .dq-review-feedback:empty { display: none; }
 @media (max-width: 1200px) { .dq-review-inspector { grid-template-columns: minmax(0, 1fr); } }

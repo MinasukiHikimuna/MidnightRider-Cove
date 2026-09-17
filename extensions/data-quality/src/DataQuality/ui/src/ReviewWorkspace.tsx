@@ -1353,6 +1353,7 @@ export function ReviewWorkspace({
                       !saved.actions.length &&
                       saved.occurrence.tagIds.length > 0 && (
                         <fieldset
+                          className="dq-tag-choices"
                           disabled={
                             !canWrite || pending || !tags || !!ruleDraft
                           }

@@ -2114,6 +2114,7 @@ function fo({
                 e.entityType === "performerOccurrence" && !e.actions.length && e.occurrence.tagIds.length > 0 && /* @__PURE__ */ u(
                   "fieldset",
                   {
+                    className: "dq-tag-choices",
                     disabled: !t || se || !pe || !!m,
                     children: [
                       /* @__PURE__ */ n("legend", { children: "Tag choices" }),
