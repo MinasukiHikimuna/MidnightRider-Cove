@@ -169,6 +169,15 @@ export function QueueEditor({
                 <option value="multiple">Multiple videos</option>
               </select>
             </label>}
+            {reviewEntityType(draft) !== "performerOccurrence" && <label className="dq-checkbox">
+              <input
+                type="checkbox"
+                checked={draft.view.selectAllOnLoad ?? false}
+                onChange={(event) => onChange({ ...draft, view: { ...draft.view, selectAllOnLoad: event.target.checked ? true : undefined } })}
+              />
+              Select all {entityType === "tag" ? "tags" : "videos"} on page load
+              {entityType === "video" && <small> (multiple-videos layout)</small>}
+            </label>}
             <label>
               Preferred view
               <select

@@ -7,6 +7,7 @@ export interface ReviewView {
   searchMode: string;
   startFrom?: "beginning" | "end";
   reviewMode?: "single" | "multiple";
+  selectAllOnLoad?: boolean;
 }
 
 export interface ReviewStep {
@@ -267,6 +268,8 @@ export function parseReviews(raw: string | null): Review[] {
           ["beginning", "end"].includes(review.view.startFrom)) &&
         (review.view.reviewMode === undefined ||
           ["single", "multiple"].includes(review.view.reviewMode)) &&
+        (review.view.selectAllOnLoad === undefined ||
+          typeof review.view.selectAllOnLoad === "boolean") &&
         review.view.filter &&
         typeof review.view.filter === "object" &&
         !Array.isArray(review.view.filter) &&
@@ -418,12 +421,38 @@ export function toggleShownReviewSelection(
   return next;
 }
 
-// Gates letter, Space, Enter and Escape shortcuts. Arrow keys use the
-// narrower isReviewGridArrowTarget so plain buttons and links yield them.
+// Gates Space and Enter, which plain buttons and links need for themselves.
+// Letters and Escape use isReviewLetterShortcutTarget, arrows the narrower
+// isReviewGridArrowTarget.
 export function isReviewShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return !target.closest(
     'input, textarea, select, button, a, video, [contenteditable="true"], [role="combobox"], [data-review-player-controls]',
+  );
+}
+
+/**
+ * Action letters, A and Escape keep working after focus drifts to the page
+ * body or to the extension's own controls: cards, the actions sidebar, the
+ * pagination rows and the review preview. Host-owned widgets inside the page
+ * (the list toolbar, filter chips, dialogs) and text entry keep their keys,
+ * so an allowlist of extension surfaces is used rather than a guess at host
+ * markup.
+ */
+export function isReviewLetterShortcutTarget(
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target === document.body || target === document.documentElement)
+    return true;
+  if (
+    !target.closest(
+      ".dq-review-card, .dq-grid, .dq-tag-list, .dq-actions, .dq-pagination-row, .dq-preview",
+    )
+  )
+    return false;
+  return !target.closest(
+    'input, textarea, select, video, [contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="menu"], [role="dialog"]:not(.dq-preview), [aria-modal="true"]:not(.dq-preview), [data-review-player-controls]',
   );
 }
 

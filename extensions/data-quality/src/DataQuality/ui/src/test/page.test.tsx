@@ -1158,3 +1158,138 @@ it("resets an invalid URL to the last page when the saved review starts at the e
   expect(api.findVideos.mock.calls.at(-1)?.[1].page).toBe(2);
   expect(new URLSearchParams(window.location.search).get("page")).toBe("2");
 });
+
+it("selects and clears every shown video from the actions sidebar", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(screen.queryByRole("article", { name: "Video 1, selected" })).not.toBeInTheDocument();
+  const toggle = await screen.findByRole("button", { name: /Select all on page/ });
+  await waitFor(() => expect(toggle).toBeEnabled());
+  fireEvent.click(toggle);
+  expect(screen.getByRole("article", { name: "Video 1, selected" })).toBeInTheDocument();
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  expect(screen.getByText("2 selected videos")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Clear selection/ }));
+  expect(screen.queryByRole("article", { name: "Video 1, selected" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Select all on page/ })).toBeInTheDocument();
+});
+
+it("selects every video on each page load when the review asks for it", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
+  api.findVideos.mockImplementation(async (_review, filter) =>
+    Number(filter.page) === 2
+      ? { items: [video(3), video(4)], totalCount: 4 }
+      : { items: [video(1), video(2)], totalCount: 4 },
+  );
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1, selected" });
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  expect(screen.getByText("2 selected videos")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Clear selection/ })).toBeInTheDocument();
+  const [nextPage] = await screen.findAllByRole("button", { name: "Next page" });
+  await waitFor(() => expect(nextPage).toBeEnabled());
+  fireEvent.click(nextPage);
+  await screen.findByRole("article", { name: "Video 3, selected" });
+  expect(screen.getByRole("article", { name: "Video 4, selected" })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 3, selected" }), { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1]).toEqual([3, 4]);
+});
+
+it("saves the select-all-on-load preference from the rule editor", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Edit review" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "Appearance" }));
+  const option = screen.getByRole("checkbox", { name: /Select all videos on page load/ });
+  expect(option).not.toBeChecked();
+  fireEvent.click(option);
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
+  expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.selectAllOnLoad).toBe(true);
+});
+
+it("keeps a hand-trimmed selection trimmed after an action, but reselects after applying to the whole page", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
+  let remaining = [video(1), video(2), video(3), video(4)];
+  api.findVideos.mockImplementation(async () => ({ items: remaining.slice(0, 2), totalCount: remaining.length }));
+  api.runReviewAction.mockImplementation(async (_action, ids: number[]) => {
+    remaining = remaining.filter((item) => !ids.includes(item.id));
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1, selected" });
+  // Trim the page to one card, then apply: the refreshed page must not re-expand.
+  fireEvent.click(screen.getByRole("button", { name: "Deselect Video 2" }));
+  expect(screen.getByRole("article", { name: "Video 2" })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 1, selected" }), { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1]).toEqual([1]);
+  await screen.findByRole("article", { name: "Video 3" });
+  expect(screen.getByRole("article", { name: "Video 2" })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: "Video 2, selected" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: "Video 3, selected" })).not.toBeInTheDocument();
+  // Apply to the whole page: the next page arrives selected like a fresh load.
+  await waitFor(() => expect(screen.getByRole("button", { name: "Select all on page" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Select all on page" }));
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
+  expect(api.runReviewAction.mock.calls[1][1]).toEqual([2, 3]);
+  await screen.findByRole("article", { name: "Video 4, selected" });
+});
+
+it("applies action letters from the page body and from sidebar buttons", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Video 1, selected" });
+  await waitFor(() => expect(first).toHaveFocus());
+  // Clicking blank page space leaves focus on the body.
+  first.blur();
+  expect(document.body).toHaveFocus();
+  fireEvent.keyDown(document.body, { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1]).toEqual([1, 2]);
+  await screen.findByRole("article", { name: "Video 1, selected" });
+  // The sidebar toggle keeps focus after a click; letters still reach the review.
+  const toggle = screen.getByRole("button", { name: "Clear selection" });
+  toggle.focus();
+  fireEvent.keyDown(toggle, { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
+  // Host chrome outside the page keeps its keys.
+  const outside = document.createElement("button");
+  document.body.appendChild(outside);
+  outside.focus();
+  fireEvent.keyDown(outside, { key: "q" });
+  await act(async () => {});
+  expect(api.runReviewAction).toHaveBeenCalledTimes(2);
+  outside.remove();
+  // Text entry inside the page keeps letters for typing.
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  search.focus();
+  fireEvent.keyDown(search, { key: "q" });
+  await act(async () => {});
+  expect(api.runReviewAction).toHaveBeenCalledTimes(2);
+});
+
+it("explains why an action shortcut cannot run instead of ignoring it", async () => {
+  api.getConfirmedAbsentTagsFieldStatus.mockResolvedValue({ kind: "missing", definition: {}, message: "Not set up" });
+  const assessing = { ...review, view: { ...review.view, reviewMode: "multiple" }, actions: [{ id: "absent", label: "Mark absent", steps: [{ mode: "MARK_ABSENT" as const, tagIds: [3] }] }] };
+  api.loadReviews.mockResolvedValueOnce({ reviews: [assessing], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "q" });
+  await screen.findByText("Set up tag assessments before applying Mark absent.");
+  expect(api.runReviewAction).not.toHaveBeenCalled();
+});
+
+it("selects every tag on load for tag reviews that ask for it", async () => {
+  const tagReview = { id: "tags", entityType: "tag" as const, name: "Review tags", description: "", view: { filter: { page: 1, perPage: 40 }, objectFilter: {}, displayMode: "grid" as const, searchMode: "text", selectAllOnLoad: true }, actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }] };
+  window.history.replaceState(null, "", "/data-quality?review=tags");
+  api.loadReviews.mockResolvedValueOnce({ reviews: [tagReview], storageKey: "reviews", canWrite: true, canWriteTags: true, canReadTagGroups: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Tag 11, selected" });
+  expect(screen.getByRole("article", { name: "Tag 12, selected" })).toBeInTheDocument();
+  expect(screen.getByText("2 selected tags")).toBeInTheDocument();
+});

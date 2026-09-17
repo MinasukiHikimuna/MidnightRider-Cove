@@ -70,6 +70,7 @@ import {
   getReviewActionTargets,
   hasAssessmentSteps,
   isReviewShortcutTarget,
+  isReviewLetterShortcutTarget,
   isReviewGridArrowTarget,
   reviewGridArrowDelta,
   mergeReviews,
@@ -180,10 +181,13 @@ function videoTitle(video: Video) {
   return video.title || video.files[0]?.basename || `Video ${video.id}`;
 }
 
-function consumeShortcut(event: ReactKeyboardEvent<HTMLElement>) {
+function consumeShortcut(
+  event: ReactKeyboardEvent<HTMLElement> | KeyboardEvent,
+) {
   event.preventDefault();
   event.stopPropagation();
-  event.nativeEvent.stopImmediatePropagation();
+  if ("nativeEvent" in event) event.nativeEvent.stopImmediatePropagation();
+  else event.stopImmediatePropagation();
 }
 
 const WORKSPACE_LAYOUT_STORAGE_KEY = "data-quality.workspace-layout.v1";
@@ -378,6 +382,7 @@ export function DataQualityPage({
   const selectedRef = useRef(selectedIds);
   selectedRef.current = selectedIds;
   const selectionVersions = useRef(new Map<number, number>());
+  const selectAllOnLoad = review?.view.selectAllOnLoad === true;
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const focusedRef = useRef(focusedId);
   focusedRef.current = focusedId;
@@ -640,6 +645,7 @@ export function DataQualityPage({
       targetReview: Review,
       targetFilter: Record<string, unknown>,
       startFromEnd = false,
+      selectAll = false,
     ) => {
       const generation = ++loadGeneration.current;
       queueAbort.current?.abort();
@@ -679,6 +685,13 @@ export function DataQualityPage({
         }
         if (generation === loadGeneration.current) {
           setQueue(result);
+          // Only genuine page loads select everything; callers decide, so a
+          // post-action refresh never re-expands a selection the reviewer
+          // trimmed by hand.
+          if (selectAll)
+            updateSelection(
+              () => new Set(result.items.map((item) => item.id)),
+            );
           setFilter(targetFilter);
           setLoadedFilter(targetFilter);
         }
@@ -779,6 +792,7 @@ export function DataQualityPage({
           target,
           nextFilter,
           urlQuery ? urlQuery.startAtEnd : !resume && target.view.startFrom !== "beginning",
+          target.view.selectAllOnLoad === true,
         );
         if (!current) return;
         const nextFocus = resumeFocus(
@@ -888,6 +902,8 @@ export function DataQualityPage({
   const previewVideo =
     focusedVideo ?? (previewOpen ? previewVideoRef.current : null);
   const targets = getReviewActionTargets(selectedIds, focusedId);
+  const allShownSelected =
+    itemIds.length > 0 && itemIds.every((id) => selectedIds.has(id));
   const targetLabel =
     selectedIds.size > 0
       ? `${selectedIds.size} selected ${entityType}${selectedIds.size === 1 ? "" : "s"}`
@@ -970,18 +986,23 @@ export function DataQualityPage({
         selectedRef.current,
         focusedRef.current,
       );
-      if (
-        !review ||
-        pendingRef.current ||
-        queueLoading ||
-        queueError ||
-        (changesData && !canWriteCurrent) ||
-        unavailableTagGroupAccess ||
-        unavailableTagGroup ||
-        (hasAssessmentSteps(action) && absenceFieldStatus?.kind !== "ready") ||
-        !actionTargets.length
-      )
+      if (!review || pendingRef.current || queueLoading || queueError) return;
+      // A shortcut that silently does nothing is indistinguishable from a
+      // broken key, so name the reason the action cannot run.
+      const blocked =
+        changesData && !canWriteCurrent
+          ? `${entityType === "tag" ? "Tag" : "Video"} write permission is required to apply ${action.label}.`
+          : unavailableTagGroupAccess || unavailableTagGroup
+            ? `${action.label} needs a tag group that is unavailable.`
+            : hasAssessmentSteps(action) && absenceFieldStatus?.kind !== "ready"
+              ? `Set up tag assessments before applying ${action.label}.`
+              : !actionTargets.length
+                ? `Select or focus a ${entityType} before applying ${action.label}.`
+                : "";
+      if (blocked) {
+        setActionError(blocked);
         return;
+      }
       const generation = ++actionGeneration.current;
       const reviewId = review.id;
       const previousIds = [...itemIds];
@@ -1062,7 +1083,15 @@ export function DataQualityPage({
       try {
         await settleReviewWrites(action);
         if (!isCurrent()) return;
-        const refreshed = await fetchQueue(review, filter);
+        // Applying to the whole page is effectively a page turn, so the next
+        // page arrives selected like a fresh load; a hand-trimmed selection
+        // stays trimmed.
+        const targetSet = new Set(actionTargets);
+        const reselect =
+          selectAllOnLoad &&
+          previousIds.length > 0 &&
+          previousIds.every((id) => targetSet.has(id));
+        const refreshed = await fetchQueue(review, filter, false, reselect);
         if (!isCurrent()) return;
         let nextIds = refreshed.items.map((item) => item.id);
         if (
@@ -1073,7 +1102,12 @@ export function DataQualityPage({
           const previousPage = Math.max(1, Number(filter.page) - 1);
           const previousFilter = { ...filter, page: previousPage };
           setFilter(previousFilter);
-          const previousResult = await fetchQueue(review, previousFilter);
+          const previousResult = await fetchQueue(
+            review,
+            previousFilter,
+            false,
+            reselect,
+          );
           nextIds = previousResult.items.map((item) => item.id);
           setSelectedIds(
             (current) =>
@@ -1142,9 +1176,12 @@ export function DataQualityPage({
     return Math.max(1, template.split(" ").filter(Boolean).length);
   }
 
-  // Arrow keys are handled by the document listener below so they keep
-  // navigating the grid after focus drifts off the cards.
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  // Like the arrow keys, the letter shortcuts run from a document listener so
+  // they keep working after focus drifts to the page body or a sidebar
+  // button; only keys pressed inside this page, or with nothing focused,
+  // belong to the review.
+  const shortcutRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  shortcutRef.current = (event) => {
     if (usesWorkspace) return;
     if (
       event.defaultPrevented ||
@@ -1155,13 +1192,20 @@ export function DataQualityPage({
     )
       return;
     if (managerOpen) return;
+    const target = event.target;
+    const withinPage =
+      target instanceof Node && pageRef.current?.contains(target) === true;
+    const unfocused =
+      target === document.body || target === document.documentElement;
+    if (!withinPage && !unfocused) return;
     if (previewOpen && event.key === "Escape") {
       consumeShortcut(event);
       setPreviewOpen(false);
       focusCard(focusedRef.current);
       return;
     }
-    if (!isReviewShortcutTarget(event.target)) return;
+    if (!isReviewLetterShortcutTarget(target)) return;
+    const plainTarget = isReviewShortcutTarget(target);
     if (event.key === "Escape") {
       consumeShortcut(event);
       updateSelection(() => new Set());
@@ -1176,7 +1220,7 @@ export function DataQualityPage({
       if (!pending && !queueLoading) void execute(review.actions[actionIndex]);
       return;
     }
-    if (!previewOpen && event.key === " ") {
+    if (!previewOpen && event.key === " " && plainTarget) {
       consumeShortcut(event);
       if (focusedId != null)
         updateSelection((current) => toggleOne(current, focusedId));
@@ -1191,14 +1235,20 @@ export function DataQualityPage({
     }
     if (pending || queueLoading) return;
     if (previewOpen) return;
-    if (event.key === "Enter" && focusedId != null) {
+    if (event.key === "Enter" && focusedId != null && plainTarget) {
       consumeShortcut(event);
       if (entityType === "tag")
         window.open(`/tag/${focusedId}`, "_blank", "noopener,noreferrer");
       else setPreviewOpen(true);
       return;
     }
-  }
+  };
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => shortcutRef.current(event);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, []);
 
   const gridArrowNavigationRef = useRef<(event: KeyboardEvent) => void>(
     () => {},
@@ -1317,7 +1367,7 @@ export function DataQualityPage({
     );
 
   return (
-    <div ref={pageRef} className="data-quality-page" onKeyDown={handleKeyDown}>
+    <div ref={pageRef} className="data-quality-page">
       <header className="data-quality-header">
         {review && (
           <button
@@ -1760,6 +1810,7 @@ export function DataQualityPage({
                       review,
                       filter,
                       queueRetryFromEnd,
+                      selectAllOnLoad,
                     ).catch(() => undefined);
                   }}
                 />
@@ -1829,7 +1880,29 @@ export function DataQualityPage({
               <span />
             </div>
             <aside className="dq-actions">
-              {selectedIds.size > 0 && <strong>{targetLabel}</strong>}
+              <button
+                type="button"
+                className="dq-selection-toggle"
+                aria-keyshortcuts="a"
+                disabled={!itemIds.length}
+                onClick={() =>
+                  updateSelection((current) =>
+                    toggleShownReviewSelection(current, itemIds),
+                  )
+                }
+              >
+                {allShownSelected ? "Clear selection" : "Select all on page"}
+                <kbd aria-hidden="true">A</kbd>
+              </button>
+              {/* Always name the target: with nothing checked, actions fall
+                  back to the focused card, which the ring alone does not say. */}
+              <strong>
+                {selectedIds.size > 0
+                  ? targetLabel
+                  : focusedId == null
+                    ? "Nothing to apply to"
+                    : `Applies to the ${targetLabel}`}
+              </strong>
               {review.actions.map((action, index) => {
                 const changesData =
                   "steps" in action
@@ -1986,7 +2059,12 @@ export function DataQualityPage({
     const priorFocus = focusedRef.current;
     const priorIndex = Math.max(0, itemIds.indexOf(priorFocus ?? -1));
     try {
-      const result = await fetchQueue(target, nextFilter, startFromEnd);
+      const result = await fetchQueue(
+        target,
+        nextFilter,
+        startFromEnd,
+        target.view.selectAllOnLoad === true,
+      );
       const ids = result.items.map((item) => item.id);
       setSelectedIds(
         (current) => new Set([...current].filter((id) => ids.includes(id))),
@@ -2106,7 +2184,8 @@ export function DataQualityPage({
             setFilterAndLoad(
               { ...filter, page: next.page },
               review,
-              fetchQueue,
+              (target, nextFilter) =>
+                fetchQueue(target, nextFilter, false, selectAllOnLoad),
               clearPageState,
             );
           }}

@@ -3,6 +3,7 @@ import {
   getNextReviewFocus,
   getReviewActionTargets,
   isReviewGridArrowTarget,
+  isReviewLetterShortcutTarget,
   reviewGridArrowDelta,
   parseReviews,
   reviewEntityType,
@@ -194,6 +195,12 @@ it("round-trips explicit video layouts and card tag parents and rejects unknown 
   expect(() => parseReviews(JSON.stringify([{ ...rule, view: { ...rule.view, reviewMode: "unknown" } }]))).toThrow(/could not be read/i);
 });
 
+it("round-trips the select-all-on-load preference and rejects non-boolean values", () => {
+  const rule = { id: "select", name: "Select", description: "", view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text", reviewMode: "multiple", selectAllOnLoad: true }, actions: [] };
+  expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
+  expect(() => parseReviews(JSON.stringify([{ ...rule, view: { ...rule.view, selectAllOnLoad: "yes" } }]))).toThrow(/could not be read/i);
+});
+
 describe("review grid arrow keys", () => {
   afterEach(() => {
     document.body.innerHTML = "";
@@ -246,4 +253,39 @@ describe("review grid arrow keys", () => {
       isReviewGridArrowTarget(element('<div contenteditable="false" data-target></div>')),
     ).toBe(true);
   });
+});
+
+describe("review letter shortcuts", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+  function element(html: string): HTMLElement {
+    document.body.innerHTML = html;
+    return document.body.querySelector<HTMLElement>("[data-target]")!;
+  }
+  it("accept the body, cards, the actions sidebar, pagination and the review preview", () => {
+    expect(isReviewLetterShortcutTarget(document.body)).toBe(true);
+    expect(isReviewLetterShortcutTarget(element("<article class='dq-review-card' tabindex='0' data-target>Card</article>"))).toBe(true);
+    expect(isReviewLetterShortcutTarget(element('<aside class="dq-actions"><button data-target>Select all</button></aside>'))).toBe(true);
+    expect(isReviewLetterShortcutTarget(element('<fieldset class="dq-pagination-row"><button data-target>Next page</button></fieldset>'))).toBe(true);
+    expect(isReviewLetterShortcutTarget(element('<article class="dq-review-card"><a href="/x" data-target>Link</a></article>'))).toBe(true);
+    expect(isReviewLetterShortcutTarget(element('<div role="dialog" class="dq-preview"><button data-target>Apply</button></div>'))).toBe(true);
+  });
+  it("yield to text entry, media controls and other dialogs", () => {
+    expect(isReviewLetterShortcutTarget(element("<input data-target />"))).toBe(false);
+    expect(isReviewLetterShortcutTarget(element("<textarea data-target></textarea>"))).toBe(false);
+    expect(isReviewLetterShortcutTarget(element("<select data-target></select>"))).toBe(false);
+    expect(isReviewLetterShortcutTarget(element('<div contenteditable="true" data-target></div>'))).toBe(false);
+    expect(isReviewLetterShortcutTarget(element('<div data-review-player-controls><button data-target>Play</button></div>'))).toBe(false);
+    expect(isReviewLetterShortcutTarget(element('<div role="dialog"><button data-target>Apply filters</button></div>'))).toBe(false);
+    expect(isReviewLetterShortcutTarget(null)).toBe(false);
+  });
+});
+
+it("keeps letters away from host-owned controls inside the page", () => {
+  document.body.innerHTML = '<section class="dq-queue-toolbar"><button data-target>Sort</button></section>';
+  expect(isReviewLetterShortcutTarget(document.body.querySelector("[data-target]"))).toBe(false);
+  document.body.innerHTML = '<header class="data-quality-header"><button data-target>Edit review</button></header>';
+  expect(isReviewLetterShortcutTarget(document.body.querySelector("[data-target]"))).toBe(false);
+  document.body.innerHTML = "";
 });

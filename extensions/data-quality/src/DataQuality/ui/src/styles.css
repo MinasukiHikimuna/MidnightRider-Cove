@@ -1090,3 +1090,22 @@
 .dq-card-tag-bins { display: flex; flex-wrap: wrap; gap: .3rem; padding: .5rem; border: 1px solid var(--color-border); border-top: 0; border-radius: 0 0 .375rem .375rem; background: var(--color-card); }
 .dq-card-tag-bins span { padding: .15rem .4rem; border-radius: .3rem; background: var(--color-surface); font-size: .75rem; overflow-wrap: anywhere; }
 .dq-card-tag-bins small { color: var(--color-secondary); }
+.dq-actions > .dq-selection-toggle {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+/* Verified against the Cove host UI at 1.4.2-dev (VideoCard uses contain: content
+   and labels its toggle "Select item"). The host card contains its paint, so the wall autoplay overlay (z 4) hid
+   the selection checkmark (z 10) that lives inside the card. Dropping the
+   containment on wall cards lets the checkmark and specs paint above it. */
+.data-quality-page .dq-review-card.wall > .video-card {
+  contain: none;
+}
+/* Selection state must be readable at a glance, not only on hover: the
+   checkmark is the source of truth, the accent ring only marks focus. */
+.data-quality-page .dq-review-card .video-card button[aria-pressed][aria-label^="Select "],
+.data-quality-page .dq-review-card .video-card button[aria-pressed][aria-label^="Deselect "] {
+  opacity: 1;
+}
