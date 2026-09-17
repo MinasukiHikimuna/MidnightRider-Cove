@@ -1030,6 +1030,7 @@ it("applies saved layout preferences while URL criteria remain active", async ()
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
+  expect(screen.getByRole("toolbar", { name: "Video list controls" })).toHaveAttribute("data-custom-field-entity-type", "video");
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
   fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "single" } });
@@ -1047,6 +1048,7 @@ it("keeps newly saved queue criteria when the editor switches to single video", 
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
+  expect(screen.getByRole("dialog", { name: "Video filters" })).toHaveAttribute("data-custom-sections", "custom-fields");
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
   fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "single" } });
@@ -1063,6 +1065,7 @@ it("restores the saved multiple layout after editing from a temporary single lay
   await screen.findByRole("article", { name: "Video 1" });
   fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
   await screen.findByRole("heading", { name: "Reviewing this video" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Edit review" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Updated description" } });
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));

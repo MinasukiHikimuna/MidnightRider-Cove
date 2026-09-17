@@ -6,6 +6,7 @@ import {
   VIDEO_CRITERIA,
   VIDEO_SORT_OPTIONS,
   EntityReferenceMultiSelector,
+  useCustomFieldFilterSection,
 } from "@cove/runtime/components";
 import { reviewEntityType, type Review, type VideoReview } from "./model";
 
@@ -22,6 +23,10 @@ export function QueueEditor({
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const entityType = reviewEntityType(draft) === "tag" ? "tag" : "video";
+  const customFieldSection = useCustomFieldFilterSection(
+    entityType === "video" ? "video" : undefined,
+    draft.view.objectFilter,
+  );
   const filter = draft.view.filter;
   const sortOptions =
     entityType === "tag" ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS;
@@ -141,6 +146,9 @@ export function QueueEditor({
                 onClose={() => setFiltersOpen(false)}
                 criteria={entityType === "tag" ? TAG_CRITERIA : VIDEO_CRITERIA}
                 activeFilter={draft.view.objectFilter}
+                customSections={
+                  customFieldSection ? [customFieldSection] : undefined
+                }
                 supportsFilterExpressions={entityType === "video"}
                 subjectLabel={entityType === "tag" ? "tags" : "videos"}
                 onApply={(objectFilter) => {

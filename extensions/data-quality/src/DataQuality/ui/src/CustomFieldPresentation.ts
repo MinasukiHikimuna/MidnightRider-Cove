@@ -1,22 +1,3 @@
-const MODIFIER_LABELS: Record<string, string> = {
-  EQUALS: "Equals",
-  NOT_EQUALS: "Does Not Equal",
-  GREATER_THAN: ">",
-  LESS_THAN: "<",
-  INCLUDES: "Includes",
-  EXCLUDES: "Excludes",
-  INCLUDES_ALL: "Includes All",
-  EXCLUDES_ALL: "Excludes All",
-  IS_NULL: "Is Null",
-  NOT_NULL: "Not Null",
-  BETWEEN: "Between",
-  NOT_BETWEEN: "Not Between",
-  MATCHES_REGEX: "Regex",
-  NOT_MATCHES_REGEX: "Not Regex",
-  UNDER_PATH: "Under",
-  NOT_UNDER_PATH: "Not Under",
-};
-
 type CustomFieldCriterion = Record<string, unknown> & {
   key?: unknown;
   type?: unknown;
@@ -36,25 +17,31 @@ function criteria(value: unknown): CustomFieldCriterion[] {
     : [];
 }
 
-function fieldLabel(key: string) {
-  const words = key.replaceAll("_", " ").trim();
-  return words ? words[0].toUpperCase() + words.slice(1) : "Custom field";
+function isTagCriterion(criterion: CustomFieldCriterion) {
+  return String(criterion.type).toLowerCase() === "tag";
 }
 
+function hasDisplayValue(value: unknown) {
+  return Boolean(String(value ?? "").trim());
+}
+
+/**
+ * Tag ids referenced by custom field criteria that carry no persisted display value. Cove's filter
+ * chips would otherwise describe them as an anonymous selected tag, so the workspace resolves their
+ * names once per query and presents them through {@link presentCustomFieldCriteria}.
+ */
 export function unresolvedCustomFieldTagIds(
   objectFilter: Record<string, unknown>,
 ): number[] {
   return [
     ...new Set(
       criteria(objectFilter.customFieldCriteria)
-        .filter(
-          (criterion) => String(criterion.type).toLowerCase() === "tag",
-        )
+        .filter(isTagCriterion)
         .flatMap((criterion) => [
           [criterion.value, criterion.displayValue],
           [criterion.value2, criterion.displayValue2],
         ])
-        .filter(([, displayValue]) => !String(displayValue ?? "").trim())
+        .filter(([, displayValue]) => !hasDisplayValue(displayValue))
         .map(([value]) => value)
         .map(Number)
         .filter((id) => Number.isSafeInteger(id) && id > 0),
@@ -62,69 +49,78 @@ export function unresolvedCustomFieldTagIds(
   ];
 }
 
+/**
+ * Fills the display value of tag criteria from resolved names so Cove's toolbar summarizes them by
+ * name. Persisted display values win and criteria without a resolved name are left untouched.
+ */
 export function presentCustomFieldCriteria(
   objectFilter: Record<string, unknown>,
   tagNames: Record<string, string>,
 ): Record<string, unknown> {
   const customFieldCriteria = criteria(objectFilter.customFieldCriteria);
   if (!customFieldCriteria.length) return objectFilter;
-  return {
-    ...objectFilter,
-    customFieldCriteria: customFieldCriteria.map((criterion) => {
-      const key = String(criterion.key ?? "");
-      const modifier = MODIFIER_LABELS[String(criterion.modifier ?? "EQUALS")];
-      const display = (value: unknown, persisted: unknown) =>
-        String(persisted ?? "").trim() ||
-        tagNames[String(value)] ||
-        String(value ?? "");
-      const displayValue = display(
-        criterion.value,
-        criterion.displayValue,
-      );
-      const displayValue2 = display(
-        criterion.value2,
-        criterion.displayValue2,
-      );
-      const modifierKey = String(criterion.modifier ?? "EQUALS");
-      const values =
-        modifierKey === "IS_NULL" || modifierKey === "NOT_NULL"
-          ? []
-          : modifierKey === "BETWEEN" || modifierKey === "NOT_BETWEEN"
-            ? [displayValue, "and", displayValue2]
-            : [displayValue];
-      return {
-        ...criterion,
-        label: [fieldLabel(key), modifier, ...values]
-          .filter(Boolean)
-          .join(" "),
-      };
-    }),
-  };
+  let changed = false;
+  const presented = customFieldCriteria.map((criterion) => {
+    if (!isTagCriterion(criterion)) return criterion;
+    const next = { ...criterion };
+    for (const [valueKey, displayKey] of [
+      ["value", "displayValue"],
+      ["value2", "displayValue2"],
+    ] as const) {
+      const name = tagNames[String(criterion[valueKey] ?? "")];
+      if (name && !hasDisplayValue(criterion[displayKey])) {
+        next[displayKey] = name;
+        changed = true;
+      }
+    }
+    return next;
+  });
+  return changed
+    ? { ...objectFilter, customFieldCriteria: presented }
+    : objectFilter;
 }
 
+/**
+ * Reverses {@link presentCustomFieldCriteria} on a filter the toolbar hands back, so a name resolved
+ * only for display is not written into the review query or the URL. A display value is removed only
+ * when it equals the resolved name and the matching criterion in `original` carried none, so a value
+ * the user persisted stays even when another criterion referenced the same tag.
+ */
 export function stripCustomFieldPresentation(
   objectFilter: Record<string, unknown>,
+  tagNames: Record<string, string>,
+  original: Record<string, unknown>,
 ): Record<string, unknown> {
   const customFieldCriteria = criteria(objectFilter.customFieldCriteria);
   if (!customFieldCriteria.length) return objectFilter;
-  return {
-    ...objectFilter,
-    customFieldCriteria: customFieldCriteria.map(({ label: _label, ...criterion }) =>
-      criterion,
-    ),
-  };
-}
-
-export function preserveCustomFieldCriteria(
-  current: Record<string, unknown>,
-  next: Record<string, unknown>,
-  allowRemoval: boolean,
-): Record<string, unknown> {
-  if (
-    allowRemoval ||
-    "customFieldCriteria" in next ||
-    !Array.isArray(current.customFieldCriteria)
-  )
+  const originals = criteria(original.customFieldCriteria);
+  const same = (left: CustomFieldCriterion, right: CustomFieldCriterion) =>
+    (["key", "jsonPath", "modifier", "value", "value2"] as const).every(
+      (field) => (left[field] ?? undefined) === (right[field] ?? undefined),
+    );
+  let changed = false;
+  const stripped = customFieldCriteria.map((criterion) => {
+    if (!isTagCriterion(criterion)) return criterion;
+    const source = originals.find((candidate) => same(candidate, criterion));
+    if (!source) return criterion;
+    const next = { ...criterion };
+    for (const [valueKey, displayKey] of [
+      ["value", "displayValue"],
+      ["value2", "displayValue2"],
+    ] as const) {
+      const name = tagNames[String(criterion[valueKey] ?? "")];
+      if (
+        name &&
+        criterion[displayKey] === name &&
+        !hasDisplayValue(source[displayKey])
+      ) {
+        delete next[displayKey];
+        changed = true;
+      }
+    }
     return next;
-  return { ...next, customFieldCriteria: current.customFieldCriteria };
+  });
+  return changed
+    ? { ...objectFilter, customFieldCriteria: stripped }
+    : objectFilter;
 }

@@ -39,6 +39,26 @@ declare module "@cove/runtime/components" {
       [key: string]: unknown;
     }): void;
   }>;
+  export type CustomFieldEntityType =
+    | "video"
+    | "image"
+    | "audio"
+    | "text"
+    | "gallery"
+    | "performer"
+    | "tag"
+    | "group"
+    | "studio"
+    | "face";
+  export interface FilterDialogCustomSection {
+    id: string;
+    label: string;
+    filterKey: string;
+  }
+  export function useCustomFieldFilterSection(
+    entityType: CustomFieldEntityType | undefined,
+    objectFilter: Record<string, unknown> | undefined,
+  ): FilterDialogCustomSection | undefined;
   export const DetailListToolbar: ComponentType<{
     filter: { page?: number; perPage?: number; [key: string]: unknown };
     onFilterChange(filter: {
@@ -57,6 +77,7 @@ declare module "@cove/runtime/components" {
     onZoomChange?(level: number): void;
     cardSizeEntityType?: string;
     criteriaDefinitions?: typeof VIDEO_CRITERIA;
+    customFieldEntityType?: CustomFieldEntityType;
     objectFilter?: Record<string, unknown>;
     onObjectFilterChange?(filter: Record<string, unknown>): void;
     showPagingControls?: boolean;
@@ -151,6 +172,7 @@ declare module "@cove/runtime/components" {
     onClose(): void;
     criteria: typeof VIDEO_CRITERIA;
     activeFilter: Record<string, unknown>;
+    customSections?: FilterDialogCustomSection[];
     onApply(filter: Record<string, unknown>): void;
     supportsFilterExpressions?: boolean;
     subjectLabel?: string;

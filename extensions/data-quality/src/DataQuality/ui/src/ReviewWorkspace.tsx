@@ -77,7 +77,6 @@ export function orderedItems(items: ReviewItem[], backwards: boolean) {
 }
 import {
   presentCustomFieldCriteria,
-  preserveCustomFieldCriteria,
   stripCustomFieldPresentation,
   unresolvedCustomFieldTagIds,
 } from "./CustomFieldPresentation";
@@ -293,7 +292,6 @@ export function ReviewWorkspace({
   const [legacyNames, setLegacyNames] = useState<Record<number, string>>({});
   const targets = useRef<number[] | null>(null);
   const lastWriteAt = useRef(0);
-  const allowCustomFieldRemoval = useRef(false);
   const [customFieldNames, setCustomFieldNames] = useState<
     Record<string, string>
   >({});
@@ -316,6 +314,10 @@ export function ReviewWorkspace({
       active = false;
     };
   }, [query.objectFilter]);
+  const presentedObjectFilter = useMemo(
+    () => presentCustomFieldCriteria(query.objectFilter, customFieldNames),
+    [customFieldNames, query.objectFilter],
+  );
   const generation = useRef(0);
   const savedRef = useRef(saved);
   savedRef.current = saved;
@@ -924,50 +926,12 @@ export function ReviewWorkspace({
         }}
       >
         <legend>Scene filters</legend>
-        <div
-          className="dq-queue-toolbar"
-          onKeyDownCapture={(event) => {
-            if (event.key === "Escape") allowCustomFieldRemoval.current = false;
-            if (
-              ["Delete", "Backspace"].includes(event.key) &&
-              event.target instanceof Element &&
-              event.target.closest("button")?.getAttribute("aria-label") ===
-                "Edit filter: Custom Fields"
-            )
-              allowCustomFieldRemoval.current = true;
-          }}
-          onClickCapture={(event) => {
-            const button =
-              event.target instanceof Element
-                ? event.target.closest("button")
-                : null;
-            if (
-              button?.getAttribute("aria-label") ===
-                "Remove filter: Custom Fields" ||
-              button?.textContent?.trim() === "Clear all"
-            )
-              allowCustomFieldRemoval.current = true;
-            else if (
-              /^(Cancel|Filters)/.test(button?.textContent?.trim() ?? "") ||
-              /^(Close|Dismiss)/.test(button?.getAttribute("aria-label") ?? "")
-            )
-              allowCustomFieldRemoval.current = false;
-          }}
-        >
+        <div className="dq-queue-toolbar">
           <DetailListToolbar
             filter={query.filter}
-            objectFilter={presentCustomFieldCriteria(
-              query.objectFilter,
-              customFieldNames,
-            )}
-            criteriaDefinitions={[
-              ...VIDEO_CRITERIA,
-              {
-                id: "custom-fields",
-                label: "Custom Fields",
-                filterKey: "customFieldCriteria",
-              },
-            ]}
+            objectFilter={presentedObjectFilter}
+            criteriaDefinitions={VIDEO_CRITERIA}
+            customFieldEntityType="video"
             totalCount={total}
             sortOptions={VIDEO_SORT_OPTIONS}
             showSearch
@@ -985,15 +949,13 @@ export function ReviewWorkspace({
               });
             }}
             onObjectFilterChange={(objectFilter) => {
-              const next = preserveCustomFieldCriteria(
-                queryRef.current.objectFilter,
-                stripCustomFieldPresentation(objectFilter),
-                allowCustomFieldRemoval.current,
-              );
-              allowCustomFieldRemoval.current = false;
               replaceQuery({
                 ...queryRef.current,
-                objectFilter: next,
+                objectFilter: stripCustomFieldPresentation(
+                  objectFilter,
+                  customFieldNames,
+                  queryRef.current.objectFilter,
+                ),
                 filter: { ...queryRef.current.filter, page: 1 },
               });
             }}

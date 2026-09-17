@@ -104,7 +104,6 @@ import {
 import { QueueEditor } from "./QueueEditor";
 import {
   presentCustomFieldCriteria,
-  preserveCustomFieldCriteria,
   stripCustomFieldPresentation,
   unresolvedCustomFieldTagIds,
 } from "./CustomFieldPresentation";
@@ -126,13 +125,6 @@ type ReviewBrowserSort = "name" | "count";
 type ReviewBrowserDirection = "asc" | "desc";
 
 const defaultCardSize = 180;
-const customFieldQueueCriterion = {
-  id: "custom-fields",
-  label: "Custom Fields",
-  filterKey: "customFieldCriteria",
-  type: "string",
-  supported: false,
-};
 
 function ReviewEntityIcon({ entityType }: { entityType: ReviewEntityType }) {
   return entityType === "tag" ? (
@@ -419,7 +411,6 @@ export function DataQualityPage({
   const loadGeneration = useRef(0);
   const actionGeneration = useRef(0);
   const queueAbort = useRef<AbortController | null>(null);
-  const allowCustomFieldRemoval = useRef(false);
   const actionTagIds = JSON.stringify([
     ...new Set(
       videoReview?.actions.flatMap((action) =>
@@ -521,15 +512,6 @@ export function DataQualityPage({
           )
         : (review?.view.objectFilter ?? {}),
     [customFieldTagNames, review, videoReview],
-  );
-  const queueCriteria = useMemo(
-    () =>
-      entityType === "video" && Array.isArray(toolbarObjectFilter.customFieldCriteria)
-        ? [...VIDEO_CRITERIA, customFieldQueueCriterion]
-        : entityType === "tag"
-          ? TAG_CRITERIA
-          : VIDEO_CRITERIA,
-    [entityType, toolbarObjectFilter.customFieldCriteria],
   );
 
   const loadAllReviews = useCallback(async () => {
@@ -1522,49 +1504,6 @@ export function DataQualityPage({
             }`}
             aria-disabled={pending || queueLoading || undefined}
             inert={pending || queueLoading ? true : undefined}
-            onClickCapture={(event) => {
-              const button =
-                event.target instanceof Element
-                  ? event.target.closest("button")
-                  : null;
-              if (
-                button?.getAttribute("aria-label") ===
-                  "Remove filter: Custom Fields" ||
-                button?.textContent?.trim() === "Clear all"
-              )
-                allowCustomFieldRemoval.current = true;
-              else if (
-                button?.getAttribute("aria-label")?.startsWith("Filters") ||
-                button?.getAttribute("aria-label")?.startsWith("Edit filter:")
-              )
-                allowCustomFieldRemoval.current = false;
-              else if (
-                button?.textContent?.trim() === "Cancel" ||
-                button?.getAttribute("aria-label")?.startsWith("Close ")
-              )
-                allowCustomFieldRemoval.current = false;
-            }}
-            onKeyDownCapture={(event) => {
-              const button =
-                event.target instanceof Element
-                  ? event.target.closest("button")
-                  : null;
-              if (
-                (event.key === "Delete" || event.key === "Backspace") &&
-                button?.getAttribute("aria-label") ===
-                  "Edit filter: Custom Fields"
-              ) {
-                event.preventDefault();
-                event.stopPropagation();
-                allowCustomFieldRemoval.current = true;
-                button.parentElement
-                  ?.querySelector<HTMLButtonElement>(
-                    'button[aria-label="Remove filter: Custom Fields"]',
-                  )
-                  ?.click();
-              } else if (event.key === "Escape")
-                allowCustomFieldRemoval.current = false;
-            }}
           >
             <DetailListToolbar
               filter={queueError ? loadedFilter : filter}
@@ -1583,24 +1522,19 @@ export function DataQualityPage({
                 setCardSize(Math.round(225 + level * 50))
               }
               cardSizeEntityType={entityType === "tag" ? "tags" : "videos"}
-              criteriaDefinitions={queueCriteria}
+              criteriaDefinitions={entityType === "tag" ? TAG_CRITERIA : VIDEO_CRITERIA}
+              customFieldEntityType={entityType === "video" ? "video" : undefined}
               objectFilter={toolbarObjectFilter}
               onObjectFilterChange={(objectFilter) => {
-                if (!pending && !queueLoading) {
-                  const stripped =
-                    entityType === "video"
-                      ? stripCustomFieldPresentation(objectFilter)
-                      : objectFilter;
+                if (!pending && !queueLoading)
                   pendingToolbarObjectFilter.current =
                     entityType === "video"
-                      ? preserveCustomFieldCriteria(
+                      ? stripCustomFieldPresentation(
+                          objectFilter,
+                          customFieldTagNames,
                           review.view.objectFilter,
-                          stripped,
-                          allowCustomFieldRemoval.current,
                         )
-                      : stripped;
-                  allowCustomFieldRemoval.current = false;
-                }
+                      : objectFilter;
               }}
               showPagingControls={false}
             />

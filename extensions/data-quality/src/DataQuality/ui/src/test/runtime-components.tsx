@@ -247,14 +247,20 @@ export function FilterDialog({
   open,
   onApply,
   onClose,
+  customSections,
 }: {
   open?: boolean;
   onApply(filter: Record<string, unknown>): void;
   onClose(): void;
+  customSections?: Array<{ id: string }>;
 }) {
   if (open === false) return null;
   return (
-    <div role="dialog" aria-label="Video filters">
+    <div
+      role="dialog"
+      aria-label="Video filters"
+      data-custom-sections={customSections?.map((section) => section.id).join(",")}
+    >
       <button aria-label="Edit filter: Nested criterion">Nested criterion</button>
       <button onClick={() => (testFilterControls.result = {})}>Clear all</button>
       <button
@@ -288,6 +294,7 @@ export function DetailListToolbar({
   onZoomChange,
   criteriaDefinitions = [],
   objectFilter = {},
+  customFieldEntityType,
   onObjectFilterChange,
 }: {
   filter: Record<string, unknown>;
@@ -308,6 +315,7 @@ export function DetailListToolbar({
   }>;
   objectFilter?: Record<string, unknown>;
   onObjectFilterChange?(filter: Record<string, unknown>): void;
+  customFieldEntityType?: string;
 }) {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const activeCount = Object.keys(objectFilter).length;
@@ -317,7 +325,11 @@ export function DetailListToolbar({
   const end = Math.min(page * perPage, totalCount);
   return (
     <>
-      <div role="toolbar" aria-label="Video list controls">
+      <div
+        role="toolbar"
+        aria-label="Video list controls"
+        data-custom-field-entity-type={customFieldEntityType}
+      >
         <span>{totalCount ? `${start}–${end} of ${totalCount}` : "0 items"}</span>
         {showSearch && (
           <input
@@ -564,4 +576,10 @@ export function DetailListPagination({
       </button>
     </>
   );
+}
+
+export function useCustomFieldFilterSection(entityType?: string) {
+  return entityType === "video"
+    ? { id: "custom-fields", label: "Custom Fields", filterKey: "customFieldCriteria" }
+    : undefined;
 }

@@ -812,7 +812,7 @@ it("does not clamp browser-restored pages against a previous query count", async
   await ready();
   expect(new URLSearchParams(window.location.search).get("page")).toBe("5");
 });
-it("clears custom-field criteria explicitly while preserving them on unrelated dialog edits", async () => {
+it("hands resolved tag names to the host toolbar and strips them from the applied query", async () => {
   const customFieldCriteria = [
     {
       key: "confirmed_absent_tags",
@@ -826,18 +826,27 @@ it("clears custom-field criteria explicitly while preserving them on unrelated d
     view: { ...review.view, objectFilter: { customFieldCriteria } },
   });
   await ready();
+  await waitFor(() => expect(api.request).toHaveBeenCalledWith("/api/tags/21"));
+  expect(screen.getByRole("toolbar", { name: "Video list controls" })).toHaveAttribute(
+    "data-custom-field-entity-type",
+    "video",
+  );
+  testFilterControls.result = {
+    organized: true,
+    customFieldCriteria: [{ ...customFieldCriteria[0], displayValue: "Choice" }],
+  };
   fireEvent.click(screen.getByRole("button", { name: "Filters, 1 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await ready();
   expect(
-    JSON.parse(new URLSearchParams(window.location.search).get("filters")!)
-      .customFieldCriteria,
-  ).toEqual(customFieldCriteria);
-  fireEvent.click(screen.getByRole("button", { name: /Filters, .*active/ }));
+    JSON.parse(new URLSearchParams(window.location.search).get("filters")!),
+  ).toEqual({ organized: true, customFieldCriteria });
+  fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await ready();
   expect(new URLSearchParams(window.location.search).get("filters")).toBe("{}");
+  testFilterControls.result = { organized: true };
 });
 it("restores browser navigation after a pending write without overwriting its URL", async () => {
   let finish!: () => void;
