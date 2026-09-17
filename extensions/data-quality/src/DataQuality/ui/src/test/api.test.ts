@@ -157,7 +157,7 @@ describe("Data Quality API adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("applies mixed assessments in one update while preserving unrelated metadata", async () => {
+  it("applies every assessment step as one bulk request without per-video reads", async () => {
     fetchMock
       .mockImplementationOnce(() =>
         response([
@@ -171,17 +171,7 @@ describe("Data Quality API adapter", () => {
           },
         ]),
       )
-      .mockImplementationOnce(() =>
-        response({
-          id: 4,
-          tags: [{ id: 1 }, { id: 2 }, { id: 7 }],
-          customFields: {
-            confirmed_absent_tags: [3, 4, 4],
-            unrelated: { nested: true },
-          },
-        }),
-      )
-      .mockImplementationOnce(() => response({ id: 4 }));
+      .mockImplementation(() => response({ updated: 2 }));
 
     await runReviewAction(
       {
@@ -190,31 +180,55 @@ describe("Data Quality API adapter", () => {
         steps: [
           { mode: "REMOVE", tagIds: [2] },
           { mode: "ADD", tagIds: [8] },
-          { mode: "MARK_PRESENT", tagIds: [3] },
+          { mode: "MARK_PRESENT", tagIds: [3, 3] },
           { mode: "MARK_ABSENT", tagIds: [1, 6] },
           { mode: "CLEAR_ABSENCE", tagIds: [4] },
         ],
       },
-      [4, 4],
+      [4, 4, 5],
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/videos/4",
-      expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({
-          tagIds: [7, 8, 3],
-          customFields: {
-            confirmed_absent_tags: [1, 6],
-            unrelated: { nested: true },
-          },
-        }),
-      }),
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock.mock.calls.map(([path]) => String(path).split("?")[0])).toEqual([
+      "/api/custom-fields",
+      "/api/videos/bulk",
+      "/api/videos/bulk",
+      "/api/videos/bulk",
+      "/api/videos/bulk",
+      "/api/videos/bulk",
+    ]);
+    const bodies = fetchMock.mock.calls
+      .slice(1)
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toEqual([
+      { ids: [4, 5], tagIds: [2], tagMode: "REMOVE" },
+      { ids: [4, 5], tagIds: [8], tagMode: "ADD" },
+      {
+        ids: [4, 5],
+        tagIds: [3],
+        tagMode: "ADD",
+        customFields: { confirmed_absent_tags: [3] },
+        customFieldMode: "REMOVE",
+      },
+      {
+        ids: [4, 5],
+        tagIds: [1, 6],
+        tagMode: "REMOVE",
+        customFields: { confirmed_absent_tags: [1, 6] },
+        customFieldMode: "ADD",
+      },
+      {
+        ids: [4, 5],
+        customFields: { confirmed_absent_tags: [4] },
+        customFieldMode: "REMOVE",
+      },
+    ]);
+    expect(
+      fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") !== "PUT"),
+    ).toBe(true);
   });
 
-  it("preserves unrelated direct tags without promoting derived tags", async () => {
+  it("runs legacy steps before assessment steps regardless of declared order", async () => {
     fetchMock
       .mockImplementationOnce(() =>
         response([
@@ -227,42 +241,69 @@ describe("Data Quality API adapter", () => {
           },
         ]),
       )
-      .mockImplementationOnce(() =>
-        response({
-          id: 4,
-          tags: [
-            { id: 1, canRemove: true, isDerived: false },
-            { id: 2, canRemove: false, isDerived: true },
-            { id: 3, canRemove: false, isDerived: true },
-            { id: 5, canRemove: false, isDerived: false },
-          ],
-          customFields: { unrelated: "kept" },
-        }),
-      )
-      .mockImplementationOnce(() => response({ id: 4 }));
+      .mockImplementation(() => response({ updated: 1 }));
 
     await runReviewAction(
       {
         id: "a",
-        label: "Exact assessment",
+        label: "Mixed",
         steps: [
-          { mode: "MARK_PRESENT", tagIds: [2] },
-          { mode: "MARK_ABSENT", tagIds: [4] },
+          { mode: "MARK_PRESENT", tagIds: [3] },
+          { mode: "REMOVE", tagIds: [3] },
         ],
       },
       [4],
     );
 
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
-      tagIds: [1, 5, 2],
-      customFields: {
-        unrelated: "kept",
-        confirmed_absent_tags: [4],
+    const bodies = fetchMock.mock.calls
+      .slice(1)
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toEqual([
+      { ids: [4], tagIds: [3], tagMode: "REMOVE" },
+      {
+        ids: [4],
+        tagIds: [3],
+        tagMode: "ADD",
+        customFields: { confirmed_absent_tags: [3] },
+        customFieldMode: "REMOVE",
       },
+    ]);
+  });
+
+  it("uses the definition's stored key when it differs only by case", async () => {
+    fetchMock
+      .mockImplementationOnce(() =>
+        response([
+          {
+            key: "Confirmed_Absent_Tags",
+            type: "tag",
+            entityTypes: ["video"],
+            filterable: true,
+            isMultiValue: true,
+          },
+        ]),
+      )
+      .mockImplementationOnce(() => response({ updated: 1 }));
+
+    await runReviewAction(
+      {
+        id: "a",
+        label: "Absent",
+        steps: [{ mode: "MARK_ABSENT", tagIds: [1] }],
+      },
+      [4],
+    );
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      ids: [4],
+      tagIds: [1],
+      tagMode: "REMOVE",
+      customFields: { Confirmed_Absent_Tags: [1] },
+      customFieldMode: "ADD",
     });
   });
 
-  it("changes only exact assessed IDs without inferring related tags", async () => {
+  it("stops an assessment batch after a failed step and reports completed steps", async () => {
     fetchMock
       .mockImplementationOnce(() =>
         response([
@@ -275,119 +316,26 @@ describe("Data Quality API adapter", () => {
           },
         ]),
       )
-      .mockImplementationOnce(() =>
-        response({
-          id: 4,
-          tags: [
-            { id: 10, canRemove: true },
-            { id: 11, canRemove: true },
-          ],
-          customFields: { confirmed_absent_tags: [20, 21] },
-        }),
-      )
-      .mockImplementationOnce(() => response({ id: 4 }));
-
-    await runReviewAction(
-      {
-        id: "a",
-        label: "Exact assessment",
-        steps: [
-          { mode: "MARK_ABSENT", tagIds: [10] },
-          { mode: "CLEAR_ABSENCE", tagIds: [20] },
-        ],
-      },
-      [4],
-    );
-
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
-      tagIds: [11],
-      customFields: { confirmed_absent_tags: [21, 10] },
-    });
-  });
-
-  it("skips unchanged assessment videos and clears absence without adding a tag", async () => {
-    const definition = {
-      key: "confirmed_absent_tags",
-      type: "tag",
-      entityTypes: ["video"],
-      filterable: true,
-      isMultiValue: true,
-    };
-    fetchMock
-      .mockImplementationOnce(() => response([definition]))
-      .mockImplementationOnce(() =>
-        response({ id: 4, tags: [{ id: 2 }], customFields: {} }),
-      );
-    await runReviewAction(
-      {
-        id: "a",
-        label: "Already clear",
-        steps: [{ mode: "CLEAR_ABSENCE", tagIds: [9] }],
-      },
-      [4],
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    fetchMock
-      .mockReset()
-      .mockImplementationOnce(() => response([definition]))
-      .mockImplementationOnce(() =>
-        response({
-          id: 4,
-          tags: [{ id: 2 }],
-          customFields: { confirmed_absent_tags: [9], other: "kept" },
-        }),
-      )
-      .mockImplementationOnce(() => response({ id: 4 }));
-    await runReviewAction(
-      {
-        id: "a",
-        label: "Clear",
-        steps: [{ mode: "CLEAR_ABSENCE", tagIds: [9] }],
-      },
-      [4],
-    );
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
-      tagIds: [2],
-      customFields: { confirmed_absent_tags: [], other: "kept" },
-    });
-  });
-
-  it("stops an assessment batch after the affected video fails", async () => {
-    fetchMock
-      .mockImplementationOnce(() =>
-        response([
-          {
-            key: "confirmed_absent_tags",
-            type: "tag",
-            entityTypes: ["video"],
-            filterable: true,
-            isMultiValue: true,
-          },
-        ]),
-      )
-      .mockImplementationOnce(() =>
-        response({ id: 4, tags: [], customFields: {} }),
-      )
-      .mockImplementationOnce(() => response({ id: 4 }))
-      .mockImplementationOnce(() =>
-        response({ id: 5, tags: [], customFields: {} }),
-      )
-      .mockImplementationOnce(() => response({ message: "Denied" }, false));
+      .mockImplementationOnce(() => response({ updated: 3 }))
+      .mockImplementationOnce(() => response({ error: "Denied" }, false));
     await expect(
       runReviewAction(
         {
           id: "a",
           label: "Absent",
-          steps: [{ mode: "MARK_ABSENT", tagIds: [1] }],
+          steps: [
+            { mode: "MARK_ABSENT", tagIds: [1] },
+            { mode: "CLEAR_ABSENCE", tagIds: [2] },
+            { mode: "MARK_PRESENT", tagIds: [3] },
+          ],
         },
         [4, 5, 6],
       ),
-    ).rejects.toThrow(/1 video.*completed.*video 5/i);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    ).rejects.toThrow(/step 2 failed; 1 earlier step\(s\) completed/i);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("resolves every tree removal before fetching or writing assessment targets", async () => {
+  it("resolves every tree removal before writing assessment targets", async () => {
     fetchMock
       .mockImplementationOnce(() =>
         response([
@@ -402,10 +350,7 @@ describe("Data Quality API adapter", () => {
       )
       .mockImplementationOnce(() => response({ id: 10 }))
       .mockImplementationOnce(() => response({ items: [{ id: 11 }], totalCount: 1 }))
-      .mockImplementationOnce(() =>
-        response({ id: 4, tags: [{ id: 11 }, { id: 12 }], customFields: {} }),
-      )
-      .mockImplementationOnce(() => response({ id: 4 }));
+      .mockImplementation(() => response({ updated: 1 }));
     await runReviewAction(
       {
         id: "a",
@@ -421,9 +366,14 @@ describe("Data Quality API adapter", () => {
       "/api/custom-fields",
       "/api/tags/10",
       "/api/tags/find",
-      "/api/videos/4",
-      "/api/videos/4",
+      "/api/videos/bulk",
+      "/api/videos/bulk",
     ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({
+      ids: [4],
+      tagIds: [10, 11],
+      tagMode: "REMOVE",
+    });
   });
 
   it("blocks assessment writes when the definition is missing or cannot be inspected", async () => {

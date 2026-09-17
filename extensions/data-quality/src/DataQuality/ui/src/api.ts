@@ -357,114 +357,44 @@ function uniqueIds(ids: readonly number[]): number[] {
   return [...new Set(ids)];
 }
 
-function customFieldTagIds(value: unknown): number[] {
-  if (value == null) return [];
-  if (
-    !Array.isArray(value) ||
-    value.some((id) => !Number.isSafeInteger(id) || Number(id) <= 0)
-  )
-    throw new Error(
-      `The ${CONFIRMED_ABSENT_TAGS_KEY} value is not a valid tag list.`,
-    );
-  return uniqueIds(value as number[]);
-}
+type BulkVideoUpdate = {
+  ids: number[];
+  tagIds?: number[];
+  tagMode?: "ADD" | "REMOVE";
+  customFields?: Record<string, number[]>;
+  customFieldMode?: "ADD" | "REMOVE";
+};
 
-function directlyAssignedTagIds(video: Video): number[] {
-  return uniqueIds(
-    (video.tags ?? [])
-      .filter((tag) => tag.canRemove !== false || tag.isDerived !== true)
-      .map((tag) => tag.id),
-  );
-}
-
-async function runAssessmentAction(
-  action: VideoReviewAction,
+/**
+ * Every review step becomes exactly one bulk request for all selected videos. Assessment
+ * steps pair the tag change with the confirmed-absent custom field in the same request, so
+ * Cove merges both server-side and no per-video read or rewrite is needed.
+ */
+function bulkStepRequest(
+  step: { mode: VideoReviewAction["steps"][number]["mode"]; tagIds: number[] },
   ids: number[],
-): Promise<void> {
-  let status: ConfirmedAbsentTagsFieldStatus;
-  try {
-    status = await getConfirmedAbsentTagsFieldStatus();
-  } catch (error) {
-    throw new Error(
-      `Could not verify the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
-    );
-  }
-  if (status.kind !== "ready") throw new Error(status.message);
-
-  const resolvedSteps = await Promise.all(
-    action.steps.map(async (step) => ({
-      ...step,
-      tagIds:
-        step.mode === "REMOVE_TREE"
-          ? await resolveTagTree(step.tagIds)
-          : uniqueIds(step.tagIds),
-    })),
-  );
-  const legacySteps = resolvedSteps.filter((step) =>
-    ["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
-  );
-  const assessmentSteps = resolvedSteps.filter((step) =>
-    ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode),
-  );
-  const targets = uniqueIds(ids);
-  const fieldKey = status.definition.key;
-  let completed = 0;
-  for (const id of targets) {
-    try {
-      const video = await readVideo(id);
-      const originalTagIds = directlyAssignedTagIds(video);
-      const originalCustomFields = { ...(video.customFields ?? {}) };
-      const rawAbsent = originalCustomFields[fieldKey];
-      const originalAbsentIds = customFieldTagIds(rawAbsent);
-      const tagIds = new Set(originalTagIds);
-      const absentIds = new Set(originalAbsentIds);
-
-      for (const step of legacySteps) {
-        for (const tagId of step.tagIds) {
-          if (step.mode === "ADD") tagIds.add(tagId);
-          else tagIds.delete(tagId);
-        }
-      }
-      for (const step of assessmentSteps) {
-        for (const tagId of step.tagIds) {
-          if (step.mode === "MARK_PRESENT") {
-            tagIds.add(tagId);
-            absentIds.delete(tagId);
-          } else if (step.mode === "MARK_ABSENT") {
-            tagIds.delete(tagId);
-            absentIds.add(tagId);
-          } else {
-            absentIds.delete(tagId);
-          }
-        }
-      }
-
-      const nextTagIds = [...tagIds];
-      const nextAbsentIds = [...absentIds];
-      const unchanged =
-        JSON.stringify(originalTagIds) === JSON.stringify(nextTagIds) &&
-        JSON.stringify(originalAbsentIds) === JSON.stringify(nextAbsentIds) &&
-        (rawAbsent === undefined
-          ? nextAbsentIds.length === 0
-          : JSON.stringify(rawAbsent) === JSON.stringify(originalAbsentIds));
-      if (!unchanged) {
-        await request(`/api/videos/${id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            tagIds: nextTagIds,
-            customFields: {
-              ...originalCustomFields,
-              [fieldKey]: nextAbsentIds,
-            },
-          }),
-        });
-      }
-      completed++;
-    } catch (error) {
+  absentFieldKey: string | null,
+): BulkVideoUpdate {
+  const tagIds = [...step.tagIds];
+  const absentField = (mode: "ADD" | "REMOVE") => {
+    if (absentFieldKey === null)
       throw new Error(
-        `Assessment stopped after ${completed} video${completed === 1 ? "" : "s"} completed; video ${id} was affected. Refresh and inspect it before retrying. ${error instanceof Error ? error.message : "Request failed."}`,
+        `The ${CONFIRMED_ABSENT_TAGS_LABEL} custom field is not available.`,
       );
-    }
+    return { customFields: { [absentFieldKey]: tagIds }, customFieldMode: mode };
+  };
+  switch (step.mode) {
+    case "ADD":
+      return { ids, tagIds, tagMode: "ADD" };
+    case "REMOVE":
+    case "REMOVE_TREE":
+      return { ids, tagIds, tagMode: "REMOVE" };
+    case "MARK_PRESENT":
+      return { ids, tagIds, tagMode: "ADD", ...absentField("REMOVE") };
+    case "MARK_ABSENT":
+      return { ids, tagIds, tagMode: "REMOVE", ...absentField("ADD") };
+    case "CLEAR_ABSENCE":
+      return { ids, ...absentField("REMOVE") };
   }
 }
 
@@ -479,28 +409,45 @@ export async function runReviewAction(
   ) {
     throw new Error("Choose videos and configure a valid action first.");
   }
+  let absentFieldKey: string | null = null;
   if (hasAssessmentSteps(action)) {
-    await runAssessmentAction(action, ids);
-    return;
+    let status: ConfirmedAbsentTagsFieldStatus;
+    try {
+      status = await getConfirmedAbsentTagsFieldStatus();
+    } catch (error) {
+      throw new Error(
+        `Could not verify the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
+      );
+    }
+    if (status.kind !== "ready") throw new Error(status.message);
+    absentFieldKey = status.definition.key;
   }
+  const targets = uniqueIds(ids);
   const steps = await Promise.all(
     action.steps.map(async (step) => ({
-      mode: step.mode === "ADD" ? "ADD" : "REMOVE",
+      mode: step.mode,
       tagIds:
         step.mode === "REMOVE_TREE"
           ? await resolveTagTree(step.tagIds)
-          : step.tagIds,
+          : uniqueIds(step.tagIds),
     })),
   );
-  for (let index = 0; index < steps.length; index++) {
+  // Legacy ADD/REMOVE steps run before assessment steps, as the per-video path always did,
+  // so a saved action that mixes both keeps its final outcome.
+  const isAssessment = (mode: string) =>
+    ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(mode);
+  const orderedSteps = [
+    ...steps.filter((step) => !isAssessment(step.mode)),
+    ...steps.filter((step) => isAssessment(step.mode)),
+  ];
+  const requests = orderedSteps.map((step) =>
+    bulkStepRequest(step, targets, absentFieldKey),
+  );
+  for (let index = 0; index < requests.length; index++) {
     try {
       await request("/api/videos/bulk", {
         method: "POST",
-        body: JSON.stringify({
-          ids: [...ids],
-          tagIds: [...steps[index].tagIds],
-          tagMode: steps[index].mode,
-        }),
+        body: JSON.stringify(requests[index]),
       });
     } catch (error) {
       throw new Error(

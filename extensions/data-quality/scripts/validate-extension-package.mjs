@@ -14,7 +14,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, "extension.js
 if (manifest.id !== extensionId || manifest.version !== version) {
   fail("package manifest identity does not match packaging arguments");
 }
-if (manifest.minCoveVersion !== "1.4.2-dev.1") {
+if (manifest.minCoveVersion !== "1.4.2-dev.92") {
   fail("package must declare the required Cove extension-runtime compatibility floor");
 }
 
