@@ -1,5 +1,9 @@
 import {
+  CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY,
   findVideos,
+  occurrenceAbsentTagIds,
+  requireOccurrenceAbsenceField,
+  setOccurrenceAbsence,
   normalizeCriteria,
   request,
   readVideo,
@@ -8,6 +12,7 @@ import {
   type Tag,
 } from "./api";
 import {
+  isAssessmentMode,
   validAction,
   type OccurrenceReview,
   type VideoReview,
@@ -35,14 +40,13 @@ export async function runOccurrenceAction(
   occurrence: Occurrence,
   action: VideoReviewAction,
 ): Promise<OccurrenceApplication[]> {
-  if (
-    !validAction(action) ||
-    action.steps.some(
-      (step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
-    )
-  )
+  if (!validAction(action))
     throw new Error("Configure an occurrence tag action first.");
   if (!action.steps.length) return occurrence.applications;
+  // Verified before any write, so a missing field cannot strand a half-applied assessment.
+  const absenceFieldKey = action.steps.some((step) => isAssessmentMode(step.mode))
+    ? await requireOccurrenceAbsenceField()
+    : "";
   const steps = await Promise.all(
     action.steps.map(async (step) => ({
       ...step,
@@ -53,19 +57,37 @@ export async function runOccurrenceAction(
     })),
   );
   let applications = occurrence.applications;
-  for (const step of steps) {
-    applications = await saveOccurrenceTags(
-      {
-        ...review,
-        occurrence: {
-          ...review.occurrence,
-          tagIds: step.tagIds,
-          multiple: true,
+  // Plain steps run before assessments, matching the order video reviews use.
+  for (const step of [
+    ...steps.filter((step) => !isAssessmentMode(step.mode)),
+    ...steps.filter((step) => isAssessmentMode(step.mode)),
+  ]) {
+    // Order each pair of writes so a failure in between leaves an unassessed occurrence,
+    // never a recorded absence that contradicts the occurrence's tags.
+    const absence = (mode: "ADD" | "REMOVE") =>
+      setOccurrenceAbsence(
+        absenceFieldKey,
+        occurrence.video.id,
+        occurrence.performer.id,
+        step.tagIds,
+        mode,
+      );
+    if (step.mode === "MARK_PRESENT" || step.mode === "CLEAR_ABSENCE")
+      await absence("REMOVE");
+    if (step.mode !== "CLEAR_ABSENCE")
+      applications = await saveOccurrenceTags(
+        {
+          ...review,
+          occurrence: {
+            ...review.occurrence,
+            tagIds: step.tagIds,
+            multiple: true,
+          },
         },
-      },
-      occurrence,
-      step.mode === "ADD" ? step.tagIds : [],
-    );
+        occurrence,
+        ["ADD", "MARK_PRESENT"].includes(step.mode) ? step.tagIds : [],
+      );
+    if (step.mode === "MARK_ABSENT") await absence("ADD");
   }
   return applications;
 }
@@ -102,6 +124,12 @@ export async function resolvePerformers(
   }
 }
 
+function hidesConfirmedAbsent(settings: OccurrenceReview["occurrence"]) {
+  return (
+    settings.condition === "excludes" && settings.hideConfirmedAbsent !== false
+  );
+}
+
 // Retain the scene expression and AND it with a separate, same-link target clause.
 export function occurrenceSceneReview(
   review: OccurrenceReview,
@@ -127,6 +155,15 @@ export function occurrenceSceneReview(
           },
         }),
   };
+  // "No value equals" lets Cove drop answered scenes itself, keeping pages full. It is only
+  // exact for one performer and one tag: a scene with two targets, or a rule with two tags,
+  // may still hold an unanswered occurrence, so those cases are hidden per occurrence instead.
+  const answeredPair =
+    hidesConfirmedAbsent(settings) &&
+    performerIds?.length === 1 &&
+    settings.conditionTagIds.length === 1
+      ? `${performerIds[0]}:${settings.conditionTagIds[0]}`
+      : null;
   return {
     ...review,
     entityType: "video",
@@ -140,6 +177,22 @@ export function occurrenceSceneReview(
             ...(_filterExpression ? [{ group: _filterExpression }] : []),
             { filter: sceneFilter },
             { filter: { performerFilterCriterion } },
+            ...(answeredPair
+              ? [
+                  {
+                    filter: {
+                      customFieldCriteria: [
+                        {
+                          key: CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY,
+                          type: "text",
+                          modifier: "notEquals",
+                          value: answeredPair,
+                        },
+                      ],
+                    },
+                  },
+                ]
+              : []),
           ],
         },
       },
@@ -166,6 +219,20 @@ export function occurrenceMatches(
     case "excludes":
       return !conditionTagGroups.some(matchesGroup);
   }
+}
+
+/**
+ * An occurrence already answered "absent" for every tag a "has none of" queue looks for has
+ * nothing left to review. Cove cannot filter on a per-performer pair, so it is hidden here.
+ */
+function confirmedAbsent(
+  settings: OccurrenceReview["occurrence"],
+  video: Video,
+  performerId: number,
+): boolean {
+  if (!hidesConfirmedAbsent(settings)) return false;
+  const absent = occurrenceAbsentTagIds(video, performerId);
+  return settings.conditionTagIds.every((id) => absent.includes(id));
 }
 
 export async function loadOccurrencePage(
@@ -216,7 +283,7 @@ export async function loadOccurrencePage(
               review.occurrence,
               own.map((item) => item.tag.id),
               conditionTagGroups,
-            )
+            ) && !confirmedAbsent(settings, video, performer.id)
               ? [
                   {
                     key: `${video.id}:${performer.id}`,

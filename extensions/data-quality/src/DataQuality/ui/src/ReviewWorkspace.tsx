@@ -13,6 +13,7 @@ import {
 import { RotateCcw, Save } from "@cove/runtime/lucide-react";
 import { findVideos, request, videoCoverUrl, videoStreamUrl } from "./api";
 import {
+  hasAssessmentSteps,
   reviewValidation,
   actionShortcut,
   boundedFilter,
@@ -88,11 +89,14 @@ export function ReviewActionControls({
   actions,
   disabled,
   canWrite,
+  canAssess = true,
   onApply,
 }: {
   actions: VideoReviewAction[];
   disabled: boolean;
   canWrite: boolean;
+  /** False while assessments cannot be recorded: the absence field or a permission is missing. */
+  canAssess?: boolean;
   onApply(action: VideoReviewAction, stay: boolean): void;
 }) {
   const [names, setNames] = useState<Record<number, string>>({});
@@ -141,7 +145,11 @@ export function ReviewActionControls({
           <button
             type="button"
             className="dq-button primary"
-            disabled={disabled || (!canWrite && action.steps.length > 0)}
+            disabled={
+              disabled ||
+              (!canWrite && action.steps.length > 0) ||
+              (!canAssess && hasAssessmentSteps(action))
+            }
             onClick={(event) => onApply(action, event.shiftKey)}
           >
             <span>
@@ -152,7 +160,9 @@ export function ReviewActionControls({
             <button
               type="button"
               className="dq-button dq-apply-stay-button"
-              disabled={disabled || !canWrite}
+              disabled={
+                disabled || !canWrite || (!canAssess && hasAssessmentSteps(action))
+              }
               aria-label={`Apply & stay: ${action.label}`}
               title={`Apply & stay: ${action.label}`}
               onClick={() => onApply(action, true)}
@@ -186,6 +196,7 @@ interface StayedCursor {
 export function ReviewWorkspace({
   review: saved,
   canWrite,
+  canAssess = true,
   onBusy,
   onSaveDefaults,
   editRequest = 0,
@@ -193,6 +204,7 @@ export function ReviewWorkspace({
 }: {
   review: MediaReview;
   canWrite: boolean;
+  canAssess?: boolean;
   onBusy(value: boolean): void;
   onSaveDefaults?(review: MediaReview): Promise<unknown>;
   editRequest?: number;
@@ -475,6 +487,19 @@ export function ReviewWorkspace({
         result = await fetchPage(rule, nextPage, controller.signal);
       }
       startAtEnd.current = false;
+      // Occurrences are filtered after Cove pages the scenes, so a page can come back with
+      // nothing to review while others still hold work. Keep going in the queue's direction.
+      const step = rule.view.startFrom === "end" ? -1 : 1;
+      while (
+        rule.entityType === "performerOccurrence" &&
+        !result.items.length &&
+        nextPage + step >= 1 &&
+        nextPage + step <= end &&
+        !controller.signal.aborted
+      ) {
+        nextPage += step;
+        result = await fetchPage(rule, nextPage, controller.signal);
+      }
       if (token !== generation.current || controller.signal.aborted) return;
       const ordered = orderedItems(result.items, rule.view.startFrom === "end");
       acceptPage(result, nextPage, ordered[0] ?? null);
@@ -642,6 +667,7 @@ export function ReviewWorkspace({
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
     const autoplayNext = mutating && !stay;
     if (mutating && (!canWrite || !tags)) return;
+    if (action && hasAssessmentSteps(action) && !canAssess) return;
     lock.current = true;
     setPending(true);
     setError("");
@@ -1075,6 +1101,16 @@ export function ReviewWorkspace({
                   />
                   Include subtags
                 </label>
+                {scope.condition === "excludes" && (
+                  <label className="dq-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={scope.hideConfirmedAbsent ?? true}
+                      onChange={(event) => updateScope({ hideConfirmedAbsent: event.target.checked })}
+                    />
+                    Hide occurrences confirmed absent
+                  </label>
+                )}
               </>
             )}
           </div>
@@ -1327,6 +1363,7 @@ export function ReviewWorkspace({
                     <ReviewActionControls
                       actions={definition.actions}
                       canWrite={canWrite}
+                      canAssess={canAssess}
                       disabled={pending || loading || !tags || !!ruleDraft}
                       onApply={(action, stay) => void execute(action, stay)}
                     />

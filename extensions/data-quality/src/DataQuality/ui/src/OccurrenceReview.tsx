@@ -87,6 +87,16 @@ export function OccurrenceSettings({
             />
             Include subtags
           </label>
+          {settings.condition === "excludes" && (
+            <label className="dq-checkbox">
+              <input
+                type="checkbox"
+                checked={settings.hideConfirmedAbsent ?? true}
+                onChange={(event) => update({ hideConfirmedAbsent: event.target.checked })}
+              />
+              Hide occurrences confirmed absent
+            </label>
+          )}
         </>
       )}
       <p>

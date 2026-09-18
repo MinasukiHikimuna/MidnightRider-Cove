@@ -77,6 +77,8 @@ export interface OccurrenceReview extends ReviewBase {
     condition: "any" | "includes" | "includesAll" | "excludes" | "isNull";
     conditionTagIds: number[];
     includeSubtags?: boolean;
+    /** With "excludes": hide occurrences confirmed absent for every condition tag. Defaults to true. */
+    hideConfirmedAbsent?: boolean;
     tagIds: number[];
     multiple: boolean;
   };
@@ -118,11 +120,9 @@ export function reviewValidation(review: Review): string {
   if (review.entityType === "performerOccurrence") {
     if (!validOccurrenceSettings(review.occurrence))
       return "Complete the optional occurrence condition before saving.";
-    if (review.actions.some((action) => action.steps.some((step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode))))
-      return "Occurrence actions support adding and removing tags on the active performer. Video tag assessments are not supported here.";
   }
   if (
-    reviewEntityType(review) === "video" &&
+    reviewEntityType(review) !== "tag" &&
     review.actions.some((action) =>
       hasContradictoryAssessments(action as VideoReviewAction),
     )
@@ -218,17 +218,19 @@ export function validAction(
   );
 }
 
+export function isAssessmentMode(mode: ReviewStep["mode"]): boolean {
+  return ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(mode);
+}
+
 export function hasAssessmentSteps(action: ReviewAction): boolean {
   if (!("steps" in action)) return false;
-  return action.steps.some((step) =>
-    ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode),
-  );
+  return action.steps.some((step) => isAssessmentMode(step.mode));
 }
 
 function hasContradictoryAssessments(action: VideoReviewAction): boolean {
   const assessments = new Map<number, ReviewStep["mode"]>();
   for (const step of action.steps) {
-    if (!["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(step.mode))
+    if (!isAssessmentMode(step.mode))
       continue;
     for (const id of step.tagIds) {
       const previous = assessments.get(id);
@@ -373,6 +375,7 @@ function validOccurrenceSettings(value: unknown): boolean {
     ["any", "includes", "includesAll", "excludes", "isNull"].includes(settings.condition) &&
     ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
     (settings.includeSubtags === undefined || typeof settings.includeSubtags === "boolean") &&
+    (settings.hideConfirmedAbsent === undefined || typeof settings.hideConfirmedAbsent === "boolean") &&
     ids(settings.tagIds) && typeof settings.multiple === "boolean";
 }
 

@@ -178,7 +178,7 @@ export async function runOccurrenceBatch(
       }
       let before: TagState;
       try {
-        before = await readTags(entry.item);
+        before = await readTags(entry.item, false);
         if (!sameAffected(entry.expected, before, batch.touched)) {
           entry.status = "skipped";
           entry.error =
@@ -201,7 +201,7 @@ export async function runOccurrenceBatch(
       }
       let verified = false;
       try {
-        const after = await readTags(entry.item);
+        const after = await readTags(entry.item, false);
         verified = true;
         entry.expected = after;
         const operation = undoOperation(
@@ -229,7 +229,7 @@ export async function runOccurrenceBatch(
         // A failed read leaves the write outcome unknown; never blindly retry it.
         if (!verified) {
           try {
-            const after = await readTags(entry.item);
+            const after = await readTags(entry.item, false);
             entry.expected = after;
             const operation = undoOperation(
               entry.item,
@@ -266,14 +266,14 @@ export async function undoOccurrenceBatch(
       const touched = [...operation.tags.added, ...operation.tags.removed];
       let started = false;
       try {
-        const current = await readTags(entry.item);
+        const current = await readTags(entry.item, false);
         checkUndo(operation, current);
         started = true;
         await editTags(batch.review, entry.item, {
           added: operation.tags.removed,
           removed: operation.tags.added,
         });
-        const after = await readTags(entry.item);
+        const after = await readTags(entry.item, false);
         if (
           !same(
             after.ids.filter((id) => touched.includes(id)),
@@ -290,7 +290,7 @@ export async function undoOccurrenceBatch(
         entry.status = "failed";
         if (started) {
           try {
-            const after = await readTags(entry.item);
+            const after = await readTags(entry.item, false);
             const remaining = undoOperation(
               entry.item,
               entry.before,

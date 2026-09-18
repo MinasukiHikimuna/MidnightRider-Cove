@@ -6,10 +6,38 @@ import type {
   VideoReview,
   VideoReviewAction,
 } from "./model";
-import { hasAssessmentSteps, validAction, boundedFilter } from "./model";
+import {
+  hasAssessmentSteps,
+  isAssessmentMode,
+  validAction,
+  boundedFilter,
+} from "./model";
 
 export const CONFIRMED_ABSENT_TAGS_KEY = "confirmed_absent_tags";
 const CONFIRMED_ABSENT_TAGS_LABEL = "Confirmed absent tags";
+// Custom fields attach to whole entities, so a performer occurrence cannot own one. Its
+// confirmed absences live on the video as "<performerId>:<tagId>" text values instead.
+export const CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY =
+  "confirmed_absent_occurrence_tags";
+
+interface AbsenceField {
+  key: string;
+  label: string;
+  type: "tag" | "text";
+  subject: string;
+}
+const VIDEO_ABSENCE_FIELD: AbsenceField = {
+  key: CONFIRMED_ABSENT_TAGS_KEY,
+  label: CONFIRMED_ABSENT_TAGS_LABEL,
+  type: "tag",
+  subject: "tag assessments",
+};
+const OCCURRENCE_ABSENCE_FIELD: AbsenceField = {
+  key: CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY,
+  label: "Confirmed absent occurrence tags",
+  type: "text",
+  subject: "occurrence tag assessments",
+};
 
 interface CustomFieldDefinition {
   key: string;
@@ -135,7 +163,10 @@ export function normalizeCriteria(value: unknown): unknown {
           ? (MODIFIERS[entry] ?? entry)
           : key === "key" &&
               typeof entry === "string" &&
-              entry.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY.toLowerCase()
+              [
+                CONFIRMED_ABSENT_TAGS_KEY,
+                CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY,
+              ].includes(entry.toLowerCase())
             ? entry.toLowerCase()
             : normalizeCriteria(entry),
       ]),
@@ -305,46 +336,50 @@ export async function resolveTagTree(parentIds: number[], signal?: AbortSignal):
   return [...ids];
 }
 
-function definitionProblem(definition: CustomFieldDefinition): string {
+function definitionProblem(
+  field: AbsenceField,
+  definition: CustomFieldDefinition,
+): string {
   const problems: string[] = [];
-  if (definition.type !== "tag") problems.push('type "tag"');
+  if (definition.type !== field.type) problems.push(`type "${field.type}"`);
   if (!definition.isMultiValue) problems.push("multiple values enabled");
   if (!definition.entityTypes.includes("video"))
     problems.push("video applicability");
   if (!definition.filterable) problems.push("filtering enabled");
   return problems.length
-    ? `The ${CONFIRMED_ABSENT_TAGS_KEY} custom field is incompatible. It must have ${problems.join(", ")}.`
+    ? `The ${field.key} custom field is incompatible. It must have ${problems.join(", ")}.`
     : "";
 }
 
-export async function getConfirmedAbsentTagsFieldStatus(): Promise<ConfirmedAbsentTagsFieldStatus> {
+async function absenceFieldStatus(
+  field: AbsenceField,
+): Promise<ConfirmedAbsentTagsFieldStatus> {
   const definitions =
     await request<CustomFieldDefinition[]>("/api/custom-fields");
   const definition = definitions.find(
-    (item) =>
-      item.key.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY.toLowerCase(),
+    (item) => item.key.toLowerCase() === field.key,
   );
   if (!definition)
     return {
       kind: "missing",
-      message: `Create the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field before applying tag assessments.`,
+      message: `Create the ${field.label} custom field before applying ${field.subject}.`,
     };
-  const message = definitionProblem(definition);
+  const message = definitionProblem(field, definition);
   return message
     ? { kind: "incompatible", message }
     : { kind: "ready", definition, message: "" };
 }
 
-export async function createConfirmedAbsentTagsField(): Promise<void> {
-  const status = await getConfirmedAbsentTagsFieldStatus();
+async function createAbsenceField(field: AbsenceField): Promise<void> {
+  const status = await absenceFieldStatus(field);
   if (status.kind === "ready") return;
   if (status.kind === "incompatible") throw new Error(status.message);
   await request("/api/custom-fields", {
     method: "POST",
     body: JSON.stringify({
-      key: CONFIRMED_ABSENT_TAGS_KEY,
-      label: CONFIRMED_ABSENT_TAGS_LABEL,
-      type: "tag",
+      key: field.key,
+      label: field.label,
+      type: field.type,
       entityTypes: ["video"],
       filterable: true,
       sortable: false,
@@ -353,8 +388,87 @@ export async function createConfirmedAbsentTagsField(): Promise<void> {
   });
 }
 
+export function getConfirmedAbsentTagsFieldStatus() {
+  return absenceFieldStatus(VIDEO_ABSENCE_FIELD);
+}
+
+export function createConfirmedAbsentTagsField() {
+  return createAbsenceField(VIDEO_ABSENCE_FIELD);
+}
+
+export function getOccurrenceAbsenceFieldStatus() {
+  return absenceFieldStatus(OCCURRENCE_ABSENCE_FIELD);
+}
+
+export function createOccurrenceAbsenceField() {
+  return createAbsenceField(OCCURRENCE_ABSENCE_FIELD);
+}
+
 function uniqueIds(ids: readonly number[]): number[] {
   return [...new Set(ids)];
+}
+
+/**
+ * Tag ids confirmed absent for one performer, read from the video's custom fields. The field
+ * is plain text anyone can edit in Cove, so values that are not pairs are ignored rather than
+ * allowed to block tagging every performer on the video.
+ */
+export function occurrenceAbsentTagIds(
+  video: Pick<Video, "customFields">,
+  performerId: number,
+): number[] {
+  const fields = video.customFields ?? {};
+  const key = Object.keys(fields).find(
+    (item) => item.toLowerCase() === CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY,
+  );
+  const values = key === undefined ? [] : fields[key];
+  return uniqueIds(
+    (Array.isArray(values) ? values : [])
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && /^[1-9]\d*:[1-9]\d*$/.test(value),
+      )
+      .map((value) => value.split(":").map(Number))
+      .filter(([performer]) => performer === performerId)
+      .map(([, tagId]) => tagId),
+  );
+}
+
+/** Resolves the occurrence absence field's key, so callers can verify it before any write. */
+export async function requireOccurrenceAbsenceField(): Promise<string> {
+  let status: ConfirmedAbsentTagsFieldStatus;
+  try {
+    status = await getOccurrenceAbsenceFieldStatus();
+  } catch (error) {
+    throw new Error(
+      `Could not verify the ${OCCURRENCE_ABSENCE_FIELD.label} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
+    );
+  }
+  if (status.kind !== "ready") throw new Error(status.message);
+  return status.definition.key;
+}
+
+/**
+ * One bulk request merges the pairs server-side, so other performers' pairs and unrelated
+ * custom fields on the video are never read or resent.
+ */
+export async function setOccurrenceAbsence(
+  fieldKey: string,
+  videoId: number,
+  performerId: number,
+  tagIds: readonly number[],
+  mode: "ADD" | "REMOVE",
+): Promise<void> {
+  await request("/api/videos/bulk", {
+    method: "POST",
+    body: JSON.stringify({
+      ids: [videoId],
+      customFields: {
+        [fieldKey]: uniqueIds(tagIds).map((tagId) => `${performerId}:${tagId}`),
+      },
+      customFieldMode: mode,
+    }),
+  });
 }
 
 type BulkVideoUpdate = {
@@ -434,11 +548,9 @@ export async function runReviewAction(
   );
   // Legacy ADD/REMOVE steps run before assessment steps, as the per-video path always did,
   // so a saved action that mixes both keeps its final outcome.
-  const isAssessment = (mode: string) =>
-    ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(mode);
   const orderedSteps = [
-    ...steps.filter((step) => !isAssessment(step.mode)),
-    ...steps.filter((step) => isAssessment(step.mode)),
+    ...steps.filter((step) => !isAssessmentMode(step.mode)),
+    ...steps.filter((step) => isAssessmentMode(step.mode)),
   ];
   const requests = orderedSteps.map((step) =>
     bulkStepRequest(step, targets, absentFieldKey),

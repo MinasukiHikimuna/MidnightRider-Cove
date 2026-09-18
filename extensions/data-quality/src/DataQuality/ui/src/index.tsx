@@ -44,9 +44,11 @@ import {
 } from "@cove/runtime/lucide-react";
 import {
   createConfirmedAbsentTagsField,
+  createOccurrenceAbsenceField,
   findTags,
   findVideos,
   getConfirmedAbsentTagsFieldStatus,
+  getOccurrenceAbsenceFieldStatus,
   listTagGroups,
   loadReviews,
   loadProgress,
@@ -312,6 +314,9 @@ export function DataQualityPage({
   );
   const entityType = review ? reviewEntityType(review) : "video";
   const videoReview = entityType === "video" ? (review as VideoReview | null) : null;
+  // Occurrence absences use their own field; only reviews that assess need it set up.
+  const occurrenceAssessments = entityType === "performerOccurrence" && !!review?.actions.some(hasAssessmentSteps);
+  const showsAbsenceSetup = !!videoReview || occurrenceAssessments;
   const [layoutOverride, setLayoutOverride] = useState<{ id: string; mode: "single" | "multiple" } | null>(null);
   const reviewMode = layoutOverride?.id === review?.id ? layoutOverride?.mode : review?.view.reviewMode ?? "single";
   const usesWorkspace = entityType === "performerOccurrence" || (entityType === "video" && reviewMode === "single");
@@ -605,18 +610,28 @@ export function DataQualityPage({
     reviewBrowserHeadingRef.current?.focus();
   }, [activeId, reviewsLoading]);
 
+  const absenceFieldGeneration = useRef(0);
   const refreshAbsenceFieldStatus = useCallback(async () => {
+    // The two review kinds check different fields; a slow answer for one must not label the other.
+    const generation = ++absenceFieldGeneration.current;
+    setAbsenceFieldStatus(null);
     setAbsenceFieldError("");
     try {
-      setAbsenceFieldStatus(await getConfirmedAbsentTagsFieldStatus());
+      const status =
+        await (occurrenceAssessments
+          ? getOccurrenceAbsenceFieldStatus()
+          : getConfirmedAbsentTagsFieldStatus());
+      if (generation === absenceFieldGeneration.current)
+        setAbsenceFieldStatus(status);
     } catch (error) {
+      if (generation !== absenceFieldGeneration.current) return;
       setAbsenceFieldStatus(null);
       setAbsenceFieldError(
         "Tag assessment setup could not be checked. " +
           (error instanceof Error ? error.message : "Request failed."),
       );
     }
-  }, []);
+  }, [occurrenceAssessments]);
 
   useEffect(() => {
     void refreshAbsenceFieldStatus();
@@ -1400,7 +1415,7 @@ export function DataQualityPage({
       </header>
 
       {storageNotice && <p className="dq-status">{storageNotice}</p>}
-      {videoReview && absenceFieldStatus?.kind === "missing" && (
+      {showsAbsenceSetup && absenceFieldStatus?.kind === "missing" && (
         <div role="status" className="dq-status">
           {absenceFieldStatus.message}{" "}
           <button
@@ -1409,11 +1424,14 @@ export function DataQualityPage({
             onClick={() => {
               setAbsenceFieldPending(true);
               setAbsenceFieldError("");
-              void createConfirmedAbsentTagsField()
+              void (occurrenceAssessments
+                ? createOccurrenceAbsenceField()
+                : createConfirmedAbsentTagsField()
+              )
                 .then(refreshAbsenceFieldStatus)
                 .catch((error) =>
                   setAbsenceFieldError(
-                    "Could not create the Confirmed absent tags custom field. " +
+                    `Could not create the ${occurrenceAssessments ? "Confirmed absent occurrence tags" : "Confirmed absent tags"} custom field. ` +
                       (error instanceof Error
                         ? error.message
                         : "Request failed."),
@@ -1426,7 +1444,7 @@ export function DataQualityPage({
           </button>
         </div>
       )}
-      {videoReview && (absenceFieldStatus?.kind === "incompatible" || absenceFieldError) && (
+      {showsAbsenceSetup && (absenceFieldStatus?.kind === "incompatible" || absenceFieldError) && (
         <div role="alert" className="dq-alert">
           <AlertTriangle />
           {absenceFieldError || absenceFieldStatus?.message}
@@ -1686,7 +1704,7 @@ export function DataQualityPage({
           </div>
         )
       ) : usesWorkspace ? (
-        <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as VideoReview | OccurrenceReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
+        <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} canAssess={absenceFieldStatus?.kind === "ready" && canWriteVideos} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as VideoReview | OccurrenceReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
       ) : (
         <>
           {videoReview && presentationTags.error && (
@@ -3295,7 +3313,6 @@ function VideoActionsEditor({
               onReorder={(steps) => updateAction(index, { ...action, steps })}
               renderItem={(step, state) => (
                 <ActionStep
-                  occurrence={draft.entityType === "performerOccurrence"}
                   dragHandleProps={state.dragHandleProps}
                   saving={saving}
                   isOver={state.isOver}
@@ -3533,7 +3550,6 @@ function TagActionsEditor({
 }
 
 function ActionStep({
-  occurrence = false,
   step,
   index,
   dragHandleProps,
@@ -3542,7 +3558,6 @@ function ActionStep({
   onChange,
   onRemove,
 }: {
-  occurrence?: boolean;
   step: ReviewStep;
   index: number;
   dragHandleProps: DragHandleProps;
@@ -3577,9 +3592,9 @@ function ActionStep({
         <option value="ADD">Add tags</option>
         <option value="REMOVE">Remove tags</option>
         <option value="REMOVE_TREE">Remove tags and descendants</option>
-        {!occurrence && <><option value="MARK_PRESENT">Mark present</option>
+        <option value="MARK_PRESENT">Mark present</option>
         <option value="MARK_ABSENT">Mark absent</option>
-        <option value="CLEAR_ABSENCE">Clear absence</option></>}
+        <option value="CLEAR_ABSENCE">Clear absence</option>
       </select>
       <div className="dq-step-tags">
         <EntityReferenceMultiSelector

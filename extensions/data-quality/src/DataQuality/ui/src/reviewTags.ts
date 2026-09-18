@@ -1,5 +1,6 @@
 import {
   CONFIRMED_ABSENT_TAGS_KEY,
+  occurrenceAbsentTagIds,
   request,
   readVideo,
   runReviewAction,
@@ -44,8 +45,18 @@ export function difference(before: number[], after: number[]): TagChange {
 function path(item: ReviewItem) {
   return `/api/tagapplications?hostType=video&hostId=${item.video.id}&contextType=performer&contextId=${item.occurrence!.performer.id}`;
 }
-export async function readTags(item: ReviewItem): Promise<TagState> {
+// Batches only change tags, so they skip the video read that occurrence absences need.
+export async function readTags(
+  item: ReviewItem,
+  withAbsence = true,
+): Promise<TagState> {
   if (item.occurrence) {
+    const absent = withAbsence
+      ? occurrenceAbsentTagIds(
+          await readVideo(item.video.id),
+          item.occurrence.performer.id,
+        )
+      : [];
     const applications = (
       await request<OccurrenceApplication[]>(path(item))
     ).filter(
@@ -58,7 +69,7 @@ export async function readTags(item: ReviewItem): Promise<TagState> {
     return {
       ids: [...new Set(applications.map((a) => a.tag.id))],
       names: [...new Set(applications.map((a) => a.tag.name))],
-      absent: [],
+      absent,
       applications,
     };
   }

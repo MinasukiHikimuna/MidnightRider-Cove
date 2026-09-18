@@ -35,6 +35,7 @@ const allScope: PerformerScope = {
   condition: "any",
   conditionTagIds: [],
   includeSubtags: true,
+  hideConfirmedAbsent: true,
 };
 export function defaultQuery(review: MediaReview): ReviewQuery {
   const scope =
@@ -59,6 +60,7 @@ export function defaultQuery(review: MediaReview): ReviewQuery {
             condition: scope.condition,
             conditionTagIds: [...scope.conditionTagIds],
             includeSubtags: scope.includeSubtags ?? true,
+            hideConfirmedAbsent: scope.hideConfirmedAbsent ?? true,
           },
         }
       : {}),
@@ -119,6 +121,7 @@ export function readQuery(
       !Array.isArray(performerScope.performerIds) ||
       !Array.isArray(performerScope.conditionTagIds) ||
       typeof performerScope.includeSubtags !== "boolean" ||
+      typeof performerScope.hideConfirmedAbsent !== "boolean" ||
       [...performerScope.performerIds, ...performerScope.conditionTagIds].some(
         (id) => !Number.isSafeInteger(id) || id <= 0,
       ) ||

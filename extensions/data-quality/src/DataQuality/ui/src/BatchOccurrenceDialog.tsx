@@ -9,7 +9,7 @@ import {
   PERFORMER_CRITERIA,
 } from "@cove/runtime/components";
 import { request } from "./api";
-import type { OccurrenceReview } from "./model";
+import { hasAssessmentSteps, type OccurrenceReview } from "./model";
 import { difference } from "./reviewTags";
 import {
   previewOccurrenceBatch,
@@ -231,7 +231,8 @@ export function BatchOccurrenceDialog({
   const actions =
     started && batch
       ? [batch.action]
-      : review.actions.filter((a) => a.steps.length);
+      : // Batches change tags only; assessments are answered one occurrence at a time.
+        review.actions.filter((a) => a.steps.length && !hasAssessmentSteps(a));
   const hasUndo = entries.some((e) => e.operation);
   const tagNames = (ids: number[]) =>
     ids.map((id) => names[id] ?? `Tag ${id}`).join(", ") || "None";
@@ -305,6 +306,13 @@ export function BatchOccurrenceDialog({
                   }[displayReview.occurrence.condition]}
               .
             </p>
+            {displayReview.occurrence.condition === "excludes" &&
+              displayReview.occurrence.hideConfirmedAbsent !== false && (
+                <p>
+                  Occurrences confirmed absent for every condition tag are
+                  hidden and left unchanged.
+                </p>
+              )}
             {displayReview.occurrence.conditionTagIds.length > 0 && batch && (
               <p>
                 Condition tags:{" "}

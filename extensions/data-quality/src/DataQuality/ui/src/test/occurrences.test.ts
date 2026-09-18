@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
+import { occurrenceAbsentTagIds } from "../api";
 import {
   loadOccurrencePage,
   occurrenceMatches,
@@ -140,25 +141,215 @@ it("stops ordered occurrence actions at the first failed step", async () => {
   ).toBe(false);
 });
 
-it("skips without API writes and rejects video-level assessment actions", async () => {
+const response = (value: unknown) =>
+  Promise.resolve(new Response(JSON.stringify(value)));
+beforeEach(() => fetchMock.mockReset());
+it("skips without API writes", async () => {
   await runOccurrenceAction(occurrenceReview, occurrence, {
     id: "skip",
     label: "Skip",
     steps: [],
   });
   expect(fetchMock).not.toHaveBeenCalled();
-  await expect(
-    runOccurrenceAction(occurrenceReview, occurrence, {
-      id: "absent",
-      label: "Absent",
-      steps: [{ mode: "MARK_ABSENT", tagIds: [21] }],
-    }),
-  ).rejects.toThrow("occurrence tag action");
-  expect(fetchMock).not.toHaveBeenCalled();
 });
-const response = (value: unknown) =>
-  Promise.resolve(new Response(JSON.stringify(value)));
-beforeEach(() => fetchMock.mockReset());
+
+const absenceField = {
+  key: "confirmed_absent_occurrence_tags",
+  type: "text",
+  entityTypes: ["video"],
+  filterable: true,
+  isMultiValue: true,
+};
+function mockOccurrenceApi(apps: unknown[], definitions: unknown[] = [absenceField]) {
+  fetchMock.mockImplementation((path) => {
+    const route = String(path).split("?")[0];
+    return route === "/api/custom-fields"
+      ? response(definitions)
+      : route === "/api/videos/1"
+        ? response(video)
+        : response(apps);
+  });
+}
+const writes = () =>
+  fetchMock.mock.calls
+    .filter(([, options]) => ["POST", "DELETE"].includes(options?.method ?? ""))
+    .map(([path, options]) => ({
+      path: String(path),
+      body: options?.body ? JSON.parse(String(options.body)) : undefined,
+    }));
+const assess = (mode: "MARK_PRESENT" | "MARK_ABSENT" | "CLEAR_ABSENCE") =>
+  runOccurrenceAction(occurrenceReview, occurrence, {
+    id: mode,
+    label: mode,
+    steps: [{ mode, tagIds: [21] }],
+  });
+
+it("marks a tag absent for one performer: removes the application, then records the pair", async () => {
+  mockOccurrenceApi([application(1, 11, 21), application(3, 12, 21)]);
+  await assess("MARK_ABSENT");
+  expect(writes()).toEqual([
+    { path: "/api/tagapplications/1", body: undefined },
+    {
+      path: "/api/videos/bulk",
+      body: {
+        ids: [1],
+        customFields: { confirmed_absent_occurrence_tags: ["11:21"] },
+        customFieldMode: "ADD",
+      },
+    },
+  ]);
+});
+
+it("marks a tag present: clears the pair before adding the application", async () => {
+  mockOccurrenceApi([]);
+  await assess("MARK_PRESENT");
+  const calls = writes();
+  expect(calls).toHaveLength(2);
+  expect(calls[0]).toEqual({
+    path: "/api/videos/bulk",
+    body: {
+      ids: [1],
+      customFields: { confirmed_absent_occurrence_tags: ["11:21"] },
+      customFieldMode: "REMOVE",
+    },
+  });
+  expect(calls[1].body).toMatchObject({ hostId: 1, contextId: 11, tagId: 21 });
+});
+
+it("clears an absence without touching occurrence tags", async () => {
+  mockOccurrenceApi([application(1, 11, 21)]);
+  await assess("CLEAR_ABSENCE");
+  expect(writes().map((call) => call.path)).toEqual(["/api/videos/bulk"]);
+});
+
+it("refuses to record an absence when the custom field is missing or incompatible", async () => {
+  mockOccurrenceApi([application(1, 11, 21)], []);
+  await expect(assess("MARK_ABSENT")).rejects.toThrow("Create the Confirmed absent occurrence tags");
+  mockOccurrenceApi([], [{ ...absenceField, type: "tag" }]);
+  await expect(assess("MARK_ABSENT")).rejects.toThrow('type "text"');
+  // The tag stays put: nothing is written when the absence could not be recorded.
+  expect(writes()).toEqual([]);
+});
+
+it("leaves an unassessed occurrence when the second write of an assessment fails", async () => {
+  const failing = (failBulk: boolean) =>
+    fetchMock.mockImplementation((path, options) => {
+      const route = String(path).split("?")[0];
+      const write = ["POST", "DELETE"].includes(options?.method ?? "");
+      if (write && (route === "/api/videos/bulk") === failBulk)
+        return Promise.resolve(new Response("{}", { status: 500 }));
+      return route === "/api/custom-fields"
+        ? response([absenceField])
+        : route === "/api/videos/1"
+          ? response(video)
+          : response([application(1, 11, 21)]);
+    });
+  // Absent: the tag is removed, the pair write fails, so no absence is recorded.
+  failing(true);
+  await expect(assess("MARK_ABSENT")).rejects.toThrow();
+  expect(writes().map((call) => call.path)).toEqual(["/api/tagapplications/1", "/api/videos/bulk"]);
+  // Present: the pair is cleared first, so a failed tag write cannot leave "absent" beside the tag.
+  fetchMock.mockReset();
+  failing(false);
+  fetchMock.mockImplementation((path, options) => {
+    const route = String(path).split("?")[0];
+    if (options?.method === "POST" && route === "/api/tagapplications")
+      return Promise.resolve(new Response("{}", { status: 500 }));
+    return route === "/api/custom-fields"
+      ? response([absenceField])
+      : route === "/api/videos/1"
+        ? response(video)
+        : response([]);
+  });
+  await expect(assess("MARK_PRESENT")).rejects.toThrow("Saving stopped");
+  expect(writes().map((call) => call.path)).toEqual(["/api/videos/bulk", "/api/tagapplications"]);
+});
+
+it("runs plain steps before assessments in a mixed action", async () => {
+  mockOccurrenceApi([application(1, 11, 21)]);
+  await runOccurrenceAction(occurrenceReview, occurrence, {
+    id: "mixed",
+    label: "Mixed",
+    steps: [
+      { mode: "MARK_ABSENT", tagIds: [21] },
+      { mode: "ADD", tagIds: [22] },
+    ],
+  });
+  expect(writes().map((call) => call.body?.tagId ?? call.path)).toEqual([
+    22,
+    "/api/tagapplications/1",
+    "/api/videos/bulk",
+  ]);
+});
+
+it("lets Cove drop answered scenes only for one target performer and one condition tag", () => {
+  const children = (review: OccurrenceReview, performers: number[] | null) =>
+    (occurrenceSceneReview(review, performers).view.objectFilter._filterExpression as {
+      children: Array<{ filter?: { customFieldCriteria?: unknown } }>;
+    }).children.flatMap((child) => child.filter?.customFieldCriteria ?? []);
+  expect(children(occurrenceReview, [11])).toEqual([
+    { key: "confirmed_absent_occurrence_tags", type: "text", modifier: "notEquals", value: "11:21" },
+  ]);
+  expect(children(occurrenceReview, [11, 12])).toEqual([]);
+  expect(children(occurrenceReview, null)).toEqual([]);
+  const with_ = (occurrence: Partial<OccurrenceReview["occurrence"]>) => ({
+    ...occurrenceReview,
+    occurrence: { ...occurrenceReview.occurrence, ...occurrence },
+  });
+  expect(children(with_({ conditionTagIds: [21, 22] }), [11])).toEqual([]);
+  expect(children(with_({ hideConfirmedAbsent: false }), [11])).toEqual([]);
+  expect(children(with_({ condition: "includes" }), [11])).toEqual([]);
+});
+
+it("hides occurrences confirmed absent for every excluded tag, per performer, unless disabled", async () => {
+  const assessed = {
+    ...video,
+    customFields: { Confirmed_Absent_Occurrence_Tags: ["11:21", "12:99"] },
+  };
+  fetchMock.mockImplementation((path) =>
+    String(path) === "/api/videos/find"
+      ? response({ items: [assessed], totalCount: 1 })
+      : response([]),
+  );
+  const rule = {
+    ...occurrenceReview,
+    occurrence: { ...occurrenceReview.occurrence, targetMode: "all" as const, includeSubtags: false },
+  };
+  const keys = async (review: OccurrenceReview) =>
+    (await loadOccurrencePage(review, null, 1)).items.map((item) => item.key);
+  expect(await keys(rule)).toEqual(["1:12"]);
+  expect(
+    await keys({ ...rule, occurrence: { ...rule.occurrence, conditionTagIds: [21, 22] } }),
+  ).toEqual(["1:11", "1:12"]);
+  expect(
+    await keys({ ...rule, occurrence: { ...rule.occurrence, hideConfirmedAbsent: false } }),
+  ).toEqual(["1:11", "1:12"]);
+});
+
+it("reads one performer's absent tags and ignores values that are not pairs", () => {
+  const fields = { confirmed_absent_occurrence_tags: ["11:21", "12:22", "11:23", "11:21"] };
+  expect(occurrenceAbsentTagIds({ customFields: fields }, 11)).toEqual([21, 23]);
+  expect(occurrenceAbsentTagIds({ customFields: null }, 11)).toEqual([]);
+  expect(
+    occurrenceAbsentTagIds({ customFields: { confirmed_absent_occurrence_tags: ["11-21", 7, "11:22 ", "11:23"] } }, 11),
+  ).toEqual([23]);
+});
+
+it("accepts occurrence assessments but rejects contradictory ones", () => {
+  const withSteps = (steps: OccurrenceReview["actions"][number]["steps"]) => ({
+    ...occurrenceReview,
+    actions: [{ id: "a", label: "Assess", steps }],
+  });
+  expect(reviewValidation(withSteps([{ mode: "MARK_ABSENT", tagIds: [21] }]))).toBe("");
+  expect(
+    reviewValidation(
+      withSteps([
+        { mode: "MARK_ABSENT", tagIds: [21] },
+        { mode: "MARK_PRESENT", tagIds: [21] },
+      ]),
+    ),
+  ).toContain("contradictory");
+});
 
 it("round trips occurrence reviews and rejects missing targets and invalid choices", () => {
   expect(parseReviews(JSON.stringify([occurrenceReview]))).toEqual([
@@ -238,6 +429,18 @@ it("keeps scene selection separate and binds identity and tag conditions to the 
                 depth: -1,
               },
             },
+          },
+        },
+        {
+          filter: {
+            customFieldCriteria: [
+              {
+                key: "confirmed_absent_occurrence_tags",
+                type: "text",
+                modifier: "notEquals",
+                value: "11:21",
+              },
+            ],
           },
         },
       ],

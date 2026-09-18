@@ -100,3 +100,9 @@ it("restores the saved subtag choice and defaults older reviews to including sub
   const params = new URLSearchParams({ performerScope: JSON.stringify(legacyScope) });
   expect(readQuery(exact, params).query.performerScope?.includeSubtags).toBe(true);
 });
+it("defaults hiding confirmed-absent occurrences on and keeps an explicit opt-out", () => {
+  expect(defaultQuery(review).performerScope?.hideConfirmedAbsent).toBe(true);
+  const shown = { ...review, occurrence: { ...review.occurrence, hideConfirmedAbsent: false } };
+  expect(defaultQuery(shown).performerScope?.hideConfirmedAbsent).toBe(false);
+  expect(() => readQuery(review, new URLSearchParams('performerScope={"hideConfirmedAbsent":"false"}'))).toThrow();
+});
