@@ -98,25 +98,29 @@ public sealed class SegmentGroupServiceTests
     }
 
     [Fact]
-    public async Task EditorListingReturnsOnlyGroupsAndMembershipsForVisibleTags()
+    public async Task CatalogListingPlacesEveryGroupedTagForTheEditor()
     {
         await using var fixture = await SegmentGroupFixture.CreateAsync();
-        var visible = await SegmentGroupService.CreateAsync(fixture.Context, "Visible", CancellationToken.None);
-        var unrelated = await SegmentGroupService.CreateAsync(fixture.Context, "Unrelated", CancellationToken.None);
+        fixture.Context.Set<Tag>().Single(tag => tag.Id == 12).SortName = "Sorted twelve";
+        await fixture.Context.SaveChangesAsync();
+        var review = await SegmentGroupService.CreateAsync(fixture.Context, "Review", CancellationToken.None);
+        var other = await SegmentGroupService.CreateAsync(fixture.Context, "Other", CancellationToken.None);
         var empty = await SegmentGroupService.CreateAsync(fixture.Context, "Empty", CancellationToken.None);
         await SegmentGroupService.UpdateAsync(
-            fixture.Context, visible.Id, new SegmentGroupUpdateRequest("Visible", [11, 12]), CancellationToken.None);
+            fixture.Context, review.Id, new SegmentGroupUpdateRequest("Review", [11, 12]), CancellationToken.None);
         await SegmentGroupService.UpdateAsync(
-            fixture.Context, unrelated.Id, new SegmentGroupUpdateRequest("Unrelated", [13]), CancellationToken.None);
+            fixture.Context, other.Id, new SegmentGroupUpdateRequest("Other", [13]), CancellationToken.None);
 
-        var groups = await SegmentGroupService.ListForTagsAsync(fixture.Context, [12], CancellationToken.None);
+        // The editor keeps the whole catalog so a segment retagged to a tag with no segments in its video is placed at once.
+        var groups = await SegmentGroupService.ListPlacementAsync(fixture.Context, CancellationToken.None);
 
-        var group = Assert.Single(groups);
-        Assert.Equal(visible.Id, group.Id);
-        var membership = Assert.Single(group.Tags);
-        Assert.Equal(12, membership.TagId);
-        Assert.Null(membership.TagName);
-        Assert.DoesNotContain(groups, candidate => candidate.Id == unrelated.Id || candidate.Id == empty.Id);
+        Assert.Equal([review.Id, other.Id, empty.Id], groups.Select(group => group.Id));
+        Assert.Equal([11, 12], groups[0].Tags.Select(tag => tag.TagId));
+        Assert.Equal("Sorted twelve", groups[0].Tags.Single(tag => tag.TagId == 12).TagSortName);
+        // Tag names stay behind the catalog endpoint's own permissions.
+        Assert.All(groups.SelectMany(group => group.Tags), tag => Assert.Null(tag.TagName));
+        Assert.Equal([13], groups[1].Tags.Select(tag => tag.TagId));
+        Assert.Empty(groups[2].Tags);
     }
 
     [Fact]
@@ -280,10 +284,8 @@ public sealed class SegmentGroupServiceTests
         await fixture.Context.SaveChangesAsync();
 
         var groups = await SegmentGroupService.ListAsync(fixture.Context, CancellationToken.None);
-        var editorGroups = await SegmentGroupService.ListForTagsAsync(fixture.Context, [11, 12], CancellationToken.None);
 
         Assert.Equal([0, 1], groups.Select(group => group.SortOrder));
-        Assert.Equal([0, 1], editorGroups.Select(group => group.SortOrder));
     }
 
     [Fact]

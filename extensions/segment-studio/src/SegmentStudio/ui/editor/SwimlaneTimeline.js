@@ -6,7 +6,7 @@ import { formatTime } from "../shared/api.js";
 
 import { SLOT_STATUS_PRESENTATION, activeSwimlaneLabelStyle, basicSegmentTimelineStyle, segmentGroupHeaderBackground, segmentTimelineStyle, swimlaneMarkerTop, swimlaneStripeBackground, timelineSegmentWidth } from "../shared/presentation.js";
 
-import { PerformerSublaneAvatars, buildTimelineRows, groupSegmentsIntoSwimlanes, groupSwimlanesBySegmentGroup, swimlaneDisplayLabel, visibleVirtualRows } from "./model/swimlanes.js";
+import { PerformerSublaneAvatars, buildTimelineRows, groupSegmentsIntoSwimlanes, groupSwimlanesBySegmentGroup, hasGroupedSwimlanes, swimlaneDisplayLabel, visibleVirtualRows } from "./model/swimlanes.js";
 
 import { buildMinuteTimelineTicks, calculateCenteredTimelineScroll, calculateMinuteLabelStride, calculateSwimlaneTitleMaximum, calculateTimelinePlayheadPosition, clampSwimlaneTitleWidth, clampTimelineZoom, timelineContentStyle, timelinePlayheadHorizontalStyle, timelineTickAlignment, timelineTickPosition, timelineTimePercent } from "./model/timeline.js";
 
@@ -30,8 +30,8 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
   );
   const groupedLanes = useMemo(() => groupSwimlanesBySegmentGroup(lanes), [lanes]);
   const timelineLayout = useMemo(
-    () => buildTimelineRows(groupedLanes, collapsedGroupKeys, segmentGroups.length > 0),
-    [groupedLanes, collapsedGroupKeys, segmentGroups.length],
+    () => buildTimelineRows(groupedLanes, collapsedGroupKeys, hasGroupedSwimlanes(groupedLanes)),
+    [groupedLanes, collapsedGroupKeys],
   );
   const visibleTimelineRows = useMemo(
     () => visibleVirtualRows(timelineLayout.rows, Math.max(0, viewport.scrollTop - 24), viewport.height),

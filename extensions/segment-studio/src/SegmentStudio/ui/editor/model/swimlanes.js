@@ -130,6 +130,7 @@ export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], perform
         segmentGroupName: group.name,
         segmentGroupSortOrder: groupIndex,
         segmentGroupTagSortOrder: tag.sortOrder,
+        tagSortName: tag.tagSortName || null,
       });
     }
   }
@@ -138,17 +139,17 @@ export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], perform
     const label = segment.tagName || "Tag segment";
     const key = segment.tagId == null ? `name:${label}` : `tag:${segment.tagId}`;
     if (!laneMap.has(key)) {
+      const placement = tagPlacement.get(segment.tagId);
       laneMap.set(key, {
         key,
         tagId: segment.tagId,
         label,
-        tagSortName: segment.tagSortName || null,
-        ...(tagPlacement.get(segment.tagId) || {
-          segmentGroupId: null,
-          segmentGroupName: null,
-          segmentGroupSortOrder: Number.MAX_SAFE_INTEGER,
-          segmentGroupTagSortOrder: Number.MAX_SAFE_INTEGER,
-        }),
+        // A segment shown with a new tag has no sort name yet; the group catalog knows it.
+        tagSortName: segment.tagSortName || placement?.tagSortName || null,
+        segmentGroupId: placement?.segmentGroupId ?? null,
+        segmentGroupName: placement?.segmentGroupName ?? null,
+        segmentGroupSortOrder: placement?.segmentGroupSortOrder ?? Number.MAX_SAFE_INTEGER,
+        segmentGroupTagSortOrder: placement?.segmentGroupTagSortOrder ?? Number.MAX_SAFE_INTEGER,
         segments: [],
       });
     }
@@ -195,6 +196,12 @@ export function groupSwimlanesBySegmentGroup(lanes) {
       group.counts[state] += Number(lane.counts?.[state]) || 0;
   }
   return groups;
+}
+
+// Group headers and group shortcuts apply once any displayed lane belongs to a tag group; the catalog
+// itself is always sent, so its size says nothing about this video.
+export function hasGroupedSwimlanes(groupedLanes) {
+  return (groupedLanes || []).some((group) => group.id != null);
 }
 
 const SEGMENT_RAIL_ROW_HEIGHTS = {

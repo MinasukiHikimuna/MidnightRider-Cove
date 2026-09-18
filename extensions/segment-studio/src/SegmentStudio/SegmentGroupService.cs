@@ -42,32 +42,15 @@ public static class SegmentGroupService
             group.Id, group.Name, groupIndex, membersByGroup.GetValueOrDefault(group.Id) ?? [])).ToList();
     }
 
-    public static async Task<IReadOnlyList<SegmentGroupResponse>> ListForTagsAsync(
-        DbContext db, IReadOnlyCollection<int> tagIds, CancellationToken ct)
-    {
-        var relevantTagIds = tagIds.Distinct().ToArray();
-        if (relevantTagIds.Length == 0) return [];
-        var members = await db.Set<Tag>().AsNoTracking()
-            .Where(tag => relevantTagIds.Contains(tag.Id) && tag.TagGroupId.HasValue)
-            .Select(tag => new NativeMember(
-                tag.TagGroupId!.Value, tag.Id, tag.Name, tag.SortName,
-                tag.TagGroup!.Name, tag.TagGroup.SortOrder))
-            .ToListAsync(ct);
-
-        var orderedGroups = members.GroupBy(member => new { member.GroupId, member.GroupName, member.GroupSortOrder })
-            .OrderBy(grouping => grouping.Key.GroupSortOrder)
-            .ThenBy(grouping => grouping.Key.GroupName)
-            .ThenBy(grouping => grouping.Key.GroupId)
+    // The editor's copy of the catalog: every grouped tag's placement and ordering, without tag names,
+    // which the catalog endpoint guards behind its own permissions.
+    public static async Task<IReadOnlyList<SegmentGroupResponse>> ListPlacementAsync(DbContext db, CancellationToken ct) =>
+        (await ListAsync(db, ct))
+            .Select(group => group with
+            {
+                Tags = group.Tags.Select(tag => tag with { TagName = null }).ToList(),
+            })
             .ToList();
-        return orderedGroups.Select((grouping, groupIndex) => new SegmentGroupResponse(
-                grouping.Key.GroupId,
-                grouping.Key.GroupName,
-                groupIndex,
-                OrderMembers(grouping)
-                    .Select((member, index) => new SegmentGroupTagResponse(member.Id, null, index, member.SortName))
-                    .ToList()))
-            .ToList();
-    }
 
     public static async Task<SegmentGroupResponse> CreateAsync(DbContext db, string name, CancellationToken ct)
     {

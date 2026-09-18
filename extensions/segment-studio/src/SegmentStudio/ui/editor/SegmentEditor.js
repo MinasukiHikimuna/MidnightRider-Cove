@@ -10,7 +10,7 @@ import { requestJson } from "../shared/api.js";
 
 import { findUniquePerformerSlotAssignment } from "../discovery/model.js";
 
-import { buildSegmentRailRows, expandedSwimlanes, groupSegmentsIntoSwimlanes, groupSelectedSwimlanes, groupSwimlanesBySegmentGroup, reconcileSegmentGroupKey, revealCollapsedSegmentGroup, segmentGroupKeyForSegment, visibleVirtualRows } from "./model/swimlanes.js";
+import { buildSegmentRailRows, expandedSwimlanes, groupSegmentsIntoSwimlanes, groupSelectedSwimlanes, groupSwimlanesBySegmentGroup, hasGroupedSwimlanes, reconcileSegmentGroupKey, revealCollapsedSegmentGroup, segmentGroupKeyForSegment, visibleVirtualRows } from "./model/swimlanes.js";
 
 import { calculateTimelineRatioBounds, clampEditorPanelWidth, clampTimelineRatioForHeight, findInitialSegmentSelection, findUnreviewedSelection } from "./model/timeline.js";
 
@@ -514,7 +514,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const hasPreviousUnreviewed = findUnreviewedSelection(swimlanes, selectedSegment?.id, -1, true) != null;
   const hasNextUnreviewed = findUnreviewedSelection(swimlanes, selectedSegment?.id, 1, true) != null;
   const selectedSegmentGroupForSegment = selectedSegment ? segmentGroupKeyForSegment(allSwimlanes, selectedSegment.id) : null;
-  const segmentGroupKeys = segmentGroups.length > 0 ? groupedSegmentRail.map((group) => group.key) : [];
+  const segmentGroupKeys = hasGroupedSwimlanes(groupedSegmentRail) ? groupedSegmentRail.map((group) => group.key) : [];
   const segmentGroupKeysFingerprint = segmentGroupKeys.join("|");
   const timelineDuration = Math.max(
     0,

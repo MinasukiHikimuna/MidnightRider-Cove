@@ -428,6 +428,9 @@ test("editor filters consistently combine review, any-slot performer, provenance
   const editor = source.slice(source.indexOf("function SegmentEditor"), source.indexOf("const DISCOVERY_URL_OPTIONS"));
   assert.match(filterUi, /Editor filters/);
   assert.match(filterUi, /Any assigned slot/);
+  // The group filter offers the groups this video's segments fall into, plus the one already selected.
+  assert.match(filterUi, /const groupOptions = \(segmentGroups \|\| \[\]\)\.filter\(\(group\) =>\s*Number\(group\.id\) === normalized\.segmentGroupId\s*\|\| \(group\.tags \|\| \[\]\)\.some\(\(tag\) => segmentTagIds\.has\(Number\(tag\.tagId\)\)\)\)/);
+  assert.match(filterUi, /\.\.\.groupOptions\.map\(\(group\) =>/);
   assert.match(source, /Minimum AI confidence/);
   assert.match(source, /Maximum AI confidence/);
   assert.match(source, /data-confidence-range/);

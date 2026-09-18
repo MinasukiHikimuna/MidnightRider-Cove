@@ -152,6 +152,11 @@ function EditorFiltersDialog({
     segment.tagName || `Tag ${segment.tagId}`,
   ])).entries()].sort((left, right) =>
     left[1].localeCompare(right[1]) || left[0] - right[0]);
+  // The catalog lists every tag group; offer only the groups this video's segments fall into.
+  const segmentTagIds = new Set((segments || []).map((segment) => Number(segment.tagId)));
+  const groupOptions = (segmentGroups || []).filter((group) =>
+    Number(group.id) === normalized.segmentGroupId
+    || (group.tags || []).some((tag) => segmentTagIds.has(Number(tag.tagId))));
   const update = (values) => onChange(normalizeEditorSegmentFilters({ ...normalized, ...values }));
   const toggleReviewState = (state) => update({
     reviewStates: normalized.reviewStates.includes(state)
@@ -264,7 +269,7 @@ function EditorFiltersDialog({
             className: "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground",
           }, [
             h("option", { key: "all", value: "" }, "All Segment groups"),
-            ...(segmentGroups || []).map((group) =>
+            ...groupOptions.map((group) =>
               h("option", { key: group.id, value: group.id }, group.name)),
             h("option", { key: "ungrouped", value: "ungrouped" }, "Ungrouped"),
           ]),

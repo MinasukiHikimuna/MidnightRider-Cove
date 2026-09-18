@@ -2385,13 +2385,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 segment.CreatedAt,
                                 provenanceBySegment[segment.Id].ToArray()))
                             .ToList();
-                        var basicSegmentGroups =
-                            await SegmentGroupService.ListForTagsAsync(
-                                db,
-                                basicSegments.Select(segment => segment.TagId)
-                                    .Distinct()
-                                    .ToArray(),
-                                ct);
+                        var basicSegmentGroups = await SegmentGroupService.ListPlacementAsync(db, ct);
                         return Results.Ok(new SegmentStudioBasicEditorResponse(
                             SegmentStudioModes.Basic,
                             video,
@@ -2498,8 +2492,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             IsDerived = segment.ItemId is long itemId && derivedItemIds.Contains(itemId),
                         })
                         .ToList();
-                    var segmentGroups = await SegmentGroupService.ListForTagsAsync(
-                        db, segments.Select(segment => segment.TagId).Distinct().ToArray(), ct);
+                    // Every grouped tag, not only those with segments here, so a segment retagged to a tag
+                    // new to this video lands in its group before the reload.
+                    var segmentGroups = await SegmentGroupService.ListPlacementAsync(db, ct);
                     var nativeTagIds = segments
                         .Where(segment => segment.NativeSegmentId != null)
                         .ToDictionary(segment => segment.NativeSegmentId!.Value, segment => segment.TagId);

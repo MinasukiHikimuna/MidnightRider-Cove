@@ -145,6 +145,44 @@ test("native Cove tag groups and SortName order tag lanes", () => {
   assert.match(source, /top: `\$\{swimlaneMarkerTop\(track\)\}rem`/);
 });
 
+test("a tag with no other segments in the video is placed and sorted from the group catalog", () => {
+  // The catalog covers every grouped tag; a segment shown with a fresh tag carries no sort name yet.
+  const segmentGroups = [
+    { id: 5, name: "Orgasm", sortOrder: 0, tags: [
+      { tagId: 20, tagName: "Facial", tagSortName: "01 Facial", sortOrder: 0 },
+      { tagId: 10, tagName: "Cumshot", tagSortName: "02 Cumshot", sortOrder: 1 },
+    ] },
+  ];
+  const lanes = ui.groupSegmentsIntoSwimlanes([
+    { id: 1, tagId: 10, tagName: "Cumshot", tagSortName: "02 Cumshot", startSec: 1, endSec: 2, reviewState: "unreviewed" },
+    { id: 2, tagId: 20, tagName: "Facial", tagSortName: null, startSec: 3, endSec: 4, reviewState: "unreviewed" },
+    { id: 3, tagId: 30, tagName: "Loose", tagSortName: null, startSec: 5, endSec: 6, reviewState: "unreviewed" },
+  ], segmentGroups);
+
+  assert.deepEqual(lanes.map((lane) => [lane.label, lane.segmentGroupId, lane.tagSortName]), [
+    ["Facial", 5, "01 Facial"],
+    ["Cumshot", 5, "02 Cumshot"],
+    ["Loose", null, null],
+  ]);
+  assert.equal(ui.segmentGroupKeyForSegment(lanes, 2), "group:5");
+  assert.equal(ui.segmentGroupKeyForSegment(lanes, 3), "ungrouped");
+});
+
+test("group headers and shortcuts wait for a lane that belongs to a group, whatever the catalog holds", () => {
+  const catalog = [{ id: 5, name: "Orgasm", sortOrder: 0, tags: [{ tagId: 20, tagName: null, tagSortName: null, sortOrder: 0 }] }];
+  const ungroupedOnly = ui.groupSwimlanesBySegmentGroup(ui.groupSegmentsIntoSwimlanes([
+    { id: 1, tagId: 10, tagName: "Loose", startSec: 1, endSec: 2, reviewState: "unreviewed" },
+  ], catalog));
+  const mixed = ui.groupSwimlanesBySegmentGroup(ui.groupSegmentsIntoSwimlanes([
+    { id: 1, tagId: 10, tagName: "Loose", startSec: 1, endSec: 2, reviewState: "unreviewed" },
+    { id: 2, tagId: 20, tagName: "Facial", startSec: 3, endSec: 4, reviewState: "unreviewed" },
+  ], catalog));
+
+  assert.equal(ui.hasGroupedSwimlanes(ungroupedOnly), false);
+  assert.equal(ui.hasGroupedSwimlanes(mixed), true);
+  assert.equal(ui.hasGroupedSwimlanes([]), false);
+});
+
 test("equal native group orders remain contiguous in response order", () => {
   const groups = [
     { id: 1, name: "First", sortOrder: 10, tags: [
