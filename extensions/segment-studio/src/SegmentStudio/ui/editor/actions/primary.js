@@ -15,7 +15,7 @@ function shouldReloadAfterSegmentMutation(segment, values, compatibilityMode) {
 }
 
 function createPrimarySegmentActions(context) {
-  const { acquireSaveLock, compatibilityMode, dispatchPendingChanges, enqueueSave, pendingChanges, retargetSaveTasks, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
+  const { acquireSaveLock, compatibilityMode, dispatchPendingChanges, enqueueSave, pendingChanges, retargetSaveTasks, currentTime, detail, editorFilters, endInput, hideDerivedSegments, historyRef, mediaDuration, onConflict, onDetailChange, onReload, optimisticSegmentIdRef, pendingDuplicateRef, pendingFirstSegmentStartSecRef, pendingTagEditSegmentIdRef, performerSlots, replaceSegmentSelection, savingSegmentId, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setCreatingSegmentId, setEditorFilters, setFirstSegmentTagOpen, setHideDerivedSegments, setHistory, setHistoryOpen, setPublishApprovedError, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, setTagEditing, startInput, tagEditingRef, timelineDuration, video } = context;
 
   function acceptHistory(next) {
       historyRef.current = next || EMPTY_EDITOR_HISTORY;
@@ -484,51 +484,98 @@ function createPrimarySegmentActions(context) {
       const historyReceiptId = !compatibilityMode
         ? crypto.randomUUID()
         : null;
-      const releaseSaveLock = acquireSaveLock("duplicate", selectedSegment.id);
-      if (!releaseSaveLock) return;
-      try {
-        const pendingDuplicate = pendingDuplicateRef.current?.operationKey === operationKey
-          ? pendingDuplicateRef.current
-          : null;
-        let duplicateIdentity = pendingDuplicate?.duplicateIdentity ?? null;
-        if (duplicateIdentity == null
-            && compatibilityMode
-            && selectedSegment.nativeSegmentId == null) {
-          const result = await requestJson(`/videos/${video.id}/drafts/${selectedSegment.itemId}/duplicate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              operationId: operationIdFor(operationKey),
-              expectedRevision: selectedSegment.revision,
-              startSec: atPlayhead ? startSec : null,
-            }),
-          });
-          duplicateIdentity = duplicateIdentityFromResponse(false, result);
-          pendingDuplicateRef.current = { operationKey, duplicateIdentity };
-        } else if (duplicateIdentity == null) {
-          const duplicate = await requestJson(`/videos/${video.id}/segments/${selectedSegment.id}/duplicate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              expectedUpdatedAt: selectedSegment.updatedAt,
-              startSec: atPlayhead ? startSec : null,
-              historyReceiptId,
-            }),
-          });
-          duplicateIdentity = duplicateIdentityFromResponse(true, duplicate);
-          pendingDuplicateRef.current = { operationKey, duplicateIdentity };
+      const source = selectedSegment;
+      const previousSelectionId = selectedSegmentIdRef.current;
+      const duration = source.endSec == null ? null : source.endSec - source.startSec;
+      // The copy is shown at once with the source's tag, provenance and slots, so it stays visible under the
+      // same filters as the source; the server confirms it on reload.
+      const optimisticSegment = {
+        ...source,
+        id: optimisticSegmentIdRef.current--,
+        itemId: null,
+        nativeSegmentId: null,
+        startSec,
+        endSec: duration == null ? null : startSec + duration,
+        // Full mode creates the copy already approved; match it so a queued review toggles as displayed.
+        reviewState: compatibilityMode ? "approved" : source.reviewState,
+        revision: 0,
+        updatedAt: null,
+      };
+      const sourceSlots = (performerSlots || []).filter((slot) => slot.segmentId === source.id);
+      // A duplicate is a save-queue task like a create, so a tag typed on the copy waits for its saved identity.
+      const task = enqueueSave({
+        kind: "duplicate",
+        lockId: -1,
+        targets: [segmentIdentity(source)],
+        run: (saveContext) => runDuplicate(saveContext),
+      });
+      if (!task) return;
+      await task.done;
+
+      async function runDuplicate({ onReload: reload, onConflict: conflict, taskId }) {
+        const insertId = createPendingChangeId();
+        dispatchPendingChanges({ type: "add", entry: { id: insertId, taskId, op: "insert", segment: optimisticSegment } });
+        if (sourceSlots.length > 0)
+          onDetailChange((current) => patchPerformerSlotProjection(current, optimisticSegment.id, sourceSlots), video.id);
+        // An in-place copy usually wants a different tag, so open the tag field on it like a new segment.
+        if (!atPlayhead) {
+          setCreatingSegmentId(optimisticSegment.id);
+          pendingTagEditSegmentIdRef.current = optimisticSegment.id;
+          setTagEditing(true);
         }
-        const loaded = await onReload();
-        const duplicatedSegment = findSegmentByStableIdentity(loaded?.segments, duplicateIdentity);
-        if (duplicatedSegment) {
-          if (!compatibilityMode)
-            await recordHistoryAction(
-              "segment.duplicate",
-              "Duplicated segment",
-              segmentsHistoryState([], false),
-              segmentsHistoryState([duplicatedSegment], false),
-              historyReceiptId,
-            );
+        replaceSegmentSelection(optimisticSegment.id);
+        const dropTemporary = () => {
+          dispatchPendingChanges({ type: "discard", key: insertId });
+          if (sourceSlots.length > 0)
+            onDetailChange((current) => patchPerformerSlotProjection(current, optimisticSegment.id, []), video.id);
+        };
+        try {
+          const pendingDuplicate = pendingDuplicateRef.current?.operationKey === operationKey
+            ? pendingDuplicateRef.current
+            : null;
+          let duplicateIdentity = pendingDuplicate?.duplicateIdentity ?? null;
+          if (duplicateIdentity == null
+              && compatibilityMode
+              && source.nativeSegmentId == null) {
+            const result = await requestJson(`/videos/${video.id}/drafts/${source.itemId}/duplicate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                operationId: operationIdFor(operationKey),
+                expectedRevision: source.revision,
+                startSec: atPlayhead ? startSec : null,
+              }),
+            });
+            duplicateIdentity = duplicateIdentityFromResponse(false, result);
+            pendingDuplicateRef.current = { operationKey, duplicateIdentity };
+          } else if (duplicateIdentity == null) {
+            const duplicate = await requestJson(`/videos/${video.id}/segments/${source.id}/duplicate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                expectedUpdatedAt: source.updatedAt,
+                startSec: atPlayhead ? startSec : null,
+                historyReceiptId,
+              }),
+            });
+            duplicateIdentity = duplicateIdentityFromResponse(true, duplicate);
+            pendingDuplicateRef.current = { operationKey, duplicateIdentity };
+          }
+          const loaded = await reload();
+          // The reloaded projection carries the saved copy, so the temporary one goes in the same batch.
+          dropTemporary();
+          const duplicatedSegment = findSegmentByStableIdentity(loaded?.segments, duplicateIdentity);
+          if (!duplicatedSegment) {
+            setTagEditing(false);
+            replaceSegmentSelection(previousSelectionId);
+            setSaveMessage(loaded
+              ? "Duplicate created, but it could not be selected; repeat the duplicate shortcut to retry selection."
+              : "Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection.");
+            return;
+          }
+          // Work aimed at the temporary copy follows it to its saved identity.
+          dispatchPendingChanges({ type: "retarget", temporaryId: optimisticSegment.id, identity: segmentIdentity(duplicatedSegment) });
+          retargetSaveTasks(optimisticSegment.id, segmentIdentity(duplicatedSegment));
           const visibility = editorVisibilityIncludingSegment(
             duplicatedSegment,
             loaded.performerSlots || [],
@@ -538,32 +585,42 @@ function createPrimarySegmentActions(context) {
           );
           setEditorFilters(visibility.filters);
           setHideDerivedSegments(visibility.hideDerivedSegments);
-          // An in-place copy usually wants a different tag, so open the tag field on it like a new segment.
-          if (!atPlayhead) pendingTagEditSegmentIdRef.current = duplicatedSegment.id;
-          setSelectedSegmentIds([duplicatedSegment.id]);
-          setSelectedSegmentId(duplicatedSegment.id);
-          selectionAnchorIdRef.current = duplicatedSegment.id;
-          selectionRangeBaseIdsRef.current = [];
+          if (!atPlayhead && tagEditingRef.current)
+            pendingTagEditSegmentIdRef.current = duplicatedSegment.id;
+          // Swap selection in the same batch as the reload so the editor never shows a fallback segment.
+          replaceSegmentSelection(duplicatedSegment.id);
           setSelectedSegmentGroupKey(segmentGroupKeyForSegment(
             groupSegmentsIntoSwimlanes(loaded.segments || [], loaded.segmentGroups || [], loaded.performerSlots || []),
             duplicatedSegment.id,
           ));
-          if (compatibilityMode && selectedSegment.nativeSegmentId == null)
+          if (compatibilityMode && source.nativeSegmentId == null)
             completeOperation(operationKey);
           pendingDuplicateRef.current = null;
           setSaveMessage(atPlayhead
             ? "Duplicate created at the playhead."
             : "Duplicate created in place.");
-        } else {
-          setSaveMessage("Duplicate created, but it could not be selected; repeat the duplicate shortcut to retry selection.");
+          // History goes last so its own warning is not overwritten and the selection is already settled.
+          if (!compatibilityMode)
+            await recordHistoryAction(
+              "segment.duplicate",
+              "Duplicated segment",
+              segmentsHistoryState([], false),
+              segmentsHistoryState([duplicatedSegment], false),
+              historyReceiptId,
+            );
+        } catch (error) {
+          dropTemporary();
+          setTagEditing(false);
+          replaceSegmentSelection(previousSelectionId);
+          if (pendingDuplicateRef.current?.operationKey === operationKey)
+            setSaveMessage("Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection.");
+          else if (error.status === 409) await conflict();
+          else setSaveMessage(error.message || "Unable to duplicate the draft.");
+          // The task fails, so a tag held for the copy is dropped instead of reporting its own failure.
+          throw error;
+        } finally {
+          setCreatingSegmentId(null);
         }
-      } catch (error) {
-        if (pendingDuplicateRef.current?.operationKey === operationKey)
-          setSaveMessage("Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection.");
-        else if (error.status === 409) await onConflict();
-        else setSaveMessage(error.message || "Unable to duplicate the draft.");
-      } finally {
-        releaseSaveLock();
       }
     }
 

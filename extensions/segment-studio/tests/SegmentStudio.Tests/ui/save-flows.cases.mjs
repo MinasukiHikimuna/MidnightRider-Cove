@@ -255,6 +255,167 @@ test("save flow: an in-place duplicate opens the tag editor on the copy like a n
   });
 });
 
+test("save flow: a duplicate shows a copy with the source's tag and slots before the save returns", { timeout: 5000 }, async () => {
+  const existing = segment({ tagName: "Kissing", tagSortName: "kissing", reviewState: "approved" });
+  const duplicated = segment({ id: 206, nativeSegmentId: 206, tagName: "Kissing", tagSortName: "kissing", reviewState: "approved", updatedAt: "2026-01-05T00:00:00Z" });
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const post = api.hold("POST", "/videos/7/segments/101/duplicate");
+  let server;
+  const editor = createFakeEditor({ segments: [existing], server: () => server.serve() });
+  editor.state.detail = { ...editor.state.detail, performerSlots: [slotFor(101, 17, "Alpha")] };
+  server = duplicateServer(editor, duplicated);
+  await withEditorGlobals(api, async () => {
+    const duplicating = actionsFor(editor).duplicateSegment(false);
+    await post.arrived();
+
+    // The copy is shown, selected and ready for a tag while the request is still out.
+    const copy = editor.displayedSegments.find((item) => item.id === -1);
+    assert.deepEqual([copy.tagId, copy.tagName, copy.tagSortName, copy.startSec, copy.endSec, copy.reviewState], [1, "Kissing", "kissing", 10, 20, "approved"]);
+    assert.deepEqual(editor.state.detail.performerSlots.filter((slot) => slot.segmentId === -1), [slotFor(-1, 17, "Alpha")]);
+    assert.equal(editor.state.selectedSegmentId, -1);
+    assert.equal(editor.state.creatingSegmentId, -1);
+    assert.equal(editor.state.tagEditing, true);
+    assert.equal(editor.savingSegmentId, -1);
+
+    server.duplicate();
+    post.release({ id: 206 });
+    await duplicating;
+    assert.equal(editor.displayedSegments.some((item) => item.id === -1), false);
+    assert.deepEqual(editor.state.detail.performerSlots.map((slot) => slot.segmentId), [101]);
+    assert.equal(editor.state.selectedSegmentId, 206);
+    assert.equal(editor.state.creatingSegmentId, null);
+    assert.equal(editor.state.saveMessage, "Duplicate created in place.");
+  });
+});
+
+test("save flow: a failed duplicate removes the copy, restores the selection and reloads on a conflict", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("POST", "/videos/7/segments/101/duplicate", reply(409, { error: "Segment changed." }));
+  const editor = createFakeEditor();
+  let conflicts = 0;
+  editor.render({ onConflict: async () => { conflicts += 1; return editor.state.detail; } });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).duplicateSegment(true);
+    assert.equal(editor.displayedSegments.some((item) => item.id === -1), false);
+    assert.equal(editor.state.selectedSegmentId, 101);
+    assert.equal(editor.state.tagEditing, false);
+    assert.equal(editor.savingSegmentId, null);
+    assert.equal(conflicts, 1);
+    assert.equal(editor.saveQueue.getSnapshot().lastFailure?.kind, "duplicate");
+  });
+
+  const rejected = createFakeApi().on("POST", "/videos/7/segments/101/duplicate", reply(422, { error: "Segment is locked." }));
+  const other = createFakeEditor();
+  await withEditorGlobals(rejected, async () => {
+    await actionsFor(other).duplicateSegment(false);
+    assert.equal(other.state.saveMessage, "Segment is locked.");
+    assert.equal(other.state.tagEditing, false);
+    assert.equal(other.state.selectedSegmentId, 101);
+  });
+});
+
+test("save flow: a tag typed on the copy while the duplicate saves is held and saved to the saved copy", { timeout: 5000 }, async () => {
+  const existing = segment();
+  const duplicated = segment({ id: 206, nativeSegmentId: 206, updatedAt: "2026-01-05T00:00:00Z" });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/history/actions", historyReply)
+    .on("PUT", "/videos/7/segments/206", (request) => ({ ...duplicated, ...request.body, updatedAt: "2026-01-06T00:00:00Z" }));
+  const post = api.hold("POST", "/videos/7/segments/101/duplicate");
+  let server;
+  const editor = createFakeEditor({ segments: [existing], server: () => server.serve() });
+  server = duplicateServer(editor, duplicated);
+  await withEditorGlobals(api, async () => {
+    const duplicating = actionsFor(editor).duplicateSegment(false);
+    await post.arrived();
+    assert.equal(editor.state.tagEditing, true);
+
+    await actionsFor(editor).saveTag(9, "Held tag");
+    assert.equal(editor.state.saveMessage, "Tag change queued…");
+    assert.equal(editor.displayedSegments.find((item) => item.id === -1).tagId, 9);
+    assert.equal(api.sent("PUT", /\/segments\/\d+$/).length, 0);
+
+    server.duplicate();
+    post.release({ id: 206 });
+    await duplicating;
+    // The saved copy shows the held tag straight away, and the hold saves against its identity.
+    assert.equal(editor.displayedSegments.find((item) => item.id === 206).tagId, 9);
+    editor.render();
+    await editor.saveQueue.whenIdle();
+    const [put] = api.sent("PUT", "/videos/7/segments/206");
+    assert.equal(put.body.tagId, 9);
+    assert.equal(put.body.expectedUpdatedAt, "2026-01-05T00:00:00Z");
+    assert.equal(editor.state.selectedSegmentId, 206);
+  });
+});
+
+test("save flow: a held tag is dropped when the duplicate it waited for fails", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const post = api.hold("POST", "/videos/7/segments/101/duplicate");
+  const editor = createFakeEditor();
+  await withEditorGlobals(api, async () => {
+    const duplicating = actionsFor(editor).duplicateSegment(false);
+    await post.arrived();
+    await actionsFor(editor).saveTag(9, "Held tag");
+
+    post.release(reply(422, { error: "Segment is locked." }));
+    await duplicating;
+    editor.render();
+    await editor.saveQueue.whenIdle();
+    assert.equal(editor.state.saveMessage, "Segment is locked.");
+    assert.equal(api.sent("PUT", /\/segments\//).length, 0);
+    assert.equal(editor.state.selectedSegmentId, 101);
+  });
+});
+
+test("save flow: a Full-mode duplicate shows the approved copy the server creates, with its slots", { timeout: 5000 }, async () => {
+  const draft = segment({ id: -55, itemId: 55, nativeSegmentId: null, published: false, revision: 2, reviewState: "unreviewed" });
+  const copy = { ...draft, id: -56, itemId: 56, reviewState: "approved", revision: 1 };
+  const api = createFakeApi();
+  const post = api.hold("POST", "/videos/7/drafts/55/duplicate");
+  let server;
+  const editor = createFakeEditor({ segments: [draft], compatibilityMode: true, server: () => server.serve() });
+  editor.state.detail = { ...editor.state.detail, performerSlots: [slotFor(-55, 17, "Alpha")] };
+  server = duplicateServer(editor, copy);
+  await withEditorGlobals(api, async () => {
+    const duplicating = actionsFor(editor).duplicateSegment(true);
+    await post.arrived();
+    const shown = editor.displayedSegments.find((item) => item.id === -1);
+    assert.equal(shown.reviewState, "approved");
+    assert.deepEqual(editor.state.detail.performerSlots.filter((slot) => slot.segmentId === -1), [slotFor(-1, 17, "Alpha")]);
+    assert.equal(editor.state.tagEditing, false);
+
+    server.duplicate();
+    post.release({ draft, createdDraft: { itemId: 56 } });
+    await duplicating;
+    assert.equal(editor.state.selectedSegmentId, -56);
+    assert.equal(editor.state.saveMessage, "Duplicate created at the playhead.");
+  });
+});
+
+test("save flow: a duplicate whose reload fails keeps its identity so a repeat selects it without a second request", { timeout: 5000 }, async () => {
+  const existing = segment();
+  const duplicated = segment({ id: 206, nativeSegmentId: 206, updatedAt: "2026-01-05T00:00:00Z" });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/segments/101/duplicate", () => ({ id: 206 }))
+    .on("POST", "/videos/7/history/actions", historyReply);
+  let server;
+  const editor = createFakeEditor({ segments: [existing], server: () => server.serve() });
+  server = duplicateServer(editor, duplicated);
+  editor.render({ onReload: async () => { throw new Error("offline"); } });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).duplicateSegment(false);
+    assert.equal(editor.state.saveMessage, "Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection.");
+    assert.equal(editor.displayedSegments.some((item) => item.id === -1), false);
+    assert.equal(editor.state.selectedSegmentId, 101);
+
+    server.duplicate();
+    editor.render();
+    await actionsFor(editor).duplicateSegment(false);
+    assert.equal(api.sent("POST", "/videos/7/segments/101/duplicate").length, 1);
+    assert.equal(editor.state.selectedSegmentId, 206);
+    assert.equal(editor.state.saveMessage, "Duplicate created in place.");
+  });
+});
+
 test("save flow: a duplicate at the playhead keeps the tag editor closed", { timeout: 5000 }, async () => {
   const existing = segment();
   const duplicated = segment({ id: 206, nativeSegmentId: 206, startSec: 0, updatedAt: "2026-01-05T00:00:00Z" });

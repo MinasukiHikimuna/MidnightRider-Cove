@@ -660,6 +660,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     pendingDuplicateRef,
     pendingFirstSegmentStartSecRef,
     pendingTagEditSegmentIdRef,
+    performerSlots,
     enqueueSave,
     pendingChanges,
     retargetSaveTasks,

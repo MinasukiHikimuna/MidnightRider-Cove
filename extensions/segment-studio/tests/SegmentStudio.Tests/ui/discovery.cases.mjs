@@ -529,7 +529,7 @@ test("manual segment creation matches the Stash Marker Studio shortcut contract"
   assert.match(editor, /duplicateIdentity = duplicateIdentityFromResponse\(false, result\)/);
   assert.match(editor, /duplicateIdentity = duplicateIdentityFromResponse\(true, duplicate\)/);
   assert.match(editor, /findSegmentByStableIdentity\(loaded\?\.segments, duplicateIdentity\)/);
-  assert.match(editor, /setSelectedSegmentId\(duplicatedSegment\.id\)/);
+  assert.match(editor, /replaceSegmentSelection\(duplicatedSegment\.id\)/);
   assert.deepEqual(ui.duplicateIdentityFromResponse(false, {
     createdDraft: { itemId: 91 },
   }), { itemId: 91 });
@@ -596,9 +596,8 @@ test("manual segment creation matches the Stash Marker Studio shortcut contract"
   assert.match(editor, /const pendingDuplicateRef = useRef\(null\)/);
   assert.match(editor, /pendingDuplicateRef\.current\?\.operationKey === operationKey/);
   assert.match(editor, /pendingDuplicateRef\.current = \{ operationKey, duplicateIdentity \}/);
-  assert.match(editor, /setSelectedSegmentIds\(\[duplicatedSegment\.id\]\)/);
-  assert.match(editor, /selectionAnchorIdRef\.current = duplicatedSegment\.id/);
-  assert.match(editor, /selectionRangeBaseIdsRef\.current = \[\]/);
+  // The copy is selected through the shared helper both while temporary and once saved.
+  assert.match(editor, /replaceSegmentSelection\(optimisticSegment\.id\)/);
   assert.match(editor, /Duplicate created, but the editor could not refresh it; repeat the duplicate shortcut to retry selection\./);
   assert.match(editor, /setTagEditing\(true\)/);
   assert.match(editor, /\[tagEditing, selectedSegmentId\]/);
