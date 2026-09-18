@@ -194,9 +194,9 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
     get displayedSegments() { return applyPendingChanges(state.detail.segments, state.pendingChanges); },
     // Models the layout effect that prunes confirmed changes after a render.
     // Models a commit: prune confirmed changes, capture the save context, then let queued saves start.
-    render() {
+    render(extra = {}) {
       state.pendingChanges = pendingChangesReducer(state.pendingChanges, { type: "prune", detail: state.detail });
-      committedContext = editor.context();
+      committedContext = editor.context(extra);
       saveQueue.markCommitted();
       saveQueue.poke();
     },

@@ -162,7 +162,8 @@ public static class BulkSegmentTagService
                     request.TagId),
                 principal,
                 authorization,
-                ct);
+                ct,
+                includePerformerSlots: false);
             if (draftResult.Status != SegmentDraftMutationStatus.Updated)
                 return FromDraft(draftResult);
         }

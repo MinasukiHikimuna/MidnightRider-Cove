@@ -5,7 +5,7 @@ import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSele
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { editorVisibilityIncludingSegment } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
-import { insertSegmentProjection } from "../model/optimistic.js";
+import { insertSegmentProjection, patchPerformerSlotProjection } from "../model/optimistic.js";
 import { createPendingChangeId, heldTagChangeFor } from "../model/pending-changes.js";
 import { segmentIdentity } from "../model/save-queue.js";
 
@@ -111,6 +111,9 @@ function createPrimarySegmentActions(context) {
             }),
           });
           completeOperation(operationKey);
+          // A tag change remaps and auto-assigns the draft's slots; show the server's result before the reload.
+          if (result.performerSlots != null)
+            onDetailChange((current) => patchPerformerSlotProjection(current, segment.id, result.performerSlots, result.performerSlotRevision), video.id);
           const updatedDraft = {
             ...segment,
             ...result.draft,
@@ -327,6 +330,10 @@ function createPrimarySegmentActions(context) {
             });
             completeOperation(operationKey);
             createdIdentity = { itemId: result.draft?.itemId };
+            // The server assigned performer slots while creating the draft: show them on the temporary
+            // segment now instead of after the reload.
+            if (result.performerSlots != null)
+              onDetailChange((current) => patchPerformerSlotProjection(current, optimisticSegment.id, result.performerSlots, result.performerSlotRevision), video.id);
           } else {
             const created = await requestJson(`/videos/${video.id}/segments`, {
               method: "POST",
@@ -346,6 +353,8 @@ function createPrimarySegmentActions(context) {
           // The reloaded projection carries the saved segment, so the temporary one goes in the same batch.
           dispatchPendingChanges({ type: "discard", key: insertId });
           if (!loaded) {
+            // The temporary segment is gone, so drop the slots shown on it.
+            onDetailChange((current) => patchPerformerSlotProjection(current, optimisticSegment.id, []), video.id);
             replaceSegmentSelection(previousSelectionId);
             setSaveMessage(`Segment created, but the editor could not refresh it. Reload Segment Studio to see the saved segment${creation.openTagEditor ? " and choose its tag again if you picked one" : ""}.`);
             return;

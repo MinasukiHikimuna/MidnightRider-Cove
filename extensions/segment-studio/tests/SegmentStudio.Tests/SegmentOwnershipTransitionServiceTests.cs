@@ -1876,6 +1876,88 @@ public sealed class SegmentOwnershipTransitionServiceTests
         Assert.Equal(23, slots[targetReceiverId]);
         Assert.DoesNotContain(sourceGiverId, slots.Keys);
         Assert.DoesNotContain(sourceReceiverId, slots.Keys);
+        // The editor shows the remapped slots from the response instead of waiting for its reload.
+        Assert.NotNull(edited.PerformerSlots);
+        Assert.Equal(
+            [(targetGiverId, 17), (targetReceiverId, 23)],
+            edited.PerformerSlots.Select(slot => (slot.SlotDefinitionId, slot.PerformerId!.Value)));
+        Assert.All(edited.PerformerSlots, slot => Assert.Equal(-created.Draft.ItemId, slot.SegmentId));
+        Assert.False(string.IsNullOrEmpty(edited.PerformerSlotRevision));
+    }
+
+    [Fact]
+    public async Task DraftEditsWithoutTagChangeOrSlotAccessReturnNoPerformerSlots()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.Add(new Tag { Id = 12, Name = "Other activity" });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var created = await SegmentStudioDraftService.CreateAsync(
+            fixture.Context, fixture.VideoId,
+            new(Guid.NewGuid(), 11, 14.5, 20.0), CovePrincipal.System(),
+            new PerformersDeniedAuthorization(), CancellationToken.None);
+        Assert.Equal(SegmentDraftMutationStatus.Updated, created.Status);
+        // Without performer read access the response carries no slots at all.
+        Assert.Null(created.PerformerSlots);
+        Assert.Null(created.PerformerSlotRevision);
+
+        var timing = await SegmentStudioDraftService.UpdateAsync(
+            fixture.Context, fixture.VideoId, created.Draft!.ItemId,
+            new(Guid.NewGuid(), created.Draft.Revision, 15, 21, 11), CovePrincipal.System(),
+            fixture.Authorization, CancellationToken.None);
+        Assert.Equal(SegmentDraftMutationStatus.Updated, timing.Status);
+        // A timing-only edit leaves the slots alone, so the editor keeps what it shows.
+        Assert.Null(timing.PerformerSlots);
+
+        var bulk = await SegmentStudioDraftService.UpdateAsync(
+            fixture.Context, fixture.VideoId, created.Draft.ItemId,
+            new(Guid.NewGuid(), timing.Draft!.Revision, 15, 21, 12), CovePrincipal.System(),
+            fixture.Authorization, CancellationToken.None, includePerformerSlots: false);
+        Assert.Equal(SegmentDraftMutationStatus.Updated, bulk.Status);
+        Assert.Null(bulk.PerformerSlots);
+    }
+
+    [Fact]
+    public async Task CreatedDraftReturnsItsAutoAssignedPerformerSlots()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var setId = Guid.NewGuid();
+        var firstSlotId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var secondSlotId = Guid.Parse("10000000-0000-0000-0000-000000000002");
+        fixture.Context.AddRange(
+            new Performer { Id = 17, Name = "Alpha" },
+            new Performer { Id = 23, Name = "Beta" },
+            new VideoPerformer { VideoId = fixture.VideoId, PerformerId = 17 },
+            new VideoPerformer { VideoId = fixture.VideoId, PerformerId = 23 },
+            new SegmentStudioSlotDefinitionSet { Id = setId, TagId = 11, CreatedAt = fixture.UpdatedAt },
+            new SegmentStudioSlotDefinition
+                { Id = firstSlotId, SlotDefinitionSetId = setId, SortOrder = 0, CreatedAt = fixture.UpdatedAt },
+            new SegmentStudioSlotDefinition
+                { Id = secondSlotId, SlotDefinitionSetId = setId, SortOrder = 1, CreatedAt = fixture.UpdatedAt });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var operationId = Guid.NewGuid();
+
+        var created = await SegmentStudioDraftService.CreateAsync(
+            fixture.Context, fixture.VideoId,
+            new(operationId, 11, 14.5, 20.0), CovePrincipal.System(),
+            fixture.Authorization, CancellationToken.None);
+        var replay = await SegmentStudioDraftService.CreateAsync(
+            fixture.Context, fixture.VideoId,
+            new(operationId, 11, 14.5, 20.0), CovePrincipal.System(),
+            fixture.Authorization, CancellationToken.None);
+
+        Assert.Equal(SegmentDraftMutationStatus.Updated, created.Status);
+        // Two unlabeled, unhinted slots for two video performers are filled in name order at creation.
+        Assert.NotNull(created.PerformerSlots);
+        Assert.Equal(
+            [(firstSlotId, 17, "Alpha"), (secondSlotId, 23, "Beta")],
+            created.PerformerSlots.Select(slot => (slot.SlotDefinitionId, slot.PerformerId!.Value, slot.PerformerName)));
+        Assert.All(created.PerformerSlots, slot => Assert.Equal(-created.Draft!.ItemId, slot.SegmentId));
+        Assert.False(string.IsNullOrEmpty(created.PerformerSlotRevision));
+        // A replayed create returns the stored result; the editor reloads the slots for it.
+        Assert.True(replay.Replayed);
+        Assert.Null(replay.PerformerSlots);
     }
 
     [Fact]
@@ -3284,6 +3366,17 @@ public sealed class SegmentOwnershipTransitionServiceTests
         public Task<AuthorizationResult> AuthorizeAsync(CovePrincipal? principal, string permission, EntityRef? entity, CancellationToken ct) => Task.FromResult(AuthorizationResult.Allow());
         public void Require(CovePrincipal? principal, string permission, EntityRef? entity = null) { }
         public bool Has(CovePrincipal? principal, string permission) => true;
+    }
+
+    private sealed class PerformersDeniedAuthorization : IAuthorizationService
+    {
+        private static AuthorizationResult Decide(string permission) => permission == Permissions.PerformersRead
+            ? AuthorizationResult.Deny("Denied", permission)
+            : AuthorizationResult.Allow();
+        public AuthorizationResult Authorize(CovePrincipal? principal, string permission, EntityRef? entity = null) => Decide(permission);
+        public Task<AuthorizationResult> AuthorizeAsync(CovePrincipal? principal, string permission, EntityRef? entity, CancellationToken ct) => Task.FromResult(Decide(permission));
+        public void Require(CovePrincipal? principal, string permission, EntityRef? entity = null) { }
+        public bool Has(CovePrincipal? principal, string permission) => permission != Permissions.PerformersRead;
     }
 
     private sealed class DeniedAuthorization : IAuthorizationService

@@ -276,6 +276,20 @@ test("save flow: a duplicate at the playhead keeps the tag editor closed", { tim
   });
 });
 
+test("save flow: a create whose reload fails drops the slots shown on the temporary segment", { timeout: 5000 }, async () => {
+  const api = createFakeApi()
+    .on("POST", "/videos/7/drafts", () => ({ draft: { itemId: 55, tagId: 1, startSec: 0, endSec: 20, reviewState: "approved", revision: 1 }, performerSlots: [slotFor(-55, 17, "Alpha")] }));
+  const editor = createFakeEditor({ compatibilityMode: true });
+  // The create runs as a queued task, so the failing reload has to be in the committed save context.
+  editor.render({ onReload: async () => null });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).createSegment();
+
+    assert.deepEqual(editor.state.detail.performerSlots, []);
+    assert.equal(editor.displayedSegments.some((item) => item.id === -1), false);
+  });
+});
+
 test("save flow: a failed create removes the temporary segment and restores the selection", { timeout: 5000 }, async () => {
   const api = createFakeApi().on("POST", "/videos/7/segments", reply(422, { error: "Tag is not allowed." }));
   const editor = createFakeEditor();
@@ -522,6 +536,35 @@ test("save flow: a failed review discards its decision and restores the selectio
   });
 });
 
+test("save flow: a tag change to a tag with no lane yet shows the segment in its group before the reload", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("POST", "/videos/7/history/actions", historyReply);
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  let serverSegments = [segment()];
+  const editor = createFakeEditor({ server: () => ({ ...editor.state.detail, segments: serverSegments }) });
+  // The editor response carries the whole tag group catalog, including tags without segments in this video.
+  editor.state.detail = {
+    ...editor.state.detail,
+    segmentGroups: [{ id: 5, name: "Orgasm", sortOrder: 0, tags: [{ tagId: 9, tagName: "Facial", tagSortName: "facial", sortOrder: 0 }] }],
+  };
+  const groupOf = (segmentId) => ui.segmentGroupKeyForSegment(
+    ui.groupSegmentsIntoSwimlanes(editor.displayedSegments, editor.state.detail.segmentGroups, editor.state.detail.performerSlots),
+    segmentId,
+  );
+  assert.equal(groupOf(101), "ungrouped");
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).saveTag(9, "Facial");
+    await put.arrived();
+    // While the save is in flight the segment already sits in its catalog group, never under Ungrouped.
+    assert.equal(groupOf(101), "group:5");
+    serverSegments = [{ ...segment(), tagId: 9, tagName: "Facial", tagSortName: "facial", updatedAt: "2026-01-02T00:00:00Z" }];
+    put.release(serverSegments[0]);
+    await saving;
+    editor.render();
+    assert.equal(groupOf(101), "group:5");
+    assert.equal(editor.segments[0].tagId, 9);
+  });
+});
+
 test("save flow: a saved tag change keeps showing when the reload after it fails", { timeout: 5000 }, async () => {
   const api = createFakeApi()
     .on("PUT", "/videos/7/segments/101", (request) => ({ ...segment(), ...request.body, updatedAt: "2026-01-02T00:00:00Z" }))
@@ -708,6 +751,73 @@ test("save flow: an approval requested while a new segment saves applies to the 
     const [request] = api.sent("PUT", "/videos/7/segments/review-state");
     assert.deepEqual(request.body.segments, [{ nativeSegmentId: 205, expectedUpdatedAt: "2026-01-01T00:00:00Z" }]);
     assert.notEqual(editor.state.saveMessage, "The queued review could not find its segment after refreshing.");
+  });
+});
+
+function slotFor(segmentId, performerId, performerName) {
+  return { segmentId, slotDefinitionId: "slot-1", label: null, sortOrder: 0, genderHints: [], performerId, performerName, allowSamePerformerInMultipleSlots: false };
+}
+
+test("save flow: a created draft shows the performer slots the server assigned before the reload", { timeout: 5000 }, async () => {
+  const existing = segment({ id: -50, itemId: 50, nativeSegmentId: null, published: false, revision: 1 });
+  const created = { ...existing, id: -55, itemId: 55, startSec: 0, endSec: 20 };
+  let serverSegments = [existing];
+  let serverSlots = [];
+  let slotsSeenByReload = null;
+  let revisionsSeenByReload = null;
+  const api = createFakeApi()
+    .on("POST", "/videos/7/drafts", () => {
+      serverSegments = [created, existing];
+      serverSlots = [slotFor(-55, 17, "Alpha")];
+      return { draft: { itemId: 55, tagId: 1, startSec: 0, endSec: 20, reviewState: "approved", revision: 1 }, performerSlots: serverSlots, performerSlotRevision: "rev-a" };
+    });
+  const editor = createFakeEditor({
+    segments: [existing],
+    compatibilityMode: true,
+    server: () => {
+      slotsSeenByReload = editor.state.detail.performerSlots;
+      revisionsSeenByReload = editor.state.detail.performerSlotRevisions;
+      return { ...editor.state.detail, segments: serverSegments, performerSlots: serverSlots };
+    },
+  });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).createSegment();
+
+    // The temporary segment carried the assignment from the create response while the reload was pending.
+    assert.deepEqual(slotsSeenByReload, [slotFor(-1, 17, "Alpha")]);
+    assert.equal(revisionsSeenByReload?.[-1], "rev-a");
+    assert.deepEqual(editor.state.detail.performerSlots, [slotFor(-55, 17, "Alpha")]);
+    assert.equal(editor.state.selectedSegmentId, -55);
+  });
+});
+
+test("save flow: a draft tag change shows the remapped performer slots before the reload", { timeout: 5000 }, async () => {
+  const draft = segment({ id: -55, itemId: 55, nativeSegmentId: null, published: false, revision: 3 });
+  let serverSegments = [draft];
+  let serverSlots = [];
+  let slotsSeenByReload = null;
+  const api = createFakeApi()
+    .on("PUT", "/videos/7/drafts/55", (request) => {
+      serverSegments = [{ ...draft, tagId: 9, tagName: "Retagged", revision: 4 }];
+      serverSlots = [slotFor(-55, 23, "Beta")];
+      return { draft: { ...draft, ...request.body, revision: 4 }, performerSlots: serverSlots, performerSlotRevision: "rev-b" };
+    });
+  const editor = createFakeEditor({
+    segments: [draft],
+    compatibilityMode: true,
+    server: () => {
+      slotsSeenByReload = editor.state.detail.performerSlots;
+      return { ...editor.state.detail, segments: serverSegments, performerSlots: serverSlots };
+    },
+  });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).mutateSegment(draft, { startSec: 10, endSec: 20, tagId: 9 }, true, null, true);
+
+    assert.deepEqual(slotsSeenByReload, [slotFor(-55, 23, "Beta")]);
+    assert.deepEqual(editor.state.detail.performerSlots, [slotFor(-55, 23, "Beta")]);
+    // Slot edits made before the reload save against the remapped revision, not the stale one.
+    assert.equal(editor.state.detail.performerSlotRevisions?.[-55], "rev-b");
+    assert.equal(editor.segments[0].tagId, 9);
   });
 });
 

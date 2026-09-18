@@ -75,7 +75,11 @@ public sealed record SegmentDraftMutationResult(
     bool Replayed = false,
     SegmentDraftSnapshot? CreatedDraft = null,
     string? Code = null,
-    string? ApprovedSetVersion = null);
+    string? ApprovedSetVersion = null,
+    // The draft's performer slots after the mutation, so the editor can show a fresh auto-assignment
+    // without waiting for its reload. Null when slots were not touched or the caller cannot read them.
+    IReadOnlyList<PerformerSlotEditorItem>? PerformerSlots = null,
+    string? PerformerSlotRevision = null);
 
 public static class SegmentStudioDraftService
 {
@@ -136,7 +140,8 @@ public static class SegmentStudioDraftService
         var result = new SegmentDraftMutationResult(SegmentDraftMutationStatus.Updated, ToSnapshot(item));
         db.Add(CreateReceipt(request.OperationId, CreateKind, fingerprint, principal, item.Id, result));
         await db.SaveChangesAsync(ct);
-        return result;
+        // The receipt keeps the bare result; a replay reloads its slots like any other stale projection.
+        return slotAccess.Allowed ? await WithPerformerSlotsAsync(db, item, result, ct) : result;
     }
 
     public static async Task<SegmentDraftMutationResult> UpdateAsync(
@@ -146,7 +151,8 @@ public static class SegmentStudioDraftService
         UpdateSegmentDraftRequest request,
         CovePrincipal? principal,
         IAuthorizationService authorization,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includePerformerSlots = true)
     {
         var validationError = Validate(request.StartSec, request.EndSec);
         if (validationError is not null)
@@ -200,6 +206,7 @@ public static class SegmentStudioDraftService
         var contentChanged = tagChanged || item.StartSec != request.StartSec || item.EndSec != request.EndSec;
         var nextReviewState = request.ReviewState ?? item.ReviewState;
         var changed = contentChanged || item.ReviewState != nextReviewState;
+        var slotsRemapped = false;
         if (changed)
         {
             if (tagChanged)
@@ -209,6 +216,7 @@ public static class SegmentStudioDraftService
                 await PerformerSlotRetaggingService.RemapAsync(
                     db, item.Id, item.TagId!.Value, request.TagId, ct,
                     autoAssignMissingSlots: slotAccess.Allowed);
+                slotsRemapped = slotAccess.Allowed && includePerformerSlots;
             }
             item.StartSec = request.StartSec;
             item.EndSec = request.EndSec;
@@ -241,7 +249,24 @@ public static class SegmentStudioDraftService
                 : null);
         db.Add(CreateReceipt(request.OperationId, UpdateKind, fingerprint, principal, item.Id, result));
         await db.SaveChangesAsync(ct);
-        return result;
+        return slotsRemapped ? await WithPerformerSlotsAsync(db, item, result, ct) : result;
+    }
+
+    // Adds the draft's current slots and their assignment revision, so the editor shows the assignment and
+    // can save slot edits against it before its reload.
+    private static async Task<SegmentDraftMutationResult> WithPerformerSlotsAsync(
+        DbContext db, SegmentStudioItem item, SegmentDraftMutationResult result, CancellationToken ct)
+    {
+        var ownedItemTagIds = new Dictionary<long, int> { [item.Id] = item.TagId!.Value };
+        var slots = await PerformerSlotEditorService.LoadUnifiedAsync(
+            db, new Dictionary<int, int>(), ownedItemTagIds, ct);
+        var revisions = await PerformerSlotMutationService.LoadUnifiedAssignmentRevisionsAsync(
+            db, new Dictionary<int, int>(), ownedItemTagIds, slots, ct);
+        return result with
+        {
+            PerformerSlots = slots,
+            PerformerSlotRevision = revisions.GetValueOrDefault(-item.Id),
+        };
     }
 
     public static async Task<SegmentDraftMutationResult> SplitAsync(
