@@ -28,6 +28,13 @@ export interface TagChange {
   added: number[];
   removed: number[];
 }
+export interface UndoOperation {
+  item: ReviewItem;
+  before: TagState;
+  after: TagState;
+  tags: TagChange;
+  absence: TagChange;
+}
 export function difference(before: number[], after: number[]): TagChange {
   return {
     added: after.filter((id) => !before.includes(id)),
@@ -109,4 +116,49 @@ export async function applyTags(
   if (item.occurrence && review.entityType === "performerOccurrence")
     await runOccurrenceAction(review, item.occurrence, action);
   else await runReviewAction(action, [item.video.id]);
+}
+export function undoOperation(
+  item: ReviewItem,
+  before: TagState,
+  after: TagState,
+  touched: number[],
+): UndoOperation {
+  const only = (ids: number[]) => ids.filter((id) => touched.includes(id));
+  return {
+    item,
+    before,
+    after,
+    tags: difference(only(before.ids), only(after.ids)),
+    absence: difference(only(before.absent), only(after.absent)),
+  };
+}
+export function checkUndo(operation: UndoOperation, current: TagState) {
+  for (const [delta, ids] of [
+    [operation.tags, current.ids],
+    [operation.absence, current.absent],
+  ] as const) {
+    if (
+      delta.added.some((id) => !ids.includes(id)) ||
+      delta.removed.some((id) => ids.includes(id))
+    )
+      throw new Error(
+        "Undo conflict: affected tags changed since this operation. Inspect the item; no undo changes were made.",
+      );
+  }
+  if (current.applications) {
+    for (const id of operation.tags.added) {
+      const expected = operation.after.applications
+        ?.filter((a) => a.tag.id === id)
+        .map((a) => a.id)
+        .sort();
+      const actual = current.applications
+        .filter((a) => a.tag.id === id)
+        .map((a) => a.id)
+        .sort();
+      if (JSON.stringify(expected) !== JSON.stringify(actual))
+        throw new Error(
+          "Undo conflict: an affected occurrence application changed. No undo changes were made.",
+        );
+    }
+  }
 }

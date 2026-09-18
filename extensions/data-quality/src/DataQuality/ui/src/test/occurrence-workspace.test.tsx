@@ -1005,13 +1005,27 @@ it("allows requested rule editing after an initial queue failure and preserves r
   await screen.findByRole("heading", {name: "Reviewing First performer"});
 });
 
-it("has no batch or undo controls before or after saving", async () => {
-  open(); await ready();
-  expect(screen.queryByRole("button", { name: "Apply to all matching occurrences" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
-  await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
-  await ready();
-  expect(screen.queryByRole("button", { name: /Undo/ })).not.toBeInTheDocument();
+it("retains batch results when a review editor is opened and cancelled", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  const save = vi.fn().mockResolvedValue(undefined);
+  const rendered = open(review, true, save); await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
+  await screen.findByText("Preview ready. No tags have been changed.");
+  fireEvent.click(screen.getByRole("button", { name: "Apply batch" }));
+  await screen.findByText(/Batch finished/);
+  expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
+  const loads = api.loadOccurrencePage.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Batch results / undo" })).toBeEnabled(), { timeout: 3000 });
+  expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads);
+  rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />);
+  await screen.findByRole("region", { name: "Edit review rule" });
+  expect(screen.queryByRole("button", { name: "Batch results / undo" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Batch results / undo" }));
+  expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Undo latest tag operation" })).not.toBeInTheDocument();
 });
 
 it("refreshes the queue after each save and removes a scene only after its last matching performer", async () => {

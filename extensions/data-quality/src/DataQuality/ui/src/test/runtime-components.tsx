@@ -329,6 +329,7 @@ export function DetailListToolbar({
         role="toolbar"
         aria-label="Video list controls"
         data-custom-field-entity-type={customFieldEntityType}
+        data-object-filter={JSON.stringify(objectFilter)}
       >
         <span>{totalCount ? `${start}–${end} of ${totalCount}` : "0 items"}</span>
         {showSearch && (

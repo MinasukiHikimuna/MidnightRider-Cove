@@ -1,8 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
 import {
+  checkUndo,
   readTags,
   editTags,
+  undoOperation,
   type ReviewItem,
 } from "../reviewTags";
 import type { VideoReview } from "../model";
@@ -29,6 +31,34 @@ const item: ReviewItem = { key: "1", video };
 const respond = (body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body)));
 beforeEach(() => fetch.mockReset());
+it("detects an occurrence application deleted and re-created by another writer", () => {
+  const application = {
+    id: 1,
+    hostType: "video",
+    hostId: 1,
+    contextType: "performer",
+    contextId: 11,
+    tag: { id: 4, name: "Tag" },
+  };
+  const state = {
+    ids: [4],
+    names: ["Tag"],
+    absent: [],
+    applications: [application],
+  };
+  const operation = undoOperation(
+    item,
+    { ...state, ids: [], applications: [] },
+    state,
+    [4],
+  );
+  expect(() =>
+    checkUndo(operation, {
+      ...state,
+      applications: [{ ...application, id: 2 }],
+    }),
+  ).toThrow("Undo conflict");
+});
 it("preserves occurrence context and unrelated applications during ad hoc editing", async () => {
   const application = {
     id: 50,
