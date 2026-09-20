@@ -679,6 +679,67 @@ test("save flow: a rejection reloads the projection and keeps the selection on t
   });
 });
 
+test("save flow: a rejection applies the server's delta in place instead of refetching the projection", { timeout: 5000 }, async () => {
+  const root = segment({ id: -601, itemId: 601, nativeSegmentId: null, published: false, revision: 1 });
+  const derived = segment({ id: -602, itemId: 602, nativeSegmentId: null, published: false, revision: 1, startSec: 30, endSec: 40, isDerived: true });
+  const rejectedRow = (item) => ({ ...item, reviewState: "rejected", revision: 2, updatedAt: "2026-01-02T00:00:00Z" });
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", {
+    updatedCount: 1,
+    items: [{ requestedItemId: 601, itemId: 601, nativeSegmentId: null, revision: 2, updatedAt: "2026-01-02T00:00:00Z" }],
+    // Rejecting cascaded to the derived segment, which only the delta reports.
+    editorDelta: {
+      upsertedSegments: [rejectedRow(root), rejectedRow(derived)],
+      removedSegmentIds: [],
+      identityChanges: [],
+      approvedSetVersion: "version-2",
+    },
+  });
+  const reloads = [];
+  // Every projection refetch goes through the harness server, so an empty log means none happened.
+  const editor = createFakeEditor({
+    segments: [root, derived],
+    server: () => { reloads.push("reload"); return editor.state.detail; },
+  });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).saveSelectedReviewState("rejected");
+
+    assert.deepEqual(reloads, []);
+    assert.deepEqual(
+      editor.segments.map((item) => [item.id, item.reviewState, item.revision]),
+      [[-601, "rejected", 2], [-602, "rejected", 2]]);
+    assert.equal(editor.state.detail.approvedSetVersion, "version-2");
+    assert.equal(editor.state.selectedSegmentId, -601);
+    assert.equal(editor.state.saveMessage, "1 selected segment rejected.");
+    editor.render();
+    assert.deepEqual(editor.state.pendingChanges, []);
+  });
+});
+
+test("save flow: a rejection the server did not describe still reloads the projection", { timeout: 5000 }, async () => {
+  const draft = segment({ id: -701, itemId: 701, nativeSegmentId: null, published: false, revision: 1 });
+  // A bulk rejection too large to describe comes back without a delta.
+  const api = createFakeApi().on("PUT", "/videos/7/segments/review-state", {
+    updatedCount: 1,
+    items: [{ requestedItemId: 701, itemId: 701, nativeSegmentId: null, revision: 2, updatedAt: "2026-01-02T00:00:00Z" }],
+  });
+  const reloads = [];
+  const editor = createFakeEditor({
+    segments: [draft],
+    server: () => {
+      reloads.push("reload");
+      return { ...editor.state.detail, segments: [{ ...draft, reviewState: "rejected", revision: 2 }] };
+    },
+  });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).saveSelectedReviewState("rejected");
+
+    assert.deepEqual(reloads, ["reload"]);
+    assert.deepEqual(editor.segments.map((item) => [item.id, item.reviewState]), [[-701, "rejected"]]);
+    assert.equal(editor.state.selectedSegmentId, -701);
+    assert.equal(editor.state.saveMessage, "1 selected segment rejected.");
+  });
+});
+
 test("save flow: a failed review discards its decision and restores the selection", { timeout: 5000 }, async () => {
   const api = createFakeApi();
   const put = api.hold("PUT", "/videos/7/segments/review-state");

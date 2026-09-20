@@ -5,18 +5,18 @@ using System.Text.Json.Serialization;
 
 namespace SegmentStudio;
 
-public sealed record IncorrectExampleSegmentIdentityChange(
+public sealed record SegmentEditorIdentityChange(
     long PreviousId,
     long CurrentId);
 
-public sealed record IncorrectExampleEditorDelta(
+public sealed record SegmentEditorDelta(
     IReadOnlyList<SegmentEditorMergeSurvivor> UpsertedSegments,
     IReadOnlyList<long> RemovedSegmentIds,
-    IReadOnlyList<IncorrectExampleSegmentIdentityChange> IdentityChanges,
+    IReadOnlyList<SegmentEditorIdentityChange> IdentityChanges,
     string? ApprovedSetVersion,
-    IReadOnlyList<IncorrectExampleBasicEditorSegment>? UpsertedBasicSegments = null);
+    IReadOnlyList<SegmentEditorBasicSegment>? UpsertedBasicSegments = null);
 
-public sealed record IncorrectExampleBasicFieldProvenance(
+public sealed record SegmentEditorBasicFieldProvenance(
     int NativeSegmentId,
     string FieldKey,
     [property: JsonIgnore] string? ValueJson,
@@ -39,7 +39,7 @@ public sealed record IncorrectExampleBasicFieldProvenance(
     }
 }
 
-public sealed record IncorrectExampleBasicEditorSegment(
+public sealed record SegmentEditorBasicSegment(
     string Key,
     long Id,
     int NativeSegmentId,
@@ -60,16 +60,41 @@ public sealed record IncorrectExampleBasicEditorSegment(
     string? ColorHint,
     string? ImageBlobId,
     DateTime CreatedAt,
-    IReadOnlyList<IncorrectExampleBasicFieldProvenance> FieldProvenance);
+    IReadOnlyList<SegmentEditorBasicFieldProvenance> FieldProvenance);
 
-public static class IncorrectExampleEditorDeltaService
+public static class SegmentEditorDeltaService
 {
-    public static async Task<IncorrectExampleEditorDelta> LoadItemClosureAsync(
+    /// <summary>
+    /// The same closure as <see cref="LoadItemClosureAsync"/>, or null when it spans more
+    /// than <paramref name="maxItems"/> rows. A caller that can fall back to a full editor
+    /// reload uses this so one response, and the replay receipt storing it, stay bounded
+    /// however wide the derivation graph under those roots turns out to be.
+    /// </summary>
+    public static async Task<SegmentEditorDelta?> LoadBoundedItemClosureAsync(
         DbContext db,
         int videoId,
         IReadOnlyCollection<long> rootItemIds,
         IReadOnlyCollection<long> removedSegmentIds,
-        IReadOnlyCollection<IncorrectExampleSegmentIdentityChange> identityChanges,
+        IReadOnlyCollection<SegmentEditorIdentityChange> identityChanges,
+        int maxItems,
+        CancellationToken ct)
+    {
+        var itemIds = await ReachableItemIdsAsync(db, videoId, rootItemIds, ct);
+        if (itemIds.Count > maxItems) return null;
+        return new(
+            await LoadItemsAsync(db, videoId, itemIds, ct),
+            removedSegmentIds.ToArray(),
+            identityChanges.ToArray(),
+            await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
+                db, videoId, ct));
+    }
+
+    public static async Task<SegmentEditorDelta> LoadItemClosureAsync(
+        DbContext db,
+        int videoId,
+        IReadOnlyCollection<long> rootItemIds,
+        IReadOnlyCollection<long> removedSegmentIds,
+        IReadOnlyCollection<SegmentEditorIdentityChange> identityChanges,
         CancellationToken ct)
     {
         var itemIds = await ReachableItemIdsAsync(db, videoId, rootItemIds, ct);
@@ -82,7 +107,7 @@ public static class IncorrectExampleEditorDeltaService
                 db, videoId, ct));
     }
 
-    public static async Task<IncorrectExampleEditorDelta> LoadNativeAsync(
+    public static async Task<SegmentEditorDelta> LoadNativeAsync(
         DbContext db,
         int videoId,
         int nativeSegmentId,
@@ -124,7 +149,7 @@ public static class IncorrectExampleEditorDeltaService
             null);
     }
 
-    public static async Task<IncorrectExampleEditorDelta> LoadBasicNativeAsync(
+    public static async Task<SegmentEditorDelta> LoadBasicNativeAsync(
         DbContext db,
         int videoId,
         int nativeSegmentId,
@@ -149,7 +174,7 @@ public static class IncorrectExampleEditorDeltaService
                     row.HostType == AffinityHostType.Segment
                     && row.HostId == nativeSegmentId)
                 .OrderBy(row => row.Id)
-                .Select(row => new IncorrectExampleBasicFieldProvenance(
+                .Select(row => new SegmentEditorBasicFieldProvenance(
                     row.HostId,
                     row.FieldKey,
                     row.ValueJson,
@@ -160,7 +185,7 @@ public static class IncorrectExampleEditorDeltaService
                     row.CreatedAt,
                     row.UpdatedAt))
                 .ToListAsync(ct);
-        var basic = new IncorrectExampleBasicEditorSegment(
+        var basic = new SegmentEditorBasicSegment(
             $"native:{segment.Id}",
             segment.Id,
             segment.Id,
@@ -185,7 +210,7 @@ public static class IncorrectExampleEditorDeltaService
         return new([], [], [], null, [basic]);
     }
 
-    public static IncorrectExampleEditorDelta RemovedNative(long nativeSegmentId) =>
+    public static SegmentEditorDelta RemovedNative(long nativeSegmentId) =>
         new([], [nativeSegmentId], [], null);
 
     private static async Task<IReadOnlyCollection<long>> ReachableItemIdsAsync(

@@ -46,11 +46,17 @@ public sealed record BulkSegmentReviewResult(
     string? ApprovedSetVersion = null,
     string? Error = null,
     bool Replayed = false,
-    string? Code = null);
+    string? Code = null,
+    SegmentEditorDelta? EditorDelta = null);
 
 public static class BulkSegmentReviewService
 {
     private const string OperationKind = "bulk-review-state";
+    // Past this many rows, describing the rejection costs more than the one reload it
+    // saves: the delta is also stored in the replay receipt, and both a bulk reject and a
+    // wide derivation graph can reach far more rows than were requested. The editor
+    // refetches the projection once when no delta is offered.
+    private const int EditorDeltaRowLimit = 200;
 
     public static async Task<BulkSegmentReviewResult> UpdateAsync(
         DbContext db,
@@ -231,9 +237,11 @@ public static class BulkSegmentReviewService
             }
             await db.SaveChangesAsync(ct);
         }
+        var cascadedItemIds = Array.Empty<long>();
         if (request.ReviewState == "rejected" && changedDraftIds.Length > 0)
         {
-            await DerivedSegmentRejectionService.RejectDescendantsAsync(db, changedDraftIds, ct);
+            cascadedItemIds = (await DerivedSegmentRejectionService
+                .RejectDescendantsAsync(db, changedDraftIds, ct)).ToArray();
             await db.SaveChangesAsync(ct);
         }
 
@@ -288,6 +296,17 @@ public static class BulkSegmentReviewService
 
         var approvedSetVersion = await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
             db, videoId, ct);
+        // Rejecting cascades through derivations, so the response carries the changed rows.
+        // Without it the editor can only learn about the cascade by refetching the whole projection.
+        // A cascaded item whose lineage node points at another video is not reachable from
+        // the roots, so it is named here as well as walked to.
+        var deltaRootIds = request.ReviewState == "rejected" && transition is null
+            ? changedDraftIds.Concat(cascadedItemIds).Distinct().ToArray()
+            : [];
+        var editorDelta = deltaRootIds.Length > 0
+            ? await SegmentEditorDeltaService.LoadBoundedItemClosureAsync(
+                db, videoId, deltaRootIds, [], [], EditorDeltaRowLimit, ct)
+            : null;
         var result = new BulkSegmentReviewResult(
             BulkSegmentReviewStatus.Updated,
             changedRows.Length,
@@ -299,7 +318,8 @@ public static class BulkSegmentReviewService
                 row.Revision,
                 row.UpdatedAt)).ToArray(),
             history.Value,
-            approvedSetVersion);
+            approvedSetVersion,
+            EditorDelta: editorDelta);
         db.Add(new SegmentStudioSegmentOperation
         {
             OperationId = request.OperationId,

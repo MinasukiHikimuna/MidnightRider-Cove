@@ -2971,6 +2971,166 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
+    public async Task BulkReviewRejectionDescribesCascadedDescendantsInTheEditorDelta()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var now = fixture.UpdatedAt;
+        var rootNode = LineageNode(601);
+        var derivedNode = LineageNode(602);
+        var grandchildNode = LineageNode(603);
+        var rule = new SegmentStudioDerivationRule
+        {
+            Id = Guid.NewGuid(), Key = "rule", Version = "1", SourceTagId = 11,
+            DerivedTagId = 11, MetadataJson = "{}", CreatedAt = now, UpdatedAt = now,
+        };
+        fixture.Context.AddRange(
+            Draft(601, "unreviewed", 1), Draft(602, "unreviewed", 1), Draft(603, "unreviewed", 1),
+            rootNode, derivedNode, grandchildNode, rule,
+            Edge(rule, rootNode, derivedNode), Edge(rule, derivedNode, grandchildNode));
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var request = new BulkSegmentReviewRequest(
+            Guid.NewGuid(), 0, "rejected", [new(null, 601, null, 1)]);
+
+        var result = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId, request, UserPrincipal(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Updated, result.Status);
+        var delta = Assert.IsType<SegmentEditorDelta>(result.EditorDelta);
+        // The editor learns about the cascade from the response instead of refetching the projection.
+        Assert.Equal(
+            ["item:601", "item:602", "item:603"],
+            delta.UpsertedSegments.Select(segment => segment.Key).Order(StringComparer.Ordinal));
+        Assert.All(delta.UpsertedSegments, segment => Assert.Equal("rejected", segment.ReviewState));
+        Assert.Equal([2L, 2L, 2L], delta.UpsertedSegments.Select(segment => segment.Revision));
+        Assert.Empty(delta.RemovedSegmentIds);
+        Assert.Empty(delta.IdentityChanges);
+        Assert.Equal(result.ApprovedSetVersion, delta.ApprovedSetVersion);
+
+        var replay = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId, request, UserPrincipal(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.True(replay.Replayed);
+        Assert.Equal(
+            delta.UpsertedSegments.Select(segment => segment.Key),
+            Assert.IsType<SegmentEditorDelta>(replay.EditorDelta)
+                .UpsertedSegments.Select(segment => segment.Key));
+
+        SegmentStudioLineageNode LineageNode(long itemId) => new()
+        {
+            Id = Guid.NewGuid(), ItemId = itemId, State = "live",
+            LastKnownVideoId = fixture.VideoId, CreatedAt = now, UpdatedAt = now,
+        };
+
+        SegmentStudioDerivationEdge Edge(
+            SegmentStudioDerivationRule edgeRule,
+            SegmentStudioLineageNode source,
+            SegmentStudioLineageNode derived) => new()
+        {
+            SourceNodeId = source.Id, DerivedNodeId = derived.Id, RuleId = edgeRule.Id,
+            SourceTagIdAtCreation = 11, DerivedTagIdAtCreation = 11, MetadataJson = "{}",
+            CreatedAt = now, UpdatedAt = now,
+        };
+
+        SegmentStudioItem Draft(long id, string state, long revision) => new()
+        {
+            Id = id, VideoId = fixture.VideoId, TagId = 11, StartSec = id, EndSec = id + 1,
+            Kind = "tag", SourceKey = "user", ReviewState = state, Revision = revision,
+            CreatedAt = now, UpdatedAt = now,
+        };
+    }
+
+    [Fact]
+    public async Task BulkReviewDeltaCoversAnUnderivedRejectionAndIsAbsentForApproval()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        fixture.Context.AddRange(Draft(611), Draft(612));
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        var rejected = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId,
+            new BulkSegmentReviewRequest(Guid.NewGuid(), 0, "rejected", [new(null, 611, null, 1)]),
+            UserPrincipal(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
+        var approved = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId,
+            new BulkSegmentReviewRequest(Guid.NewGuid(), 1, "approved", [new(null, 612, null, 1)]),
+            UserPrincipal(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        // A rejection with no derivations still describes its own row, so no reload is needed.
+        var delta = Assert.IsType<SegmentEditorDelta>(rejected.EditorDelta);
+        var segment = Assert.Single(delta.UpsertedSegments);
+        Assert.Equal("item:611", segment.Key);
+        Assert.Equal(-611, segment.Id);
+        Assert.Equal("rejected", segment.ReviewState);
+        Assert.Equal(2, segment.Revision);
+        // Approving never cascades and already applied in place, so it carries no delta.
+        Assert.Equal(BulkSegmentReviewStatus.Updated, approved.Status);
+        Assert.Null(approved.EditorDelta);
+
+        SegmentStudioItem Draft(long id) => new()
+        {
+            Id = id, VideoId = fixture.VideoId, TagId = 11, StartSec = id, EndSec = id + 1,
+            Kind = "tag", SourceKey = "user", ReviewState = "unreviewed", Revision = 1,
+            CreatedAt = fixture.UpdatedAt, UpdatedAt = fixture.UpdatedAt,
+        };
+    }
+
+    [Fact]
+    public async Task BulkReviewOmitsTheDeltaWhenOneRootReachesAWideDerivationClosure()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var now = fixture.UpdatedAt;
+        const int descendants = 201;
+        var rootNode = LineageNode(700);
+        var rule = new SegmentStudioDerivationRule
+        {
+            Id = Guid.NewGuid(), Key = "rule", Version = "1", SourceTagId = 11,
+            DerivedTagId = 11, MetadataJson = "{}", CreatedAt = now, UpdatedAt = now,
+        };
+        fixture.Context.AddRange(Draft(700, "unreviewed"), rootNode, rule);
+        foreach (var id in Enumerable.Range(701, descendants))
+        {
+            // Already rejected, so this rejection cascades to nothing and changes one row.
+            var node = LineageNode(id);
+            fixture.Context.AddRange(Draft(id, "rejected"), node, new SegmentStudioDerivationEdge
+            {
+                SourceNodeId = rootNode.Id, DerivedNodeId = node.Id, RuleId = rule.Id,
+                SourceTagIdAtCreation = 11, DerivedTagIdAtCreation = 11, MetadataJson = "{}",
+                CreatedAt = now, UpdatedAt = now,
+            });
+        }
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        var result = await BulkSegmentReviewService.UpdateAsync(
+            fixture.Context, fixture.VideoId,
+            new BulkSegmentReviewRequest(Guid.NewGuid(), 0, "rejected", [new(null, 700, null, 1)]),
+            UserPrincipal(), fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.Equal(BulkSegmentReviewStatus.Updated, result.Status);
+        Assert.Equal(1, result.UpdatedCount);
+        // One requested row, but its closure spans the whole graph beneath it, so the response
+        // stays small and the editor refetches the projection once instead.
+        Assert.Null(result.EditorDelta);
+
+        SegmentStudioLineageNode LineageNode(long itemId) => new()
+        {
+            Id = Guid.NewGuid(), ItemId = itemId, State = "live",
+            LastKnownVideoId = fixture.VideoId, CreatedAt = now, UpdatedAt = now,
+        };
+
+        SegmentStudioItem Draft(long id, string state) => new()
+        {
+            Id = id, VideoId = fixture.VideoId, TagId = 11, StartSec = id, EndSec = id + 1,
+            Kind = "tag", SourceKey = "user", ReviewState = state, Revision = 1,
+            CreatedAt = now, UpdatedAt = now,
+        };
+    }
+
+    [Fact]
     public async Task BulkReviewRejectsAStaleSelectionBeforeChangingAnyDraft()
     {
         await using var fixture = await TransitionFixture.CreateAsync();
@@ -3051,6 +3211,9 @@ public sealed class SegmentOwnershipTransitionServiceTests
         Assert.Equal(count, await fixture.Context.Set<SegmentStudioItem>()
             .CountAsync(item => item.Id >= 10_000 && item.ReviewState == "rejected"));
         Assert.Single(await fixture.Context.Set<SegmentStudioHistoryAction>().ToListAsync());
+        // Describing a rejection this large would cost more than the single reload it saves,
+        // and the receipt stores the result, so the editor refetches the projection instead.
+        Assert.Null(result.EditorDelta);
     }
 
     [Fact]

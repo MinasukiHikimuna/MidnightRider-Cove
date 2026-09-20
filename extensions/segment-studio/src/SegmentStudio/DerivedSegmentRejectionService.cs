@@ -7,17 +7,19 @@ namespace SegmentStudio;
 /// Propagates a rejection through materialized derivations. A derived item is
 /// rejected only when every live source item for it is rejected. Callers must
 /// hold the video's review lock and save the supplied context as one unit with
-/// their source-state change.
+/// their source-state change. Returns the item IDs whose review state this
+/// pass changed, so callers can describe the cascade without reloading the
+/// whole editor projection.
 /// </summary>
 public static class DerivedSegmentRejectionService
 {
-    public static async Task RejectDescendantsAsync(
+    public static async Task<IReadOnlyList<long>> RejectDescendantsAsync(
         DbContext db,
         long rootItemId,
         CancellationToken ct) =>
         await RejectDescendantsAsync(db, [rootItemId], ct);
 
-    public static async Task RejectDescendantsAsync(
+    public static async Task<IReadOnlyList<long>> RejectDescendantsAsync(
         DbContext db,
         IReadOnlyCollection<long> rootItemIds,
         CancellationToken ct)
@@ -26,7 +28,7 @@ public static class DerivedSegmentRejectionService
             .Where(node => node.ItemId != null && rootItemIds.Contains(node.ItemId.Value) && node.State == "live")
             .Select(node => node.Id)
             .ToArrayAsync(ct);
-        if (rootNodes.Length == 0) return;
+        if (rootNodes.Length == 0) return [];
 
         var reachable = new HashSet<Guid>(rootNodes);
         var frontier = rootNodes;
@@ -41,7 +43,7 @@ public static class DerivedSegmentRejectionService
         }
 
         var descendantNodeIds = reachable.Except(rootNodes).ToArray();
-        if (descendantNodeIds.Length == 0) return;
+        if (descendantNodeIds.Length == 0) return [];
         var incoming = await db.Set<SegmentStudioDerivationEdge>()
             .Where(edge => descendantNodeIds.Contains(edge.DerivedNodeId))
             .ToListAsync(ct);
@@ -78,6 +80,7 @@ public static class DerivedSegmentRejectionService
 
         // A source may itself become rejected during this pass, so repeat until
         // every reachable layer whose incoming sources are rejected is settled.
+        var changedItemIds = new List<long>();
         var changed = true;
         while (changed)
         {
@@ -103,8 +106,10 @@ public static class DerivedSegmentRejectionService
                     item.Revision++;
                     item.UpdatedAt = DateTime.UtcNow;
                 }
+                changedItemIds.Add(itemId);
                 changed = true;
             }
         }
+        return changedItemIds;
     }
 }

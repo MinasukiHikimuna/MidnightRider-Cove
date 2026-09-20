@@ -7,6 +7,8 @@ import { segmentsHistoryState } from "../model/history.js";
 import { savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "../model/save-queue.js";
 import { createPendingChangeId } from "../model/pending-changes.js";
 import { mergeSegmentsProjection } from "../model/optimistic.js";
+// The editor-delta reducer is shared with the feedback flow; it is not feedback-specific.
+import { applyFeedbackEditorDelta } from "../model/feedback.js";
 
 function createReviewActions(context) {
   const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, stableSaveIdentity, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
@@ -243,9 +245,13 @@ function createReviewActions(context) {
           identity.itemId = item.itemId;
         });
         if (result.history) acceptHistory(result.history);
-        const requiresProjectionReload = reviewState === "rejected"
-          || (result.items || []).some((item) => item.requestedNativeSegmentId != null
-            && item.nativeSegmentId !== item.requestedNativeSegmentId);
+        // Moving a published segment to the recycling bin changes identities and the import
+        // counts the projection carries, so that case still refetches it. A rejection cascades
+        // through derivations, so it also refetches unless the server described what changed.
+        const requiresProjectionReload = (reviewState === "rejected" && !result.editorDelta)
+          || (result.items || []).some((item) =>
+            item.requestedNativeSegmentId != null
+              && item.nativeSegmentId !== item.requestedNativeSegmentId);
         if (requiresProjectionReload) {
           const loaded = await onReload();
           dispatchPendingChanges({ type: "confirm", key: pendingChangeId, applied: loaded != null });
@@ -253,7 +259,11 @@ function createReviewActions(context) {
           setSaveMessage(`${result.updatedCount} selected segment${result.updatedCount === 1 ? "" : "s"} ${reviewState === "rejected" ? "rejected" : "reset to unreviewed"}.`);
           return;
         }
-        const applyReviewResult = (base) => ({
+        // Rejecting cascades through derivations, so the server describes the cascaded rows
+        // instead of leaving the editor to refetch the whole projection to find them.
+        const applyReviewResult = result.editorDelta
+          ? (base) => applyFeedbackEditorDelta(base, result.editorDelta)
+          : (base) => ({
             ...base,
             approvedSetVersion: result.approvedSetVersion || base.approvedSetVersion,
             segments: (base.segments || []).map((segment) => {

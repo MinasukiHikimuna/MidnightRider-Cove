@@ -52,7 +52,7 @@ public sealed record IncorrectExampleToggleResult(
     string? Error = null,
     bool Replayed = false,
     string? Code = null,
-    IncorrectExampleEditorDelta? EditorDelta = null);
+    SegmentEditorDelta? EditorDelta = null);
 
 public sealed record TrainingExportCaptureFrame(string FieldName, double TimestampSec);
 public sealed record TrainingExportCaptureExample(
@@ -225,7 +225,7 @@ public static class IncorrectExampleService
         {
             result = result with
             {
-                EditorDelta = IncorrectExampleEditorDeltaService.RemovedNative(
+                EditorDelta = SegmentEditorDeltaService.RemovedNative(
                     request.NativeSegmentId!.Value),
             };
         }
@@ -237,13 +237,13 @@ public static class IncorrectExampleService
             var identityChanges = request.NativeSegmentId is int previousId
                 ? new[]
                 {
-                    new IncorrectExampleSegmentIdentityChange(
+                    new SegmentEditorIdentityChange(
                         previousId, -itemId),
                 }
                 : [];
             result = result with
             {
-                EditorDelta = await IncorrectExampleEditorDeltaService
+                EditorDelta = await SegmentEditorDeltaService
                     .LoadItemClosureAsync(
                         db, videoId, [itemId], removedIds,
                         identityChanges, ct),
@@ -344,7 +344,7 @@ public static class IncorrectExampleService
         {
             result = result with
             {
-                EditorDelta = IncorrectExampleEditorDeltaService.RemovedNative(
+                EditorDelta = SegmentEditorDeltaService.RemovedNative(
                     request.NativeSegmentId!.Value),
             };
         }
@@ -356,13 +356,13 @@ public static class IncorrectExampleService
             var identityChanges = request.NativeSegmentId is int previousId
                 ? new[]
                 {
-                    new IncorrectExampleSegmentIdentityChange(
+                    new SegmentEditorIdentityChange(
                         previousId, -itemId),
                 }
                 : [];
             result = result with
             {
-                EditorDelta = await IncorrectExampleEditorDeltaService
+                EditorDelta = await SegmentEditorDeltaService
                     .LoadItemClosureAsync(
                         db, videoId, [itemId], removedIds,
                         identityChanges, ct),
@@ -488,7 +488,7 @@ public static class IncorrectExampleService
             {
                 result = result with
                 {
-                    EditorDelta = await IncorrectExampleEditorDeltaService
+                    EditorDelta = await SegmentEditorDeltaService
                         .LoadItemClosureAsync(
                             db, videoId, [itemId], [], [], ct),
                 };
@@ -498,7 +498,7 @@ public static class IncorrectExampleService
             {
                 result = result with
                 {
-                    EditorDelta = await IncorrectExampleEditorDeltaService
+                    EditorDelta = await SegmentEditorDeltaService
                         .LoadBasicNativeAsync(
                             db, videoId, nativeSegmentId,
                             await CanReadProvenanceAsync(
