@@ -197,12 +197,26 @@ export function resolveEditorSegmentSelection(
   lanes,
   selectedSegmentId,
   initialSegmentId = null,
+  options = {},
 ) {
   if (selectedSegmentId === CLEARED_SEGMENT_SELECTION_ID) return null;
-  return findInitialSegmentSelection(
-    lanes,
-    selectedSegmentId ?? initialSegmentId,
-  );
+  const preferredId = selectedSegmentId ?? initialSegmentId;
+  const preferred = (lanes || [])
+    .flatMap((lane) => (lane.markers || []).map((marker) => marker.segment))
+    .find((segment) => segment.id === preferredId);
+  if (preferred) return preferred;
+  if (options.reference) {
+    // The reviewer's own segment comes back when lanes repopulate, so prefer it over its
+    // neighbour; findNextUnprocessed treats the reference as a position to move away from.
+    const visibleLanes = options.visibleLanes ?? lanes;
+    const reselected = visibleLanes
+      .flatMap((lane) => (lane.markers || []).map((marker) => marker.segment))
+      .find((segment) => segment.id === options.reference.id);
+    // Otherwise the selection is gone: deleted elsewhere, filtered out, or dropped by a
+    // reload. Resume from where the reviewer was instead of restarting at the video top.
+    return reselected ?? findNextUnprocessed(visibleLanes, options.reference);
+  }
+  return findInitialSegmentSelection(lanes);
 }
 
 export function updateSegmentSelection(selectedSegmentIds, activeSegmentId, targetSegmentId, additive = false) {
@@ -337,10 +351,10 @@ function segmentTimelineDistance(reference, candidate) {
   return 0;
 }
 
-function closestSegmentOnTimeline(markers, reference, removedIds) {
+function closestSegmentOnTimeline(markers, reference, removedIds, accept = () => true) {
   return (markers || [])
     .map((marker) => marker.segment)
-    .filter((segment) => segment && !removedIds.has(segment.id))
+    .filter((segment) => segment && !removedIds.has(segment.id) && accept(segment))
     .sort((left, right) =>
       segmentTimelineDistance(reference, left) - segmentTimelineDistance(reference, right)
       || Math.abs(Number(left.startSec) - Number(reference.startSec))
@@ -349,47 +363,81 @@ function closestSegmentOnTimeline(markers, reference, removedIds) {
       || Number(left.id) - Number(right.id))[0] ?? null;
 }
 
-export function nextSegmentAfterRemoval(lanes, removedSegmentIds, activeSegmentId) {
-  const orderedLanes = lanes || [];
-  const removedIds = new Set(removedSegmentIds || []);
-  const activeLaneIndex = orderedLanes.findIndex((lane) =>
-    (lane.markers || []).some(({ segment }) => segment.id === activeSegmentId));
-  const activeSegment = activeLaneIndex < 0
-    ? null
-    : orderedLanes[activeLaneIndex].markers.find(({ segment }) => segment.id === activeSegmentId)?.segment;
-  if (!activeSegment) {
-    for (const lane of orderedLanes) {
-      const first = (lane.markers || []).find(({ segment }) => !removedIds.has(segment.id));
-      if (first) return first.segment;
-    }
-    return null;
-  }
-
-  const sameLane = closestSegmentOnTimeline(
-    orderedLanes[activeLaneIndex].markers,
-    activeSegment,
-    removedIds,
-  );
-  if (sameLane) return sameLane;
-
-  const fallbackLane = orderedLanes
-    .map((lane, index) => ({ lane, index }))
-    .filter(({ lane }) => (lane.markers || []).some(({ segment }) => !removedIds.has(segment.id)))
-    .sort((left, right) =>
-      Math.abs(left.index - activeLaneIndex) - Math.abs(right.index - activeLaneIndex)
-      || Number(left.index < activeLaneIndex) - Number(right.index < activeLaneIndex)
-      || left.index - right.index)[0]?.lane;
-  return closestSegmentOnTimeline(fallbackLane?.markers, activeSegment, removedIds);
+function laneRemainingSegments(lane, removedIds) {
+  return (lane?.markers || [])
+    .map((marker) => marker.segment)
+    .filter((segment) => segment && !removedIds.has(segment.id));
 }
 
-export function nextUnreviewedAfterRemoval(lanes, removedSegmentIds, activeSegmentId) {
-  const removedIds = new Set(removedSegmentIds || []);
-  const ordered = (lanes || []).flatMap((lane) =>
-    (lane.markers || []).map(({ segment }) => segment).filter(Boolean));
-  const activeIndex = ordered.findIndex((segment) => segment.id === activeSegmentId);
-  const candidates = activeIndex < 0 ? ordered : ordered.slice(activeIndex + 1);
-  return candidates.find((segment) =>
-    !removedIds.has(segment.id) && segment.reviewState === "unreviewed") ?? null;
+function isUnreviewedSegment(segment) {
+  return segment.reviewState === "unreviewed";
+}
+
+// Lane markers are ordered by start time, so a reference position orders against them
+// the same way even once its own segment is gone.
+function segmentFollowsReference(segment, reference) {
+  const start = Number(segment.startSec) || 0;
+  if (start !== reference.startSec) return start > reference.startSec;
+  return Number(segment.id) > Number(reference.id);
+}
+
+function nearestSegmentAcrossLanes(lanes, laneIndex, reference, removedIds, accept) {
+  if (laneIndex < 0)
+    return closestSegmentOnTimeline(lanes.flatMap((lane) => lane.markers || []), reference, removedIds, accept);
+  const ranked = lanes
+    .map((lane, index) => ({ lane, index }))
+    .filter(({ lane }) => laneRemainingSegments(lane, removedIds).some(accept))
+    .sort((left, right) =>
+      Math.abs(left.index - laneIndex) - Math.abs(right.index - laneIndex)
+      || Number(left.index < laneIndex) - Number(right.index < laneIndex)
+      || left.index - right.index);
+  for (const { lane } of ranked) {
+    const found = closestSegmentOnTimeline(lane.markers, reference, removedIds, accept);
+    if (found) return found;
+  }
+  return null;
+}
+
+export function selectionReferenceForSegment(lanes, segmentId) {
+  const lane = (lanes || []).find((candidate) =>
+    (candidate.markers || []).some(({ segment }) => segment.id === segmentId));
+  const segment = lane?.markers.find((marker) => marker.segment.id === segmentId)?.segment;
+  if (!segment) return null;
+  const startSec = Number(segment.startSec) || 0;
+  return {
+    laneKey: lane.key,
+    id: segment.id,
+    startSec,
+    endSec: Number(segment.endSec ?? startSec) || startSec,
+  };
+}
+
+// The single rule every removal and every lost selection follows: stay in the reviewer's
+// lane and near their playhead, prefer unprocessed work, and never reach into a collapsed
+// group. Callers pass the expanded swimlanes, so a collapsed group cannot be selected into
+// and the auto-reveal effect never fires as a side effect of a removal.
+export function findNextUnprocessed(lanes, reference, options = {}) {
+  const orderedLanes = lanes || [];
+  if (orderedLanes.length === 0) return null;
+  const removedIds = new Set(options.removedIds || []);
+  if (reference == null) {
+    const anyLane = { markers: orderedLanes.flatMap((lane) => lane.markers || []) };
+    const ordered = laneRemainingSegments(anyLane, removedIds);
+    return ordered.find(isUnreviewedSegment) ?? ordered[0] ?? null;
+  }
+  // The reference segment is the position to move away from, never a candidate.
+  removedIds.add(reference.id);
+
+  const laneIndex = orderedLanes.findIndex((lane) => lane.key === reference.laneKey);
+  if (laneIndex >= 0) {
+    const unreviewed = laneRemainingSegments(orderedLanes[laneIndex], removedIds).filter(isUnreviewedSegment);
+    const forward = unreviewed.find((segment) => segmentFollowsReference(segment, reference));
+    if (forward) return forward;
+    const backward = unreviewed.filter((segment) => !segmentFollowsReference(segment, reference)).at(-1);
+    if (backward) return backward;
+  }
+  return nearestSegmentAcrossLanes(orderedLanes, laneIndex, reference, removedIds, isUnreviewedSegment)
+    ?? nearestSegmentAcrossLanes(orderedLanes, laneIndex, reference, removedIds, () => true);
 }
 
 export function percentageSeekTime(duration, digit) {

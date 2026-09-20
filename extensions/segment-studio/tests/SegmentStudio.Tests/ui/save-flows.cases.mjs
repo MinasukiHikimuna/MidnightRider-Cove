@@ -1131,6 +1131,78 @@ test("save flow: deleting rejected segments hides them until the deletion is con
   });
 });
 
+// The reported bug: rejecting a segment late in a video and deleting it sent the selection
+// to the first unreviewed segment in the whole video, in another swimlane.
+test("save flow: deleting the rejected selection stays in its swimlane near the deleted time", { timeout: 5000 }, async () => {
+  const earlyOtherLane = segment({ id: 201, nativeSegmentId: 201, tagId: 2, tagName: "Face", startSec: 2, endSec: 8 });
+  const neighbour = segment({ id: 202, nativeSegmentId: 202, tagId: 3, tagName: "Cumshot", startSec: 2000, endSec: 2010 });
+  const deleted = segment({ id: 203, nativeSegmentId: 203, tagId: 3, tagName: "Cumshot", startSec: 2100, endSec: 2110, reviewState: "rejected" });
+  let serverSegments = [earlyOtherLane, neighbour, deleted];
+  const api = createFakeApi().on("POST", "/videos/7/rejected/deletion/execute", { deletedSegmentCount: 1 });
+  const editor = createFakeEditor({
+    segments: [earlyOtherLane, neighbour, deleted],
+    server: () => ({ ...editor.state.detail, segments: serverSegments }),
+  });
+  editor.select([203]);
+  await withEditorGlobals(api, async () => {
+    serverSegments = [earlyOtherLane, neighbour];
+    await actionsFor(editor, { incorrectExamples: [], setRejectedDeletionPreview: () => {} })
+      .deleteRejectedSegments({ fingerprint: "fp", deletedSegmentCount: 1, deferredRejectedSegmentCount: 0 });
+    assert.equal(editor.state.selectedSegmentId, 202);
+    assert.deepEqual(editor.state.selectedSegmentIds, [202]);
+  });
+});
+
+test("save flow: deleting rejected segments leaves an untouched selection alone", { timeout: 5000 }, async () => {
+  const kept = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const rejected = segment({ reviewState: "rejected" });
+  let serverSegments = [rejected, kept];
+  const api = createFakeApi().on("POST", "/videos/7/rejected/deletion/execute", { deletedSegmentCount: 1 });
+  const editor = createFakeEditor({
+    segments: [rejected, kept],
+    server: () => ({ ...editor.state.detail, segments: serverSegments }),
+  });
+  editor.select([102]);
+  await withEditorGlobals(api, async () => {
+    serverSegments = [kept];
+    await actionsFor(editor, { incorrectExamples: [], setRejectedDeletionPreview: () => {} })
+      .deleteRejectedSegments({ fingerprint: "fp", deletedSegmentCount: 1, deferredRejectedSegmentCount: 0 });
+    assert.equal(editor.state.selectedSegmentId, 102);
+    assert.deepEqual(editor.state.selectedSegmentIds, [102]);
+  });
+});
+
+test("save flow: moving to the bin prefers unreviewed work over a nearer reviewed segment", { timeout: 5000 }, async () => {
+  const unreviewedBefore = segment({ id: 401, nativeSegmentId: 401, startSec: 2000, endSec: 2010 });
+  const moved = segment({ id: 402, nativeSegmentId: 402, startSec: 2100, endSec: 2110 });
+  const reviewedAfter = segment({ id: 403, nativeSegmentId: 403, startSec: 2120, endSec: 2130, reviewState: "approved" });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/segments/move-to-bin", { items: [{ segmentId: 402, itemId: 9, revision: 2 }] })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor({ segments: [unreviewedBefore, moved, reviewedAfter] });
+  editor.select([402]);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor, { canMoveSelectionToBin: true }).moveToBin();
+    // Nearest in time is the approved segment 10s later; the rule steps back to the
+    // unreviewed one instead, because unprocessed work comes first.
+    assert.equal(editor.state.selectedSegmentId, 401);
+  });
+});
+
+test("save flow: moving the last unreviewed segment to the bin keeps a reviewed neighbour", { timeout: 5000 }, async () => {
+  const reviewed = segment({ id: 301, nativeSegmentId: 301, startSec: 2200, endSec: 2210, reviewState: "approved" });
+  const moved = segment({ id: 302, nativeSegmentId: 302, startSec: 2100, endSec: 2110 });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/segments/move-to-bin", { items: [{ segmentId: 302, itemId: 9, revision: 2 }] })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor({ segments: [reviewed, moved] });
+  editor.select([302]);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor, { canMoveSelectionToBin: true }).moveToBin();
+    assert.equal(editor.state.selectedSegmentId, 301);
+  });
+});
+
 test("save flow: a failed rejected-segment deletion shows the segments again", { timeout: 5000 }, async () => {
   const kept = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
   const rejected = segment({ reviewState: "rejected" });
@@ -1144,6 +1216,22 @@ test("save flow: a failed rejected-segment deletion shows the segments again", {
     assert.equal(editor.state.selectedSegmentId, 101);
     assert.equal(editor.state.saveMessage, "Deletion changed.");
     assert.equal(editor.savingSegmentId, null);
+  });
+});
+
+test("save flow: a failed rejected-segment deletion leaves an untouched selection alone", { timeout: 5000 }, async () => {
+  const kept = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const rejected = segment({ reviewState: "rejected" });
+  const api = createFakeApi().on("POST", "/videos/7/rejected/deletion/execute", reply(409, { error: "Deletion changed." }));
+  const editor = createFakeEditor({ segments: [rejected, kept] });
+  editor.select([102]);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor, { incorrectExamples: [], setRejectedDeletionPreview: () => {} })
+      .deleteRejectedSegments({ fingerprint: "fp", deletedSegmentCount: 1, deferredRejectedSegmentCount: 0 });
+    // The failure restores only a selection the deletion had moved.
+    assert.equal(editor.state.selectedSegmentId, 102);
+    assert.deepEqual(editor.state.selectedSegmentIds, [102]);
+    assert.equal(editor.state.saveMessage, "Deletion changed.");
   });
 });
 

@@ -470,63 +470,169 @@ test("selection lifecycle is explicit for filters, collapse, and atomic review f
   assert.doesNotMatch(source, /completedCandidates/);
 });
 
-test("recycling-bin selection stays in the current swimlane before moving to a nearby lane", () => {
-  const lanes = [
-    {
-      key: "current",
-      markers: [
-        { segment: { id: 1, startSec: 10, endSec: 20 } },
-        { segment: { id: 2, startSec: 100, endSec: 110 } },
-        { segment: { id: 3, startSec: 30, endSec: 40 } },
-      ],
-    },
-    {
-      key: "nearby-lane",
-      markers: [
-        { segment: { id: 4, startSec: 15, endSec: 25 } },
-        { segment: { id: 5, startSec: 32, endSec: 35 } },
-      ],
-    },
-    {
-      key: "farther-lane",
-      markers: [{ segment: { id: 6, startSec: 20, endSec: 22 } }],
-    },
-  ];
+const unprocessedLanes = () => [
+  {
+    key: "face",
+    markers: [
+      { segment: { id: 1, startSec: 2, endSec: 8, reviewState: "unreviewed" } },
+      { segment: { id: 2, startSec: 40, endSec: 50, reviewState: "unreviewed" } },
+    ],
+  },
+  {
+    key: "orgasm",
+    markers: [
+      { segment: { id: 3, startSec: 600, endSec: 620, reviewState: "unreviewed" } },
+      { segment: { id: 4, startSec: 2100, endSec: 2120, reviewState: "rejected" } },
+      { segment: { id: 5, startSec: 2400, endSec: 2420, reviewState: "unreviewed" } },
+    ],
+  },
+  {
+    key: "cumshot",
+    markers: [
+      { segment: { id: 6, startSec: 2000, endSec: 2010, reviewState: "unreviewed" } },
+      { segment: { id: 7, startSec: 2100, endSec: 2110, reviewState: "rejected" } },
+      { segment: { id: 8, startSec: 2200, endSec: 2210, reviewState: "approved" } },
+    ],
+  },
+];
 
-  assert.equal(ui.nextSegmentAfterRemoval(lanes, [1], 1)?.id, 3);
-  assert.equal(ui.nextSegmentAfterRemoval(lanes, [1, 2, 3], 1)?.id, 4);
-  assert.equal(ui.nextSegmentAfterRemoval(lanes, [1, 2, 3, 4, 5], 1)?.id, 6);
-  assert.equal(ui.nextSegmentAfterRemoval(lanes, [1, 2, 3, 4, 5, 6], 1), null);
-  assert.match(source, /nextSegmentAfterRemoval\(allSwimlanes, selectedIds, selectedSegment\.id\)/);
+test("the next unprocessed segment walks the current swimlane before any other", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 7);
+  assert.deepEqual(reference, { laneKey: "cumshot", id: 7, startSec: 2100, endSec: 2110 });
+
+  // Forward within the lane wins; the earlier unreviewed segment at 2000 does not.
+  const withLater = unprocessedLanes();
+  withLater[2].markers.push({ segment: { id: 9, startSec: 2150, endSec: 2160, reviewState: "unreviewed" } });
+  assert.equal(ui.findNextUnprocessed(withLater, reference, { removedIds: [7] })?.id, 9);
+  // With nothing unreviewed later in the lane, it steps backwards inside the lane.
+  assert.equal(ui.findNextUnprocessed(lanes, reference, { removedIds: [7] })?.id, 6);
 });
 
-test("collecting AI feedback advances to the next unreviewed segment below the selection", () => {
-  const lanes = [
-    { key: "current", markers: [
-      { segment: { id: 1, reviewState: "approved" } },
-      { segment: { id: 2, reviewState: "unreviewed" } },
-      { segment: { id: 3, reviewState: "unreviewed" } },
-    ] },
-    { key: "below", markers: [
-      { segment: { id: 4, reviewState: "approved" } },
-      { segment: { id: 5, reviewState: "unreviewed" } },
-    ] },
-    { key: "farther-below", markers: [
-      { segment: { id: 6, reviewState: "unreviewed" } },
-    ] },
+test("the next unprocessed segment prefers the nearest lane and nearest time once its lane is exhausted", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 7);
+  // Only reviewed segments remain in the cumshot lane, so the adjacent orgasm lane answers
+  // with the unreviewed segment closest to the reference time rather than the video start.
+  assert.equal(ui.findNextUnprocessed(lanes, reference, { removedIds: [6, 7] })?.id, 5);
+  assert.notEqual(ui.findNextUnprocessed(lanes, reference, { removedIds: [6, 7] })?.id, 1);
+});
+
+test("the next unprocessed segment falls back to any remaining segment, then to nothing", () => {
+  const reviewed = [
+    { key: "current", markers: [{ segment: { id: 1, startSec: 10, endSec: 20, reviewState: "approved" } }] },
+    { key: "other", markers: [{ segment: { id: 2, startSec: 30, endSec: 40, reviewState: "rejected" } }] },
   ];
-  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2], 2)?.id, 3);
-  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3], 2)?.id, 5);
-  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3, 5], 2)?.id, 6);
-  assert.equal(ui.nextUnreviewedAfterRemoval(lanes, [2, 3, 5, 6], 2), null);
-  assert.equal(ui.resolveEditorSegmentSelection(
-    lanes,
-    ui.CLEARED_SEGMENT_SELECTION_ID,
-  ), null);
-  assert.match(source, /nextUnreviewedAfterRemoval\(\s*allSwimlanes, completedIds, activeIdentity\.id\)/);
-  assert.match(source, /const transitionSelectionOwned = shouldRestoreTransitionSelection\([\s\S]*const selectionGuardId/);
-  assert.match(source, /shouldRestoreTransitionSelection\(\s*selectedSegmentIdRef\.current, selectionGuardId/);
-  assert.match(source, /activeCollected \? CLEARED_SEGMENT_SELECTION_ID : null/);
+  const reference = ui.selectionReferenceForSegment(reviewed, 1);
+  assert.equal(ui.findNextUnprocessed(reviewed, reference, { removedIds: [1] })?.id, 2);
+  assert.equal(ui.findNextUnprocessed(reviewed, reference, { removedIds: [1, 2] }), null);
+  assert.equal(ui.findNextUnprocessed([], reference), null);
+});
+
+test("the next unprocessed segment never reaches into a collapsed Segment group", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 7);
+  // Only the orgasm group is expanded, so the face lane stays unreachable even though it
+  // holds the earliest unreviewed segments in the video.
+  const expanded = lanes.filter((lane) => lane.key !== "face");
+  assert.equal(ui.findNextUnprocessed(expanded, reference, { removedIds: [6, 7] })?.id, 5);
+  assert.equal(
+    ui.findNextUnprocessed(expanded, reference, { removedIds: [3, 5, 6, 7] })?.id,
+    8,
+  );
+});
+
+test("a reference outside the visible lanes still selects by time, not by lane order", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 7);
+  const expanded = lanes.filter((lane) => lane.key === "face" || lane.key === "orgasm");
+  // The reference lane is collapsed; the nearest unreviewed segment in time is 2400, not 2.
+  assert.equal(ui.findNextUnprocessed(expanded, reference)?.id, 5);
+  // Without any reference the first unreviewed segment is the only sensible answer.
+  assert.equal(ui.findNextUnprocessed(expanded, null)?.id, 1);
+  assert.equal(ui.selectionReferenceForSegment(expanded, 7), null);
+});
+
+test("a selection that disappears resumes from where the reviewer was", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 7);
+  const remaining = lanes.map((lane) => ({
+    ...lane,
+    markers: lane.markers.filter(({ segment }) => segment.id !== 7),
+  }));
+
+  // Without a reference — the first load — the first unreviewed segment is still the answer.
+  assert.equal(ui.resolveEditorSegmentSelection(remaining, 7)?.id, 1);
+  // With one, the reviewer stays in the cumshot lane instead of jumping to 0:02.
+  assert.equal(ui.resolveEditorSegmentSelection(remaining, 7, null, { reference })?.id, 6);
+  // A still-present selection is untouched, reference or not.
+  assert.equal(ui.resolveEditorSegmentSelection(remaining, 3, null, { reference })?.id, 3);
+  assert.equal(ui.resolveEditorSegmentSelection(remaining, ui.CLEARED_SEGMENT_SELECTION_ID, null, { reference }), null);
+});
+
+test("a selection a filter hid resumes inside the lanes that are still visible", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 6);
+  // A filter hid the whole cumshot lane, so the segments the reviewer can still reach are the
+  // other lanes. Collapse then leaves only the orgasm lane selectable, and it answers with the
+  // unreviewed segment nearest 2000s rather than the first one in the video.
+  const filtered = lanes.filter((lane) => lane.key !== "cumshot");
+  const visibleLanes = filtered.filter((lane) => lane.key === "orgasm");
+  assert.equal(ui.resolveEditorSegmentSelection(filtered, 6, null, { reference, visibleLanes })?.id, 5);
+  // A collapsed group never drops the selection, because collapse does not hide a segment.
+  assert.equal(ui.resolveEditorSegmentSelection(lanes, 6, null, { reference, visibleLanes })?.id, 6);
+  // The initial segment still wins whenever it is present.
+  assert.equal(ui.resolveEditorSegmentSelection(filtered, null, 3, { reference, visibleLanes })?.id, 3);
+});
+
+test("a selection that comes back is reselected, not stepped past", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 6);
+  // A filter that matched nothing cleared the selection while the reference stayed behind.
+  // When the lanes repopulate the reviewer gets their own segment back, not its neighbour.
+  assert.equal(ui.resolveEditorSegmentSelection(lanes, null, null, { reference })?.id, 6);
+  assert.equal(ui.resolveEditorSegmentSelection([], null, null, { reference }), null);
+  // Only once it is genuinely gone does the rule step to a neighbour.
+  const without6 = lanes.map((lane) => ({
+    ...lane,
+    markers: lane.markers.filter(({ segment }) => segment.id !== 6),
+  }));
+  assert.equal(ui.resolveEditorSegmentSelection(without6, null, null, { reference })?.id, 5);
+});
+
+test("collapsing every Segment group leaves a removal with nothing to select", () => {
+  const lanes = unprocessedLanes();
+  const reference = ui.selectionReferenceForSegment(lanes, 7);
+  // Rule 5: the expanded lanes are the only selectable ones, so a removal clears the
+  // selection rather than reaching into a group the reviewer collapsed.
+  assert.equal(ui.findNextUnprocessed([], reference, { removedIds: [7] }), null);
+  assert.equal(ui.findNextUnprocessed([], null), null);
+});
+
+test("deleting rejected segments keeps the reviewer near the deleted segment", () => {
+  const workflow = sourceByModule["editor/actions/workflow.js"];
+  const deleteRejected = workflow.slice(
+    workflow.indexOf("async function deleteRejectedSegments"),
+    workflow.indexOf("async function autoAssignPerformers"),
+  );
+  // The next selection is chosen from the pre-removal lanes, before the optimistic projection.
+  assert.match(deleteRejected, /const activeDeleted = deferredCount === 0 && rejectedIds\.includes\(previousSelectionId\)/);
+  assert.match(deleteRejected, /findNextUnprocessed\(\s*swimlanes,\s*selectionReferenceForSegment\(allSwimlanes, previousSelectionId\),\s*\{ removedIds: rejectedIds \}/);
+  assert.match(deleteRejected, /setSelectedSegmentId\(nextSelectedSegment\?\.id \?\? CLEARED_SEGMENT_SELECTION_ID\)/);
+  // A bulk delete that spares the active segment leaves the selection alone.
+  assert.match(deleteRejected, /if \(activeDeleted\) \{\s*setSelectedSegmentIds/);
+  assert.doesNotMatch(deleteRejected, /optimisticDetail\.segments\.find/);
+});
+
+test("every removal path picks its next selection from the expanded swimlanes", () => {
+  const workflow = sourceByModule["editor/actions/workflow.js"];
+  const editor = sourceByModule["editor/SegmentEditor.js"];
+  assert.equal(workflow.match(/findNextUnprocessed\(/g)?.length, 3);
+  assert.doesNotMatch(workflow, /nextSegmentAfterRemoval|nextUnreviewedAfterRemoval/);
+  // The collapse-filtered memo the n/m shortcuts navigate is the one the removals search.
+  for (const call of workflow.split("findNextUnprocessed(").slice(1))
+    assert.match(call, /^\s*swimlanes,/);
+  assert.match(editor, /setSelectedSegmentIds,\n    swimlanes,\n    video,/);
 });
 
 test("shift-click selects a contiguous range within one timeline swimlane", () => {

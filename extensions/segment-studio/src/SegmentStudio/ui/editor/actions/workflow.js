@@ -5,13 +5,12 @@ import { resolveSegmentTarget, segmentIdentity } from "../model/save-queue.js";
 import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { incorrectExampleHistoryState, segmentsHistoryState } from "../model/history.js";
 import { notifyRecyclingBinChanged } from "../../shared/navigation.js";
-import { CLEARED_SEGMENT_SELECTION_ID, editorVisibilityIncludingSegment, nextSegmentAfterRemoval, nextUnreviewedAfterRemoval } from "../model/selection.js";
+import { CLEARED_SEGMENT_SELECTION_ID, editorVisibilityIncludingSegment, findNextUnprocessed, selectionReferenceForSegment } from "../model/selection.js";
 import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
-import { removeSegmentsProjection } from "../model/optimistic.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, stableSaveIdentity, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, stableSaveIdentity, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, swimlanes, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -158,8 +157,10 @@ function createWorkflowActions(context) {
           && completed.some(({ segment }) => segment.id === activeIdentity.id);
         const completedIds = completed.map(({ segment }) => segment.id);
         const nextCandidate = activeCollected
-          ? nextUnreviewedAfterRemoval(
-            allSwimlanes, completedIds, activeIdentity.id)
+          ? findNextUnprocessed(
+            swimlanes,
+            selectionReferenceForSegment(allSwimlanes, activeIdentity.id),
+            { removedIds: completedIds })
           : null;
         const selectionGuardId = activeCollected
           ? nextCandidate?.id ?? null
@@ -423,12 +424,17 @@ function createWorkflowActions(context) {
       const preview = confirmedPreview;
       const deferredCount = Number(preview.deferredRejectedSegmentCount) || 0;
       const previousSelectionId = selectedSegmentIdRef.current;
-      const optimisticDetail = deferredCount === 0
-        ? removeSegmentsProjection(detail, rejectedSegments.map((segment) => segment.id))
-        : detail;
-      const nextSelectedSegment = optimisticDetail.segments.find((segment) => segment.reviewState === "unreviewed")
-        || optimisticDetail.segments[0]
-        || null;
+      const rejectedIds = rejectedSegments.map((segment) => segment.id);
+      // Delete rejected is a bulk action; it only moves the selection when it removes it.
+      // A deferred batch deletes an unknown subset, so its selection is left to the reload
+      // and the resume-from-last-position fallback in resolveEditorSegmentSelection.
+      const activeDeleted = deferredCount === 0 && rejectedIds.includes(previousSelectionId);
+      const nextSelectedSegment = activeDeleted
+        ? findNextUnprocessed(
+          swimlanes,
+          selectionReferenceForSegment(allSwimlanes, previousSelectionId),
+          { removedIds: rejectedIds })
+        : null;
       const releaseSaveLock = acquireSaveLock("delete-rejected", -1);
       if (!releaseSaveLock) return;
       setRejectedDeletionPreview(null);
@@ -440,8 +446,10 @@ function createWorkflowActions(context) {
           type: "add",
           entry: { id: pendingChangeId, op: "remove", targets: rejectedSegments.map(segmentIdentity) },
         });
+      }
+      if (activeDeleted) {
         setSelectedSegmentIds(nextSelectedSegment ? [nextSelectedSegment.id] : []);
-        setSelectedSegmentId(nextSelectedSegment?.id ?? null);
+        setSelectedSegmentId(nextSelectedSegment?.id ?? CLEARED_SEGMENT_SELECTION_ID);
         selectionAnchorIdRef.current = nextSelectedSegment?.id ?? null;
         selectionRangeBaseIdsRef.current = [];
       }
@@ -466,10 +474,12 @@ function createWorkflowActions(context) {
         setSaveMessage(`${result.deletedSegmentCount} segment${result.deletedSegmentCount === 1 ? "" : "s"} permanently deleted.${retainedMessage}`);
       } catch (error) {
         if (pendingChangeId) dispatchPendingChanges({ type: "discard", key: pendingChangeId });
-        setSelectedSegmentIds(previousSelectionId == null ? [] : [previousSelectionId]);
-        setSelectedSegmentId(previousSelectionId);
-        selectionAnchorIdRef.current = previousSelectionId;
-        selectionRangeBaseIdsRef.current = [];
+        if (activeDeleted) {
+          setSelectedSegmentIds(previousSelectionId == null ? [] : [previousSelectionId]);
+          setSelectedSegmentId(previousSelectionId);
+          selectionAnchorIdRef.current = previousSelectionId;
+          selectionRangeBaseIdsRef.current = [];
+        }
         setSaveMessage(error.message || "Unable to delete rejected segments.");
       } finally {
         releaseSaveLock();
@@ -913,13 +923,16 @@ function createWorkflowActions(context) {
           }), false),
           historyReceiptId,
         );
-        const nextSelection = nextSegmentAfterRemoval(allSwimlanes, selectedIds, selectedSegment.id);
+        const nextSelection = findNextUnprocessed(
+          swimlanes,
+          selectionReferenceForSegment(allSwimlanes, selectedSegment.id),
+          { removedIds: [...selectedIds] });
         onDetailChange((current) => ({
           ...current,
           segments: (current.segments || []).filter((segment) => !selectedIds.has(segment.id)),
         }), video.id);
         setSelectedSegmentIds(nextSelection ? [nextSelection.id] : []);
-        setSelectedSegmentId(nextSelection?.id ?? null);
+        setSelectedSegmentId(nextSelection?.id ?? CLEARED_SEGMENT_SELECTION_ID);
         selectionAnchorIdRef.current = nextSelection?.id ?? null;
         selectionRangeBaseIdsRef.current = [];
         if (nextSelection) {

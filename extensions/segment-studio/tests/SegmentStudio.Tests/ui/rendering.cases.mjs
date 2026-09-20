@@ -580,9 +580,12 @@ test("Shift+X previews and deletes rejected segments with dependent derivations"
     workflow.indexOf("async function autoAssignPerformers"),
   );
   assert.doesNotMatch(deleteRejected, /confirmDependencyDeletion/);
-  assert.ok(deleteRejected.indexOf("onDetailChange(optimisticDetail") < deleteRejected.indexOf("/rejected/deletion/execute"));
-  assert.match(deleteRejected, /deferredCount === 0[\s\S]*removeSegmentsProjection/);
-  // Hiding and restoring the rejected segments is covered by the save-flow cases.
+  // The rejected segments are hidden through the pending-change overlay before the request,
+  // not through a detail projection. Hiding and restoring them is covered by the save-flow cases.
+  assert.ok(deleteRejected.includes(`op: "remove"`));
+  assert.ok(deleteRejected.indexOf(`op: "remove"`) < deleteRejected.indexOf("/rejected/deletion/execute"));
+  assert.match(deleteRejected, /const pendingChangeId = deferredCount === 0 \? createPendingChangeId\(\) : null/);
+  assert.doesNotMatch(deleteRejected, /removeSegmentsProjection/);
   const controller = sourceByModule["editor/SegmentEditor.js"];
   const reviewSetup = controller.slice(
     controller.indexOf("createReviewActions"),

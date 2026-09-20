@@ -3,6 +3,8 @@
 import { EMPTY_EDITOR_HISTORY } from "../../src/SegmentStudio/ui/shared/constants.js";
 import { createSaveQueue, savingSegmentIdFrom } from "../../src/SegmentStudio/ui/editor/model/save-queue.js";
 import { applyPendingChanges, pendingChangesReducer } from "../../src/SegmentStudio/ui/editor/model/pending-changes.js";
+// Loaded dynamically: swimlanes.js reaches the Cove runtime, which the UI harness registers first.
+const { groupSegmentsIntoSwimlanes } = await import("../../src/SegmentStudio/ui/editor/model/swimlanes.js");
 
 const API_ROOT = "/api/plugins/segment-studio";
 
@@ -102,8 +104,13 @@ export async function withEditorGlobals(api, run) {
     requestAnimationFrame: globalThis.requestAnimationFrame,
   };
   const storage = new Map();
+  const dispatched = [];
   globalThis.__segmentStudioFetch = api.fetch;
   globalThis.window = {
+    dispatchedEvents: dispatched,
+    dispatchEvent: (event) => { dispatched.push(event); return true; },
+    addEventListener: () => {},
+    removeEventListener: () => {},
     localStorage: {
       getItem: (key) => (storage.has(key) ? storage.get(key) : null),
       setItem: (key, value) => storage.set(key, String(value)),
@@ -211,6 +218,10 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
       const inserted = state.pendingChanges.filter((entry) => entry.op === "insert" && !entry.settled).map((entry) => entry.segment);
       const byId = new Map([...segmentsNow, ...inserted].map((item) => [item.id, item]));
       const selectedSegment = byId.get(state.selectedSegmentId) || null;
+      // Actions pick their next selection from the lanes, so the harness builds them like a render.
+      // Nothing is collapsed here, so the expanded lanes are the whole set.
+      const allSwimlanes = groupSegmentsIntoSwimlanes(
+        editor.displayedSegments, state.detail.segmentGroups, state.detail.performerSlots);
       refs.selectedSegmentIdRef.current = selectedSegment?.id ?? null;
       const setSelectedSegmentId = apply("selectedSegmentId");
       const setSelectedSegmentIds = apply("selectedSegmentIds");
@@ -222,6 +233,8 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         video,
         segments: segmentsNow,
         segmentGroups: state.detail.segmentGroups,
+        allSwimlanes,
+        swimlanes: allSwimlanes,
         performerSlots: state.detail.performerSlots,
         selectedSegment,
         selectedSegments: state.selectedSegmentIds.map((id) => byId.get(id)).filter(Boolean),

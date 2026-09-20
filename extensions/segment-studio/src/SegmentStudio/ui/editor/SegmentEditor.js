@@ -2,7 +2,7 @@ import { h, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useRegister
 
 import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 
-import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
+import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, selectionReferenceForSegment, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
 import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
 
@@ -45,6 +45,7 @@ function restorePublishApprovedFocus(target, fallback) {
 }
 
 function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsChanged, splitLayout, initialSegmentId, compatibilityMode = false, profile, onNavigate }) {
+  const lastSelectionReferenceRef = useRef(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
   const selectedSegmentIdRef = useRef(null);
@@ -466,11 +467,27 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     () => groupSegmentsIntoSwimlanes(visibleSegments, segmentGroups, performerSlots),
     [visibleSegments, segmentGroups, performerSlots],
   );
+  const swimlanes = useMemo(
+    () => expandedSwimlanes(allSwimlanes, collapsedSegmentGroups),
+    [allSwimlanes, collapsedSegmentGroups],
+  );
   const displayedSelectedSegment = resolveEditorSegmentSelection(
     allSwimlanes,
     selectedSegmentId,
     initialSegmentId,
+    {
+      visibleLanes: swimlanes,
+      reference: lastSelectionReferenceRef.current?.videoId === video.id
+        ? lastSelectionReferenceRef.current.reference
+        : null,
+    },
   );
+  // Where the reviewer last was, so a selection that disappears resumes from there. Recorded
+  // after the commit, because a render React discards must not move the remembered position.
+  useEffect(() => {
+    const reference = selectionReferenceForSegment(allSwimlanes, displayedSelectedSegment?.id);
+    if (reference) lastSelectionReferenceRef.current = { videoId: video.id, reference };
+  }, [video.id, displayedSelectedSegment?.id, allSwimlanes]);
   // Visibility follows the displayed tag, but actions read and write the server projection.
   // Temporary segments are only pending inserts, so actions see them alongside the server segments.
   const actionSegments = useMemo(() => {
@@ -506,10 +523,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
       railViewport.height,
     ),
     [segmentRailLayout, railViewport],
-  );
-  const swimlanes = useMemo(
-    () => expandedSwimlanes(allSwimlanes, collapsedSegmentGroups),
-    [allSwimlanes, collapsedSegmentGroups],
   );
   const hasPreviousUnreviewed = findUnreviewedSelection(swimlanes, selectedSegment?.id, -1, true) != null;
   const hasNextUnreviewed = findUnreviewedSelection(swimlanes, selectedSegment?.id, 1, true) != null;
@@ -837,6 +850,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     setSelectedSegmentGroupKey,
     setSelectedSegmentId,
     setSelectedSegmentIds,
+    swimlanes,
     video,
   });
   const { applySegmentHistoryState, applyPerformerSlotHistoryState, applyHistoryState, restoreHistoryTarget, updateTimelineRatio, updateTimelineRatioFromPointer, handleSeparatorPointerDown, handleSeparatorPointerMove, handleSeparatorKeyDown, panelWidthMaximum, updatePanelWidth, handlePanelSeparatorPointer, panelSeparatorProps, toggleSegmentRail, toggleSegmentGroup, mutateShotBoundary } = createHistoryAndLayoutActions({
