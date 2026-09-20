@@ -17,7 +17,7 @@ const { api, review } = vi.hoisted(() => ({
     loadReviews: vi.fn(),
     loadProgress: vi.fn(),
     saveProgress: vi.fn(),
-    findVideos: vi.fn(),
+    findMedia: vi.fn(),
     findTags: vi.fn(),
     listTagGroups: vi.fn(),
     runReviewAction: vi.fn(),
@@ -123,7 +123,7 @@ beforeEach(() => {
     storageKey: "reviews",
     canWrite: true,
   });
-  api.findVideos
+  api.findMedia
     .mockReset()
     .mockResolvedValue({ items: [video(1), video(2)], totalCount: 2 });
   api.findTags
@@ -698,7 +698,7 @@ describe("Data Quality extension page", () => {
       storageKey: "reviews",
       canWrite: true,
     });
-    api.findVideos.mockImplementation(async (target, targetFilter) => ({
+    api.findMedia.mockImplementation(async (target, targetFilter) => ({
       items: Number(targetFilter.perPage) === 1 ? [] : [video(1)],
       totalCount: target.id === review.id ? 2 : 17,
     }));
@@ -714,7 +714,7 @@ describe("Data Quality extension page", () => {
     expect(within(browser).getByRole("status")).toHaveTextContent(
       "Review counts loaded.",
     );
-    expect(api.findVideos).toHaveBeenCalledWith(
+    expect(api.findMedia).toHaveBeenCalledWith(
       review,
       expect.objectContaining({ page: 1, perPage: 1 }),
       expect.anything(),
@@ -954,7 +954,7 @@ it("restores multi-video cards, selection actions, and the single-video layout s
   fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
-  expect(api.runReviewAction.mock.calls[0][1]).toEqual([1, 2]);
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1, 2]);
   await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
   fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
   await screen.findByRole("heading", { name: "Reviewing this video" });
@@ -966,7 +966,7 @@ it("shows configured descendant tags on each card independently of the queue fil
   const configured = { ...review, view: { ...review.view, reviewMode: "multiple", objectFilter: { tagsCriterion: { value: [999], modifier: "INCLUDES" } } }, presentation: { annotations: ["tags"], annotationParents: [100] } };
   api.loadReviews.mockResolvedValueOnce({ reviews: [configured], storageKey: "reviews", canWrite: true });
   api.resolveTagTree.mockResolvedValue([100, 30]);
-  api.findVideos.mockResolvedValue({ items: [{ ...video(1), tags: [{ id: 100, name: "Parent" }, { id: 30, name: "Matching child" }, { id: 999, name: "Filter tag" }] }, { ...video(2), tags: [] }], totalCount: 2 });
+  api.findMedia.mockResolvedValue({ items: [{ ...video(1), tags: [{ id: 100, name: "Parent" }, { id: 30, name: "Matching child" }, { id: 999, name: "Filter tag" }] }, { ...video(2), tags: [] }], totalCount: 2 });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   const first = await screen.findByRole("article", { name: "Video 1" });
   const bins = within(first).getByRole("region", { name: "Card tag bins" });
@@ -974,7 +974,7 @@ it("shows configured descendant tags on each card independently of the queue fil
   expect(within(bins).queryByText("Parent")).not.toBeInTheDocument();
   expect(within(bins).queryByText("Filter tag")).not.toBeInTheDocument();
   expect(api.resolveTagTree).toHaveBeenCalledWith([100]);
-  expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual(configured.view.objectFilter);
+  expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual(configured.view.objectFilter);
 });
 
 it("saves card parent tags and the preferred multi-video layout from the rule editor", async () => {
@@ -1004,10 +1004,10 @@ it("preserves temporary queue criteria when switching video layouts", async () =
   await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
   fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "multiple" } });
   await screen.findByRole("article", { name: "Video 1" });
-  expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
+  expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
   fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
+  expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
 });
 
 it("edits an existing multi-video rule without losing its card presentation", async () => {
@@ -1054,7 +1054,7 @@ it("keeps newly saved queue criteria when the editor switches to single video", 
   fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "single" } });
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
+  expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
   expect(screen.queryByRole("region", { name: "Edit review rule" })).not.toBeInTheDocument();
 });
@@ -1077,14 +1077,14 @@ it("reloads the multi-video queue when browser navigation changes the same revie
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  api.findVideos.mockResolvedValue({ items: [video(3)], totalCount: 1 });
+  api.findMedia.mockResolvedValue({ items: [video(3)], totalCount: 1 });
   await act(async () => {
     window.history.pushState(null, "", "/data-quality?review=review&page=1&perPage=24&filters=%7B%22organized%22%3Atrue%7D");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   await screen.findByRole("article", { name: "Video 3" });
   expect(screen.queryByRole("article", { name: "Video 1" })).not.toBeInTheDocument();
-  expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
+  expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
 });
 
 it("restores saved video criteria on browser navigation to a bare review URL", async () => {
@@ -1096,7 +1096,7 @@ it("restores saved video criteria on browser navigation to a bare review URL", a
     window.history.pushState(null, "", "/data-quality?review=review");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  await waitFor(() => expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({}));
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({}));
 });
 
 it("persists multi-video preferences after reopening the canonical review URL", async () => {
@@ -1117,15 +1117,15 @@ it("defers browser query changes until a pending multi-video write settles", asy
   const first = await screen.findByRole("article", { name: "Video 1" });
   fireEvent.keyDown(first, { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
-  const before = api.findVideos.mock.calls.length;
+  const before = api.findMedia.mock.calls.length;
   await act(async () => {
     window.history.pushState(null, "", "/data-quality?review=review&page=1&perPage=24&filters=%7B%22organized%22%3Atrue%7D");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  expect(api.findVideos).toHaveBeenCalledTimes(before);
+  expect(api.findMedia).toHaveBeenCalledTimes(before);
   expect(screen.getByLabelText("Review layout")).toBeDisabled();
   await act(async () => finish());
-  await waitFor(() => expect(api.findVideos.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true }));
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true }));
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
 });
 
@@ -1134,7 +1134,7 @@ it("honors URL traversal direction independently of the saved multi-video direct
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", startFrom: "beginning" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  expect(api.findVideos.mock.calls.at(-1)?.[0].view.startFrom).toBe("end");
+  expect(api.findMedia.mock.calls.at(-1)?.[0].view.startFrom).toBe("end");
   expect(new URLSearchParams(window.location.search).get("startFrom")).toBe("end");
 });
 
@@ -1144,7 +1144,7 @@ it("requires an explicit defaults reset before loading a malformed multi-video q
   render(<DataQualityPage onNavigate={vi.fn()} />);
   const error = await screen.findByRole("alert");
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
-  expect(api.findVideos).not.toHaveBeenCalled();
+  expect(api.findMedia).not.toHaveBeenCalled();
   fireEvent.click(within(error).getByRole("button", { name: "Reset to review defaults" }));
   await screen.findByRole("article", { name: "Video 1" });
   expect(new URLSearchParams(window.location.search).get("filters")).toBe("{}");
@@ -1153,12 +1153,12 @@ it("requires an explicit defaults reset before loading a malformed multi-video q
 it("resets an invalid URL to the last page when the saved review starts at the end", async () => {
   window.history.replaceState(null, "", "/data-quality?review=review&filters=invalid");
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", startFrom: "end" } }], storageKey: "reviews", canWrite: true });
-  api.findVideos.mockResolvedValue({ items: [video(1)], totalCount: 48 });
+  api.findMedia.mockResolvedValue({ items: [video(1)], totalCount: 48 });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   const error = await screen.findByRole("alert");
   fireEvent.click(within(error).getByRole("button", { name: "Reset to review defaults" }));
   await screen.findByRole("article", { name: "Video 1" });
-  expect(api.findVideos.mock.calls.at(-1)?.[1].page).toBe(2);
+  expect(api.findMedia.mock.calls.at(-1)?.[1].page).toBe(2);
   expect(new URLSearchParams(window.location.search).get("page")).toBe("2");
 });
 
@@ -1180,7 +1180,7 @@ it("selects and clears every shown video from the actions sidebar", async () => 
 
 it("selects every video on each page load when the review asks for it", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
-  api.findVideos.mockImplementation(async (_review, filter) =>
+  api.findMedia.mockImplementation(async (_review, filter) =>
     Number(filter.page) === 2
       ? { items: [video(3), video(4)], totalCount: 4 }
       : { items: [video(1), video(2)], totalCount: 4 },
@@ -1197,7 +1197,7 @@ it("selects every video on each page load when the review asks for it", async ()
   expect(screen.getByRole("article", { name: "Video 4, selected" })).toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 3, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
-  expect(api.runReviewAction.mock.calls[0][1]).toEqual([3, 4]);
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([3, 4]);
 });
 
 it("saves the select-all-on-load preference from the rule editor", async () => {
@@ -1217,8 +1217,8 @@ it("saves the select-all-on-load preference from the rule editor", async () => {
 it("keeps a hand-trimmed selection trimmed after an action, but reselects after applying to the whole page", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
   let remaining = [video(1), video(2), video(3), video(4)];
-  api.findVideos.mockImplementation(async () => ({ items: remaining.slice(0, 2), totalCount: remaining.length }));
-  api.runReviewAction.mockImplementation(async (_action, ids: number[]) => {
+  api.findMedia.mockImplementation(async () => ({ items: remaining.slice(0, 2), totalCount: remaining.length }));
+  api.runReviewAction.mockImplementation(async (_kind, _action, ids: number[]) => {
     remaining = remaining.filter((item) => !ids.includes(item.id));
   });
   render(<DataQualityPage onNavigate={vi.fn()} />);
@@ -1228,7 +1228,7 @@ it("keeps a hand-trimmed selection trimmed after an action, but reselects after 
   expect(screen.getByRole("article", { name: "Video 2" })).toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 1, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
-  expect(api.runReviewAction.mock.calls[0][1]).toEqual([1]);
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1]);
   await screen.findByRole("article", { name: "Video 3" });
   expect(screen.getByRole("article", { name: "Video 2" })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: "Video 2, selected" })).not.toBeInTheDocument();
@@ -1238,7 +1238,7 @@ it("keeps a hand-trimmed selection trimmed after an action, but reselects after 
   fireEvent.click(screen.getByRole("button", { name: "Select all on page" }));
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
-  expect(api.runReviewAction.mock.calls[1][1]).toEqual([2, 3]);
+  expect(api.runReviewAction.mock.calls[1][2]).toEqual([2, 3]);
   await screen.findByRole("article", { name: "Video 4, selected" });
 });
 
@@ -1252,7 +1252,7 @@ it("applies action letters from the page body and from sidebar buttons", async (
   expect(document.body).toHaveFocus();
   fireEvent.keyDown(document.body, { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
-  expect(api.runReviewAction.mock.calls[0][1]).toEqual([1, 2]);
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1, 2]);
   await screen.findByRole("article", { name: "Video 1, selected" });
   // The sidebar toggle keeps focus after a click; letters still reach the review.
   const toggle = screen.getByRole("button", { name: "Clear selection" });

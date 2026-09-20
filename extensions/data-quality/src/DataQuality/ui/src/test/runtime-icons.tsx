@@ -7,6 +7,7 @@ export const ChevronLeft = Icon;
 export const ChevronRight = Icon;
 export const ExternalLink = Icon;
 export const Film = Icon;
+export const Headphones = Icon;
 export const Grid3X3 = Icon;
 export const Loader2 = Icon;
 export const LayoutGrid = Icon;

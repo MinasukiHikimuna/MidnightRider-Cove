@@ -261,6 +261,7 @@ async function loadAccountReviews() {
     storageKey,
     canWrite: has(me.permissions, "videos.write"),
     canWriteVideos: has(me.permissions, "videos.write"),
+    canWriteAudios: has(me.permissions, "audios.write"),
     canWriteTags: has(me.permissions, "tags.write"),
     canReadTagGroups: has(me.permissions, "taggroups.read"),
     canConfigure: !readable || writable,

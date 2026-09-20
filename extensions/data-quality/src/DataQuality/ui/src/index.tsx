@@ -29,6 +29,7 @@ import {
   ChevronRight,
   ExternalLink,
   Film,
+  Headphones,
   GripVertical,
   Loader2,
   Pencil,
@@ -46,7 +47,8 @@ import {
   createConfirmedAbsentTagsField,
   createOccurrenceAbsenceField,
   findTags,
-  findVideos,
+  findMedia,
+  mediaLabel,
   getConfirmedAbsentTagsFieldStatus,
   getOccurrenceAbsenceFieldStatus,
   listTagGroups,
@@ -61,14 +63,17 @@ import {
   videoPreviewStatusUrl,
   videoPreviewUrl,
   videoScreenshotUrl,
-  videoStreamUrl,
+  mediaStreamUrl,
   type Tag,
   type TagGroup,
-  type Video,
+  type MediaItem,
   type ConfirmedAbsentTagsFieldStatus,
 } from "./api";
 import {
   getNextReviewFocus,
+  isOccurrenceReview,
+  mediaKindOf,
+  reviewMediaKind,
   getReviewActionTargets,
   hasAssessmentSteps,
   isReviewShortcutTarget,
@@ -85,8 +90,9 @@ import {
   type TagReview,
   type TagReviewAction,
   type TagReviewEffect,
+  type MediaReview,
   type VideoReview,
-  type VideoReviewAction,
+  type MediaReviewAction,
   type OccurrenceReview,
   type ReviewEntityType,
 } from "./model";
@@ -118,7 +124,7 @@ import {
 } from "./model";
 
 type ReviewDisplayMode = "grid" | "list" | "wall";
-type ReviewEntity = Video | Tag;
+type ReviewEntity = MediaItem | Tag;
 interface ReviewPage {
   items: ReviewEntity[];
   totalCount: number;
@@ -128,11 +134,21 @@ type ReviewBrowserDirection = "asc" | "desc";
 
 const defaultCardSize = 180;
 
+const REVIEW_ENTITY_LABELS: Record<ReviewEntityType, string> = {
+  video: "Video review",
+  audio: "Audio review",
+  tag: "Tag review",
+  performerOccurrence: "Performer occurrence review",
+  audioPerformerOccurrence: "Audio performer occurrence review",
+};
+
 function ReviewEntityIcon({ entityType }: { entityType: ReviewEntityType }) {
-  return entityType === "tag" ? (
-    <TagsIcon role="img" aria-label="Tag review" />
+  const label = REVIEW_ENTITY_LABELS[entityType];
+  if (entityType === "tag") return <TagsIcon role="img" aria-label={label} />;
+  return mediaKindOf(entityType) === "audio" ? (
+    <Headphones role="img" aria-label={label} />
   ) : (
-    <Film role="img" aria-label={entityType === "performerOccurrence" ? "Performer occurrence review" : "Video review"} />
+    <Film role="img" aria-label={label} />
   );
 }
 
@@ -171,7 +187,7 @@ function pageFilter(value: Record<string, unknown>) {
   return boundedFilter({ ...value, page: 1 });
 }
 
-function videoTitle(video: Video) {
+function videoTitle(video: MediaItem) {
   return video.title || video.files[0]?.basename || `Video ${video.id}`;
 }
 
@@ -273,6 +289,7 @@ export function DataQualityPage({
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState("");
   const [canWriteVideos, setCanWriteVideos] = useState(false);
+  const [canWriteAudios, setCanWriteAudios] = useState(false);
   const [canWriteTags, setCanWriteTags] = useState(false);
   const [canReadTagGroups, setCanReadTagGroups] = useState(false);
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
@@ -313,13 +330,16 @@ export function DataQualityPage({
     [temporaryReview, activeId, savedReview],
   );
   const entityType = review ? reviewEntityType(review) : "video";
+  const mediaKind = mediaKindOf(entityType);
+  const occurrenceReview = review ? isOccurrenceReview(review) : false;
   const videoReview = entityType === "video" ? (review as VideoReview | null) : null;
   // Occurrence absences use their own field; only reviews that assess need it set up.
-  const occurrenceAssessments = entityType === "performerOccurrence" && !!review?.actions.some(hasAssessmentSteps);
-  const showsAbsenceSetup = !!videoReview || occurrenceAssessments;
+  const occurrenceAssessments = occurrenceReview && !!review?.actions.some(hasAssessmentSteps);
+  const showsAbsenceSetup = !!videoReview || entityType === "audio" || occurrenceAssessments;
   const [layoutOverride, setLayoutOverride] = useState<{ id: string; mode: "single" | "multiple" } | null>(null);
   const reviewMode = layoutOverride?.id === review?.id ? layoutOverride?.mode : review?.view.reviewMode ?? "single";
-  const usesWorkspace = entityType === "performerOccurrence" || (entityType === "video" && reviewMode === "single");
+  const usesWorkspace =
+    occurrenceReview || entityType === "audio" || (entityType === "video" && reviewMode === "single");
   const [queryRevision, setQueryRevision] = useState(0);
   const readyQueryRevision = useRef(-1);
   const deferredNavigation = useRef(false);
@@ -335,7 +355,10 @@ export function DataQualityPage({
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, [usesWorkspace]);
-  const canWriteCurrent = entityType === "tag" ? canWriteTags : canWriteVideos;
+  const canWriteMedia = mediaKind === "audio" ? canWriteAudios : canWriteVideos;
+  const writeSubject =
+    entityType === "tag" ? "Tag" : mediaKind === "audio" ? "Audio" : "Video";
+  const canWriteCurrent = entityType === "tag" ? canWriteTags : canWriteMedia;
   const sortedReviews = useMemo(() => {
     const direction = reviewBrowserDirection === "asc" ? 1 : -1;
     return [...reviews].sort((left, right) => {
@@ -386,7 +409,7 @@ export function DataQualityPage({
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewOpenRef = useRef(previewOpen);
   previewOpenRef.current = previewOpen;
-  const previewVideoRef = useRef<Video | null>(null);
+  const previewVideoRef = useRef<MediaItem | null>(null);
   const [displayMode, setDisplayMode] = useState<ReviewDisplayMode>("grid");
   const [cardSize, setCardSize] = useState(defaultCardSize);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
@@ -527,6 +550,7 @@ export function DataQualityPage({
       setReviews(result.reviews);
       setStorageKey(result.storageKey);
       setCanWriteVideos(result.canWriteVideos ?? result.canWrite);
+      setCanWriteAudios(result.canWriteAudios ?? false);
       setCanWriteTags(result.canWriteTags ?? false);
       setCanReadTagGroups(result.canReadTagGroups ?? false);
       setCanConfigure(result.canConfigure ?? true);
@@ -575,16 +599,16 @@ export function DataQualityPage({
     setReviewCounts({});
     for (const item of reviews) {
       const countRequest =
-        item.entityType === "performerOccurrence"
-          ? resolvePerformers(item, controller.signal).then(ids => ids?.length === 0 ? { items: [], totalCount: 0 } : findVideos(occurrenceSceneReview(item, ids), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal))
+        isOccurrenceReview(item)
+          ? resolvePerformers(item, controller.signal).then(ids => ids?.length === 0 ? { items: [], totalCount: 0 } : findMedia(occurrenceSceneReview(item, ids), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal))
           : reviewEntityType(item) === "tag"
           ? findTags(
               item as TagReview,
               boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
               controller.signal,
             )
-          : findVideos(
-              item as VideoReview,
+          : findMedia(
+              item as MediaReview,
               boundedFilter({ ...item.view.filter, page: 1, perPage: 1 }),
               controller.signal,
             );
@@ -619,8 +643,8 @@ export function DataQualityPage({
     try {
       const status =
         await (occurrenceAssessments
-          ? getOccurrenceAbsenceFieldStatus()
-          : getConfirmedAbsentTagsFieldStatus());
+          ? getOccurrenceAbsenceFieldStatus(mediaKind)
+          : getConfirmedAbsentTagsFieldStatus(mediaKind));
       if (generation === absenceFieldGeneration.current)
         setAbsenceFieldStatus(status);
     } catch (error) {
@@ -631,7 +655,7 @@ export function DataQualityPage({
           (error instanceof Error ? error.message : "Request failed."),
       );
     }
-  }, [occurrenceAssessments]);
+  }, [occurrenceAssessments, mediaKind]);
 
   useEffect(() => {
     void refreshAbsenceFieldStatus();
@@ -663,7 +687,7 @@ export function DataQualityPage({
                 nextFilter,
                 controller.signal,
               )
-            : findVideos(
+            : findMedia(
                 targetReview as VideoReview,
                 nextFilter,
                 controller.signal,
@@ -894,7 +918,7 @@ export function DataQualityPage({
   const focusedEntity =
     queue.items.find((item) => item.id === focusedId) ?? null;
   const focusedVideo =
-    entityType === "video" ? (focusedEntity as Video | null) : null;
+    entityType === "video" ? (focusedEntity as MediaItem | null) : null;
   if (previewOpen && focusedVideo) previewVideoRef.current = focusedVideo;
   const previewVideo =
     focusedVideo ?? (previewOpen ? previewVideoRef.current : null);
@@ -988,7 +1012,7 @@ export function DataQualityPage({
       // broken key, so name the reason the action cannot run.
       const blocked =
         changesData && !canWriteCurrent
-          ? `${entityType === "tag" ? "Tag" : "Video"} write permission is required to apply ${action.label}.`
+          ? `${writeSubject} write permission is required to apply ${action.label}.`
           : unavailableTagGroupAccess || unavailableTagGroup
             ? `${action.label} needs a tag group that is unavailable.`
             : hasAssessmentSteps(action) && absenceFieldStatus?.kind !== "ready"
@@ -1045,7 +1069,7 @@ export function DataQualityPage({
       try {
         if ("effect" in action)
           await runTagReviewAction(action, actionTargets);
-        else await runReviewAction(action, actionTargets);
+        else await runReviewAction(mediaKind, action, actionTargets);
         succeeded = true;
         if (!isCurrent()) return;
         setSelectedIds((current) => {
@@ -1425,8 +1449,8 @@ export function DataQualityPage({
               setAbsenceFieldPending(true);
               setAbsenceFieldError("");
               void (occurrenceAssessments
-                ? createOccurrenceAbsenceField()
-                : createConfirmedAbsentTagsField()
+                ? createOccurrenceAbsenceField(mediaKind)
+                : createConfirmedAbsentTagsField(mediaKind)
               )
                 .then(refreshAbsenceFieldStatus)
                 .catch((error) =>
@@ -1657,7 +1681,12 @@ export function DataQualityPage({
               {sortedReviews.map((item) => {
                 const count = reviewCounts[item.id];
                 const itemType = reviewEntityType(item);
-                const singular = itemType === "tag" ? "tag" : itemType === "performerOccurrence" ? "scene" : "video";
+                const singular =
+                  itemType === "tag"
+                    ? "tag"
+                    : isOccurrenceReview(item)
+                      ? mediaLabel(mediaKindOf(itemType)).queue
+                      : mediaLabel(mediaKindOf(itemType)).one;
                 return (
                   <button
                     key={item.id}
@@ -1704,7 +1733,7 @@ export function DataQualityPage({
           </div>
         )
       ) : usesWorkspace ? (
-        <ReviewWorkspace key={review.id} review={review as VideoReview | OccurrenceReview} canWrite={review.entityType === "performerOccurrence" ? canWriteTags : canWriteVideos} canAssess={absenceFieldStatus?.kind === "ready" && canWriteVideos} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as VideoReview | OccurrenceReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
+        <ReviewWorkspace key={review.id} review={review as MediaReview} canWrite={occurrenceReview ? canWriteTags : canWriteMedia} canAssess={absenceFieldStatus?.kind === "ready" && canWriteMedia} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as MediaReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
       ) : (
         <>
           {videoReview && presentationTags.error && (
@@ -1712,7 +1741,7 @@ export function DataQualityPage({
           )}
           {videoReview && (
             <TagBins
-              videos={queue.items as Video[]}
+              videos={queue.items as MediaItem[]}
               review={videoReview}
               trees={presentationTags.ids}
               disabled={pending || queueLoading}
@@ -1936,7 +1965,7 @@ export function DataQualityPage({
               })}
               {!review.actions.length && <p>This review has no actions.</p>}
               {!canWriteCurrent && (
-                <p>{entityType === "tag" ? "Tag" : "Video"} write permission is required to apply actions.</p>
+                <p>{writeSubject} write permission is required to apply actions.</p>
               )}
               {entityType === "tag" && tagGroupsError && (
                 <p>Tag groups are unavailable. {tagGroupsError}</p>
@@ -2172,7 +2201,7 @@ export function DataQualityPage({
         />
       );
     }
-    const video = item as Video;
+    const video = item as MediaItem;
     return (
       <ReviewCard
         key={video.id}
@@ -2305,7 +2334,7 @@ function ReviewCard({
   onPreview,
   onNavigate,
 }: {
-  video: Video;
+  video: MediaItem;
   showTagBins?: boolean;
   displayMode: ReviewDisplayMode;
   focused: boolean;
@@ -2397,7 +2426,7 @@ function ReviewCard({
   );
 }
 
-function WallPreview({ video }: { video: Video }) {
+function WallPreview({ video }: { video: MediaItem }) {
   const root = useRef<HTMLDivElement>(null);
   const media = useRef<HTMLVideoElement>(null);
   const [load, setLoad] = useState(false);
@@ -2485,7 +2514,7 @@ function ReviewPreview({
   onClose,
   onAction,
 }: {
-  video: Video;
+  video: MediaItem;
   review: VideoReview;
   targetLabel: string;
   pending: boolean;
@@ -2500,7 +2529,7 @@ function ReviewPreview({
   onPrevious: () => void;
   onNext: () => void;
   onClose: () => void;
-  onAction: (action: VideoReviewAction) => Promise<void>;
+  onAction: (action: MediaReviewAction) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
   const playerControls = useRef<{
@@ -2652,7 +2681,7 @@ function ReviewPreview({
           {file ? (
             <VideoPlayer
               autostart
-              streamUrl={videoStreamUrl(video.id)}
+              streamUrl={mediaStreamUrl("video", video.id)}
               posterUrl={videoScreenshotUrl(video)}
               format={file.format}
               audioCodec={file.audioCodec}
@@ -3026,12 +3055,21 @@ function ReviewEditor({
 }) {
   const [section, setSection] = useState("Review");
   const entityType = reviewEntityType(draft);
+  const occurrenceDraft = isOccurrenceReview(draft);
   const changeEntityType = (next: ReviewEntityType) => {
     if (entityTypeLocked || next === entityType) return;
-    if (next === "performerOccurrence") {
+    if (next === "performerOccurrence" || next === "audioPerformerOccurrence") {
       setDraft({ id: draft.id, entityType: next, name: draft.name, description: draft.description,
         view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "end" },
         actions: [], occurrence: { targetMode: "all", performerIds: [], performerFilter: {}, condition: "any", conditionTagIds: [], tagIds: [], multiple: true },
+      });
+      return;
+    }
+    if (next === "audio") {
+      // Audios have no card grid, so an audio review always runs the single-item workspace.
+      setDraft({ id: draft.id, entityType: "audio", name: draft.name, description: draft.description,
+        view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "end", reviewMode: "single" },
+        actions: [],
       });
       return;
     }
@@ -3092,7 +3130,7 @@ function ReviewEditor({
     <div className="dq-editor">
       <div className="dq-editor-nav">
         <EntityDetailTabs
-          tabs={(setup ? ["Review"] : workspace ? ["Review", ...(entityType === "video" ? ["Appearance"] : []), "Actions", ...(entityType === "performerOccurrence" ? ["Tag choices"] : [])] : entityType === "performerOccurrence" ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
+          tabs={(setup ? ["Review"] : workspace ? ["Review", ...(entityType === "video" ? ["Appearance"] : []), "Actions", ...(occurrenceDraft ? ["Tag choices"] : [])] : occurrenceDraft ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : entityType === "audio" ? ["Review", "Queue", "Actions"] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
             key: name,
             label: name,
             count: name === "Actions" ? draft.actions.length : undefined,
@@ -3119,8 +3157,12 @@ function ReviewEditor({
                 }
               >
                 <option value="video">Videos</option>
+                <option value="audio">Audios</option>
                 <option value="tag">Tags</option>
                 <option value="performerOccurrence">Performer occurrence tags</option>
+                <option value="audioPerformerOccurrence">
+                  Audio performer occurrence tags
+                </option>
               </select>
             </label>
             <label>
@@ -3147,10 +3189,10 @@ function ReviewEditor({
         </section>
         {!workspace && !setup && <section hidden={section !== "Queue"} className="dq-editor-section">
           <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
-          {draft.entityType === "performerOccurrence" && <OccurrenceSettings review={draft} onChange={setDraft} />}
+          {occurrenceDraft && <OccurrenceSettings review={draft as OccurrenceReview} onChange={setDraft} />}
         </section>}
-        {!setup && draft.entityType === "performerOccurrence" && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft} onChange={setDraft} choices /></section>}
-        {!setup && (!workspace || entityType === "video") && <section hidden={section !== "Appearance"} className="dq-editor-section">
+        {!setup && occurrenceDraft && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft as OccurrenceReview} onChange={setDraft} choices /></section>}
+        {!setup && entityType !== "audio" && !occurrenceDraft && (!workspace || entityType === "video") && <section hidden={section !== "Appearance"} className="dq-editor-section">
             <QueueEditor draft={draft} onChange={setDraft} queue={false} />
         </section>}
         {!setup && <section hidden={section !== "Actions"} className="dq-editor-section">
@@ -3239,7 +3281,7 @@ function VideoActionsEditor({
   rememberStepKey: (next: ReviewStep, previous: ReviewStep) => void;
   setDraft: (review: Review) => void;
 }) {
-  const updateAction = (index: number, action: VideoReviewAction) =>
+  const updateAction = (index: number, action: MediaReviewAction) =>
     setDraft({
       ...draft,
       actions: draft.actions.map((item, itemIndex) =>
@@ -3249,7 +3291,7 @@ function VideoActionsEditor({
   return (
     <>
       <h3>Actions</h3>
-      {draft.entityType === "performerOccurrence" && <p>Actions apply only to the active performer in this scene. Set performer matching in the review filters below. Save review keeps those criteria with this rule.</p>}
+      {isOccurrenceReview(draft) && <p>Actions apply only to the active performer in this {mediaLabel(reviewMediaKind(draft)).one}. Set performer matching in the review filters below. Save review keeps those criteria with this rule.</p>}
       <p>
         Steps run in order. No steps means Skip. Earlier steps may remain
         applied if a later step fails.
@@ -3302,7 +3344,7 @@ function VideoActionsEditor({
             <ActionIdentityFields
               action={action}
               onChange={(next) =>
-                updateAction(index, next as VideoReviewAction)
+                updateAction(index, next as MediaReviewAction)
               }
             />
             <SortableList

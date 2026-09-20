@@ -165,8 +165,14 @@ declare module "@cove/runtime/components" {
   }>;
   export const TAG_CRITERIA: typeof VIDEO_CRITERIA;
   export const PERFORMER_CRITERIA: typeof VIDEO_CRITERIA;
+  export const AUDIO_CRITERIA: typeof VIDEO_CRITERIA;
   export const TAG_SORT_OPTIONS: Array<{ value: string; label: string }>;
   export const VIDEO_SORT_OPTIONS: Array<{ value: string; label: string }>;
+  export const AUDIO_SORT_OPTIONS: Array<{ value: string; label: string }>;
+  export const NarrativeText: ComponentType<{
+    children?: string | null;
+    className?: string;
+  }>;
   export const FilterDialog: ComponentType<{
     open: boolean;
     onClose(): void;
@@ -196,6 +202,24 @@ declare module "@cove/runtime/components" {
       seekBy(seconds: number): void;
     }) => void | (() => void);
     videoStyle?: CSSProperties;
+    clip?: { start: number; end?: number | null; loop?: boolean };
+  }>;
+  export const AudioPlayer: ComponentType<{
+    streamUrl: string;
+    format: string;
+    title: string;
+    subtitle?: string;
+    coverUrl?: string | null;
+    duration: number;
+    resumeTime?: number;
+    hasVideoTrack?: boolean;
+    trackingEnabled?: boolean;
+    autostart?: boolean;
+    autostartToken?: number;
+    onPlay?: () => void;
+    onPause?: () => void;
+    onPlaybackStateChange?: (playing: boolean) => void;
+    onEnded?: () => void;
     clip?: { start: number; end?: number | null; loop?: boolean };
   }>;
   export const EntityReferenceMultiSelector: ComponentType<{
@@ -231,6 +255,7 @@ declare module "@cove/runtime/lucide-react" {
   export const Film: Icon;
   export const Grid3X3: Icon;
   export const GripVertical: Icon;
+  export const Headphones: Icon;
   export const LayoutGrid: Icon;
   export const List: Icon;
   export const Loader2: Icon;

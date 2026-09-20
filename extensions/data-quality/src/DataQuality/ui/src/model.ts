@@ -27,7 +27,7 @@ interface ReviewActionBase {
   shortcut?: string;
 }
 
-export interface VideoReviewAction extends ReviewActionBase {
+export interface MediaReviewAction extends ReviewActionBase {
   steps: ReviewStep[];
 }
 
@@ -40,7 +40,7 @@ export interface TagReviewAction extends ReviewActionBase {
   effect: TagReviewEffect;
 }
 
-export type ReviewAction = VideoReviewAction | TagReviewAction;
+export type ReviewAction = MediaReviewAction | TagReviewAction;
 
 interface ReviewBase {
   id: string;
@@ -52,7 +52,7 @@ interface ReviewBase {
 
 export interface VideoReview extends ReviewBase {
   entityType?: "video";
-  actions: VideoReviewAction[];
+  actions: MediaReviewAction[];
   presentation?: {
     cardSize?: number | null;
     annotations?: Array<"date" | "studio" | "performers" | "tags">;
@@ -67,9 +67,19 @@ export interface TagReview extends ReviewBase {
   presentation?: { cardSize?: number | null };
 }
 
+/**
+ * Audio reviews run one audio at a time: audios have nothing to show in a card grid, so the
+ * multiple-item layouts, card annotations and tag bins stay video-only.
+ */
+export interface AudioReview extends ReviewBase {
+  entityType: "audio";
+  actions: MediaReviewAction[];
+  presentation?: { cardSize?: number | null };
+}
+
 export interface OccurrenceReview extends ReviewBase {
-  entityType: "performerOccurrence";
-  actions: VideoReviewAction[];
+  entityType: "performerOccurrence" | "audioPerformerOccurrence";
+  actions: MediaReviewAction[];
   occurrence: {
     targetMode: "all" | "selected" | "filter";
     performerIds: number[];
@@ -85,8 +95,50 @@ export interface OccurrenceReview extends ReviewBase {
   presentation?: { cardSize?: number | null };
 }
 
-export type Review = VideoReview | TagReview | OccurrenceReview;
-export type ReviewEntityType = "video" | "tag" | "performerOccurrence";
+export type Review = VideoReview | AudioReview | TagReview | OccurrenceReview;
+/** Reviews that queue media items and run the single-item workspace or the card grid. */
+export type MediaReview = VideoReview | AudioReview | OccurrenceReview;
+export type ReviewEntityType =
+  | "video"
+  | "audio"
+  | "tag"
+  | "performerOccurrence"
+  | "audioPerformerOccurrence";
+export const REVIEW_ENTITY_TYPES: ReviewEntityType[] = [
+  "video",
+  "audio",
+  "tag",
+  "performerOccurrence",
+  "audioPerformerOccurrence",
+];
+/** Which library entity a review's queue and writes address. */
+export type MediaKind = "video" | "audio";
+
+export function isOccurrenceReview(review: Review): review is OccurrenceReview {
+  return (
+    review.entityType === "performerOccurrence" ||
+    review.entityType === "audioPerformerOccurrence"
+  );
+}
+
+export function isMediaReview(review: Review): review is MediaReview {
+  return reviewEntityType(review) !== "tag";
+}
+
+export function mediaKindOf(entityType: ReviewEntityType): MediaKind {
+  return entityType === "audio" || entityType === "audioPerformerOccurrence"
+    ? "audio"
+    : "video";
+}
+
+export function reviewMediaKind(review: Review): MediaKind {
+  return mediaKindOf(reviewEntityType(review));
+}
+
+/** Audios have no card grid, so only video reviews offer the multiple-item layouts. */
+export function supportsMultipleReviewMode(review: Review): boolean {
+  return reviewEntityType(review) === "video";
+}
 
 export function occurrenceAnswerSignature(review: OccurrenceReview): string {
   if (review.actions.length) return JSON.stringify(["actions", review.actions.map((action) => action.steps)]);
@@ -117,14 +169,19 @@ export function moveItem<T>(items: T[], index: number, delta: number): T[] {
 }
 
 export function reviewValidation(review: Review): string {
-  if (review.entityType === "performerOccurrence") {
+  if (isOccurrenceReview(review)) {
     if (!validOccurrenceSettings(review.occurrence))
       return "Complete the optional occurrence condition before saving.";
   }
   if (
+    !supportsMultipleReviewMode(review) &&
+    review.view.reviewMode === "multiple"
+  )
+    return "Only video reviews support the multiple-item layout.";
+  if (
     reviewEntityType(review) !== "tag" &&
     review.actions.some((action) =>
-      hasContradictoryAssessments(action as VideoReviewAction),
+      hasContradictoryAssessments(action as MediaReviewAction),
     )
   )
     return "An action cannot contain contradictory assessments for the same tag.";
@@ -138,8 +195,18 @@ export function reviewValidation(review: Review): string {
   return "";
 }
 
+/**
+ * Cove's audio list endpoint caps a page at 250 rows while the video one does not, so the queue's
+ * own page arithmetic must use the size the server will actually apply.
+ */
+export const MEDIA_MAX_PER_PAGE: Record<MediaKind, number> = {
+  video: 1000,
+  audio: 250,
+};
+
 export function boundedFilter(
   filter: Record<string, unknown>,
+  kind: MediaKind = "video",
 ): Record<string, unknown> {
   const positive = (value: unknown, fallback: number) =>
     Number.isFinite(Number(value)) && Number(value) > 0
@@ -148,7 +215,10 @@ export function boundedFilter(
   return {
     ...filter,
     page: Math.max(1, positive(filter.page, 1)),
-    perPage: Math.max(1, Math.min(1000, positive(filter.perPage, 40))),
+    perPage: Math.max(
+      1,
+      Math.min(MEDIA_MAX_PER_PAGE[kind], positive(filter.perPage, 40)),
+    ),
   };
 }
 
@@ -170,9 +240,11 @@ export function queueSignature(review: Review): string {
     review.view.searchMode,
   ];
   return JSON.stringify(
-    review.entityType === "performerOccurrence"
-      ? ["performerOccurrence", ...signature, review.occurrence]
-      : reviewEntityType(review) === "tag" ? ["tag", ...signature] : signature,
+    isOccurrenceReview(review)
+      ? [review.entityType, ...signature, review.occurrence]
+      : reviewEntityType(review) === "video"
+        ? signature
+        : [reviewEntityType(review), ...signature],
   );
 }
 
@@ -218,6 +290,10 @@ export function validAction(
   );
 }
 
+function isOccurrenceEntityType(value: unknown): boolean {
+  return value === "performerOccurrence" || value === "audioPerformerOccurrence";
+}
+
 export function isAssessmentMode(mode: ReviewStep["mode"]): boolean {
   return ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(mode);
 }
@@ -227,7 +303,7 @@ export function hasAssessmentSteps(action: ReviewAction): boolean {
   return action.steps.some((step) => isAssessmentMode(step.mode));
 }
 
-function hasContradictoryAssessments(action: VideoReviewAction): boolean {
+function hasContradictoryAssessments(action: MediaReviewAction): boolean {
   const assessments = new Map<number, ReviewStep["mode"]>();
   for (const step of action.steps) {
     if (!isAssessmentMode(step.mode))
@@ -254,10 +330,9 @@ export function parseReviews(raw: string | null): Review[] {
         typeof review.name === "string" &&
         typeof review.description === "string" &&
         (review.entityType === undefined ||
-          review.entityType === "video" ||
-          review.entityType === "tag" ||
-          review.entityType === "performerOccurrence") &&
-        (review.entityType !== "performerOccurrence" || validOccurrenceSettings(review.occurrence)) &&
+          REVIEW_ENTITY_TYPES.includes(review.entityType)) &&
+        (!isOccurrenceEntityType(review.entityType) ||
+          validOccurrenceSettings(review.occurrence)) &&
         review.view &&
         typeof review.view === "object" &&
         (review.entityType === "tag"
@@ -270,6 +345,8 @@ export function parseReviews(raw: string | null): Review[] {
           ["beginning", "end"].includes(review.view.startFrom)) &&
         (review.view.reviewMode === undefined ||
           ["single", "multiple"].includes(review.view.reviewMode)) &&
+        (review.view.reviewMode !== "multiple" ||
+          (review.entityType ?? "video") === "video") &&
         (review.view.selectAllOnLoad === undefined ||
           typeof review.view.selectAllOnLoad === "boolean") &&
         review.view.filter &&
@@ -278,7 +355,10 @@ export function parseReviews(raw: string | null): Review[] {
         review.view.objectFilter &&
         typeof review.view.objectFilter === "object" &&
         !Array.isArray(review.view.objectFilter) &&
-        validPresentation(review.presentation, review.entityType === "tag") &&
+        validPresentation(
+          review.presentation,
+          (review.entityType ?? "video") !== "video",
+        ) &&
         (review.importNotes === undefined ||
           (Array.isArray(review.importNotes) &&
             review.importNotes.every(
@@ -323,7 +403,8 @@ export function parseReviews(raw: string | null): Review[] {
   return data as Review[];
 }
 
-function validPresentation(value: unknown, tagReview: boolean): boolean {
+/** Card annotations and tag bins belong to the video card grid; no other review kind renders one. */
+function validPresentation(value: unknown, gridless: boolean): boolean {
   if (value === undefined) return true;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const settings = value as NonNullable<VideoReview["presentation"]>;
@@ -333,7 +414,7 @@ function validPresentation(value: unknown, tagReview: boolean): boolean {
       (Number.isFinite(settings.cardSize) &&
         settings.cardSize >= 115 &&
         settings.cardSize <= 380)) &&
-    (!tagReview ||
+    (!gridless ||
       (settings.annotations === undefined &&
         settings.annotationParents === undefined &&
         settings.binParents === undefined)) &&

@@ -28,6 +28,43 @@ export function VideoPlayer({
   onPlaybackControlRegister?.(testVideoControls);
   return <div data-testid={extensionSurface ? "video-player" : "video-player-preload"} data-video-id={videoId} data-autostart={autostart} data-keyboard-shortcuts-enabled={keyboardShortcutsEnabled} data-clip={clip ? JSON.stringify(clip) : undefined}><button onClick={() => onPlaybackStateChange?.(true)}>Play review video</button><button onClick={() => onPlaybackStateChange?.(false)}>Pause review video</button></div>;
 }
+export function AudioPlayer({
+  streamUrl,
+  title,
+  coverUrl,
+  duration,
+  autostart,
+  onPlaybackStateChange,
+}: {
+  streamUrl: string;
+  title: string;
+  coverUrl?: string | null;
+  duration: number;
+  autostart?: boolean;
+  onPlaybackStateChange?: (playing: boolean) => void;
+}) {
+  return (
+    <div
+      data-testid="audio-player"
+      data-stream-url={streamUrl}
+      data-title={title}
+      data-cover-url={coverUrl ?? undefined}
+      data-duration={duration}
+      data-autostart={autostart}
+    >
+      <button onClick={() => onPlaybackStateChange?.(true)}>Play review audio</button>
+    </div>
+  );
+}
+export function NarrativeText({
+  children,
+  className,
+}: {
+  children?: string | null;
+  className?: string;
+}) {
+  return <div className={className}>{children}</div>;
+}
 export function EntityReferenceMultiSelector({
   placeholder,
   values = [], onChange, disabled,
@@ -240,6 +277,14 @@ export const TAG_CRITERIA = [
   },
 ];
 export const TAG_SORT_OPTIONS = [{ value: "name", label: "Name" }];
+export const AUDIO_CRITERIA = [
+  { id: "title", label: "Title", filterKey: "titleCriterion" },
+  { id: "performers", label: "Performers", filterKey: "performersCriterion" },
+];
+export const AUDIO_SORT_OPTIONS = [
+  { value: "date", label: "Date" },
+  { value: "title", label: "Title" },
+];
 export const testFilterControls = {
   result: { organized: true } as Record<string, unknown>,
 };

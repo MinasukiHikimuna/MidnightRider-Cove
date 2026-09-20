@@ -27,7 +27,7 @@ const video = {
   files: [],
   updatedAt: "",
 };
-const item: ReviewItem = { key: "1", video };
+const item: ReviewItem = { key: "1", media: video };
 const respond = (body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body)));
 beforeEach(() => fetch.mockReset());
@@ -74,7 +74,7 @@ it("preserves occurrence context and unrelated applications during ad hoc editin
   );
   const occurrence = {
     key: "1:11",
-    video,
+    media: video,
     performer: video.performers[0],
     applications: [application, unrelated],
   };
@@ -116,9 +116,9 @@ it("uses fresh detail URLs for before/after reads instead of cached tag snapshot
     if (!cache.has(String(path))) cache.set(String(path), { ...video, tags: currentIds.map(id => ({ id })) });
     return respond(cache.get(String(path)));
   });
-  const before = await readTags(item);
+  const before = await readTags("video", item);
   currentIds = [4];
-  const after = await readTags(item);
+  const after = await readTags("video", item);
   expect(before.ids).toEqual([3]);
   expect(after.ids).toEqual([4]);
   expect(fetch.mock.calls[0][0]).not.toBe(fetch.mock.calls[1][0]);
@@ -129,8 +129,8 @@ it("supports fresh reads on LAN HTTP where crypto.randomUUID is unavailable", as
   vi.stubGlobal("crypto", {});
   try {
     fetch.mockImplementation(() => respond({ ...video, tags: [] }));
-    await readTags(item);
-    await readTags(item);
+    await readTags("video", item);
+    await readTags("video", item);
     expect(fetch.mock.calls[0][0]).not.toBe(fetch.mock.calls[1][0]);
   } finally {
     vi.unstubAllGlobals();

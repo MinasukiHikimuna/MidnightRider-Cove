@@ -1,5 +1,6 @@
 import { EntityReferenceMultiSelector } from "@cove/runtime/components";
-import type { OccurrenceReview } from "./model";
+import { mediaLabel } from "./api";
+import { reviewMediaKind, type OccurrenceReview } from "./model";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 
 export function OccurrenceSettings({
@@ -12,6 +13,7 @@ export function OccurrenceSettings({
   choices?: boolean;
 }) {
   const settings = review.occurrence;
+  const host = mediaLabel(reviewMediaKind(review)).queue;
   const update = (change: Partial<OccurrenceReview["occurrence"]>) =>
     onChange({ ...review, occurrence: { ...settings, ...change } });
   if (choices)
@@ -20,7 +22,7 @@ export function OccurrenceSettings({
         <legend>Tag choices</legend>
         <p>
           Choose the tags this review can change on the active performer’s
-          appearance in a scene. Other tags are preserved.
+          appearance in one {host}. Other tags are preserved.
         </p>
         <EntityReferenceMultiSelector
           entityType="tag"
@@ -35,8 +37,8 @@ export function OccurrenceSettings({
             checked={settings.multiple}
             onChange={(event) => update({ multiple: event.target.checked })}
           />
-          Allow multiple tags, for example when a hairstyle changes during the
-          scene
+          Allow multiple tags, for example when something changes part-way
+          through the {host}
         </label>
         <p>
           Save & next performer applies the selected tags and advances. Save
@@ -101,7 +103,7 @@ export function OccurrenceSettings({
       )}
       <p>
         Conditions check tags on the same performer’s occurrence,
-        independently of scene tags and the performer’s profile.
+        independently of {host} tags and the performer’s profile.
       </p>
     </fieldset>
   );

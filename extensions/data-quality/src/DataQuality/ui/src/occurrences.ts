@@ -1,22 +1,23 @@
 import {
   CONFIRMED_ABSENT_OCCURRENCE_TAGS_KEY,
-  findVideos,
+  findMedia,
   occurrenceAbsentTagIds,
   requireOccurrenceAbsenceField,
   setOccurrenceAbsence,
   normalizeCriteria,
   request,
-  readVideo,
+  readMedia,
   resolveTagTree,
-  type Video,
+  type MediaItem,
   type Tag,
 } from "./api";
 import {
   isAssessmentMode,
+  reviewMediaKind,
   validAction,
+  type MediaReview,
   type OccurrenceReview,
-  type VideoReview,
-  type VideoReviewAction,
+  type MediaReviewAction,
 } from "./model";
 
 export interface OccurrenceApplication {
@@ -29,8 +30,8 @@ export interface OccurrenceApplication {
 }
 export interface Occurrence {
   key: string;
-  video: Video;
-  performer: Video["performers"][number];
+  media: MediaItem;
+  performer: MediaItem["performers"][number];
   applications: OccurrenceApplication[];
 }
 export type OccurrenceOutcome = "reviewed" | "cannotDetermine";
@@ -38,14 +39,15 @@ export type OccurrenceOutcome = "reviewed" | "cannotDetermine";
 export async function runOccurrenceAction(
   review: OccurrenceReview,
   occurrence: Occurrence,
-  action: VideoReviewAction,
+  action: MediaReviewAction,
 ): Promise<OccurrenceApplication[]> {
   if (!validAction(action))
     throw new Error("Configure an occurrence tag action first.");
   if (!action.steps.length) return occurrence.applications;
+  const kind = reviewMediaKind(review);
   // Verified before any write, so a missing field cannot strand a half-applied assessment.
   const absenceFieldKey = action.steps.some((step) => isAssessmentMode(step.mode))
-    ? await requireOccurrenceAbsenceField()
+    ? await requireOccurrenceAbsenceField(kind)
     : "";
   const steps = await Promise.all(
     action.steps.map(async (step) => ({
@@ -67,7 +69,8 @@ export async function runOccurrenceAction(
     const absence = (mode: "ADD" | "REMOVE") =>
       setOccurrenceAbsence(
         absenceFieldKey,
-        occurrence.video.id,
+        kind,
+        occurrence.media.id,
         occurrence.performer.id,
         step.tagIds,
         mode,
@@ -130,11 +133,11 @@ function hidesConfirmedAbsent(settings: OccurrenceReview["occurrence"]) {
   );
 }
 
-// Retain the scene expression and AND it with a separate, same-link target clause.
+// Retain the host expression and AND it with a separate, same-link target clause.
 export function occurrenceSceneReview(
   review: OccurrenceReview,
   performerIds: number[] | null,
-): VideoReview {
+): MediaReview {
   const { _filterExpression, ...sceneFilter } = review.view.objectFilter;
   const settings = review.occurrence;
   const performerFilterCriterion = {
@@ -166,7 +169,7 @@ export function occurrenceSceneReview(
       : null;
   return {
     ...review,
-    entityType: "video",
+    entityType: reviewMediaKind(review),
     actions: [],
     view: {
       ...review.view,
@@ -227,11 +230,11 @@ export function occurrenceMatches(
  */
 function confirmedAbsent(
   settings: OccurrenceReview["occurrence"],
-  video: Video,
+  media: MediaItem,
   performerId: number,
 ): boolean {
   if (!hidesConfirmedAbsent(settings)) return false;
-  const absent = occurrenceAbsentTagIds(video, performerId);
+  const absent = occurrenceAbsentTagIds(media, performerId);
   return settings.conditionTagIds.every((id) => absent.includes(id));
 }
 
@@ -243,14 +246,15 @@ export async function loadOccurrencePage(
 ) {
   if (performerIds?.length === 0)
     return { items: [] as Occurrence[], totalCount: 0 };
-  const result = await findVideos(
+  const kind = reviewMediaKind(review);
+  const result = await findMedia(
     occurrenceSceneReview(review, performerIds),
     { ...review.view.filter, page },
     signal,
   );
   const allowed = performerIds === null ? null : new Set(performerIds);
   // Keep each selected subtree separate: "all" requires a match for each root,
-  // not every descendant. Resolve once per scene page, shared by all performers.
+  // not every descendant. Resolve once per host page, shared by all performers.
   const settings = review.occurrence;
   const conditionTagGroups =
     result.items.length && settings.includeSubtags !== false &&
@@ -258,24 +262,24 @@ export async function loadOccurrencePage(
       ? await Promise.all(settings.conditionTagIds.map((id) => resolveTagTree([id], signal)))
       : settings.conditionTagIds.map((id) => [id]);
   const items: Occurrence[][] = new Array(result.items.length);
-  // Limit concurrent reads. Only the displayed scene page needs occurrence data.
+  // Limit concurrent reads. Only the displayed host page needs occurrence data.
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(5, result.items.length) }, async () => {
       while (next < result.items.length) {
         const index = next++;
-        const video = result.items[index];
+        const media = result.items[index];
         const applications = await request<OccurrenceApplication[]>(
-          `/api/tagapplications?hostType=video&hostId=${video.id}&contextType=performer`,
+          `/api/tagapplications?hostType=${kind}&hostId=${media.id}&contextType=performer`,
           { signal },
         );
-        items[index] = video.performers
+        items[index] = media.performers
           .filter((performer) => allowed === null || allowed.has(performer.id))
           .flatMap((performer) => {
             const own = applications.filter(
               (application) =>
-                application.hostType === "video" &&
-                application.hostId === video.id &&
+                application.hostType === kind &&
+                application.hostId === media.id &&
                 application.contextType === "performer" &&
                 application.contextId === performer.id,
             );
@@ -283,11 +287,11 @@ export async function loadOccurrencePage(
               review.occurrence,
               own.map((item) => item.tag.id),
               conditionTagGroups,
-            ) && !confirmedAbsent(settings, video, performer.id)
+            ) && !confirmedAbsent(settings, media, performer.id)
               ? [
                   {
-                    key: `${video.id}:${performer.id}`,
-                    video,
+                    key: `${media.id}:${performer.id}`,
+                    media,
                     performer,
                     applications: own,
                   },
@@ -311,21 +315,22 @@ export async function saveOccurrenceTags(
     (!review.occurrence.multiple && selected.length > 1)
   )
     throw new Error("Choose only the configured tags for this review.");
+  const kind = reviewMediaKind(review);
   // Read again before writing, so unrelated changes are preserved and removed links fail safely.
-  const video = await readVideo(occurrence.video.id);
+  const media = await readMedia(kind, occurrence.media.id);
   if (
-    !video.performers.some(
+    !media.performers.some(
       (performer) => performer.id === occurrence.performer.id,
     )
   )
     throw new Error(
-      "This performer is no longer linked to the scene. Refresh the queue.",
+      `This performer is no longer linked to the ${kind}. Refresh the queue.`,
     );
-  const path = `/api/tagapplications?hostType=video&hostId=${video.id}&contextType=performer&contextId=${occurrence.performer.id}`;
+  const path = `/api/tagapplications?hostType=${kind}&hostId=${media.id}&contextType=performer&contextId=${occurrence.performer.id}`;
   const applications = (await request<OccurrenceApplication[]>(path)).filter(
     (application) =>
-      application.hostType === "video" &&
-      application.hostId === video.id &&
+      application.hostType === kind &&
+      application.hostId === media.id &&
       application.contextType === "performer" &&
       application.contextId === occurrence.performer.id,
   );
@@ -336,8 +341,8 @@ export async function saveOccurrenceTags(
         await request("/api/tagapplications", {
           method: "POST",
           body: JSON.stringify({
-            hostType: "video",
-            hostId: video.id,
+            hostType: kind,
+            hostId: media.id,
             contextType: "performer",
             contextId: occurrence.performer.id,
             tagId,

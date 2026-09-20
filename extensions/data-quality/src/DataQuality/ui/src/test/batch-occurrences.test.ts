@@ -5,10 +5,10 @@ import {
   runOccurrenceBatch,
   undoOccurrenceBatch,
 } from "../batchOccurrences";
-import type { OccurrenceReview, VideoReviewAction } from "../model";
+import type { OccurrenceReview, MediaReviewAction } from "../model";
 import type { OccurrenceApplication } from "../occurrences";
 const fetch = vi.mocked(extensionFetch);
-const action: VideoReviewAction = {
+const action: MediaReviewAction = {
   id: "answer",
   label: "Answer",
   steps: [

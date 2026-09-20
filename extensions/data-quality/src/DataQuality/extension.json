@@ -1,15 +1,15 @@
 {
   "id": "com.midnightrider.data-quality",
   "name": "Data Quality",
-  "version": "0.1.27",
-  "description": "Adds dedicated keyboard-driven video and tag data-quality review workspaces.",
+  "version": "0.1.28",
+  "description": "Adds dedicated keyboard-driven video, audio and tag data-quality review workspaces.",
   "author": "MidnightRider",
   "kind": "extension",
   "categories": [
     "metadata",
     "tools"
   ],
-  "minCoveVersion": "1.4.2-dev.93",
+  "minCoveVersion": "1.4.2-dev.128",
   "entryDll": "DataQuality.dll",
   "jsBundle": "dist/DataQuality.js",
   "cssBundle": "dist/DataQuality.css",

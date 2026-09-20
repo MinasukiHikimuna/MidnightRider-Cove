@@ -1,9 +1,11 @@
 import {
   boundedFilter,
+  isOccurrenceReview,
+  reviewMediaKind,
+  type MediaReview,
   type OccurrenceReview,
-  type VideoReview,
 } from "./model";
-export type MediaReview = VideoReview | OccurrenceReview;
+export type { MediaReview } from "./model";
 export type PerformerScope = Omit<
   OccurrenceReview["occurrence"],
   "tagIds" | "multiple"
@@ -39,7 +41,7 @@ const allScope: PerformerScope = {
 };
 export function defaultQuery(review: MediaReview): ReviewQuery {
   const scope =
-    review.entityType === "performerOccurrence" ? review.occurrence : undefined;
+    isOccurrenceReview(review) ? review.occurrence : undefined;
   return {
     filter: boundedFilter({
       q: "",
@@ -47,7 +49,7 @@ export function defaultQuery(review: MediaReview): ReviewQuery {
       direction: "desc",
       ...review.view.filter,
       page: 1,
-    }),
+    }, reviewMediaKind(review)),
     objectFilter: structuredClone(review.view.objectFilter),
     searchMode: review.view.searchMode,
     startFrom: review.view.startFrom ?? "end",
@@ -108,7 +110,7 @@ export function readQuery(
     filter.direction = sorts[0].direction;
   }
   let performerScope: PerformerScope | undefined;
-  if (review.entityType === "performerOccurrence") {
+  if (isOccurrenceReview(review)) {
     performerScope = {
       ...allScope,
       ...object(params.get("performerScope")),
@@ -135,7 +137,7 @@ export function readQuery(
     params.get("startFrom") === "beginning" ? "beginning" : "end";
   return {
     query: {
-      filter: boundedFilter(filter),
+      filter: boundedFilter(filter, reviewMediaKind(review)),
       objectFilter: object(params.get("filters")),
       searchMode: params.get("searchMode") ?? "text",
       startFrom,
@@ -179,7 +181,7 @@ export function effectiveReview(
     searchMode: query.searchMode,
     startFrom: query.startFrom,
   };
-  return saved.entityType === "performerOccurrence"
+  return isOccurrenceReview(saved)
     ? {
         ...saved,
         view,

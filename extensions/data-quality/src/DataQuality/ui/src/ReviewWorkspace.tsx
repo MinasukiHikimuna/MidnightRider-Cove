@@ -1,6 +1,9 @@
 import { BatchOccurrenceDialog } from "./BatchOccurrenceDialog";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AUDIO_CRITERIA,
+  AUDIO_SORT_OPTIONS,
+  AudioPlayer,
   DetailListToolbar,
   DetailListPagination,
   EntityReferenceMultiSelector,
@@ -11,16 +14,26 @@ import {
   VideoPlayer,
 } from "@cove/runtime/components";
 import { RotateCcw, Save } from "@cove/runtime/lucide-react";
-import { findVideos, request, videoCoverUrl, videoStreamUrl } from "./api";
+import {
+  findMedia,
+  mediaCoverUrl,
+  mediaLabel,
+  mediaStreamUrl,
+  request,
+} from "./api";
+import { MediaDescription } from "./MediaDescription";
 import {
   hasAssessmentSteps,
+  isOccurrenceReview,
+  reviewMediaKind,
   reviewValidation,
   actionShortcut,
   boundedFilter,
   isReviewShortcutTarget,
   queueSignature,
+  type MediaKind,
   type OccurrenceReview,
-  type VideoReviewAction,
+  type MediaReviewAction,
 } from "./model";
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
 import { objectFiltersEqual } from "./objectFiltersEqual";
@@ -74,7 +87,7 @@ export function orderedItems(items: ReviewItem[], backwards: boolean) {
   if (!backwards) return items;
   const scenes = new Map<number, ReviewItem[]>();
   for (const item of items)
-    scenes.set(item.video.id, [...(scenes.get(item.video.id) ?? []), item]);
+    scenes.set(item.media.id, [...(scenes.get(item.media.id) ?? []), item]);
   return [...scenes.values()].reverse().flat();
 }
 import {
@@ -92,12 +105,12 @@ export function ReviewActionControls({
   canAssess = true,
   onApply,
 }: {
-  actions: VideoReviewAction[];
+  actions: MediaReviewAction[];
   disabled: boolean;
   canWrite: boolean;
   /** False while assessments cannot be recorded: the absence field or a permission is missing. */
   canAssess?: boolean;
-  onApply(action: VideoReviewAction, stay: boolean): void;
+  onApply(action: MediaReviewAction, stay: boolean): void;
 }) {
   const [names, setNames] = useState<Record<number, string>>({});
   useEffect(() => {
@@ -214,6 +227,13 @@ export function ReviewWorkspace({
     saving: boolean,
   ): ReactNode;
 }) {
+  const mediaKind: MediaKind = reviewMediaKind(saved);
+  const labels = mediaLabel(mediaKind);
+  const fallbackTitle = mediaKind === "audio" ? "Audio" : "Scene";
+  const mediaTitle = (media: ReviewItem["media"]) =>
+    media.title || media.files[0]?.basename || fallbackTitle;
+  const queueItemLabel = (item: ReviewItem) =>
+    `${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${mediaTitle(item.media)}`;
   const initial = useRef<ReturnType<typeof readQuery> | null>(null);
   const initialError = useRef("");
   if (!initial.current) {
@@ -250,7 +270,7 @@ export function ReviewWorkspace({
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [current, setCurrent] = useState<ReviewItem | null>(null);
   const stayedCursor = useRef<StayedCursor | null>(null);
-  const [autostartVideoId, setAutostartVideoId] = useState<number | null>(null);
+  const [autostartMediaId, setAutostartMediaId] = useState<number | null>(null);
   const [playerRevision, setPlayerRevision] = useState(0);
   const nextItemToPreload = useMemo(() => {
     if (!current) return null;
@@ -259,7 +279,7 @@ export function ReviewWorkspace({
     return (
       items
         .slice(currentIndex + 1)
-        .find((item) => item.video.id !== current.video.id) ?? null
+        .find((item) => item.media.id !== current.media.id) ?? null
     );
   }, [current, items]);
   const [total, setTotal] = useState(0);
@@ -400,7 +420,7 @@ export function ReviewWorkspace({
     nextPage: number,
     signal?: AbortSignal,
   ) {
-    if (rule.entityType === "performerOccurrence") {
+    if (isOccurrenceReview(rule)) {
       const result = await loadOccurrencePage(
         rule,
         targets.current,
@@ -410,19 +430,19 @@ export function ReviewWorkspace({
       return {
         items: result.items.map((occurrence) => ({
           key: occurrence.key,
-          video: occurrence.video,
+          media: occurrence.media,
           occurrence,
         })),
         totalCount: result.totalCount,
       };
     }
-    const result = await findVideos(
+    const result = await findMedia(
       rule,
       { ...rule.view.filter, page: nextPage },
       signal,
     );
     return {
-      items: result.items.map((video) => ({ key: String(video.id), video })),
+      items: result.items.map((media) => ({ key: String(media.id), media })),
       totalCount: result.totalCount,
     };
   }
@@ -452,8 +472,8 @@ export function ReviewWorkspace({
   }
   function showItem(next: ReviewItem | null, resumePlayback = false) {
     if (next?.key !== current?.key) stayedCursor.current = null;
-    if (next?.video.id !== current?.video.id) {
-      setAutostartVideoId(resumePlayback && next ? next.video.id : null);
+    if (next?.media.id !== current?.media.id) {
+      setAutostartMediaId(resumePlayback && next ? next.media.id : null);
     }
     setCurrent(next);
   }
@@ -466,14 +486,14 @@ export function ReviewWorkspace({
     setError("");
     setNotice("");
     stayedCursor.current = null;
-    setAutostartVideoId(null);
+    setAutostartMediaId(null);
     setCurrent(null);
     setItems([]);
     setEditing(false);
     void (async () => {
       const rule = effectiveReview(savedRef.current, queryRef.current);
       targets.current =
-        rule.entityType === "performerOccurrence"
+        isOccurrenceReview(rule)
           ? await resolvePerformers(rule, controller.signal)
           : null;
       let nextPage = Number(rule.view.filter.page);
@@ -491,7 +511,7 @@ export function ReviewWorkspace({
       // nothing to review while others still hold work. Keep going in the queue's direction.
       const step = rule.view.startFrom === "end" ? -1 : 1;
       while (
-        rule.entityType === "performerOccurrence" &&
+        isOccurrenceReview(rule) &&
         !result.items.length &&
         nextPage + step >= 1 &&
         nextPage + step <= end &&
@@ -524,12 +544,12 @@ export function ReviewWorkspace({
     setTags(null);
     if (!current) return;
     let active = true;
-    void readTags(current)
+    void readTags(mediaKind, current)
       .then((state) => {
         if (!active) return;
         setTags(state);
         setLegacySelected(
-          saved.entityType === "performerOccurrence"
+          isOccurrenceReview(saved)
             ? state.ids.filter((id) => saved.occurrence.tagIds.includes(id))
             : [],
         );
@@ -543,7 +563,7 @@ export function ReviewWorkspace({
     };
   }, [current]);
   useEffect(() => {
-    if (saved.entityType !== "performerOccurrence" || saved.actions.length)
+    if (!isOccurrenceReview(saved) || saved.actions.length)
       return;
     let active = true;
     void Promise.all(
@@ -648,8 +668,8 @@ export function ReviewWorkspace({
         if (!candidate)
           setNotice(
             result.totalCount
-              ? "Reached the end in this direction. Matching items remain available from the scene pages."
-              : "No matching scenes.",
+              ? `Reached the end in this direction. Matching items remain available from the ${labels.queue} pages.`
+              : `No matching ${labels.many}.`,
           );
         return;
       }
@@ -657,7 +677,7 @@ export function ReviewWorkspace({
     }
   }
   async function execute(
-    action?: VideoReviewAction,
+    action?: MediaReviewAction,
     stay = false,
     adHoc = false,
     legacy = false,
@@ -686,12 +706,12 @@ export function ReviewWorkspace({
     let savedTags = false;
     try {
       if (mutating) {
-        const before = await readTags(current);
+        const before = await readTags(mediaKind, current);
         if (action) {
           await applyTags(review, current, action);
         } else {
           const base =
-            legacy && saved.entityType === "performerOccurrence"
+            legacy && isOccurrenceReview(saved)
               ? saved.occurrence.tagIds.filter((id) => before.ids.includes(id))
               : editorBase.current;
           const selected = legacy ? legacySelected : draft;
@@ -699,7 +719,7 @@ export function ReviewWorkspace({
           await editTags(review, current, change);
         }
         lastWriteAt.current = Date.now();
-        const after = await readTags(current);
+        const after = await readTags(mediaKind, current);
         if (!optimisticNext) setTags(after);
         savedTags = true;
         setEditing(false);
@@ -720,13 +740,13 @@ export function ReviewWorkspace({
       if (mutating && !savedTags) {
         if (optimisticNext) {
           setItems(items);
-          setAutostartVideoId(null);
+          setAutostartMediaId(null);
           setPlayerRevision((revision) => revision + 1);
           setCurrent(current);
         }
         lastWriteAt.current = Date.now();
         try {
-          setTags(await readTags(current));
+          setTags(await readTags(mediaKind, current));
         } catch {
           setTags(null);
           setError(
@@ -879,8 +899,16 @@ export function ReviewWorkspace({
 
   return (
     <section
-      className="dq-review-workspace"
-      aria-label={scope ? "Performer occurrence review" : "Video review"}
+      className={`dq-review-workspace${mediaKind === "audio" ? " dq-audio" : ""}`}
+      aria-label={
+        scope
+          ? mediaKind === "audio"
+            ? "Audio performer occurrence review"
+            : "Performer occurrence review"
+          : mediaKind === "audio"
+            ? "Audio review"
+            : "Video review"
+      }
     >
       {ruleDraft && (
         <section className="dq-rule-editor" aria-label="Edit review rule">
@@ -952,15 +980,19 @@ export function ReviewWorkspace({
             filterReturnFocus.current = button;
         }}
       >
-        <legend>Scene filters</legend>
+        <legend>{mediaKind === "audio" ? "Audio filters" : "Scene filters"}</legend>
         <div className="dq-queue-toolbar">
           <DetailListToolbar
             filter={query.filter}
             objectFilter={presentedObjectFilter}
-            criteriaDefinitions={VIDEO_CRITERIA}
-            customFieldEntityType="video"
+            criteriaDefinitions={
+              mediaKind === "audio" ? AUDIO_CRITERIA : VIDEO_CRITERIA
+            }
+            customFieldEntityType={mediaKind}
             totalCount={total}
-            sortOptions={VIDEO_SORT_OPTIONS}
+            sortOptions={
+              mediaKind === "audio" ? AUDIO_SORT_OPTIONS : VIDEO_SORT_OPTIONS
+            }
             showSearch
             showSort
             showPagingControls={false}
@@ -972,7 +1004,7 @@ export function ReviewWorkspace({
                 filter = { ...filter, sorts: undefined };
               replaceQuery({
                 ...queryRef.current,
-                filter: boundedFilter(filter),
+                filter: boundedFilter(filter, mediaKind),
               });
             }}
             onObjectFilterChange={(objectFilter) => {
@@ -1130,7 +1162,7 @@ export function ReviewWorkspace({
           }}
         />
       )}
-      {review.entityType === "performerOccurrence" && canWrite && (
+      {isOccurrenceReview(review) && canWrite && (
         <BatchOccurrenceDialog
           review={review}
           hidden={!!ruleDraft}
@@ -1157,7 +1189,7 @@ export function ReviewWorkspace({
               disabled={pending}
               onClick={() => {
                 if (current) {
-                  void readTags(current)
+                  void readTags(mediaKind, current)
                     .then(setTags)
                     .catch((error) => setError(errorText(error)));
                 } else replaceQuery(queryRef.current);
@@ -1176,7 +1208,7 @@ export function ReviewWorkspace({
               filter={query.filter}
               totalCount={total}
               onFilterChange={(filter) =>
-                replaceQuery({ ...query, filter: boundedFilter(filter) })
+                replaceQuery({ ...query, filter: boundedFilter(filter, mediaKind) })
               }
             />
           </fieldset>
@@ -1186,8 +1218,8 @@ export function ReviewWorkspace({
                 type="button"
                 className="dq-button"
                 key={item.key}
-                title={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
-                aria-label={`${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${item.video.title || item.video.files[0]?.basename || "Scene"}`}
+                title={queueItemLabel(item)}
+                aria-label={queueItemLabel(item)}
                 disabled={blocked}
                 aria-pressed={current?.key === item.key}
                 onClick={() => {
@@ -1200,7 +1232,7 @@ export function ReviewWorkspace({
                   <PerformerAvatar performer={item.occurrence.performer} />
                 )}
                 <span className="dq-queue-scene-title">
-                  {item.video.title || item.video.files[0]?.basename || "Scene"}
+                  {mediaTitle(item.media)}
                 </span>
               </button>
             ))}
@@ -1212,13 +1244,13 @@ export function ReviewWorkspace({
               <div className="dq-review-media">
                 <h2 className="dq-review-video-title">
                   <a
-                    href={`/video/${current.video.id}`}
+                    href={`/${mediaKind}/${current.media.id}`}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {current.video.title ||
-                      current.video.files[0]?.basename ||
-                      `Video ${current.video.id}`}
+                    {current.media.title ||
+                      current.media.files[0]?.basename ||
+                      `${mediaKind === "audio" ? "Audio" : "Video"} ${current.media.id}`}
                   </a>
                 </h2>
                 {[current, nextItemToPreload].filter(Boolean).map((item) => {
@@ -1226,54 +1258,78 @@ export function ReviewWorkspace({
                   const active = playerItem.key === current.key;
                   return (
                     <div
-                      key={`${playerItem.video.id}:${playerRevision}`}
+                      key={`${playerItem.media.id}:${playerRevision}`}
                       className={active ? "dq-review-video-current" : "dq-review-video-preload"}
                       aria-hidden={active ? undefined : true}
                       inert={active ? undefined : true}
                     >
-                      <VideoPlayer
-                        videoId={playerItem.video.id}
-                        streamUrl={videoStreamUrl(playerItem.video.id)}
-                        posterUrl={active ? videoCoverUrl(playerItem.video) : undefined}
-                        duration={playerItem.video.files[0]?.duration ?? 0}
-                        format={playerItem.video.files[0]?.format}
-                        audioCodec={playerItem.video.files[0]?.audioCodec}
-                        extensionSurface={active ? "quick-view" : undefined}
-                        autostart={active && autostartVideoId === playerItem.video.id}
-                        keyboardShortcutsEnabled={active}
-                        showAbLoop={active}
-                        clip={
-                          playerItem.video.parentVideoId != null
-                            ? {
-                                start: playerItem.video.clipStartSec ?? 0,
-                                end: playerItem.video.clipEndSec,
-                                loop: false,
-                              }
-                            : undefined
-                        }
-                      />
+                      {mediaKind === "audio" ? (
+                        <AudioPlayer
+                          streamUrl={mediaStreamUrl("audio", playerItem.media.id)}
+                          format={playerItem.media.files[0]?.format ?? ""}
+                          title={mediaTitle(playerItem.media)}
+                          coverUrl={
+                            active ? mediaCoverUrl("audio", playerItem.media) : undefined
+                          }
+                          duration={playerItem.media.files[0]?.duration ?? 0}
+                          autostart={
+                            active && autostartMediaId === playerItem.media.id
+                          }
+                        />
+                      ) : (
+                        <VideoPlayer
+                          videoId={playerItem.media.id}
+                          streamUrl={mediaStreamUrl("video", playerItem.media.id)}
+                          posterUrl={
+                            active ? mediaCoverUrl("video", playerItem.media) : undefined
+                          }
+                          duration={playerItem.media.files[0]?.duration ?? 0}
+                          format={playerItem.media.files[0]?.format}
+                          audioCodec={playerItem.media.files[0]?.audioCodec}
+                          extensionSurface={active ? "quick-view" : undefined}
+                          autostart={active && autostartMediaId === playerItem.media.id}
+                          keyboardShortcutsEnabled={active}
+                          showAbLoop={active}
+                          clip={
+                            playerItem.media.parentVideoId != null
+                              ? {
+                                  start: playerItem.media.clipStartSec ?? 0,
+                                  end: playerItem.media.clipEndSec,
+                                  loop: false,
+                                }
+                              : undefined
+                          }
+                        />
+                      )}
                     </div>
                   );
                 })}
+                {mediaKind === "audio" && (
+                  <MediaDescription
+                    key={current.media.id}
+                    details={current.media.details}
+                    label={labels.one}
+                  />
+                )}
               </div>
               <div className="dq-review-panel">
                 <h2>
                   {current.occurrence
                     ? `Reviewing ${current.occurrence.performer.name}`
-                    : "Reviewing this video"}
+                    : `Reviewing this ${labels.one}`}
                 </h2>
                 <p>
                   {scope
-                    ? "Tags apply only to this performer in this video."
-                    : "Tags apply to the video."}
+                    ? `Tags apply only to this performer in this ${labels.one}.`
+                    : `Tags apply to the ${labels.one}.`}
                 </p>
                 {scope && (
                   <div
                     className="dq-review-partners"
-                    aria-label="Matching scene partners"
+                    aria-label={`Matching ${labels.queue} partners`}
                   >
                     {items
-                      .filter((item) => item.video.id === current.video.id)
+                      .filter((item) => item.media.id === current.media.id)
                       .map((item) => (
                         <button
                           type="button"
@@ -1298,7 +1354,7 @@ export function ReviewWorkspace({
                   </div>
                 )}
                 <p>
-                  Current {scope ? "occurrence" : "video"} tags:{" "}
+                  Current {scope ? "occurrence" : labels.one} tags:{" "}
                   {tags ? tags.names.join(", ") || "None" : "Loading…"}
                 </p>
                 {tags?.absent.length ? (
@@ -1319,7 +1375,7 @@ export function ReviewWorkspace({
                     disabled={pending}
                     className="dq-tag-editor"
                   >
-                    <legend>Edit {scope ? "occurrence" : "video"} tags</legend>
+                    <legend>Edit {scope ? "occurrence" : labels.one} tags</legend>
                     <EntityReferenceMultiSelector
                       entityType="tag"
                       values={draft}
@@ -1367,7 +1423,7 @@ export function ReviewWorkspace({
                       disabled={pending || loading || !tags || !!ruleDraft}
                       onApply={(action, stay) => void execute(action, stay)}
                     />
-                    {saved.entityType === "performerOccurrence" &&
+                    {isOccurrenceReview(saved) &&
                       !saved.actions.length &&
                       saved.occurrence.tagIds.length > 0 && (
                         <fieldset
@@ -1450,7 +1506,7 @@ export function ReviewWorkspace({
                     disabled={blocked || !!ruleDraft}
                     onClick={() => void execute()}
                   >
-                    Skip{scope ? " performer" : " video"}
+                    Skip{scope ? " performer" : ` ${labels.one}`}
                   </button>
                 </div>
                 {!canWrite && (
@@ -1464,7 +1520,7 @@ export function ReviewWorkspace({
                 ? "Loading review…"
                 : total
                   ? "Reached the end in this direction."
-                  : "No matching scenes."}
+                  : `No matching ${labels.many}.`}
             </p>
           )}
         </div>

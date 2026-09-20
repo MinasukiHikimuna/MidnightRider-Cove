@@ -3,11 +3,12 @@ import { extensionFetch } from "@cove/runtime/api";
 import {
   createConfirmedAbsentTagsField,
   findTags,
-  findVideos,
+  findMedia,
   getConfirmedAbsentTagsFieldStatus,
   loadReviews,
   runReviewAction,
   runTagReviewAction,
+  setOccurrenceAbsence,
 } from "../api";
 
 const fetchMock = vi.mocked(extensionFetch);
@@ -29,7 +30,7 @@ beforeEach(() => {
 describe("Data Quality API adapter", () => {
   it("passes saved filters through the authorized filtered video endpoint", async () => {
     fetchMock.mockImplementation(() => response({ items: [], totalCount: 0 }));
-    await findVideos(
+    await findMedia(
       {
         id: "r",
         name: "Review",
@@ -108,7 +109,7 @@ describe("Data Quality API adapter", () => {
 
   it("uses Cove's canonical custom-field key in assessment queue requests", async () => {
     fetchMock.mockImplementation(() => response({ items: [], totalCount: 0 }));
-    await findVideos(
+    await findMedia(
       {
         id: "r",
         name: "Review",
@@ -143,6 +144,7 @@ describe("Data Quality API adapter", () => {
       .mockImplementationOnce(() => response({ message: "Denied" }, false));
     await expect(
       runReviewAction(
+        "video",
         {
           id: "a",
           label: "Apply",
@@ -173,7 +175,7 @@ describe("Data Quality API adapter", () => {
       )
       .mockImplementation(() => response({ updated: 2 }));
 
-    await runReviewAction(
+    await runReviewAction("video", 
       {
         id: "a",
         label: "Assess",
@@ -243,7 +245,7 @@ describe("Data Quality API adapter", () => {
       )
       .mockImplementation(() => response({ updated: 1 }));
 
-    await runReviewAction(
+    await runReviewAction("video", 
       {
         id: "a",
         label: "Mixed",
@@ -285,7 +287,7 @@ describe("Data Quality API adapter", () => {
       )
       .mockImplementationOnce(() => response({ updated: 1 }));
 
-    await runReviewAction(
+    await runReviewAction("video", 
       {
         id: "a",
         label: "Absent",
@@ -320,6 +322,7 @@ describe("Data Quality API adapter", () => {
       .mockImplementationOnce(() => response({ error: "Denied" }, false));
     await expect(
       runReviewAction(
+        "video",
         {
           id: "a",
           label: "Absent",
@@ -351,7 +354,7 @@ describe("Data Quality API adapter", () => {
       .mockImplementationOnce(() => response({ id: 10 }))
       .mockImplementationOnce(() => response({ items: [{ id: 11 }], totalCount: 1 }))
       .mockImplementation(() => response({ updated: 1 }));
-    await runReviewAction(
+    await runReviewAction("video", 
       {
         id: "a",
         label: "Resolve first",
@@ -380,6 +383,7 @@ describe("Data Quality API adapter", () => {
     fetchMock.mockImplementationOnce(() => response([]));
     await expect(
       runReviewAction(
+        "video",
         {
           id: "a",
           label: "Absent",
@@ -395,6 +399,7 @@ describe("Data Quality API adapter", () => {
       .mockImplementationOnce(() => response({ message: "Forbidden" }, false));
     await expect(
       runReviewAction(
+        "video",
         {
           id: "a",
           label: "Absent",
@@ -499,4 +504,101 @@ it("waits out the public filtered-query cache after mutations but not skips", as
   } finally {
     vi.useRealTimers();
   }
+});
+
+describe("audio reviews", () => {
+  const audioReview = {
+    id: "a",
+    name: "Audio review",
+    description: "",
+    entityType: "audio" as const,
+    view: {
+      filter: { page: 1, perPage: 24 },
+      objectFilter: { tagsCriterion: { value: [7], modifier: "INCLUDES" } },
+      displayMode: "grid" as const,
+      searchMode: "text",
+    },
+    actions: [],
+  };
+
+  it("queues audios through the audio endpoint with the same criteria shape", async () => {
+    fetchMock.mockImplementation(() => response({ items: [], totalCount: 0 }));
+    await findMedia(audioReview, { page: 1, perPage: 24 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/audios/find",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"modifier":"includes"'),
+      }),
+    );
+  });
+
+  it("applies audio review actions through the audio bulk endpoint", async () => {
+    fetchMock.mockImplementation(() => response({ ids: [4] }));
+    await runReviewAction(
+      "audio",
+      { id: "a", label: "Apply", steps: [{ mode: "ADD", tagIds: [1] }] },
+      [4],
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/audios/bulk",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("records an occurrence absence on the audio itself", async () => {
+    fetchMock.mockImplementation(() => response({ ids: [7] }));
+    await setOccurrenceAbsence("confirmed_absent_occurrence_tags", "audio", 7, 11, [21], "ADD");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/audios/bulk",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"11:21"'),
+      }),
+    );
+  });
+
+  it("extends an existing absence field to audios instead of replacing it", async () => {
+    const definition = {
+      id: 3,
+      key: "confirmed_absent_tags",
+      type: "tag",
+      entityTypes: ["video"],
+      filterable: true,
+      isMultiValue: true,
+    };
+    fetchMock.mockImplementation((path) =>
+      path === "/api/custom-fields"
+        ? response([definition])
+        : response(definition),
+    );
+    const status = await getConfirmedAbsentTagsFieldStatus("audio");
+    expect(status.kind).toBe("missing");
+    expect(status.message).toContain("Add audios");
+    await createConfirmedAbsentTagsField("audio");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/custom-fields/3",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ entityTypes: ["video", "audio"] }),
+      }),
+    );
+  });
+
+  it("keeps the video field ready when it already applies to videos", async () => {
+    fetchMock.mockImplementation(() =>
+      response([
+        {
+          id: 3,
+          key: "confirmed_absent_tags",
+          type: "tag",
+          entityTypes: ["video", "audio"],
+          filterable: true,
+          isMultiValue: true,
+        },
+      ]),
+    );
+    expect((await getConfirmedAbsentTagsFieldStatus("video")).kind).toBe("ready");
+    expect((await getConfirmedAbsentTagsFieldStatus("audio")).kind).toBe("ready");
+  });
 });

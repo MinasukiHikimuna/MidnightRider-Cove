@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  boundedFilter,
   getNextReviewFocus,
+  isOccurrenceReview,
+  queueSignature,
+  reviewMediaKind,
+  supportsMultipleReviewMode,
   getReviewActionTargets,
   isReviewGridArrowTarget,
   isReviewLetterShortcutTarget,
@@ -288,4 +293,100 @@ it("keeps letters away from host-owned controls inside the page", () => {
   document.body.innerHTML = '<header class="data-quality-header"><button data-target>Edit review</button></header>';
   expect(isReviewLetterShortcutTarget(document.body.querySelector("[data-target]"))).toBe(false);
   document.body.innerHTML = "";
+});
+
+describe("audio reviews", () => {
+  const view = {
+    filter: { page: 1, perPage: 40 },
+    objectFilter: {},
+    displayMode: "grid",
+    searchMode: "text",
+  };
+  const action = {
+    id: "tag",
+    label: "Tag",
+    steps: [{ mode: "ADD" as const, tagIds: [3] }],
+  };
+  const audioReview = {
+    id: "a",
+    name: "Audio review",
+    description: "",
+    entityType: "audio" as const,
+    view: { ...view, displayMode: "grid" as const, reviewMode: "single" as const },
+    actions: [action],
+  };
+  const audioOccurrenceReview = {
+    id: "ao",
+    name: "Audio occurrences",
+    description: "",
+    entityType: "audioPerformerOccurrence" as const,
+    view: { ...view, displayMode: "grid" as const },
+    actions: [action],
+    occurrence: {
+      targetMode: "all" as const,
+      performerIds: [],
+      performerFilter: {},
+      condition: "any" as const,
+      conditionTagIds: [],
+      tagIds: [3],
+      multiple: true,
+    },
+  };
+
+  it("routes the new entity types to the audio media kind", () => {
+    expect(reviewMediaKind(audioReview)).toBe("audio");
+    expect(reviewMediaKind(audioOccurrenceReview)).toBe("audio");
+    expect(reviewMediaKind({ ...audioReview, entityType: "video" })).toBe("video");
+    expect(isOccurrenceReview(audioOccurrenceReview)).toBe(true);
+    expect(isOccurrenceReview(audioReview)).toBe(false);
+  });
+
+  it("keeps the multiple-item layout on video reviews only", () => {
+    expect(supportsMultipleReviewMode(audioReview)).toBe(false);
+    expect(
+      reviewValidation({
+        ...audioReview,
+        view: { ...audioReview.view, reviewMode: "multiple" },
+      }),
+    ).toBe("Only video reviews support the multiple-item layout.");
+    expect(reviewValidation(audioReview)).toBe("");
+    expect(reviewValidation(audioOccurrenceReview)).toBe("");
+  });
+
+  it("accepts saved audio reviews and rejects grid-only presentation on them", () => {
+    const saved = JSON.stringify([audioReview, audioOccurrenceReview]);
+    expect(parseReviews(saved).map((review) => review.entityType)).toEqual([
+      "audio",
+      "audioPerformerOccurrence",
+    ]);
+    expect(() =>
+      parseReviews(
+        JSON.stringify([{ ...audioReview, presentation: { annotations: ["tags"] } }]),
+      ),
+    ).toThrow(/could not be read/);
+    expect(() =>
+      parseReviews(
+        JSON.stringify([
+          { ...audioReview, view: { ...audioReview.view, reviewMode: "multiple" } },
+        ]),
+      ),
+    ).toThrow(/could not be read/);
+  });
+
+  it("separates audio and video queues that are otherwise identical", () => {
+    expect(queueSignature(audioReview)).not.toBe(
+      queueSignature({ ...audioReview, entityType: "video" }),
+    );
+    expect(queueSignature(audioOccurrenceReview)).not.toBe(
+      queueSignature({ ...audioOccurrenceReview, entityType: "performerOccurrence" }),
+    );
+  });
+});
+
+it("caps an audio queue page at the size Cove's audio endpoint applies", () => {
+  expect(boundedFilter({ page: 1, perPage: 1000 }, "video").perPage).toBe(1000);
+  expect(boundedFilter({ page: 1, perPage: 1000 }, "audio").perPage).toBe(250);
+  expect(boundedFilter({ page: 1, perPage: 40 }, "audio").perPage).toBe(40);
+  // The default stays the same for both kinds.
+  expect(boundedFilter({ page: 1 }, "audio").perPage).toBe(40);
 });

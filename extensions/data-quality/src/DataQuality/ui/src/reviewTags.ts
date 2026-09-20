@@ -1,10 +1,11 @@
 import {
   CONFIRMED_ABSENT_TAGS_KEY,
+  mediaCollection,
   occurrenceAbsentTagIds,
   request,
-  readVideo,
+  readMedia,
   runReviewAction,
-  type Video,
+  type MediaItem,
 } from "./api";
 import {
   runOccurrenceAction,
@@ -12,11 +13,16 @@ import {
   type Occurrence,
   type OccurrenceApplication,
 } from "./occurrences";
-import type { MediaReview } from "./reviewQuery";
-import type { VideoReviewAction } from "./model";
+import {
+  isOccurrenceReview,
+  reviewMediaKind,
+  type MediaKind,
+  type MediaReview,
+  type MediaReviewAction,
+} from "./model";
 export interface ReviewItem {
   key: string;
-  video: Video;
+  media: MediaItem;
   occurrence?: Occurrence;
 }
 export interface TagState {
@@ -42,27 +48,28 @@ export function difference(before: number[], after: number[]): TagChange {
     removed: before.filter((id) => !after.includes(id)),
   };
 }
-function path(item: ReviewItem) {
-  return `/api/tagapplications?hostType=video&hostId=${item.video.id}&contextType=performer&contextId=${item.occurrence!.performer.id}`;
+function path(kind: MediaKind, item: ReviewItem) {
+  return `/api/tagapplications?hostType=${kind}&hostId=${item.media.id}&contextType=performer&contextId=${item.occurrence!.performer.id}`;
 }
-// Batches only change tags, so they skip the video read that occurrence absences need.
+// Batches only change tags, so they skip the media read that occurrence absences need.
 export async function readTags(
+  kind: MediaKind,
   item: ReviewItem,
   withAbsence = true,
 ): Promise<TagState> {
   if (item.occurrence) {
     const absent = withAbsence
       ? occurrenceAbsentTagIds(
-          await readVideo(item.video.id),
+          await readMedia(kind, item.media.id),
           item.occurrence.performer.id,
         )
       : [];
     const applications = (
-      await request<OccurrenceApplication[]>(path(item))
+      await request<OccurrenceApplication[]>(path(kind, item))
     ).filter(
       (a) =>
-        a.hostType === "video" &&
-        a.hostId === item.video.id &&
+        a.hostType === kind &&
+        a.hostId === item.media.id &&
         a.contextType === "performer" &&
         a.contextId === item.occurrence!.performer.id,
     );
@@ -73,18 +80,18 @@ export async function readTags(
       applications,
     };
   }
-  const video = await readVideo(item.video.id);
-  const tags = (video.tags ?? []).filter(
+  const media = await readMedia(kind, item.media.id);
+  const tags = (media.tags ?? []).filter(
     (t) => t.canRemove !== false || t.isDerived !== true,
   );
   const absentKey =
-    Object.keys(video.customFields ?? {}).find(
+    Object.keys(media.customFields ?? {}).find(
       (key) => key.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY,
     ) ?? CONFIRMED_ABSENT_TAGS_KEY;
-  const absent = video.customFields?.[absentKey] ?? [];
+  const absent = media.customFields?.[absentKey] ?? [];
   if (!Array.isArray(absent) || absent.some((id) => !Number.isSafeInteger(id)))
     throw new Error(
-      "Confirmed absent tags are invalid. Inspect the video before editing.",
+      `Confirmed absent tags are invalid. Inspect the ${kind} before editing.`,
     );
   return { ids: tags.map((t) => t.id), names: tags.map((t) => t.name), absent };
 }
@@ -93,7 +100,7 @@ export async function editTags(
   item: ReviewItem,
   change: TagChange,
 ) {
-  if (item.occurrence && review.entityType === "performerOccurrence") {
+  if (item.occurrence && isOccurrenceReview(review)) {
     await saveOccurrenceTags(
       {
         ...review,
@@ -112,21 +119,25 @@ export async function editTags(
       ["REMOVE", change.removed],
     ] as const) {
       if (tagIds.length)
-        await request("/api/videos/bulk", {
-          method: "POST",
-          body: JSON.stringify({ ids: [item.video.id], tagMode, tagIds }),
-        });
+        await request(
+          `/api/${mediaCollection(reviewMediaKind(review))}/bulk`,
+          {
+            method: "POST",
+            body: JSON.stringify({ ids: [item.media.id], tagMode, tagIds }),
+          },
+        );
     }
   }
 }
 export async function applyTags(
   review: MediaReview,
   item: ReviewItem,
-  action: VideoReviewAction,
+  action: MediaReviewAction,
 ) {
-  if (item.occurrence && review.entityType === "performerOccurrence")
+  if (item.occurrence && isOccurrenceReview(review))
     await runOccurrenceAction(review, item.occurrence, action);
-  else await runReviewAction(action, [item.video.id]);
+  else
+    await runReviewAction(reviewMediaKind(review), action, [item.media.id]);
 }
 export function undoOperation(
   item: ReviewItem,

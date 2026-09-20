@@ -83,10 +83,10 @@ beforeEach(() => {
       {
         item: {
           key: "1:11",
-          video,
+          media: video,
           occurrence: {
             key: "1:11",
-            video,
+            media: video,
             performer: video.performers[0],
             applications: [],
           },

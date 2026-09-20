@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  AUDIO_CRITERIA,
+  AUDIO_SORT_OPTIONS,
   FilterDialog,
   TAG_CRITERIA,
   TAG_SORT_OPTIONS,
@@ -8,7 +10,14 @@ import {
   EntityReferenceMultiSelector,
   useCustomFieldFilterSection,
 } from "@cove/runtime/components";
-import { reviewEntityType, type Review, type VideoReview } from "./model";
+import {
+  isOccurrenceReview,
+  reviewEntityType,
+  reviewMediaKind,
+  supportsMultipleReviewMode,
+  type Review,
+  type VideoReview,
+} from "./model";
 
 export function QueueEditor({
   draft,
@@ -22,14 +31,27 @@ export function QueueEditor({
   queue?: boolean;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const entityType = reviewEntityType(draft) === "tag" ? "tag" : "video";
+  // The queue subject: tags, or the review's media kind. Occurrence reviews queue their host media.
+  const entityType =
+    reviewEntityType(draft) === "tag" ? "tag" : reviewMediaKind(draft);
+  const plural = entityType === "tag" ? "tags" : `${entityType}s`;
   const customFieldSection = useCustomFieldFilterSection(
-    entityType === "video" ? "video" : undefined,
+    entityType === "tag" ? undefined : entityType,
     draft.view.objectFilter,
   );
   const filter = draft.view.filter;
   const sortOptions =
-    entityType === "tag" ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS;
+    entityType === "tag"
+      ? TAG_SORT_OPTIONS
+      : entityType === "audio"
+        ? AUDIO_SORT_OPTIONS
+        : VIDEO_SORT_OPTIONS;
+  const criteria =
+    entityType === "tag"
+      ? TAG_CRITERIA
+      : entityType === "audio"
+        ? AUDIO_CRITERIA
+        : VIDEO_CRITERIA;
   const updateFilter = (change: Record<string, unknown>) =>
     onChange({
       ...draft,
@@ -39,6 +61,7 @@ export function QueueEditor({
     entityType === "video"
       ? ((draft as VideoReview).presentation ?? {})
       : {};
+  const gridReview = entityType !== "audio";
   const updatePresentation = (
     change: NonNullable<VideoReview["presentation"]>,
   ) => onChange({ ...draft, presentation: { ...settings, ...change } });
@@ -134,23 +157,22 @@ export function QueueEditor({
           </button>
           <p>
             {Object.keys(draft.view.objectFilter).length
-              ? `${entityType === "tag" ? "Tag" : "Video"} filters configured`
+              ? `${entityType[0].toUpperCase()}${entityType.slice(1)} filters configured`
               : `No ${entityType} filters`}
-            . Choose which {entityType === "tag" ? "tags" : "videos"} enter
-            the queue.
+            . Choose which {plural} enter the queue.
           </p>
           {filtersOpen && (
             <div onKeyDown={(e) => e.stopPropagation()}>
               <FilterDialog
                 open
                 onClose={() => setFiltersOpen(false)}
-                criteria={entityType === "tag" ? TAG_CRITERIA : VIDEO_CRITERIA}
+                criteria={criteria}
                 activeFilter={draft.view.objectFilter}
                 customSections={
                   customFieldSection ? [customFieldSection] : undefined
                 }
-                supportsFilterExpressions={entityType === "video"}
-                subjectLabel={entityType === "tag" ? "tags" : "videos"}
+                supportsFilterExpressions={entityType !== "tag"}
+                subjectLabel={plural}
                 onApply={(objectFilter) => {
                   onChange({ ...draft, view: { ...draft.view, objectFilter } });
                   setFiltersOpen(false);
@@ -164,10 +186,10 @@ export function QueueEditor({
         <>
           <h3>Appearance</h3>
           <p className="dq-editor-note">
-            Choose how {entityType === "tag" ? "tags" : "videos and tags"} appear while reviewing.
+            Choose how {entityType === "tag" ? "tags" : `${plural} and tags`} appear while reviewing.
           </p>
           <div className="dq-field-grid">
-            {reviewEntityType(draft) === "video" && <label>
+            {supportsMultipleReviewMode(draft) && <label>
               Preferred review layout
               <select
                 value={draft.view.reviewMode ?? "single"}
@@ -177,16 +199,16 @@ export function QueueEditor({
                 <option value="multiple">Multiple videos</option>
               </select>
             </label>}
-            {reviewEntityType(draft) !== "performerOccurrence" && <label className="dq-checkbox">
+            {!isOccurrenceReview(draft) && gridReview && <label className="dq-checkbox">
               <input
                 type="checkbox"
                 checked={draft.view.selectAllOnLoad ?? false}
                 onChange={(event) => onChange({ ...draft, view: { ...draft.view, selectAllOnLoad: event.target.checked ? true : undefined } })}
               />
-              Select all {entityType === "tag" ? "tags" : "videos"} on page load
+              Select all {plural} on page load
               {entityType === "video" && <small> (multiple-videos layout)</small>}
             </label>}
-            <label>
+            {gridReview && <label>
               Preferred view
               <select
                 value={
@@ -215,7 +237,7 @@ export function QueueEditor({
                   <option key={mode}>{mode}</option>
                 ))}
               </select>
-            </label>
+            </label>}
           </div>
           {entityType === "video" && <><h4>Card annotations</h4>
           <div className="dq-annotation-options">

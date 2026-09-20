@@ -14,7 +14,7 @@ import type { OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
 configure({ asyncUtilTimeout: 3000 });
 const api = vi.hoisted(() => ({
-  findVideos: vi.fn(),
+  findMedia: vi.fn(),
   request: vi.fn(),
   resolvePerformers: vi.fn(),
   loadOccurrencePage: vi.fn(),
@@ -24,10 +24,10 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../api", async (original) => ({
   ...(await original<typeof import("../api")>()),
-  findVideos: api.findVideos,
+  findMedia: api.findMedia,
   request: api.request,
-  videoCoverUrl: () => "/cover",
-  videoStreamUrl: () => "/stream",
+  mediaCoverUrl: () => "/cover",
+  mediaStreamUrl: () => "/stream",
 }));
 vi.mock("../occurrences", async (original) => ({
   ...(await original<typeof import("../occurrences")>()),
@@ -81,20 +81,20 @@ const video = {
 };
 const first = {
   key: "1:11",
-  video,
+  media: video,
   performer: video.performers[0],
   applications: [],
 };
 const second = {
   key: "1:12",
-  video,
+  media: video,
   performer: video.performers[1],
   applications: [],
 };
 const third = {
   ...first,
   key: "2:11",
-  video: { ...video, id: 2, title: "Next scene" },
+  media: { ...video, id: 2, title: "Next scene" },
 };
 let state: TagState;
 beforeEach(() => {
@@ -116,8 +116,8 @@ beforeEach(() => {
     items: [first, second],
     totalCount: 1,
   });
-  api.findVideos.mockResolvedValue({
-    items: [video, third.video],
+  api.findMedia.mockResolvedValue({
+    items: [video, third.media],
     totalCount: 2,
   });
   api.request.mockResolvedValue({ name: "Choice" });
@@ -376,7 +376,7 @@ it("honors an explicit page over end-start and clamps shrinking results", async 
 it("orders scenes backwards while keeping partners together", () => {
   const items = [first, second, third].map((occurrence) => ({
     key: occurrence.key,
-    video: occurrence.video,
+    media: occurrence.media,
     occurrence,
   }));
   expect(orderedItems(items, true).map((item) => item.key)).toEqual([
@@ -557,9 +557,9 @@ it("gives video reviews the same Save and default advancement behavior", async (
     view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
   };
   const later = { ...video, id: 3, title: "Later scene" };
-  api.findVideos
-    .mockResolvedValueOnce({ items: [video, third.video, later], totalCount: 3 })
-    .mockResolvedValue({ items: [third.video, later], totalCount: 2 });
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    .mockResolvedValue({ items: [third.media, later], totalCount: 2 });
   open(rule);
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
@@ -568,7 +568,7 @@ it("gives video reviews the same Save and default advancement behavior", async (
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
   expect(api.applyTags).toHaveBeenCalledWith(
     expect.anything(),
-    expect.objectContaining({ key: "1", video }),
+    expect.objectContaining({ key: "1", media: video }),
     rule.actions[0],
   );
 });
@@ -586,9 +586,9 @@ it("removes the active video and autoplays its successor before the write settle
         finish = resolve;
       }),
   );
-  api.findVideos
-    .mockResolvedValueOnce({ items: [video, third.video, later], totalCount: 3 })
-    .mockResolvedValue({ items: [later, third.video], totalCount: 2 });
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    .mockResolvedValue({ items: [later, third.media], totalCount: 2 });
   open(rule);
   await ready();
   const preloadedSuccessor = screen.getByTestId("video-player-preload");
@@ -612,8 +612,8 @@ it("remounts the prepared successor paused when a write fails", async () => {
     view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
   };
   const later = { ...video, id: 3, title: "Later scene" };
-  api.findVideos.mockResolvedValue({
-    items: [video, third.video, later],
+  api.findMedia.mockResolvedValue({
+    items: [video, third.media, later],
     totalCount: 3,
   });
   api.applyTags.mockRejectedValueOnce(new Error("write failed"));
@@ -636,8 +636,8 @@ it("keeps earlier unprocessed videos after applying a manually selected item", a
     view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
   };
   const later = { ...video, id: 3, title: "Later scene" };
-  api.findVideos
-    .mockResolvedValueOnce({ items: [video, third.video, later], totalCount: 3 })
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
     .mockResolvedValue({ items: [later, video], totalCount: 2 });
   open(rule);
   await ready();
@@ -676,7 +676,7 @@ it("preserves legacy choices and clip boundaries", async () => {
     items: [
       {
         ...first,
-        video: { ...video, parentVideoId: 3, clipStartSec: 30, clipEndSec: 60 },
+        media: { ...video, parentVideoId: 3, clipStartSec: 30, clipEndSec: 60 },
       },
       second,
     ],
@@ -710,7 +710,7 @@ it("does not revisit already traversed scenes when a backward page refills", asy
               {
                 ...third,
                 key: "3:11",
-                video: { ...video, id: 3, title: "Last scene" },
+                media: { ...video, id: 3, title: "Last scene" },
               },
             ],
     totalCount: 3,
@@ -733,7 +733,7 @@ it("does not revisit already traversed scenes when a backward page refills", asy
             {
               ...third,
               key: "3:11",
-              video: { ...video, id: 3, title: "Last scene" },
+              media: { ...video, id: 3, title: "Last scene" },
             },
           ],
     totalCount: 2,
@@ -1078,7 +1078,7 @@ it("refreshes on Apply & stay without closing or restarting the current video", 
 
 it("keeps partners together during a shrinking reverse review and does not revisit refills", async () => {
   const partner = { ...third, key: "2:12", performer: video.performers[1] };
-  const traversed = { ...third, key: "3:11", video: { ...video, id: 3, title: "Already traversed" } };
+  const traversed = { ...third, key: "3:11", media: { ...video, id: 3, title: "Already traversed" } };
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({
     items: page === 1 ? [first] : [third, partner], totalCount: 3,
   }));
@@ -1102,7 +1102,7 @@ it("does not carry autoplay into a manually selected video", async () => {
   const later = {
     ...first,
     key: "3:11",
-    video: { ...video, id: 3, title: "Later scene" },
+    media: { ...video, id: 3, title: "Later scene" },
   };
   const rule: OccurrenceReview = {
     ...review,
@@ -1123,7 +1123,7 @@ it("does not carry autoplay into a manually selected video", async () => {
 
 
 it("does not revisit a reverse-page refill after Apply & stay removes the active occurrence", async () => {
-  const traversed = { ...third, key: "3:11", video: { ...video, id: 3, title: "Already traversed" } };
+  const traversed = { ...third, key: "3:11", media: { ...video, id: 3, title: "Already traversed" } };
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({ items: page === 1 ? [first] : [third], totalCount: 3 }));
   window.history.replaceState(null, "", "/data-quality?review=r&page=2&perPage=1&startFrom=end");
   open(); await ready();

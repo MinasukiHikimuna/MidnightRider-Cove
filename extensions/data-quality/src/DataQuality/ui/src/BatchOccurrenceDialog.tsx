@@ -5,11 +5,16 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   DetailListToolbar,
+  AUDIO_CRITERIA,
   VIDEO_CRITERIA,
   PERFORMER_CRITERIA,
 } from "@cove/runtime/components";
-import { request } from "./api";
-import { hasAssessmentSteps, type OccurrenceReview } from "./model";
+import { mediaLabel, request } from "./api";
+import {
+  hasAssessmentSteps,
+  reviewMediaKind,
+  type OccurrenceReview,
+} from "./model";
 import { difference } from "./reviewTags";
 import {
   previewOccurrenceBatch,
@@ -80,6 +85,9 @@ export function BatchOccurrenceDialog({
   const [started, setStarted] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const displayReview = started && batch ? batch.review : review;
+  const mediaKind = reviewMediaKind(displayReview);
+  const hostLabel = mediaLabel(mediaKind).queue;
+  const fallbackTitle = mediaKind === "audio" ? "Audio" : "Scene";
   const [freshRequested, setFreshRequested] = useState(false);
   const [performerNames, setPerformerNames] = useState<string[]>([]);
   const [inspecting, setInspecting] = useState(false);
@@ -326,12 +334,12 @@ export function BatchOccurrenceDialog({
             <p>
               Search: {String(displayReview.view.filter.q || "Any")}.{" "}
               {Object.keys(displayReview.view.objectFilter).length === 0 &&
-                "Scene filters: None."}
+                `${hostLabel[0].toUpperCase()}${hostLabel.slice(1)} filters: None.`}
             </p>
             <fieldset
               className="dq-batch-filter-summary"
               disabled
-              aria-label="Batch scene filters"
+              aria-label={`Batch ${hostLabel} filters`}
             >
               <DetailListToolbar
                 filter={displayReview.view.filter}
@@ -339,8 +347,8 @@ export function BatchOccurrenceDialog({
                   displayReview.view.objectFilter,
                   names,
                 )}
-                criteriaDefinitions={VIDEO_CRITERIA}
-                customFieldEntityType="video"
+                criteriaDefinitions={mediaKind === "audio" ? AUDIO_CRITERIA : VIDEO_CRITERIA}
+                customFieldEntityType={mediaKind}
                 totalCount={0}
                 sortOptions={[]}
                 showSearch
@@ -429,9 +437,9 @@ export function BatchOccurrenceDialog({
                   <strong>
                     {entries.length.toLocaleString()} occurrences in{" "}
                     {new Set(
-                      entries.map((e) => e.item.video.id),
+                      entries.map((e) => e.item.media.id),
                     ).size.toLocaleString()}{" "}
-                    scenes
+                    {hostLabel}s
                   </strong>
                 </p>
                 {!started ? (
@@ -506,12 +514,12 @@ export function BatchOccurrenceDialog({
                         <tr key={entry.item.key}>
                           <td>
                             <a
-                              href={`/video/${entry.item.video.id}`}
+                              href={`/${mediaKind}/${entry.item.media.id}`}
                               target="_blank"
                               rel="noreferrer"
                             >
                               {entry.item.occurrence?.performer.name} —{" "}
-                              {entry.item.video.title || "Scene"}
+                              {entry.item.media.title || fallbackTitle}
                             </a>
                           </td>
                           <td>

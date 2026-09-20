@@ -1,17 +1,33 @@
 import { extensionFetch } from "@cove/runtime/api";
 import type {
+  MediaKind,
+  MediaReview,
   ReviewAction,
   TagReview,
   TagReviewAction,
-  VideoReview,
-  VideoReviewAction,
+  MediaReviewAction,
 } from "./model";
 import {
   hasAssessmentSteps,
   isAssessmentMode,
   validAction,
   boundedFilter,
+  reviewMediaKind,
 } from "./model";
+
+/** Cove's REST collection for a media kind. Videos and audios share the same request shapes. */
+export function mediaCollection(kind: MediaKind): "videos" | "audios" {
+  return kind === "audio" ? "audios" : "videos";
+}
+
+const MEDIA_LABELS: Record<MediaKind, { one: string; many: string; queue: string }> = {
+  video: { one: "video", many: "videos", queue: "scene" },
+  audio: { one: "audio", many: "audios", queue: "audio" },
+};
+
+export function mediaLabel(kind: MediaKind): { one: string; many: string; queue: string } {
+  return MEDIA_LABELS[kind];
+}
 
 export const CONFIRMED_ABSENT_TAGS_KEY = "confirmed_absent_tags";
 const CONFIRMED_ABSENT_TAGS_LABEL = "Confirmed absent tags";
@@ -26,7 +42,7 @@ interface AbsenceField {
   type: "tag" | "text";
   subject: string;
 }
-const VIDEO_ABSENCE_FIELD: AbsenceField = {
+const MEDIA_ABSENCE_FIELD: AbsenceField = {
   key: CONFIRMED_ABSENT_TAGS_KEY,
   label: CONFIRMED_ABSENT_TAGS_LABEL,
   type: "tag",
@@ -40,6 +56,7 @@ const OCCURRENCE_ABSENCE_FIELD: AbsenceField = {
 };
 
 interface CustomFieldDefinition {
+  id: number;
   key: string;
   label?: string;
   type: string;
@@ -50,9 +67,14 @@ interface CustomFieldDefinition {
 
 export type ConfirmedAbsentTagsFieldStatus =
   | { kind: "ready"; definition: CustomFieldDefinition; message: "" }
-  | { kind: "missing" | "incompatible"; message: string };
+  | {
+      kind: "missing" | "incompatible";
+      message: string;
+      /** Set when the field exists but does not yet apply to this media kind. */
+      definition?: CustomFieldDefinition;
+    };
 
-export interface VideoFile {
+export interface MediaFile {
   id: number;
   basename: string;
   format?: string;
@@ -62,7 +84,7 @@ export interface VideoFile {
   audioCodec?: string;
 }
 
-export interface Video {
+export interface MediaItem {
   id: number;
   title?: string;
   details?: string;
@@ -85,7 +107,7 @@ export interface Video {
   galleries?: Array<{ id: number; title?: string }>;
   organized?: boolean;
   urls?: string[];
-  files: VideoFile[];
+  files: MediaFile[];
   createdAt?: string;
   updatedAt: string;
   parentVideoId?: number | null;
@@ -93,8 +115,8 @@ export interface Video {
   clipEndSec?: number | null;
 }
 
-export interface VideoPage {
-  items: Video[];
+export interface MediaPage {
+  items: MediaItem[];
   totalCount: number;
 }
 
@@ -209,16 +231,19 @@ export {
   saveProgress,
 } from "./storage";
 
-// Video detail GETs use Cove's one-second output cache, varied by query.
+// Media detail GETs use Cove's one-second output cache, varied by query.
 // Mutations and conflict checks need fresh membership rather than a cached snapshot.
 const detailReadPrefix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 let detailReadSequence = 0;
-export function readVideo(id: number): Promise<Video> {
-  return request<Video>(`/api/videos/${id}?dqRead=${detailReadPrefix}-${++detailReadSequence}`, { cache: "no-store" });
+export function readMedia(kind: MediaKind, id: number): Promise<MediaItem> {
+  return request<MediaItem>(
+    `/api/${mediaCollection(kind)}/${id}?dqRead=${detailReadPrefix}-${++detailReadSequence}`,
+    { cache: "no-store" },
+  );
 }
 
-export async function findVideos(
-  review: VideoReview,
+export async function findMedia(
+  review: MediaReview,
   filter: Record<string, unknown>,
   signal?: AbortSignal,
 ) {
@@ -235,17 +260,21 @@ export async function findVideos(
       "Visual similarity review searches are not available to extensions yet.",
     );
   }
-  return request<VideoPage>("/api/videos/find", {
-    method: "POST",
-    signal,
-    body: JSON.stringify(
-      normalizeCriteria({
-        findFilter: boundedFilter(filter),
-        objectFilter,
-        filterExpression,
-      }),
-    ),
-  });
+  const kind = reviewMediaKind(review);
+  return request<MediaPage>(
+    `/api/${mediaCollection(kind)}/find`,
+    {
+      method: "POST",
+      signal,
+      body: JSON.stringify(
+        normalizeCriteria({
+          findFilter: boundedFilter(filter, kind),
+          objectFilter,
+          filterExpression,
+        }),
+      ),
+    },
+  );
 }
 
 export async function findTags(
@@ -271,15 +300,16 @@ export function listTagGroups(signal?: AbortSignal): Promise<TagGroup[]> {
   return request<TagGroup[]>("/api/taggroups", { signal });
 }
 
-export function videoCoverUrl(video: Video): string {
-  return `/api/videos/${video.id}/image?max=1280&v=${encodeURIComponent(video.updatedAt)}`;
+export function mediaCoverUrl(kind: MediaKind, item: MediaItem): string {
+  return `/api/${mediaCollection(kind)}/${item.id}/image?max=1280&v=${encodeURIComponent(item.updatedAt)}`;
 }
 
-export function videoStreamUrl(videoId: number): string {
-  return `/api/stream/video/${videoId}`;
+// Videos stream through the transcoding stream controller; audios serve their own file directly.
+export function mediaStreamUrl(kind: MediaKind, id: number): string {
+  return kind === "audio" ? `/api/audios/${id}/stream` : `/api/stream/video/${id}`;
 }
 
-export function videoScreenshotUrl(video: Video): string {
+export function videoScreenshotUrl(video: MediaItem): string {
   return `/api/stream/video/${video.id}/screenshot?v=${encodeURIComponent(video.updatedAt)}`;
 }
 
@@ -343,16 +373,19 @@ function definitionProblem(
   const problems: string[] = [];
   if (definition.type !== field.type) problems.push(`type "${field.type}"`);
   if (!definition.isMultiValue) problems.push("multiple values enabled");
-  if (!definition.entityTypes.includes("video"))
-    problems.push("video applicability");
   if (!definition.filterable) problems.push("filtering enabled");
   return problems.length
     ? `The ${field.key} custom field is incompatible. It must have ${problems.join(", ")}.`
     : "";
 }
 
+/**
+ * One field serves both media kinds. A definition that predates audio reviews applies to videos
+ * only; it is extended rather than replaced, so existing video assessments keep their values.
+ */
 async function absenceFieldStatus(
   field: AbsenceField,
+  kind: MediaKind,
 ): Promise<ConfirmedAbsentTagsFieldStatus> {
   const definitions =
     await request<CustomFieldDefinition[]>("/api/custom-fields");
@@ -365,22 +398,39 @@ async function absenceFieldStatus(
       message: `Create the ${field.label} custom field before applying ${field.subject}.`,
     };
   const message = definitionProblem(field, definition);
-  return message
-    ? { kind: "incompatible", message }
-    : { kind: "ready", definition, message: "" };
+  if (message) return { kind: "incompatible", message };
+  if (!definition.entityTypes.includes(kind))
+    return {
+      kind: "missing",
+      message: `Add ${mediaLabel(kind).many} to the ${field.label} custom field before applying ${field.subject}.`,
+      definition,
+    };
+  return { kind: "ready", definition, message: "" };
 }
 
-async function createAbsenceField(field: AbsenceField): Promise<void> {
-  const status = await absenceFieldStatus(field);
+async function createAbsenceField(
+  field: AbsenceField,
+  kind: MediaKind,
+): Promise<void> {
+  const status = await absenceFieldStatus(field, kind);
   if (status.kind === "ready") return;
   if (status.kind === "incompatible") throw new Error(status.message);
+  if (status.definition) {
+    await request(`/api/custom-fields/${status.definition.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        entityTypes: [...new Set([...status.definition.entityTypes, kind])],
+      }),
+    });
+    return;
+  }
   await request("/api/custom-fields", {
     method: "POST",
     body: JSON.stringify({
       key: field.key,
       label: field.label,
       type: field.type,
-      entityTypes: ["video"],
+      entityTypes: [kind],
       filterable: true,
       sortable: false,
       isMultiValue: true,
@@ -388,20 +438,20 @@ async function createAbsenceField(field: AbsenceField): Promise<void> {
   });
 }
 
-export function getConfirmedAbsentTagsFieldStatus() {
-  return absenceFieldStatus(VIDEO_ABSENCE_FIELD);
+export function getConfirmedAbsentTagsFieldStatus(kind: MediaKind = "video") {
+  return absenceFieldStatus(MEDIA_ABSENCE_FIELD, kind);
 }
 
-export function createConfirmedAbsentTagsField() {
-  return createAbsenceField(VIDEO_ABSENCE_FIELD);
+export function createConfirmedAbsentTagsField(kind: MediaKind = "video") {
+  return createAbsenceField(MEDIA_ABSENCE_FIELD, kind);
 }
 
-export function getOccurrenceAbsenceFieldStatus() {
-  return absenceFieldStatus(OCCURRENCE_ABSENCE_FIELD);
+export function getOccurrenceAbsenceFieldStatus(kind: MediaKind = "video") {
+  return absenceFieldStatus(OCCURRENCE_ABSENCE_FIELD, kind);
 }
 
-export function createOccurrenceAbsenceField() {
-  return createAbsenceField(OCCURRENCE_ABSENCE_FIELD);
+export function createOccurrenceAbsenceField(kind: MediaKind = "video") {
+  return createAbsenceField(OCCURRENCE_ABSENCE_FIELD, kind);
 }
 
 function uniqueIds(ids: readonly number[]): number[] {
@@ -414,7 +464,7 @@ function uniqueIds(ids: readonly number[]): number[] {
  * allowed to block tagging every performer on the video.
  */
 export function occurrenceAbsentTagIds(
-  video: Pick<Video, "customFields">,
+  video: Pick<MediaItem, "customFields">,
   performerId: number,
 ): number[] {
   const fields = video.customFields ?? {};
@@ -435,10 +485,12 @@ export function occurrenceAbsentTagIds(
 }
 
 /** Resolves the occurrence absence field's key, so callers can verify it before any write. */
-export async function requireOccurrenceAbsenceField(): Promise<string> {
+export async function requireOccurrenceAbsenceField(
+  kind: MediaKind,
+): Promise<string> {
   let status: ConfirmedAbsentTagsFieldStatus;
   try {
-    status = await getOccurrenceAbsenceFieldStatus();
+    status = await getOccurrenceAbsenceFieldStatus(kind);
   } catch (error) {
     throw new Error(
       `Could not verify the ${OCCURRENCE_ABSENCE_FIELD.label} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
@@ -454,15 +506,16 @@ export async function requireOccurrenceAbsenceField(): Promise<string> {
  */
 export async function setOccurrenceAbsence(
   fieldKey: string,
-  videoId: number,
+  kind: MediaKind,
+  mediaId: number,
   performerId: number,
   tagIds: readonly number[],
   mode: "ADD" | "REMOVE",
 ): Promise<void> {
-  await request("/api/videos/bulk", {
+  await request(`/api/${mediaCollection(kind)}/bulk`, {
     method: "POST",
     body: JSON.stringify({
-      ids: [videoId],
+      ids: [mediaId],
       customFields: {
         [fieldKey]: uniqueIds(tagIds).map((tagId) => `${performerId}:${tagId}`),
       },
@@ -471,7 +524,7 @@ export async function setOccurrenceAbsence(
   });
 }
 
-type BulkVideoUpdate = {
+type BulkMediaUpdate = {
   ids: number[];
   tagIds?: number[];
   tagMode?: "ADD" | "REMOVE";
@@ -480,15 +533,15 @@ type BulkVideoUpdate = {
 };
 
 /**
- * Every review step becomes exactly one bulk request for all selected videos. Assessment
+* Every review step becomes exactly one bulk request for all selected items. Assessment
  * steps pair the tag change with the confirmed-absent custom field in the same request, so
- * Cove merges both server-side and no per-video read or rewrite is needed.
+ * Cove merges both server-side and no per-item read or rewrite is needed.
  */
 function bulkStepRequest(
-  step: { mode: VideoReviewAction["steps"][number]["mode"]; tagIds: number[] },
+  step: { mode: MediaReviewAction["steps"][number]["mode"]; tagIds: number[] },
   ids: number[],
   absentFieldKey: string | null,
-): BulkVideoUpdate {
+): BulkMediaUpdate {
   const tagIds = [...step.tagIds];
   const absentField = (mode: "ADD" | "REMOVE") => {
     if (absentFieldKey === null)
@@ -513,7 +566,8 @@ function bulkStepRequest(
 }
 
 export async function runReviewAction(
-  action: VideoReviewAction,
+  kind: MediaKind,
+  action: MediaReviewAction,
   ids: number[],
 ): Promise<void> {
   if (
@@ -521,13 +575,15 @@ export async function runReviewAction(
     ids.length === 0 ||
     ids.some((id) => !Number.isSafeInteger(id) || id <= 0)
   ) {
-    throw new Error("Choose videos and configure a valid action first.");
+    throw new Error(
+      `Choose ${mediaLabel(kind).many} and configure a valid action first.`,
+    );
   }
   let absentFieldKey: string | null = null;
   if (hasAssessmentSteps(action)) {
     let status: ConfirmedAbsentTagsFieldStatus;
     try {
-      status = await getConfirmedAbsentTagsFieldStatus();
+      status = await getConfirmedAbsentTagsFieldStatus(kind);
     } catch (error) {
       throw new Error(
         `Could not verify the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
@@ -557,13 +613,13 @@ export async function runReviewAction(
   );
   for (let index = 0; index < requests.length; index++) {
     try {
-      await request("/api/videos/bulk", {
+      await request(`/api/${mediaCollection(kind)}/bulk`, {
         method: "POST",
         body: JSON.stringify(requests[index]),
       });
     } catch (error) {
       throw new Error(
-        `Step ${index + 1} failed; ${index} earlier step(s) completed. Refresh and check the selected videos before retrying. ${error instanceof Error ? error.message : "Request failed."}`,
+        `Step ${index + 1} failed; ${index} earlier step(s) completed. Refresh and check the selected ${mediaLabel(kind).many} before retrying. ${error instanceof Error ? error.message : "Request failed."}`,
       );
     }
   }

@@ -1,8 +1,9 @@
 import { resolveTagTree } from "./api";
 import {
+  reviewMediaKind,
   validAction,
   type OccurrenceReview,
-  type VideoReviewAction,
+  type MediaReviewAction,
 } from "./model";
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
 import {
@@ -31,7 +32,7 @@ export interface BatchEntry {
 }
 export interface OccurrenceBatch {
   review: OccurrenceReview;
-  action: VideoReviewAction;
+  action: MediaReviewAction;
   touched: number[];
   entries: BatchEntry[];
 }
@@ -45,7 +46,7 @@ const changed = (operation: UndoOperation) =>
 
 export function desiredTags(
   ids: number[],
-  action: VideoReviewAction,
+  action: MediaReviewAction,
 ): number[] {
   const desired = new Set(ids);
   for (const step of action.steps)
@@ -58,12 +59,12 @@ export function desiredTags(
 
 export async function previewOccurrenceBatch(
   input: OccurrenceReview,
-  selected: VideoReviewAction,
+  selected: MediaReviewAction,
   signal: AbortSignal,
   progress: (count: number) => void = () => {},
 ): Promise<OccurrenceBatch> {
   if (
-    !validAction(selected, "performerOccurrence") ||
+    !validAction(selected, input.entityType) ||
     !selected.steps.length ||
     selected.steps.some(
       (step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
@@ -103,7 +104,7 @@ export async function previewOccurrenceBatch(
       };
       const desired = desiredTags(before.ids, action);
       entries.set(occurrence.key, {
-        item: { key: occurrence.key, video: occurrence.video, occurrence },
+        item: { key: occurrence.key, media: occurrence.media, occurrence },
         before,
         expected: before,
         desired,
@@ -178,7 +179,7 @@ export async function runOccurrenceBatch(
       }
       let before: TagState;
       try {
-        before = await readTags(entry.item, false);
+        before = await readTags(reviewMediaKind(batch.review), entry.item, false);
         if (!sameAffected(entry.expected, before, batch.touched)) {
           entry.status = "skipped";
           entry.error =
@@ -201,7 +202,7 @@ export async function runOccurrenceBatch(
       }
       let verified = false;
       try {
-        const after = await readTags(entry.item, false);
+        const after = await readTags(reviewMediaKind(batch.review), entry.item, false);
         verified = true;
         entry.expected = after;
         const operation = undoOperation(
@@ -229,7 +230,7 @@ export async function runOccurrenceBatch(
         // A failed read leaves the write outcome unknown; never blindly retry it.
         if (!verified) {
           try {
-            const after = await readTags(entry.item, false);
+            const after = await readTags(reviewMediaKind(batch.review), entry.item, false);
             entry.expected = after;
             const operation = undoOperation(
               entry.item,
@@ -266,14 +267,14 @@ export async function undoOccurrenceBatch(
       const touched = [...operation.tags.added, ...operation.tags.removed];
       let started = false;
       try {
-        const current = await readTags(entry.item, false);
+        const current = await readTags(reviewMediaKind(batch.review), entry.item, false);
         checkUndo(operation, current);
         started = true;
         await editTags(batch.review, entry.item, {
           added: operation.tags.removed,
           removed: operation.tags.added,
         });
-        const after = await readTags(entry.item, false);
+        const after = await readTags(reviewMediaKind(batch.review), entry.item, false);
         if (
           !same(
             after.ids.filter((id) => touched.includes(id)),
@@ -290,7 +291,7 @@ export async function undoOccurrenceBatch(
         entry.status = "failed";
         if (started) {
           try {
-            const after = await readTags(entry.item, false);
+            const after = await readTags(reviewMediaKind(batch.review), entry.item, false);
             const remaining = undoOperation(
               entry.item,
               entry.before,

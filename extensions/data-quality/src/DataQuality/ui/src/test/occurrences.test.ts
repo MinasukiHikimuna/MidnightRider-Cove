@@ -84,7 +84,7 @@ const application = (id: number, performer: number, tag: number) => ({
 });
 const occurrence: Occurrence = {
   key: "1:11",
-  video,
+  media: video,
   performer: video.performers[0],
   applications: [],
 };
@@ -653,4 +653,49 @@ it('treats empty performer criteria as all without enumerating the library', asy
   const ids = await resolvePerformers({ ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, targetMode: 'filter', performerFilter: {} } });
   expect(ids).toBeNull();
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it("queues, reads and writes audio occurrences against the audio host", async () => {
+  const audio = { ...video, id: 7, title: "Recording" };
+  const audioReview: OccurrenceReview = {
+    ...occurrenceReview,
+    entityType: "audioPerformerOccurrence",
+    occurrence: {
+      ...occurrenceReview.occurrence,
+      targetMode: "all",
+      condition: "any",
+      conditionTagIds: [],
+    },
+  };
+  const paths: string[] = [];
+  fetchMock.mockImplementation((path) => {
+    paths.push(String(path));
+    const base = String(path).split("?")[0];
+    if (base === "/api/audios/find")
+      return response({ items: [audio], totalCount: 1 });
+    if (base === "/api/audios/7") return response(audio);
+    if (base === "/api/tagapplications") return response([]);
+    return response({});
+  });
+
+  expect(occurrenceSceneReview(audioReview, null).entityType).toBe("audio");
+  const page = await loadOccurrencePage(audioReview, null, 1);
+  expect(page.items.map((item) => item.key)).toEqual(["7:11", "7:12"]);
+  expect(
+    paths.some((path) =>
+      path.startsWith("/api/tagapplications?hostType=audio&hostId=7"),
+    ),
+  ).toBe(true);
+
+  await saveOccurrenceTags(audioReview, page.items[0], [21]);
+  const created = fetchMock.mock.calls.find(
+    ([path, init]) => path === "/api/tagapplications" && init?.method === "POST",
+  );
+  expect(JSON.parse(String(created?.[1]?.body))).toMatchObject({
+    hostType: "audio",
+    hostId: 7,
+    contextType: "performer",
+    contextId: 11,
+    tagId: 21,
+  });
 });

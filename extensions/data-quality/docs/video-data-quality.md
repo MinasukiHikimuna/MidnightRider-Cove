@@ -12,4 +12,12 @@ Use **Edit tags** to add or remove any tags without changing configured actions.
 
 **Skip** changes only the cursor. It does not save tags, reviewed status, or an inconclusive answer. Skipped items and items that still match remain available in their sorted pages. The native toolbar shows the matching scene range and total, without completion percentages. Use pagination above the scene list to change pages.
 
+## Audio reviews
+
+Choose **Audios** or **Audio performer occurrence tags** as a review's entity type to review audios. Everything above applies, with the audio list's own filter criteria, sort options, and custom fields, and with tags written to the audio or to one performer's appearance in it.
+
+Audios have no card grid, so both audio review kinds always review one audio at a time. The **Multiple** layout, card annotations, card tag bins, the preferred grid/wall view, and **Select all on page load** are offered only for video reviews.
+
+Because an audio shows nothing while it plays, its description sits directly under the player rather than behind a tab, in both audio review kinds. The **Description** control collapses and expands it; that choice is remembered in the browser and is not saved with the review. An audio with no description says so instead of hiding the panel.
+
 Tag-group reviews retain their existing selection and group assignment controls. Review configuration is account-scoped where permitted, with browser recovery support. Legacy video/occurrence progress remains stored but is ignored by the filter-driven workspace.

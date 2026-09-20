@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { resolveTagTree, type Video } from "./api";
+import { resolveTagTree, type MediaItem } from "./api";
 import type { VideoReview } from "./model";
 
 export function usePresentationTags(review: VideoReview | null) {
@@ -42,10 +42,10 @@ export function usePresentationTags(review: VideoReview | null) {
 }
 
 export function presentedVideo(
-  video: Video,
+  video: MediaItem,
   review: VideoReview | null,
   trees: Record<number, number[]>,
-): Video {
+): MediaItem {
   const settings = review?.presentation;
   const fields = settings?.annotations ?? [];
   const parents = settings?.annotationParents ?? [];
@@ -77,7 +77,7 @@ export function TagBins({
   disabled,
   onChoose,
 }: {
-  videos: Video[];
+  videos: MediaItem[];
   review: VideoReview;
   trees: Record<number, number[]>;
   disabled: boolean;
