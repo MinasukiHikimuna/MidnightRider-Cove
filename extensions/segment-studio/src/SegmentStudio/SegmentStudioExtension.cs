@@ -21,7 +21,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
     public const string ProvenanceManagePermission = "segment-studio.provenance.manage";
     public const string LineageManagePermission = "segment-studio.lineage.manage";
     public const string LineageMaintenancePermission = "segment-studio.lineage.maintenance";
-    public const string AnalysisSettingsManagePermission = "segment-studio.analysis.settings.manage";
 
     private CancellationTokenSource? _cleanupCancellation;
     private Task? _cleanupTask;
@@ -47,8 +46,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         // own scope per dispatch.
         services.AddSingleton<IAiCapabilityContributor, SegmentStudioShotBoundaryContributor>();
         services.AddScoped<IAiTaggingProjectionService, AiTaggingProjectionService>();
-        services.AddSingleton<IAiTaggingProjectionSettingsStore>(
-            _ => new AiTaggingProjectionSettingsStore(() => Store));
         // Surfaces AI tagging in the same dialog, projecting its per-frame
         // predictions into Segment Studio's reviewable spans.
         services.AddSingleton<IAiCapabilityContributor, SegmentStudioAiTaggingContributor>();
@@ -85,13 +82,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             "Scan and repair segment lineage integrity.",
             Dangerous: true,
             Implies: [ProvenanceReadPermission],
-            Source: "extension:segment-studio",
-            GrantToAdminsByDefault: true),
-        new(
-            AnalysisSettingsManagePermission,
-            "Segment Studio",
-            "Change how Segment Studio applies AI analysis results.",
-            Dangerous: true,
             Source: "extension:segment-studio",
             GrantToAdminsByDefault: true),
     ];
@@ -195,21 +185,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet(
-                "/api/plugins/segment-studio/ai-tagging/settings",
-                async ([FromServices] IAiTaggingProjectionSettingsStore settings,
-                    CancellationToken ct) => Results.Ok(await settings.LoadAsync(ct)))
-            .RequireAuthorization()
-            .RequireCovePermission(AnalysisSettingsManagePermission);
-
-        endpoints.MapPut(
-                "/api/plugins/segment-studio/ai-tagging/settings",
-                async ([FromServices] IAiTaggingProjectionSettingsStore settings,
-                    [FromBody] AiTaggingProjectionSettings request, CancellationToken ct) =>
-                    Results.Ok(await settings.SaveAsync(request, ct)))
-            .RequireAuthorization()
-            .RequireCovePermission(AnalysisSettingsManagePermission);
-
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/analysis-runs",
                 async Task<IResult> (int videoId, DbContext db,

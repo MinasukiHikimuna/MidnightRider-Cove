@@ -19,7 +19,6 @@ namespace SegmentStudio;
 /// </remarks>
 public sealed class SegmentStudioAiTaggingContributor(
     IServiceScopeFactory scopeFactory,
-    IAiTaggingProjectionSettingsStore settings,
     ILogger<SegmentStudioAiTaggingContributor> logger) : IAiCapabilityContributor
 {
     public const string ExtensionId = "com.midnightrider.segment-studio";
@@ -43,7 +42,7 @@ public sealed class SegmentStudioAiTaggingContributor(
         [
             new AiCapabilityClaim(
                 ClaimId,
-                "AI Tagging",
+                "AI Tagging (Segment Studio review)",
                 AiMediaKinds.Video,
                 WantCapability,
                 WantScope,
@@ -59,7 +58,7 @@ public sealed class SegmentStudioAiTaggingContributor(
         [
             new AiCapabilityFeature(
                 CapabilityId,
-                "AI Tagging",
+                "AI Tagging (Segment Studio review)",
                 [ClaimId],
                 [
                     new AiModelBindingSlot(
@@ -139,15 +138,12 @@ public sealed class SegmentStudioAiTaggingContributor(
             return Result(request, 0, notes);
         }
 
-        var mode = (await settings.LoadAsync(ct)).Mode;
         var projectionRequest = new AiTaggingProjectionRequest(
             videoId.Value,
             file.Id,
             RunIdFor(request.Context.RunId, videoId.Value),
-            mode,
             fingerprint,
-            candidates,
-            request.Result.Models);
+            candidates);
 
         try
         {
@@ -168,11 +164,8 @@ public sealed class SegmentStudioAiTaggingContributor(
                 return projected;
             });
 
-            var written = result.CandidateCount + result.SegmentCount;
-            notes.Add(result.CandidateCount > 0
-                ? $"Stored {result.CandidateCount} tag candidate(s) for review."
-                : $"Applied {result.SegmentCount} tag segment(s) directly.");
-            return Result(request, written, notes);
+            notes.Add($"Stored {result.CandidateCount} tag candidate(s) for review.");
+            return Result(request, result.CandidateCount, notes);
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {

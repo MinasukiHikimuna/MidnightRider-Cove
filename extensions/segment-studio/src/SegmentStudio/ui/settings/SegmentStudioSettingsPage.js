@@ -30,11 +30,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
   const [groups, setGroups] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [analysisMode, setAnalysisMode] = useState("full");
-  const [analysisLoading, setAnalysisLoading] = useState(true);
-  const [analysisBusy, setAnalysisBusy] = useState(false);
-  const [analysisMessage, setAnalysisMessage] = useState("");
-  const [analysisCanManage, setAnalysisCanManage] = useState(true);
   const [confirmMerges, setConfirmMerges] = useState(readMergeConfirmationPreference);
   const settingsTabs = visibleSegmentStudioSettingsTabs(profile);
   const visibleSettingsTabKeys = settingsTabs.map(([key]) => key);
@@ -56,31 +51,17 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     return () => controller.abort();
   }, []);
 
+  async function loadGroups(signal) {
+    const loaded = await requestJson("/segment-groups", signal ? { signal } : undefined);
+    setGroups(loaded || []);
+  }
+
   useEffect(() => {
-    if (profile.effectiveMode !== "full") {
-      setAnalysisLoading(false);
-      return undefined;
-    }
     const controller = new AbortController();
-    setAnalysisMessage("");
-    setAnalysisLoading(true);
-    requestJson("/ai-tagging/settings", { signal: controller.signal })
-      .then((settings) => {
-        setAnalysisCanManage(true);
-        setAnalysisMode(settings?.mode || "full");
-      })
-      .catch((error) => {
-        if (error.name === "AbortError") return;
-        if (error.status === 403) {
-          setAnalysisCanManage(false);
-          setAnalysisMessage("You do not have permission to change how AI results are applied.");
-          return;
-        }
-        setAnalysisMessage(error.message || "Unable to load AI tagging settings.");
-      })
-      .finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
+    loadGroups(controller.signal)
+      .catch((error) => { if (error.name !== "AbortError") setMessage(error.message || "Unable to load tag groups."); });
     return () => controller.abort();
-  }, [profile.effectiveMode]);
+  }, []);
 
   async function saveMode(nextMode) {
     if (nextMode === profile.requestedMode) return;
@@ -139,26 +120,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     }
   }
 
-  async function saveAnalysisSettings(event) {
-    event.preventDefault();
-    setAnalysisBusy(true);
-    setAnalysisMessage("");
-    try {
-      const saved = await requestJson("/ai-tagging/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: analysisMode }),
-      });
-      setAnalysisMode(saved?.mode || "full");
-      setAnalysisMessage(saved?.mode === "basic"
-        ? "AI tags will be applied to the library directly."
-        : "AI tags will be queued for review.");
-    } catch (error) {
-      setAnalysisMessage(error.message || "Unable to save AI tagging settings.");
-    } finally {
-      setAnalysisBusy(false);
-    }
-  }
 
 
   const backRoute = { page: "segment-studio" };
@@ -239,43 +200,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
         ]),
       ]),
     ]),
-    profile.effectiveMode === "full"
-      ? h("section", { key: "analysis", hidden: activeSettingsTab !== "general", className: "space-y-3 rounded-lg border border-border bg-surface p-4" }, [
-        h("div", { key: "heading" }, [
-          h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "AI tagging"),
-          h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
-            "Choose what happens to tags produced by a native AI analysis run."),
-        ]),
-        h("form", { key: "form", onSubmit: saveAnalysisSettings, className: "flex flex-col gap-3 sm:flex-row sm:items-end" }, [
-          h("label", { key: "mode", className: "min-w-0 flex-1 space-y-1" }, [
-            h("span", { key: "label", className: "block text-sm font-medium text-foreground" }, "Apply results"),
-            h("select", {
-              key: "input",
-              value: analysisMode,
-              onChange: (event) => setAnalysisMode(event.target.value),
-              disabled: analysisLoading || analysisBusy || !analysisCanManage,
-              className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-            }, [
-              h("option", { key: "full", value: "full" }, "Queue for review"),
-              h("option", { key: "basic", value: "basic" }, "Apply to the library directly"),
-            ]),
-          ]),
-          h("button", {
-            key: "save",
-            type: "submit",
-            disabled: analysisLoading || analysisBusy || !analysisCanManage,
-            className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50",
-          }, analysisBusy ? "Saving…" : "Save"),
-        ]),
-        h("p", { key: "status", className: "text-xs text-secondary", role: "status" },
-          analysisMessage
-            || (analysisLoading
-              ? "Loading AI tagging settings…"
-              : analysisMode === "basic"
-                ? "AI tags are applied to the library directly."
-                : "AI tags are queued for review.")),
-      ])
-      : null,
     visibleSettingsTabKeys.includes("derivation")
       ? h("div", { key: "derivation-rules-panel", hidden: activeSettingsTab !== "derivation" },
       h(DerivedSegmentRuleSettings, {

@@ -93,7 +93,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(92, endpoints.Length);
+        Assert.Equal(90, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -171,10 +171,6 @@ public sealed class ExtensionTests
 
         var expected = new Dictionary<string, EndpointPolicy>
         {
-            ["GET /api/plugins/segment-studio/ai-tagging/settings"] =
-                new([SegmentStudioExtension.AnalysisSettingsManagePermission]),
-            ["PUT /api/plugins/segment-studio/ai-tagging/settings"] =
-                new([SegmentStudioExtension.AnalysisSettingsManagePermission]),
             ["GET /api/plugins/segment-studio/videos/{videoId:int}/analysis-runs"] =
                 new([Permissions.SegmentsRead], EntityKinds.Video, "videoId", Permissions.VideosRead),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/native-segments/import"] =
@@ -425,7 +421,6 @@ public sealed class ExtensionTests
                 SegmentStudioExtension.ProvenanceManagePermission,
                 SegmentStudioExtension.LineageManagePermission,
                 SegmentStudioExtension.LineageMaintenancePermission,
-                SegmentStudioExtension.AnalysisSettingsManagePermission,
             ],
             definitions.Select(definition => definition.Key));
         Assert.All(definitions, definition => Assert.True(definition.GrantToAdminsByDefault));

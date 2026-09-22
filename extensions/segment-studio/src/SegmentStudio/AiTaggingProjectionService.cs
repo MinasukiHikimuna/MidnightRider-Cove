@@ -10,12 +10,10 @@ public sealed record AiTaggingProjectionRequest(
     int VideoId,
     int VideoFileId,
     Guid RunId,
-    string Mode,
     string? SourceFingerprint,
-    IReadOnlyList<AiTaggingCandidate> Candidates,
-    IReadOnlyList<AiModelDescriptor> Models);
+    IReadOnlyList<AiTaggingCandidate> Candidates);
 
-public sealed record AiTaggingProjectionResult(int CandidateCount, int SegmentCount);
+public sealed record AiTaggingProjectionResult(int CandidateCount);
 
 public interface IAiTaggingProjectionService
 {
@@ -83,17 +81,9 @@ public sealed class AiTaggingProjectionService(ITagRepository tags)
         run.UpdatedAt = now;
         run.CompletedAt = now;
 
-        if (SegmentStudioModes.NormalizePublic(request.Mode) == SegmentStudioModes.Basic)
-        {
-            await db.SaveChangesAsync(ct);
-            var segmentCount = await ProjectBasicNativeSegmentsAsync(
-                db, run, request.Candidates, request.Models, ct);
-            return new AiTaggingProjectionResult(0, segmentCount);
-        }
-
         var candidateCount = await ProjectReviewCandidatesAsync(db, run, request.Candidates, ct);
         await db.SaveChangesAsync(ct);
-        return new AiTaggingProjectionResult(candidateCount, 0);
+        return new AiTaggingProjectionResult(candidateCount);
     }
 
     /// <summary>
@@ -175,203 +165,6 @@ public sealed class AiTaggingProjectionService(ITagRepository tags)
             reusableItems.Add(created);
         }
         return candidates.Length;
-    }
-
-    private static async Task<int> ProjectBasicNativeSegmentsAsync(
-        DbContext db,
-        SegmentStudioAnalysisRun run,
-        IReadOnlyList<AiTaggingCandidate> analysisSegments,
-        IReadOnlyList<AiModelDescriptor> models,
-        CancellationToken ct)
-    {
-        var requestedTagNames = analysisSegments
-            .Select(segment => segment.TagName.ToUpper())
-            .Distinct()
-            .ToArray();
-        var matchingTags = await db.Set<Tag>().AsNoTracking()
-            .Where(tag => requestedTagNames.Contains(tag.Name.ToUpper()))
-            .Select(tag => new { tag.Id, tag.Name })
-            .ToListAsync(ct);
-        var tagsByName = matchingTags
-            .GroupBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() == 1)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Single().Id,
-                StringComparer.OrdinalIgnoreCase);
-        var matchingTagIds = tagsByName.Values.Distinct().ToArray();
-        var existing = await db.Set<Segment>()
-            .Where(segment =>
-                segment.HostType == SegmentHostType.Video
-                && segment.HostId == run.VideoId
-                && segment.TagId != null
-                && matchingTagIds.Contains(segment.TagId.Value)
-                && segment.SourceKey == "ext:ai.tagging")
-            .ToListAsync(ct);
-        var existingByProjection = existing
-            .GroupBy(segment => (
-                TagId: segment.TagId!.Value,
-                segment.StartSec,
-                EndSec: segment.EndSec ?? segment.StartSec,
-                Kind: segment.Kind ?? "tag",
-                Title: segment.Title ?? ""))
-            .ToDictionary(group => group.Key, group => group.First());
-        var modelsByCategory = models
-            .SelectMany(model => (model.Categories ?? [])
-                .Select(category => new { Category = category, Model = model }))
-            .GroupBy(candidate => candidate.Category,
-                StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Select(candidate => candidate.Model).ToArray(),
-                StringComparer.OrdinalIgnoreCase);
-        var now = DateTime.UtcNow;
-        var projected = new List<(
-            Segment Segment,
-            AiTaggingCandidate Candidate,
-            string ModelKey)>();
-        foreach (var candidate in analysisSegments
-                     .Where(candidate =>
-                         tagsByName.ContainsKey(candidate.TagName)))
-        {
-            var tagId = tagsByName[candidate.TagName];
-            var projection = (
-                TagId: tagId,
-                StartSec: candidate.StartSeconds,
-                EndSec: candidate.EndSeconds,
-                Kind: candidate.Kind,
-                Title: candidate.Title);
-            if (existingByProjection.TryGetValue(projection, out var reused))
-            {
-                reused.SourceRunId = run.Id.ToString();
-                reused.Confidence = candidate.Confidence is double reusedConfidence
-                    ? (float)reusedConfidence
-                    : null;
-                reused.UpdatedAt = now;
-                var reusedModels =
-                    modelsByCategory.GetValueOrDefault(candidate.ModelKey)
-                    ?? [];
-                projected.Add((
-                    reused,
-                    candidate,
-                    reusedModels.Length == 1
-                        ? reusedModels[0].ConfigName
-                        : candidate.ModelKey));
-                continue;
-            }
-            var created = new Segment
-            {
-                HostType = SegmentHostType.Video,
-                HostId = run.VideoId,
-                TagId = tagId,
-                StartSec = candidate.StartSeconds,
-                EndSec = candidate.EndSeconds,
-                Kind = candidate.Kind,
-                Title = candidate.Title,
-                SourceKey = "ext:ai.tagging",
-                SourceRunId = run.Id.ToString(),
-                Confidence = candidate.Confidence is double createdConfidence
-                    ? (float)createdConfidence
-                    : null,
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Add(created);
-            existingByProjection[projection] = created;
-            var createdModels =
-                modelsByCategory.GetValueOrDefault(candidate.ModelKey)
-                ?? [];
-            projected.Add((
-                created,
-                candidate,
-                createdModels.Length == 1
-                    ? createdModels[0].ConfigName
-                    : candidate.ModelKey));
-        }
-        await db.SaveChangesAsync(ct);
-        if (db.Model.FindEntityType(typeof(FieldProvenance)) is null)
-            return projected.Count;
-        var projectedIds = projected
-            .Select(projection => projection.Segment.Id)
-            .Distinct()
-            .ToArray();
-        var sourceRunId = run.Id.ToString();
-        var existingEvidence = await db.Set<FieldProvenance>()
-            .Where(row =>
-                row.HostType == AffinityHostType.Segment
-                && projectedIds.Contains(row.HostId)
-                && row.SourceKey == "ext:ai.tagging"
-                && row.SourceRunId == sourceRunId)
-            .ToListAsync(ct);
-        var existingByKey = existingEvidence.ToDictionary(row => (
-            row.HostId,
-            row.FieldKey,
-            row.SourceKey,
-            row.SourceRunId,
-            row.ModelKey));
-        var projectedKeys = new HashSet<(
-            int HostId,
-            string FieldKey,
-            string SourceKey,
-            string? SourceRunId,
-            string? ModelKey)>();
-        foreach (var projection in projected)
-        {
-            var fields = new Dictionary<string, object?>
-            {
-                ["tag_id"] = projection.Segment.TagId,
-                ["start_sec"] = projection.Segment.StartSec,
-                ["end_sec"] = projection.Segment.EndSec,
-                ["kind"] = projection.Segment.Kind,
-                ["title"] = projection.Segment.Title,
-            };
-            foreach (var field in fields)
-            {
-                var key = (
-                    projection.Segment.Id,
-                    field.Key,
-                    "ext:ai.tagging",
-                    sourceRunId,
-                    projection.ModelKey);
-                projectedKeys.Add(key);
-                var valueJson = JsonSerializer.Serialize(
-                    field.Value, JsonOptions);
-                float? confidence =
-                    projection.Candidate.Confidence is double value
-                        ? (float)value
-                        : null;
-                if (existingByKey.TryGetValue(key, out var evidence))
-                {
-                    evidence.ValueJson = valueJson;
-                    evidence.Confidence = confidence;
-                    evidence.UpdatedAt = now;
-                    continue;
-                }
-                var created = new FieldProvenance
-                {
-                    HostType = AffinityHostType.Segment,
-                    HostId = projection.Segment.Id,
-                    FieldKey = field.Key,
-                    ValueJson = valueJson,
-                    SourceKey = "ext:ai.tagging",
-                    SourceRunId = sourceRunId,
-                    ModelKey = projection.ModelKey,
-                    Confidence = confidence,
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                };
-                db.Add(created);
-                existingByKey[key] = created;
-            }
-        }
-        db.RemoveRange(existingEvidence.Where(evidence =>
-            !projectedKeys.Contains((
-                evidence.HostId,
-                evidence.FieldKey,
-                evidence.SourceKey,
-                evidence.SourceRunId,
-                evidence.ModelKey))));
-        return projected.Count;
     }
 
     private async Task<Dictionary<string, int>> ResolveModelTagIdsAsync(

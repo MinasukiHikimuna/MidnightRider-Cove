@@ -326,12 +326,10 @@ test("settings expose only sections present in the server feature profile", () =
     ["general", "shortcuts", "performer-slots", "derivation"],
   );
   assert.match(settings, /visibleSegmentStudioSettingsTabs\(profile\)/);
-  assert.match(settings, /AI tagging/);
-  assert.match(settings, /Queue for review/);
-  assert.match(settings, /requestJson\("\/ai-tagging\/settings"/);
-  assert.match(settings, /method: "PUT"/);
-  assert.match(settings, /error\.status === 403/);
-  assert.match(settings, /!analysisCanManage/);
+  // Where AI tagging results go is no longer a setting: Segment Studio's
+  // capability always queues candidates for review, and a user who wants
+  // ordinary Cove segments runs Cove's own AI Tagging instead.
+  assert.doesNotMatch(settings, /ai-tagging\/settings|analysisMode|analysisCanManage/);
   assert.match(settings, /hidden: activeSettingsTab !== "shortcuts" \},\s+h\(PlaybackShortcutSettings/);
   assert.match(settings, /hidden: activeSettingsTab !== "performer-slots" \},\s+h\(PerformerSlotOverviewSettings/);
   assert.match(settings, /hidden: activeSettingsTab !== "derivation" \},\s+h\(DerivedSegmentRuleSettings/);
@@ -343,21 +341,16 @@ test("settings expose only sections present in the server feature profile", () =
   assert.doesNotMatch(settings, /Organization|Create group|SegmentGroupCard/);
 });
 
-test("General settings order workflow, confirmations, then Full-only analysis", () => {
+test("General settings order workflow, then confirmations", () => {
   const settings = source.slice(
     source.indexOf("function SegmentStudioSettingsPage"),
     source.indexOf("function SegmentStudioTabs"),
   );
   const workflow = settings.indexOf('key: "mode"');
   const confirmations = settings.indexOf('key: "confirmations"');
-  const analysis = settings.indexOf('key: "analysis"');
 
   assert.ok(workflow >= 0 && workflow < confirmations);
-  assert.ok(confirmations < analysis);
-  assert.match(settings, /if \(profile\.effectiveMode !== "full"\)/);
-  assert.match(settings, /setAnalysisMessage\(""\);\s*setAnalysisLoading\(true\);/);
-  assert.match(settings, /\.then\(\(settings\) => \{\s*setAnalysisCanManage\(true\);/);
-  assert.match(settings, /profile\.effectiveMode === "full"\s*\? h\("section", \{ key: "analysis"/);
+  assert.doesNotMatch(settings, /key: "analysis"/);
 });
 
 test("settings leave native tag group administration to Cove", () => {
