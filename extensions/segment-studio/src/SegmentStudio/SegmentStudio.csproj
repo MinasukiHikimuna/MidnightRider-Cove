@@ -6,6 +6,24 @@
 
   <!-- Cove host contracts are supplied compile-only by Directory.Build.targets. -->
 
+  <!--
+    AI.Extensions.Abstractions carries the IAiCapabilityContributor contract shared with
+    AI Core. Unlike the Cove host contracts this is NOT provided by the host, so it ships
+    with the package and is declared in extension.json's sharedAssemblies: the host then
+    loads a single copy for every extension that declares it, keeping the contract types
+    reference-identical across the AssemblyLoadContext boundary.
+
+    Point AiExtensionsAbstractionsPath at the DLL from the installed AI Core release the
+    extension is built against; mismatched builds would be unified by file timestamp.
+  -->
+
+  <ItemGroup>
+    <Reference Include="AI.Extensions.Abstractions">
+      <HintPath>$(AiExtensionsAbstractionsPath)</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="SegmentStudioBaseline.sql" />
     <EmbeddedResource Include="SegmentStudioAnalysisSourceTags.sql" />

@@ -8,6 +8,14 @@
     <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
     <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>
+    <!--
+      AI.Extensions.Abstractions carries the IAiCapabilityContributor contract shared with
+      AI Core. It is not host-provided, so it ships with the package and is declared in
+      extension.json's sharedAssemblies. Point this at the DLL from the installed AI Core
+      release being built against: mismatched builds are unified by file timestamp, so the
+      copies must agree.
+    -->
+    <AiExtensionsAbstractionsPath Condition="'$(AiExtensionsAbstractionsPath)' == '' and '$(CoveSourceRoot)' != ''">$(CoveSourceRoot)\gitignored\dev\instances\app\state\config\extensions\cove.community.ai.core\AI.Extensions.Abstractions.dll</AiExtensionsAbstractionsPath>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">$(MSBuildThisFileDirectory)..\..\..\cove</CoveSourceRoot>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj')">true</UseLocalCoveSource>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == ''">false</UseLocalCoveSource>

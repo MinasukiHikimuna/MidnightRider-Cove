@@ -6,11 +6,16 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <!-- Shared AI contract, matching the copy SegmentStudio ships (see its csproj). -->
+    <Reference Include="AI.Extensions.Abstractions">
+      <HintPath>$(AiExtensionsAbstractionsPath)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
