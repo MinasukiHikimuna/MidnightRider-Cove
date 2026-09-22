@@ -326,9 +326,9 @@ test("settings expose only sections present in the server feature profile", () =
     ["general", "shortcuts", "performer-slots", "derivation"],
   );
   assert.match(settings, /visibleSegmentStudioSettingsTabs\(profile\)/);
-  assert.match(settings, /Analysis service/);
-  assert.match(settings, /Server URL/);
-  assert.match(settings, /requestJson\("\/analysis\/settings"/);
+  assert.match(settings, /AI tagging/);
+  assert.match(settings, /Queue for review/);
+  assert.match(settings, /requestJson\("\/ai-tagging\/settings"/);
   assert.match(settings, /method: "PUT"/);
   assert.match(settings, /error\.status === 403/);
   assert.match(settings, /!analysisCanManage/);
@@ -356,7 +356,7 @@ test("General settings order workflow, confirmations, then Full-only analysis", 
   assert.ok(confirmations < analysis);
   assert.match(settings, /if \(profile\.effectiveMode !== "full"\)/);
   assert.match(settings, /setAnalysisMessage\(""\);\s*setAnalysisLoading\(true\);/);
-  assert.match(settings, /\.then\(\(\[settings, status\]\) => \{\s*setAnalysisCanManage\(true\);/);
+  assert.match(settings, /\.then\(\(settings\) => \{\s*setAnalysisCanManage\(true\);/);
   assert.match(settings, /profile\.effectiveMode === "full"\s*\? h\("section", \{ key: "analysis"/);
 });
 

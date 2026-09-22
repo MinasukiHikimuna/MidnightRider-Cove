@@ -14,7 +14,7 @@ import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
 import { DEFAULT_EDITOR_LAYOUT, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
-import { ChevronDown, StepBack, StepForward } from "@cove/runtime/lucide-react";
+import { StepBack, StepForward } from "@cove/runtime/lucide-react";
 
 function restoreDisabledToolbarActionFocus(trigger, toolbar, fallbackActionId) {
   if (!trigger?.disabled || !fallbackActionId) return false;

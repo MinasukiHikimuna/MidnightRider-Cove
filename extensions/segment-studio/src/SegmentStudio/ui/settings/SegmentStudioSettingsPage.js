@@ -64,10 +64,8 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     const controller = new AbortController();
     setAnalysisMessage("");
     setAnalysisLoading(true);
-    Promise.all([
-      requestJson("/ai-tagging/settings", { signal: controller.signal }),
-    ])
-      .then(([settings]) => {
+    requestJson("/ai-tagging/settings", { signal: controller.signal })
+      .then((settings) => {
         setAnalysisCanManage(true);
         setAnalysisMode(settings?.mode || "full");
       })

@@ -121,7 +121,7 @@ test("common action toolbar exposes right-aligned frame stepping controls", () =
   const view = sourceByModule["editor/SegmentEditorView.js"];
   const actions = view.slice(view.indexOf('key: "common-actions"'), view.indexOf('key: "timeline"'));
 
-  assert.match(view, /import \{ ChevronDown, StepBack, StepForward \} from "@cove\/runtime\/lucide-react"/);
+  assert.match(view, /import \{ StepBack, StepForward \} from "@cove\/runtime\/lucide-react"/);
   assert.match(actions, /key: "frame-actions"[\s\S]*className: "ml-auto flex items-center gap-1"/);
   assert.match(actions, /disabled: !video\.videoFile[\s\S]*stepVideoFrame\(-1\)[\s\S]*aria-label": "Previous frame"/);
   assert.match(actions, /h\(StepBack, \{[\s\S]*"aria-hidden": true/);
@@ -169,12 +169,9 @@ test("Basic omitted collections use stable fallbacks across renders", () => {
   assert.match(controller, /shotBoundaries = detail\.shotBoundaries \|\| EMPTY_EDITOR_COLLECTION/);
 });
 
-test("Basic mode hides Full Scan and skips Full-only analysis requests", async () => {
+test("Basic mode skips Full-only analysis requests", async () => {
   const view = sourceByModule["editor/SegmentEditorView.js"];
-  assert.match(
-    view,
-    /compatibilityMode \? h\("div", \{[\s\S]{0,120}key: "full-analysis"/,
-  );
+  assert.doesNotMatch(view, /key: "full-analysis"|segment-studio-full-scan-run/);
   assert.match(
     view,
     /compatibilityMode \? h\("button", \{\s*key: "complete-review",[\s\S]{0,600}`Publish approved\$\{approvedDraftCount \? ` \(\$\{approvedDraftCount\}\)` : ""\}`\) : null/,
@@ -302,30 +299,6 @@ test("bulk workflow actions share counts, disabled states, dialogs, and toolbar 
   assert.match(workflowActions, /if \(materializePreview\) return/);
   assert.match(workflowActions, /refreshMaterializationPreview\(\)/);
   assert.match(workflowActions, /if \(error\.status === 409\) setMaterializePreview\(null\)/);
-});
-
-test("Full Scan offers AI-only and shot-boundary-only runs", () => {
-  const view = sourceByModule["editor/SegmentEditorView.js"];
-  const analysis = sourceByModule["editor/hooks/useSegmentAnalysis.js"];
-  const controller = sourceByModule["editor/SegmentEditor.js"];
-
-  assert.match(view, /import \{[^}]*ChevronDown[^}]*\} from "@cove\/runtime\/lucide-react"/);
-  assert.match(view, /aria-label": "Choose Full Scan analyses"/);
-  assert.match(view, /h\(ChevronDown, \{ className: "h-4 w-4" \}\)/);
-  assert.match(view, /segment-studio-full-scan-run[^"\n]*px-3 py-1\.5 text-xs/);
-  assert.match(view, /segment-studio-full-scan-arrow[^"\n]*border-l border-white\/30[^"\n]*py-1\.5/);
-  assert.match(view, /\["AI analysis only", \["aiTagging"\]\]/);
-  assert.match(view, /\["Shot boundaries only", \["omnishotcut"\]\]/);
-  assert.match(analysis, /async function startFullAnalysis\(analyses = null\)/);
-  assert.match(analysis, /const replaceShotBoundaries = requestedAnalyses\.includes\("omnishotcut"\)/);
-  assert.match(analysis, /replaceShotBoundaries && !window\.confirm\(/);
-  assert.match(analysis, /analyses: requestedAnalyses/);
-  assert.match(analysis, /replaceShotBoundaries,/);
-  assert.match(analysis, /expectedShotBoundaryFingerprint: replaceShotBoundaries/);
-  assert.match(controller, /shotBoundaryFingerprint\(detail\.shotBoundaries \|\| \[\]\)/);
-  assert.doesNotMatch(view, /Repair provenance|repair-analysis-provenance|backfillAnalysisProvenance/);
-  assert.doesNotMatch(analysis, /analysisProvenanceRepair|backfillAnalysisProvenance|analysis-runs\/\$\{analysisRun\.id\}\/provenance/);
-  assert.doesNotMatch(view, /analysis-summary|AI candidates|Native segments updated/);
 });
 
 test("Basic structural commands record native history and use native restoration", () => {
