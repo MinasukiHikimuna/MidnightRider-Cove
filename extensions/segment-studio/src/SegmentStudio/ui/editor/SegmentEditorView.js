@@ -1,6 +1,6 @@
 import { formatTime } from "../shared/api.js";
 import { DerivedSegmentIcon, EditorToolbarIcon, provenanceSourceLabel } from "./SegmentDetails.js";
-import { h, useExtensionKeyboardBindings, useMemo, useRef, VideoPlayer } from "../shared/runtime.js";
+import { ExtensionEntityActions, h, useExtensionKeyboardBindings, useMemo, useRef, VideoPlayer } from "../shared/runtime.js";
 import { segmentRailItemStyle, SegmentStateBadge } from "../shared/presentation.js";
 import { setBackLinkNavigation } from "../discovery/components.js";
 import { PerformerAvatar, PerformerSublaneAvatars, swimlaneDisplayLabel } from "./model/swimlanes.js";
@@ -165,6 +165,17 @@ function SegmentEditorView(props) {
         ]) : null,
         h("div", { key: "toolbar", className: "flex flex-wrap items-center justify-between gap-2" }, [
           h("div", { key: "workflow", className: "flex flex-wrap items-center gap-1.5" }, [
+            // Run AI and any other contributed video action, rendered by the host
+            // exactly as they are on a video's own page rather than reimplemented here.
+            video?.id
+              ? h(ExtensionEntityActions, {
+                key: "extension-actions",
+                entityType: "video",
+                entityId: video.id,
+                renderMode: "toolbar",
+                onInvoked: onReload,
+              })
+              : null,
             compatibilityMode ? h("button", {
               key: "auto-assign-performers",
               type: "button",

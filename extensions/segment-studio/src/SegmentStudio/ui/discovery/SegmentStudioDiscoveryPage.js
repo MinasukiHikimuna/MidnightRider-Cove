@@ -1,4 +1,4 @@
-import { ListPage, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
+import { ExtensionSelectionActions, ListPage, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -113,6 +113,14 @@ function SegmentStudioDiscoveryPage({
       onSelectAll: showReviewStates ? selectAll : undefined,
       onSelectNone: showReviewStates ? selectNone : undefined,
       onInvertSelection: showReviewStates ? invertSelection : undefined,
+      // The host renders whatever extensions contribute for a video selection, so
+      // Run AI here is the same action, and the same dialog, as the native videos
+      // page. Only the contributed actions are rendered: Segment Studio's own
+      // ownership and lineage rules govern deletion, so the native bulk mutations
+      // that would bypass them stay out of this bar.
+      selectionActions: showReviewStates && selectedIds.size > 0
+        ? h(ExtensionSelectionActions, { entityType: "video", selectedIds })
+        : null,
     }, [
       !loading && result.items.length === 0 ? h("p", { key: "empty", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" }, "No videos match these filters.") : null,
       !loading && displayMode === "grid" ? h("section", { key: "grid", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, result.items.map((item) => h(DiscoveryCard, { key: item.videoId, item, onNavigate, showReviewStates, selected: selectedIds.has(item.videoId), selectionActive: selectedIds.size > 0, onSelect: showReviewStates ? toggleSelection : null }))) : null,

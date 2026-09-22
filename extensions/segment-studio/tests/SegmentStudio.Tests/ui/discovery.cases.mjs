@@ -656,3 +656,18 @@ test("editor tag selection uses Cove's single autocomplete control", () => {
   const tagEditor = editor.slice(editor.indexOf('key: "tag-editor"'), editor.indexOf('key: "selected"'));
   assert.doesNotMatch(tagEditor, /h\("select"/);
 });
+
+test("selected videos offer the host's contributed actions, not a private scan", () => {
+  const discovery = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
+
+  // Run AI reaches Segment Studio because the host renders what extensions
+  // contribute for a video selection, so it is the same action and the same
+  // dialog as the native videos page rather than a second implementation.
+  assert.match(discovery, /selectionActions: showReviewStates && selectedIds\.size > 0/);
+  assert.match(discovery, /h\(ExtensionSelectionActions, \{ entityType: "video", selectedIds \}\)/);
+
+  // Segment Studio governs its own deletion through ownership and lineage, so the
+  // native bulk mutations that would bypass those rules stay out of this bar.
+  assert.doesNotMatch(discovery, /VideoSelectionActions/);
+  assert.doesNotMatch(discovery, /Full Scan|startSelectedAnalysis|runSelectedDiscoveryAnalysis/);
+});

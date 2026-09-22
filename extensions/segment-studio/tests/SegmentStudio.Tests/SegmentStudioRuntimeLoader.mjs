@@ -13,6 +13,8 @@ const runtimeModules = {
     "export const DetailListToolbar = () => null;",
     "export const EntityReferenceMultiSelector = () => null;",
     "export const EntityReferenceSelector = () => null;",
+    "export const ExtensionEntityActions = () => null;",
+    "export const ExtensionSelectionActions = () => null;",
     "export const ListPage = () => null;",
     "export const VideoPlayer = () => null;",
     "export const formatDuration = String;",

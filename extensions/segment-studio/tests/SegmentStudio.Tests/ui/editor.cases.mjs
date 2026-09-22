@@ -1506,3 +1506,15 @@ test("editor video title links to Cove without a separate open-video action", ()
   assert.match(source, /title: tooltip \|\| undefined/);
   assert.doesNotMatch(editor, /Open Cove video/);
 });
+
+test("the editor toolbar offers the host's video actions instead of its own scan", () => {
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+
+  assert.match(view, /h\(ExtensionEntityActions, \{[\s\S]{0,200}entityType: "video"/);
+  assert.match(view, /entityId: video\.id/);
+  assert.match(view, /renderMode: "toolbar"/);
+  // A contributed action can change what the editor is showing, so a completed
+  // one reloads rather than leaving stale segments on screen.
+  assert.match(view, /onInvoked: onReload/);
+  assert.doesNotMatch(view, /startFullAnalysis|segment-studio-full-scan-run/);
+});

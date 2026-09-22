@@ -9,6 +9,8 @@ import {
   DetailListToolbar,
   EntityReferenceMultiSelector,
   EntityReferenceSelector,
+  ExtensionEntityActions,
+  ExtensionSelectionActions,
   ListPage,
   VideoPlayer,
   formatDuration,
@@ -22,4 +24,4 @@ const { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState
 
 const h = React.createElement;
 
-export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ListPage, VideoPlayer, formatDuration, getDefaultFilter, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };
+export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, ListPage, VideoPlayer, formatDuration, getDefaultFilter, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };
