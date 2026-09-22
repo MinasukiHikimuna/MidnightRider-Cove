@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AI.Extensions.Abstractions;
 using Cove.Core.Entities;
 using Cove.Core.Interfaces;
@@ -22,14 +21,12 @@ public interface IAiTaggingProjectionService
 }
 
 /// <summary>
-/// Writes the tag spans of a native AI run into Segment Studio.
+/// Writes the tag spans of a native AI run into Segment Studio's review queue.
 ///
-/// What that means depends on the user's output mode, and the difference is the
-/// reason this is not a single code path. In Full mode the spans become
-/// reviewable analysis candidates, each paired with a draft item, so nothing
-/// reaches the library until a reviewer accepts it. In Basic mode there is no
-/// review queue, so the spans are projected straight onto native Cove segments
-/// with field provenance recorded against the run that produced them.
+/// The spans become analysis candidates, each paired with a draft item, so nothing
+/// reaches the library until a reviewer accepts it. A user who wants ordinary Cove
+/// segments instead runs Cove's own AI Tagging capability, which writes them
+/// directly; Segment Studio deliberately has no path that does.
 ///
 /// This is the projection half of what the external analysis service used to do;
 /// the aggregation half is <see cref="AiTaggingCandidateBuilder"/>. Both moved
@@ -38,8 +35,6 @@ public interface IAiTaggingProjectionService
 public sealed class AiTaggingProjectionService(ITagRepository tags)
     : IAiTaggingProjectionService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     /// <summary>
     /// The statuses the `CK_segment_studio_analysis_runs_status` check constraint
     /// permits. Pinned here because the tests run on SQLite, which does not enforce

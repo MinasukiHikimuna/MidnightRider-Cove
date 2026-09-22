@@ -41,14 +41,14 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         services.AddScoped<ILineageIntegrityService, LineageIntegrityService>();
         services.AddScoped<INativeAiProvenanceIngestionService, NativeAiProvenanceIngestionService>();
         services.AddScoped<IShotBoundaryProjectionService, ShotBoundaryProjectionService>();
-        // Surfaces shot-boundary detection in Cove's native Run AI dialog. Singleton
-        // because AI Core resolves contributors once from the exchange; it opens its
-        // own scope per dispatch.
-        services.AddSingleton<IAiCapabilityContributor, SegmentStudioShotBoundaryContributor>();
         services.AddScoped<IAiTaggingProjectionService, AiTaggingProjectionService>();
-        // Surfaces AI tagging in the same dialog, projecting its per-frame
-        // predictions into Segment Studio's reviewable spans.
-        services.AddSingleton<IAiCapabilityContributor, SegmentStudioAiTaggingContributor>();
+        // Surfaces shot boundaries and AI tagging in Cove's native Run AI dialog.
+        // Exactly one contributor per extension: AI Core dispatches a run's claims
+        // to one contributor per extension id, so a second registration here would
+        // be silently ignored along with every claim it owns. Singleton because AI
+        // Core resolves contributors once from the exchange; it opens its own scope
+        // per dispatch.
+        services.AddSingleton<IAiCapabilityContributor, SegmentStudioAiContributor>();
         services.AddScoped<INativeSegmentImportService, NativeSegmentImportService>();
     }
 

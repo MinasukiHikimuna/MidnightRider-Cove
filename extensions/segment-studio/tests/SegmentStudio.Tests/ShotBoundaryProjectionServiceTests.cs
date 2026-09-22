@@ -209,7 +209,10 @@ public class ShotBoundaryProjectionServiceTests
         return new AiDispatchRequest(
             new AiRunContext("run-1", AiMediaKinds.Video, "/media/example.mp4", "/media/example.mp4",
                 hostEntityType, VideoId, 12.0, 2.0),
-            fixture.CreateContributor().Describe().Claims,
+            // Only the shot-boundary claim: these cases are about that projection,
+            // and the contributor now also routes tagging.
+            [.. fixture.CreateContributor().Describe().Claims
+                .Where(claim => claim.ClaimId == SegmentStudioAiContributor.ShotBoundaryClaimId)],
             new AiAnalyzeResult
             {
                 MediaKind = AiMediaKinds.Video,
@@ -248,9 +251,9 @@ public class ShotBoundaryProjectionServiceTests
             return new Fixture(connection, context, services.BuildServiceProvider(), probe);
         }
 
-        public SegmentStudioShotBoundaryContributor CreateContributor()
+        public SegmentStudioAiContributor CreateContributor()
             => new(services.GetRequiredService<IServiceScopeFactory>(),
-                NullLogger<SegmentStudioShotBoundaryContributor>.Instance);
+                NullLogger<SegmentStudioAiContributor>.Instance);
 
         public async ValueTask DisposeAsync()
         {

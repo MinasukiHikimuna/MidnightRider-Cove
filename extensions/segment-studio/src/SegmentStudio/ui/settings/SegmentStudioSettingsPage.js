@@ -51,18 +51,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     return () => controller.abort();
   }, []);
 
-  async function loadGroups(signal) {
-    const loaded = await requestJson("/segment-groups", signal ? { signal } : undefined);
-    setGroups(loaded || []);
-  }
-
-  useEffect(() => {
-    const controller = new AbortController();
-    loadGroups(controller.signal)
-      .catch((error) => { if (error.name !== "AbortError") setMessage(error.message || "Unable to load tag groups."); });
-    return () => controller.abort();
-  }, []);
-
   async function saveMode(nextMode) {
     if (nextMode === profile.requestedMode) return;
     setBusy(true);
