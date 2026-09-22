@@ -1,0 +1,38 @@
+# Copy to the AI server as config/models/omnishotcut_shot_boundaries.yaml.
+# That directory is gitignored there: model configs are deployment state,
+# supplied by the operator alongside the weights, like every other model.
+type: shot_boundary
+model_file_name: omnishotcut_shot_boundaries
+model_category: [shot_boundaries]
+model_capabilities: [temporal_segmentation]
+supported_target_scopes: [asset]
+full_image_model: false
+model_type: ShotBoundary
+model_version: 1.0
+model_identifier: 1000
+model_info: "OmniShotCut shot-boundary detection"
+
+# Asset-scope models drive their own decode, so they declare no geometry for
+# the shared frame preprocessor.
+model_image_size: null
+
+# A transformer with sinusoidal position encodings overflows in fp16.
+model_precision: float32
+model_weight_mb: 200
+
+max_batch_size: 1
+max_model_batch_size: 1
+max_queue_size: 2
+instance_count: 1
+batch_collect_timeout_ms: 0
+
+# clean_shot keeps only ordinary cuts; default also reports transitions.
+mode: clean_shot
+context_frames: 0
+
+preprocess_config:
+  width: 128
+  height: 96
+  normalization: 0      # ImageNet
+  device: cpu
+  precision: float32
