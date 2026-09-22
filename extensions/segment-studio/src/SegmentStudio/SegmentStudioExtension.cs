@@ -57,6 +57,12 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         // because AI Core resolves contributors once from the exchange; it opens its
         // own scope per dispatch.
         services.AddSingleton<IAiCapabilityContributor, SegmentStudioShotBoundaryContributor>();
+        services.AddScoped<IAiTaggingProjectionService, AiTaggingProjectionService>();
+        services.AddSingleton<IAiTaggingProjectionSettingsStore>(
+            _ => new AiTaggingProjectionSettingsStore(() => Store));
+        // Surfaces AI tagging in the same dialog, projecting its per-frame
+        // predictions into Segment Studio's reviewable spans.
+        services.AddSingleton<IAiCapabilityContributor, SegmentStudioAiTaggingContributor>();
         services.AddScoped<INativeSegmentImportService, NativeSegmentImportService>();
     }
 
