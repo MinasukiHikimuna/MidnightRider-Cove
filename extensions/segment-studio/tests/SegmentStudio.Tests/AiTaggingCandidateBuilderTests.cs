@@ -236,3 +236,26 @@ public sealed class AiTaggingCandidateBuilderParityTests
         Assert.StartsWith("sha256:", candidate.CandidateKey);
     }
 }
+
+public sealed class AiTaggingProjectionStatusTests
+{
+    /// <summary>
+    /// The run row is written at the very end of a successful analysis, so a status
+    /// the database rejects throws away everything the run produced — and the tests
+    /// run on SQLite, which does not enforce the check constraint that rejects it.
+    /// This pins the written status to a value PostgreSQL accepts.
+    /// </summary>
+    [Fact]
+    public void CompletedStatusIsOneTheDatabaseAccepts()
+        => Assert.Contains(
+            AiTaggingProjectionService.CompletedStatus,
+            AiTaggingProjectionService.AllowedRunStatuses);
+
+    [Fact]
+    public void TheReviewUiTreatsThatStatusAsFinished()
+    {
+        // The editor reloads a run it sees as "completed"; a different terminal
+        // word would store fine and then never surface its candidates.
+        Assert.Equal("completed", AiTaggingProjectionService.CompletedStatus);
+    }
+}

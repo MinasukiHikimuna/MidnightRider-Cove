@@ -42,6 +42,18 @@ public sealed class AiTaggingProjectionService(ITagRepository tags)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// The statuses the `CK_segment_studio_analysis_runs_status` check constraint
+    /// permits. Pinned here because the tests run on SQLite, which does not enforce
+    /// check constraints: a status outside this set passes every test and then fails
+    /// against PostgreSQL at the end of a completed analysis, discarding its results.
+    /// </summary>
+    public static readonly IReadOnlyList<string> AllowedRunStatuses =
+        ["queued", "running", "completed", "failed", "cancelled"];
+
+    /// <summary>Terminal status for a run that produced its results.</summary>
+    public const string CompletedStatus = "completed";
+
     public async Task<AiTaggingProjectionResult> ProjectAsync(
         DbContext db, AiTaggingProjectionRequest request, CancellationToken ct)
     {
@@ -66,7 +78,7 @@ public sealed class AiTaggingProjectionService(ITagRepository tags)
             };
             db.Add(run);
         }
-        run.Status = "succeeded";
+        run.Status = CompletedStatus;
         run.SourceFingerprint = request.SourceFingerprint;
         run.UpdatedAt = now;
         run.CompletedAt = now;
