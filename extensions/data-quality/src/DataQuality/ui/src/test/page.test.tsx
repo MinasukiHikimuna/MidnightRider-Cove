@@ -1296,3 +1296,42 @@ it("selects every tag on load for tag reviews that ask for it", async () => {
   expect(screen.getByRole("article", { name: "Tag 12, selected" })).toBeInTheDocument();
   expect(screen.getByText("2 selected tags")).toBeInTheDocument();
 });
+
+it("keeps walking towards the first page when an earlier page refills from the tail", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, startFrom: "end", selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
+  let remaining = [video(1), video(2), video(3), video(4), video(5), video(6)];
+  api.findMedia.mockImplementation(async (_review, filter) => {
+    const perPage = Number(filter.perPage);
+    const page = Number(filter.page);
+    return {
+      items: remaining.slice((page - 1) * perPage, page * perPage),
+      totalCount: remaining.length,
+    };
+  });
+  api.runReviewAction.mockImplementation(async (_kind, _action, ids: number[]) => {
+    remaining = remaining.filter((item) => !ids.includes(item.id));
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  // The review starts on the last page and walks towards the first.
+  await screen.findByRole("article", { name: "Video 5, selected" });
+  // Leave Video 6 behind as the tail, then answer the rest of this page.
+  fireEvent.click(screen.getByRole("button", { name: "Deselect Video 6" }));
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 5, selected" }), { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([5]);
+  // The skipped card is this page's own, so the page keeps it.
+  await waitFor(() => expect(screen.queryByRole("article", { name: "Video 5" })).not.toBeInTheDocument());
+  expect(screen.getByRole("article", { name: "Video 6" })).toBeInTheDocument();
+  // Step a page towards the head by hand, then answer that whole page.
+  const [previousPage] = await screen.findAllByRole("button", { name: "Previous page" });
+  await waitFor(() => expect(previousPage).toBeEnabled());
+  fireEvent.click(previousPage);
+  await screen.findByRole("article", { name: "Video 3, selected" });
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 3, selected" }), { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
+  expect(api.runReviewAction.mock.calls[1][2]).toEqual([3, 4]);
+  // Video 6 shifted in from the tail; the queue continues towards the head.
+  await screen.findByRole("article", { name: "Video 1, selected" });
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: /^Video 6/ })).not.toBeInTheDocument();
+});

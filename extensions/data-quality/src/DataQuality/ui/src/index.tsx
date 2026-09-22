@@ -439,6 +439,10 @@ export function DataQualityPage({
   const loadGeneration = useRef(0);
   const actionGeneration = useRef(0);
   const queueAbort = useRef<AbortController | null>(null);
+  // The cards this page held when the reviewer arrived on it. Items that
+  // appear later are refills, and in reverse traversal they arrive from the
+  // pages already passed, so they must not hold the cursor here.
+  const pageCursor = useRef<{ page: number; ids: Set<number> } | null>(null);
   const actionTagIds = JSON.stringify([
     ...new Set(
       videoReview?.actions.flatMap((action) =>
@@ -705,6 +709,13 @@ export function DataQualityPage({
           result = await load(targetFilter);
         }
         if (generation === loadGeneration.current) {
+          // Landing on a different page starts a fresh cursor; a post-action
+          // refresh of the same page keeps the arrival set it recorded.
+          if (pageCursor.current?.page !== targetPage)
+            pageCursor.current = {
+              page: targetPage,
+              ids: new Set(result.items.map((item) => item.id)),
+            };
           setQueue(result);
           // Only genuine page loads select everything; callers decide, so a
           // post-action refresh never re-expands a selection the reviewer
@@ -751,6 +762,7 @@ export function DataQualityPage({
     setMessage("");
     setActionError("");
     setQueue({ items: [], totalCount: 0 });
+    pageCursor.current = null;
     setQueueUrlError(false);
     if (!review || usesWorkspace) {
       setQueueLoading(false);
@@ -1115,10 +1127,19 @@ export function DataQualityPage({
         const refreshed = await fetchQueue(review, filter, false, reselect);
         if (!isCurrent()) return;
         let nextIds = refreshed.items.map((item) => item.id);
+        // Reviews that start from the end walk towards the first page, so a
+        // card that was not here on arrival shifted in from the pages already
+        // reviewed. Once this page's own cards are answered, continue towards
+        // the head instead of turning back to the tail the reviewer left.
+        const arrived = pageCursor.current;
+        const ownCardsLeft =
+          arrived?.page === Number(filter.page) &&
+          nextIds.some((id) => arrived.ids.has(id));
+        const reverse = (review.view.startFrom ?? "end") !== "beginning";
         if (
-          !nextIds.length &&
           refreshed.totalCount > 0 &&
-          Number(filter.page) > 1
+          Number(filter.page) > 1 &&
+          (!nextIds.length || (reverse && !ownCardsLeft))
         ) {
           const previousPage = Math.max(1, Number(filter.page) - 1);
           const previousFilter = { ...filter, page: previousPage };
