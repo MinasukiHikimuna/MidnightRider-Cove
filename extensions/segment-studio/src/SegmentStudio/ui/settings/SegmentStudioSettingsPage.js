@@ -30,8 +30,7 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
   const [groups, setGroups] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [analysisBaseUrl, setAnalysisBaseUrl] = useState("");
-  const [analysisStatus, setAnalysisStatus] = useState(null);
+  const [analysisMode, setAnalysisMode] = useState("full");
   const [analysisLoading, setAnalysisLoading] = useState(true);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState("");
@@ -66,22 +65,20 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     setAnalysisMessage("");
     setAnalysisLoading(true);
     Promise.all([
-      requestJson("/analysis/settings", { signal: controller.signal }),
-      requestJson("/analysis/status", { signal: controller.signal }),
+      requestJson("/ai-tagging/settings", { signal: controller.signal }),
     ])
-      .then(([settings, status]) => {
+      .then(([settings]) => {
         setAnalysisCanManage(true);
-        setAnalysisBaseUrl(settings?.baseUrl || "");
-        setAnalysisStatus(status);
+        setAnalysisMode(settings?.mode || "full");
       })
       .catch((error) => {
         if (error.name === "AbortError") return;
         if (error.status === 403) {
           setAnalysisCanManage(false);
-          setAnalysisMessage("You do not have permission to manage the analysis service connection.");
+          setAnalysisMessage("You do not have permission to change how AI results are applied.");
           return;
         }
-        setAnalysisMessage(error.message || "Unable to load analysis service settings.");
+        setAnalysisMessage(error.message || "Unable to load AI tagging settings.");
       })
       .finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
     return () => controller.abort();
@@ -149,25 +146,22 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     setAnalysisBusy(true);
     setAnalysisMessage("");
     try {
-      const saved = await requestJson("/analysis/settings", {
+      const saved = await requestJson("/ai-tagging/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl: analysisBaseUrl }),
+        body: JSON.stringify({ mode: analysisMode }),
       });
-      setAnalysisBaseUrl(saved?.baseUrl || "");
-      const status = await requestJson("/analysis/status");
-      setAnalysisStatus(status);
-      setAnalysisMessage(!saved?.baseUrl
-        ? "Analysis service disabled."
-        : status?.ready
-          ? "Analysis Server URL saved. The service is ready."
-          : `Analysis Server URL saved. ${status?.error || "The service is not ready."}`);
+      setAnalysisMode(saved?.mode || "full");
+      setAnalysisMessage(saved?.mode === "basic"
+        ? "AI tags will be applied to the library directly."
+        : "AI tags will be queued for review.");
     } catch (error) {
-      setAnalysisMessage(error.message || "Unable to save analysis service settings.");
+      setAnalysisMessage(error.message || "Unable to save AI tagging settings.");
     } finally {
       setAnalysisBusy(false);
     }
   }
+
 
   const backRoute = { page: "segment-studio" };
   return h("div", {
@@ -250,24 +244,23 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
     profile.effectiveMode === "full"
       ? h("section", { key: "analysis", hidden: activeSettingsTab !== "general", className: "space-y-3 rounded-lg border border-border bg-surface p-4" }, [
         h("div", { key: "heading" }, [
-          h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "Analysis service"),
+          h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "AI tagging"),
           h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
-            "Connect Full Scan to the Segment Studio analysis service. The URL must be reachable from the Cove API process."),
+            "Choose what happens to tags produced by a native AI analysis run."),
         ]),
         h("form", { key: "form", onSubmit: saveAnalysisSettings, className: "flex flex-col gap-3 sm:flex-row sm:items-end" }, [
-          h("label", { key: "url", className: "min-w-0 flex-1 space-y-1" }, [
-            h("span", { key: "label", className: "block text-sm font-medium text-foreground" }, "Server URL"),
-            h("input", {
+          h("label", { key: "mode", className: "min-w-0 flex-1 space-y-1" }, [
+            h("span", { key: "label", className: "block text-sm font-medium text-foreground" }, "Apply results"),
+            h("select", {
               key: "input",
-              type: "url",
-              value: analysisBaseUrl,
-              onChange: (event) => setAnalysisBaseUrl(event.target.value),
-              placeholder: "http://segment-studio-analysis:8766",
-              autoComplete: "off",
-              spellCheck: false,
+              value: analysisMode,
+              onChange: (event) => setAnalysisMode(event.target.value),
               disabled: analysisLoading || analysisBusy || !analysisCanManage,
               className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-            }),
+            }, [
+              h("option", { key: "full", value: "full" }, "Queue for review"),
+              h("option", { key: "basic", value: "basic" }, "Apply to the library directly"),
+            ]),
           ]),
           h("button", {
             key: "save",
@@ -279,12 +272,10 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
         h("p", { key: "status", className: "text-xs text-secondary", role: "status" },
           analysisMessage
             || (analysisLoading
-              ? "Loading analysis service settings…"
-              : analysisStatus?.configured === false
-                ? "Full Scan is not configured."
-                : analysisStatus?.ready
-                  ? "Analysis service is ready."
-                  : analysisStatus?.error || "Analysis service is configured but not ready.")),
+              ? "Loading AI tagging settings…"
+              : analysisMode === "basic"
+                ? "AI tags are applied to the library directly."
+                : "AI tags are queued for review.")),
       ])
       : null,
     visibleSettingsTabKeys.includes("derivation")

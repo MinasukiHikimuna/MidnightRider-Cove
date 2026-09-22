@@ -27,7 +27,6 @@ function useSegmentAnalysis(
   acquireSaveLock = () => () => {},
 ) {
   const [analysisRun, setAnalysisRun] = useState(null);
-  const [analysisStatus, setAnalysisStatus] = useState(null);
   const [analysisError, setAnalysisError] = useState("");
   const [nativeImportState, setNativeImportState] = useState({
     busy: false,
@@ -84,53 +83,15 @@ function useSegmentAnalysis(
     }
   }
 
-  async function startFullAnalysis(analyses = null) {
-    setAnalysisError("");
-    const requestedAnalyses = analyses || (fullMode
-      ? ["aiTagging", "omnishotcut"]
-      : ["aiTagging"]);
-    const replaceShotBoundaries = requestedAnalyses.includes("omnishotcut")
-      && shotBoundaryCount > 0;
-    if (replaceShotBoundaries && !window.confirm(
-      `Replace ${shotBoundaryCount} existing shot ${shotBoundaryCount === 1 ? "boundary" : "boundaries"} when this analysis succeeds? Existing automatic and manual shot edits will be replaced. This cannot be undone. If analysis fails, the current boundaries will remain unchanged.`,
-    )) return;
-    try {
-      const run = await requestJson(`/videos/${videoId}/analysis-runs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          analyses: requestedAnalyses,
-          replaceShotBoundaries,
-          expectedShotBoundaryFingerprint: replaceShotBoundaries
-            ? shotBoundaryRevision
-            : null,
-        }),
-      });
-      setAnalysisRun(run);
-    } catch (error) {
-      setAnalysisError(error.message || "Unable to start video analysis.");
-    }
-  }
 
   useEffect(() => {
     if (!shouldLoadSegmentAnalysis(fullMode)) {
       setAnalysisRun(null);
-      setAnalysisStatus(null);
       setAnalysisError("");
       return undefined;
     }
     const scope = createSegmentAnalysisRequestScope();
     refreshAnalysisRun(scope);
-    requestJson("/analysis/status", { signal: scope.signal })
-      .then((status) => {
-        if (!scope.isActive()) return;
-        setAnalysisStatus(status);
-        if (!status.configured) setAnalysisError("");
-      })
-      .catch((error) => {
-        if (scope.isActive() && error.name !== "AbortError")
-          setAnalysisError(error.message || "Unable to check video analysis readiness.");
-      });
     return scope.dispose;
   }, [videoId, fullMode]);
 
@@ -151,10 +112,8 @@ function useSegmentAnalysis(
   return {
     analysisError,
     analysisRun,
-    analysisStatus,
     importNativeSegments,
     nativeImportState,
-    startFullAnalysis,
   };
 }
 

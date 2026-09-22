@@ -119,10 +119,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const {
     analysisError,
     analysisRun,
-    analysisStatus,
     importNativeSegments,
     nativeImportState,
-    startFullAnalysis,
   } = useSegmentAnalysis(
     detail.video.id,
     onReload,
@@ -949,7 +947,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     allSwimlanes,
     analysisError,
     analysisRun,
-    analysisStatus,
     approvalFacetCounts,
     autoAssignCandidates,
     autoAssignError,
@@ -1083,7 +1080,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     slotButtonRef,
     splitLayout,
     splitSegment,
-    startFullAnalysis,
     tagEditing,
     creatingSegmentId,
     tagSearchRef,

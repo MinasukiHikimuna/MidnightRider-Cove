@@ -189,26 +189,8 @@ jobs:
             ${{ matrix.extension.id }}-*.zip.sha256
           if-no-files-found: error
 
-  analysis-service:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/segment-studio-analysis
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v10.0.1
-        with:
-          enable-cache: true
-          cache-dependency-glob: services/segment-studio-analysis/uv.lock
-      - name: Test analysis service
-        run: uv run --locked --extra test pytest
-      - name: Verify generated OpenAPI contract
-        run: |
-          uv run --locked python scripts/generate-openapi.py
-          git diff --exit-code -- openapi.json
-
   release:
-    needs: [build, analysis-service]
+    needs: [build]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
