@@ -5,7 +5,7 @@
   "description": "A home dashboard widget that brings back videos released on today's date in past years.",
   "author": "MidnightRider",
   "kind": "extension",
-  "categories": ["library", "ui"],
+  "categories": ["ui", "widget"],
   "minCoveVersion": "1.3.2-dev.36",
   "entryDll": "OnThisDay.dll",
   "dependencies": {},
