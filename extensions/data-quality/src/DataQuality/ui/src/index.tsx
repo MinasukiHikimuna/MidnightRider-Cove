@@ -1,7 +1,6 @@
 import React, {
   useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -12,16 +11,12 @@ import React, {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
-  EntityReferenceMultiSelector,
-  EntityDetailTabs,
   DetailListToolbar,
-  SortableList,
   TAG_CRITERIA,
   TAG_SORT_OPTIONS,
   TagTile,
   VIDEO_CRITERIA,
   VIDEO_SORT_OPTIONS,
-  type DragHandleProps,
   VideoCard,
   VideoPlayer,
 } from "@cove/runtime/components";
@@ -33,7 +28,6 @@ import {
   ExternalLink,
   Film,
   Grid3X3,
-  GripVertical,
   LayoutGrid,
   List,
   Loader2,
@@ -76,7 +70,6 @@ import {
   getNextReviewFocus,
   isOccurrenceReview,
   mediaKindOf,
-  reviewMediaKind,
   getReviewActionTargets,
   hasAssessmentSteps,
   isEditableTarget,
@@ -90,19 +83,19 @@ import {
   toggleShownReviewSelection,
   type Review,
   type ReviewAction,
-  type ReviewStep,
   type TagReview,
-  type TagReviewAction,
-  type TagReviewEffect,
   type MediaReview,
   type VideoReview,
   type MediaReviewAction,
-  type OccurrenceReview,
   type ReviewEntityType,
 } from "./model";
-import { OccurrenceSettings, PerformerFlagSettings } from "./OccurrenceReview";
-import { ActionsFromTags } from "./ActionsFromTags";
 import { ActionBar } from "./ActionBar";
+import {
+  draftSignature,
+  EditorDrawer,
+  exportReviewDraft,
+  ReviewDetailsFields,
+} from "./EditorDrawer";
 import { KeyCap } from "./ActionPad";
 import { FindAction } from "./FindAction";
 import { useTagTrees, type TagTrees } from "./effectPreview";
@@ -127,7 +120,6 @@ import {
   TagBins,
   toggleTagBin,
 } from "./TagPresentation";
-import { QueueEditor } from "./QueueEditor";
 import {
   presentCustomFieldCriteria,
   stripCustomFieldPresentation,
@@ -148,6 +140,36 @@ interface ReviewPage {
 }
 type ReviewBrowserSort = "name" | "count";
 type ReviewBrowserDirection = "asc" | "desc";
+/** The grid as it was when its editor drawer opened, for Cancel to restore. */
+interface GridEditSnapshot {
+  temporaryReview: Review | null;
+  filter: Record<string, unknown>;
+  loadedFilter: Record<string, unknown>;
+  queue: ReviewPage;
+  queueError: string;
+  retryFromEnd: boolean;
+  selectedIds: Set<number>;
+  focusedId: number | null;
+  pageCursor: { page: number; ids: Set<number> } | null;
+  url: string;
+}
+
+/** A review with the queue's live criteria: the grid's drawer previews its draft on the queue. */
+function withLiveCriteria(
+  draft: Review,
+  live: Review,
+  filter: Record<string, unknown>,
+): Review {
+  return {
+    ...draft,
+    view: {
+      ...draft.view,
+      filter: { ...filter, page: 1 },
+      objectFilter: live.view.objectFilter,
+      searchMode: live.view.searchMode,
+    },
+  } as Review;
+}
 
 const defaultCardSize = 180;
 
@@ -222,22 +244,6 @@ function fitWidthNow() {
   return typeof window.matchMedia === "function" && window.matchMedia(FIT_WIDTH_QUERY).matches;
 }
 
-function reviewStepTone(mode: ReviewStep["mode"]) {
-  switch (mode) {
-    case "ADD":
-      return "positive";
-    case "REMOVE":
-    case "REMOVE_TREE":
-      return "negative";
-    case "MARK_PRESENT":
-      return "present";
-    case "MARK_ABSENT":
-      return "absent";
-    case "CLEAR_ABSENCE":
-      return "neutral";
-  }
-}
-
 export function DataQualityPage({
   onNavigate,
 }: {
@@ -265,6 +271,8 @@ export function DataQualityPage({
   const [progressError, setProgressError] = useState("");
   const [progressLoadBlocked, setProgressLoadBlocked] = useState(false);
   const [progressReady, setProgressReady] = useState(false);
+  // "<review id>:<query revision>" of the last load that finished, for requests waiting on it.
+  const [loadedFor, setLoadedFor] = useState("");
   const [activeId, setActiveId] = useState(selectedReviewId);
   const [reviewCounts, setReviewCounts] = useState<
     Record<string, number | null>
@@ -275,9 +283,21 @@ export function DataQualityPage({
     useState<ReviewBrowserDirection>("asc");
   const reviewBrowserHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusReviewBrowser = useRef(false);
-  const [workspaceEditRequest, setWorkspaceEditRequest] = useState(0);
+  // A request to open the active review's editor drawer, from Manage reviews; whichever view shows
+  // the review opens it once its queue has loaded, then clears the request.
+  const [editRequest, setEditRequest] = useState(0);
   const [managerOpen, setManagerOpen] = useState(false);
-  const [editCurrent, setEditCurrent] = useState(false);
+  // The grid's editor drawer: the review's definition being edited (its queue criteria stay the
+  // live queue's), and the save state.
+  const [gridEditor, setGridEditor] = useState<{
+    draft: Review;
+    baseline: string;
+    saving: boolean;
+    error: string;
+  } | null>(null);
+  const gridEditSnapshot = useRef<GridEditSnapshot | null>(null);
+  const gridEditOpener = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const [temporaryReview, setTemporaryReview] = useState<Review | null>(
     null,
   );
@@ -362,6 +382,16 @@ export function DataQualityPage({
     perPage: 40,
   });
   const [queue, setQueue] = useState<ReviewPage>({ items: [], totalCount: 0 });
+  // Opening another review straight from a card grid (Manage reviews → Edit) renders it before
+  // its load resets the page: a tag review's items must never be drawn as video cards, or the
+  // reverse, nor the last review's filter be saved as this one's progress. The queue and its
+  // readiness belong to the review they were loaded for.
+  const [queueReviewId, setQueueReviewId] = useState(activeId);
+  if (queueReviewId !== activeId) {
+    setQueueReviewId(activeId);
+    setQueue({ items: [], totalCount: 0 });
+    setProgressReady(false);
+  }
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState("");
   const [queueUrlError, setQueueUrlError] = useState(false);
@@ -447,8 +477,24 @@ export function DataQualityPage({
   // appear later are refills, and in reverse traversal they arrive from the
   // pages already passed, so they must not hold the cursor here.
   const pageCursor = useRef<{ page: number; ids: Set<number> } | null>(null);
-  // The grid's action wording ("− rest of <tree>"); the single-item workspace resolves its own.
-  const trees = useTagTrees(review && !usesWorkspace ? review.actions : NO_ACTIONS);
+  // The grid's action wording ("− rest of <tree>"), for its actions and the drawer's draft; the
+  // single-item workspace resolves its own.
+  const trees = useTagTrees(
+    review && !usesWorkspace
+      ? gridEditor
+        ? [...review.actions, ...gridEditor.draft.actions]
+        : review.actions
+      : NO_ACTIONS,
+  );
+  // The grid's drawer edits the review as Save would store it: the draft with the live criteria.
+  const gridDraft = useMemo(
+    () => (gridEditor && review ? withLiveCriteria(gridEditor.draft, review, filter) : null),
+    [gridEditor, review, filter],
+  );
+  const gridDirty = useMemo(
+    () => gridDraft != null && draftSignature(gridDraft) !== gridEditor?.baseline,
+    [gridDraft, gridEditor?.baseline],
+  );
 
   useEffect(() => {
     if (!message) return;
@@ -701,7 +747,12 @@ export function DataQualityPage({
     readyQueryRevision.current = -1;
     loadGeneration.current += 1;
     queueAbort.current?.abort();
+    // A reload from scratch (another review or layout, or browser navigation) leaves nothing for
+    // an open editor to restore.
+    setGridEditor(null);
+    gridEditSnapshot.current = null;
     setProgressReady(false);
+    setLoadedFor("");
     setProgressError("");
     setProgressLoadBlocked(false);
     setSelectedIds(new Set());
@@ -793,6 +844,7 @@ export function DataQualityPage({
       if (current) {
         readyQueryRevision.current = queryRevision;
         setProgressReady(true);
+        setLoadedFor(`${review.id}:${queryRevision}`);
       }
     })();
     return () => {
@@ -802,6 +854,20 @@ export function DataQualityPage({
       queueAbort.current?.abort();
     };
   }, [review?.id, usesWorkspace, queryRevision]);
+
+  // Manage reviews → Edit on a review in the card grid opens its drawer once that review's queue
+  // has loaded. A queue URL that cannot be read stops the load: the request is dropped then rather
+  // than left to open the drawer much later.
+  useEffect(() => {
+    if (!editRequest || usesWorkspace || !review) return;
+    if (queueUrlError) {
+      setEditRequest(0);
+      return;
+    }
+    if (pending || gridEditor || loadedFor !== `${review.id}:${queryRevision}`) return;
+    setEditRequest(0);
+    openGridEditor();
+  }, [editRequest, usesWorkspace, review?.id, loadedFor, pending, queryRevision, queueUrlError]);
 
   useEffect(() => {
     if (!videoReview || usesWorkspace || !progressReady || queueLoading || queueError || pending || deferredNavigation.current || readyQueryRevision.current !== queryRevision) return;
@@ -826,7 +892,8 @@ export function DataQualityPage({
       queueError ||
       pending ||
       temporaryReview?.id === review.id ||
-      progressLoadBlocked
+      progressLoadBlocked ||
+      readyQueryRevision.current !== queryRevision
     )
       return;
     const progress = {
@@ -877,6 +944,7 @@ export function DataQualityPage({
     temporaryReview,
     progressError,
     progressLoadBlocked,
+    queryRevision,
   ]);
 
   const focusedEntity =
@@ -895,8 +963,13 @@ export function DataQualityPage({
     window.requestAnimationFrame(() => {
       // Never pull focus out of a field the reviewer is in, such as the search
       // that just reloaded the queue: on a card, their next letters would apply
-      // actions. The card still becomes the focused one for the keys.
-      if (isEditableTarget(document.activeElement)) return;
+      // actions. Nor out of the editor drawer, whose draft the reload previews.
+      // The card still becomes the focused one for the keys.
+      if (
+        isEditableTarget(document.activeElement) ||
+        document.activeElement?.closest(".dq-drawer")
+      )
+        return;
       const card = cardRefs.current.get(id);
       card?.focus({ preventScroll: true });
       if (scroll) card?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -1222,6 +1295,9 @@ export function DataQualityPage({
     if (pending || queueLoading) return;
     if (previewOpen) return;
     if (event.key === "Enter" && focusedId != null && plainTarget) {
+      // The preview would cover the editor drawer, and its actions pause meanwhile; a tag still
+      // opens in a new tab.
+      if (entityType !== "tag" && gridEditor) return;
       consumeShortcut(event);
       if (entityType === "tag")
         window.open(`/tag/${focusedId}`, "_blank", "noopener,noreferrer");
@@ -1282,7 +1358,9 @@ export function DataQualityPage({
   // being typed keeps its focus (disabled, it would drop focus to the page,
   // where the next letters are action keys), and a newer query supersedes the
   // load in flight.
-  const toolbarLocked = pending || (queueLoading && !progressReady);
+  // While the editor drawer saves, the queue it saves stays as it is.
+  const gridSaving = gridEditor?.saving === true;
+  const toolbarLocked = pending || (queueLoading && !progressReady) || gridSaving;
 
   // The grid's action keys, Find action and select all, while the grid itself
   // takes keys. The preview registers its own keys on the overlay surface.
@@ -1297,6 +1375,7 @@ export function DataQualityPage({
       !!review &&
       !usesWorkspace &&
       !managerOpen &&
+      !gridEditor &&
       !previewOpen &&
       !findOpen &&
       !queueError &&
@@ -1338,7 +1417,7 @@ export function DataQualityPage({
 
   function chooseReview(id: string) {
     setLayoutOverride(null);
-    setWorkspaceEditRequest(0);
+    setEditRequest(0);
     setActiveId(id);
     writeSelectedReviewId(id);
   }
@@ -1528,15 +1607,12 @@ export function DataQualityPage({
           canWrite={occurrenceReview ? canWriteTags : canWriteMedia}
           canAssess={absenceFieldStatus?.kind === "ready" && canWriteMedia}
           onBusy={setPending}
-          editRequest={workspaceEditRequest}
-          renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as MediaReview)} onSave={() => {}} onCancel={() => {}} />}
+          editRequest={editRequest}
+          onEditRequestHandled={() => setEditRequest(0)}
           onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined}
           pageControls={{
             onBack: showAllReviews,
-            onManage: () => {
-              setEditCurrent(false);
-              setManagerOpen(true);
-            },
+            onManage: () => setManagerOpen(true),
             manageDisabled: !canConfigure,
             onGrid: videoReview
               ? () => setLayoutOverride({ id: videoReview.id, mode: "multiple" })
@@ -1558,10 +1634,7 @@ export function DataQualityPage({
               aria-label="Manage reviews"
               title="Manage reviews"
               disabled={!canConfigure}
-              onClick={() => {
-                setEditCurrent(false);
-                setManagerOpen(true);
-              }}
+              onClick={() => setManagerOpen(true)}
             >
               <Settings />
             </button>
@@ -1742,16 +1815,15 @@ export function DataQualityPage({
       {managerOpen && (
         <ReviewManager
           reviews={reviews}
-          activeReview={savedReview}
-          tagGroups={tagGroups}
-          initialEdit={editCurrent}
           onSave={updateReviews}
-          onChoose={chooseReview}
-          onEditWorkspace={id => { if (id !== activeId) chooseReview(id); setLayoutOverride({ id, mode: "single" }); setWorkspaceEditRequest(value => value + 1); setManagerOpen(false); }}
-          onClose={() => {
+          onEdit={(id) => {
+            // The review opens in its own layout (a new or duplicated one included), and whichever
+            // view shows it opens the drawer once its queue has loaded.
+            if (id !== activeId) chooseReview(id);
+            setEditRequest((value) => value + 1);
             setManagerOpen(false);
-            if (editCurrent) focusCard(focusedRef.current, false);
           }}
+          onClose={() => setManagerOpen(false)}
         />
       )}
     </div>
@@ -1866,6 +1938,120 @@ export function DataQualityPage({
       );
   }
 
+  /**
+   * Edit review on the grid: the drawer edits the saved definition while the header's toolbar and
+   * tag bins keep reshaping the queue as the draft's preview. What Cancel restores is kept here.
+   */
+  function openGridEditor() {
+    if (!review || !savedReview || pendingRef.current || gridEditor) return;
+    gridEditOpener.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    gridEditSnapshot.current = {
+      temporaryReview,
+      filter,
+      loadedFilter,
+      queue,
+      queueError,
+      retryFromEnd: queueRetryFromEnd,
+      selectedIds: new Set(selectedIds),
+      focusedId,
+      pageCursor: pageCursor.current,
+      url: window.location.pathname + window.location.search + window.location.hash,
+    };
+    // The direction starts as the queue's; the criteria stay the live queue's throughout.
+    const draft = structuredClone({
+      ...savedReview,
+      view: { ...savedReview.view, startFrom: review.view.startFrom ?? "end" },
+    }) as Review;
+    setFindOpen(false);
+    setPreviewOpen(false);
+    setMessage("");
+    setActionError("");
+    setGridEditor({
+      draft,
+      baseline: draftSignature(withLiveCriteria(draft, review, filter)),
+      saving: false,
+      error: "",
+    });
+  }
+
+  /** Closes the grid's drawer and hands focus back to what opened it. */
+  function closeGridEditor() {
+    setGridEditor(null);
+    gridEditSnapshot.current = null;
+    const opener = gridEditOpener.current;
+    gridEditOpener.current = null;
+    requestAnimationFrame(() => {
+      // An opener that is gone, disabled or the page itself (focus had drifted) hands focus to
+      // the focused card instead.
+      const usable =
+        opener?.isConnected &&
+        opener !== document.body &&
+        !(opener instanceof HTMLButtonElement && opener.disabled);
+      if (usable) opener.focus({ preventScroll: true });
+      else focusCard(focusedRef.current, false);
+    });
+  }
+
+  /** Cancel: the queue, its selection and focus, and the URL return to how they were. */
+  function cancelGridEditor() {
+    if (!gridEditor || gridEditor.saving) return;
+    const snapshot = gridEditSnapshot.current;
+    if (snapshot) {
+      loadGeneration.current += 1;
+      queueAbort.current?.abort();
+      pendingToolbarObjectFilter.current = null;
+      setQueueLoading(false);
+      setTemporaryReview(snapshot.temporaryReview);
+      setFilter(snapshot.filter);
+      setLoadedFilter(snapshot.loadedFilter);
+      setQueue(snapshot.queue);
+      setQueueError(snapshot.queueError);
+      setQueueRetryFromEnd(snapshot.retryFromEnd);
+      updateSelection(() => snapshot.selectedIds);
+      setFocusedId(snapshot.focusedId);
+      pageCursor.current = snapshot.pageCursor;
+      window.history.replaceState(window.history.state, "", snapshot.url);
+    }
+    closeGridEditor();
+  }
+
+  /** Save review: the draft with the queue's live criteria becomes the saved review. */
+  async function saveGridEditor() {
+    if (!gridEditor || gridEditor.saving || !gridDraft) return;
+    const updated = { ...gridDraft, name: gridDraft.name.trim() } as Review;
+    const invalid = reviewValidation(updated);
+    if (invalid) {
+      setGridEditor((editor) => editor && { ...editor, error: invalid });
+      return;
+    }
+    setGridEditor((editor) => editor && { ...editor, saving: true, error: "" });
+    try {
+      if (!(await updateReviews(reviews.map((item) => (item.id === updated.id ? updated : item)))))
+        throw new Error("Could not save reviews.");
+      // The saved review holds the queue's criteria now.
+      setTemporaryReview(null);
+      setMessage("Review saved.");
+      closeGridEditor();
+    } catch (error) {
+      setGridEditor(
+        (editor) =>
+          editor && {
+            ...editor,
+            saving: false,
+            error:
+              "Could not save review. Your edits are still open. " +
+              (error instanceof Error ? error.message : "Retry saving."),
+          },
+      );
+    }
+  }
+
+  function retryGridQueue() {
+    if (!review) return;
+    void fetchQueue(review, filter, queueRetryFromEnd, selectAllOnLoad).catch(() => undefined);
+  }
+
   function clearPageState() {
     setSelectedIds(new Set());
     selectionVersions.current.clear();
@@ -1873,7 +2059,7 @@ export function DataQualityPage({
   }
 
   function goToPage(next: number) {
-    if (!review || pending || next === Number(filter.page)) return;
+    if (!review || pending || gridSaving || next === Number(filter.page)) return;
     setFilterAndLoad(
       { ...filter, page: next },
       review,
@@ -1887,7 +2073,7 @@ export function DataQualityPage({
    * the narrowing. Back at the saved queue, the queue starts where the review starts, as Reset does.
    */
   function toggleQueueTagBin(id: number) {
-    if (!videoReview || !savedReview || pending || queueLoading) return;
+    if (!videoReview || !savedReview || pending || queueLoading || gridSaving) return;
     const adjusted = toggleTagBin(videoReview, id, savedReview.view.objectFilter);
     const keepsTemporaryQueue =
       queueSignature(adjusted) !== queueSignature(savedReview);
@@ -1927,12 +2113,12 @@ export function DataQualityPage({
           description={current.description}
           entityType={entityType}
           onBack={showAllReviews}
-          backDisabled={pending}
-          onEdit={() => {
-            setEditCurrent(true);
-            setManagerOpen(true);
-          }}
-          editDisabled={pending || queueLoading || !canConfigure}
+          backDisabled={pending || !!gridEditor}
+          // While the drawer is open, Edit review takes focus back to it. A queue URL that could
+          // not be read must be reset first: the drawer saves the queue's criteria.
+          onEdit={gridEditor ? () => drawerRef.current?.focus() : openGridEditor}
+          editDisabled={!gridEditor && (pending || queueLoading || queueUrlError || !canConfigure)}
+          editing={!!gridEditor}
           toolbar={
             <fieldset className="dq-review-toolbar" disabled={toolbarLocked}>
               <legend className="dq-sr-only">
@@ -1977,7 +2163,7 @@ export function DataQualityPage({
               {videoReview && (
                 <LayoutSwitch
                   mode="multiple"
-                  disabled={pending || queueLoading || managerOpen}
+                  disabled={pending || queueLoading || managerOpen || !!gridEditor}
                   onChange={() =>
                     setLayoutOverride({ id: videoReview.id, mode: "single" })
                   }
@@ -1991,15 +2177,12 @@ export function DataQualityPage({
                 }
               />
               <MoreMenu
-                disabled={pending}
+                disabled={pending || !!gridEditor}
                 items={[
                   {
                     label: "Manage reviews",
                     disabled: queueLoading || !canConfigure,
-                    onSelect: () => {
-                      setEditCurrent(false);
-                      setManagerOpen(true);
-                    },
+                    onSelect: () => setManagerOpen(true),
                   },
                 ]}
               />
@@ -2012,13 +2195,15 @@ export function DataQualityPage({
                 review={videoReview}
                 savedObjectFilter={(savedReview ?? videoReview).view.objectFilter}
                 trees={presentationTags.ids}
-                disabled={pending || queueLoading}
+                disabled={pending || queueLoading || gridSaving}
                 onToggle={toggleQueueTagBin}
               />
             ) : undefined
           }
           chipsEnd={
-            temporaryReview?.id === activeId ? (
+            gridEditor ? (
+              <span className="dq-defaults-note">Previewing the draft</span>
+            ) : temporaryReview?.id === activeId ? (
               <>
                 <span className="dq-defaults-note">
                   Queue differs from the saved review
@@ -2053,120 +2238,165 @@ export function DataQualityPage({
             {presentationTags.error}
           </p>
         )}
-        <div
-          className="dq-grid-stage"
-          style={{ "--dq-dock-height": `${dockHeight}px` } as React.CSSProperties}
-        >
-          <div className="dq-grid-content">
-            {queueLoading && !queue.items.length && (
-              <CenteredStatus label="Loading review queue…" />
-            )}
-            {queueError && !queueLoading && (
-              <ErrorState
-                message={queueError}
-                retryLabel={queueUrlError ? "Reset to review defaults" : "Retry"}
-                onRetry={() => {
-                  if (queueUrlError && savedReview && reviewEntityType(savedReview) === "video") {
-                    const defaults = defaultQuery(savedReview as VideoReview);
-                    writeQuery(savedReview.id, { ...defaults, filter: { ...defaults.filter, page: undefined } });
-                    setQueryRevision(value => value + 1);
-                    return;
-                  }
-                  void fetchQueue(
-                    current,
-                    filter,
-                    queueRetryFromEnd,
-                    selectAllOnLoad,
-                  ).catch(() => undefined);
-                }}
-              />
-            )}
-            {!pending && !queueLoading && !queueError && !queue.items.length && (
-              <div className="dq-empty">
-                <Film />
-                <p>No {noun}s match this review.</p>
-              </div>
-            )}
-            {!!queue.items.length && (
-              <div ref={gridRef}>
-                <div
-                  className={displayMode === "list" ? "dq-tag-list" : "dq-grid"}
-                  style={{ "--dq-card-width": `${cardSize}px` } as React.CSSProperties}
-                >
-                  {queue.items.map(renderCard)}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="dq-bar-dock" ref={dockRef}>
-            <ActionBar
-              actions={current.actions}
+        <div className="dq-review-area">
+          {gridEditor && gridDraft && (
+            <EditorDrawer
+              drawerRef={drawerRef}
+              draft={gridDraft}
+              onChange={(next) =>
+                setGridEditor((editor) => editor && { ...editor, draft: next })
+              }
+              direction={gridEditor.draft.view.startFrom ?? "end"}
+              onDirectionChange={(startFrom) =>
+                setGridEditor(
+                  (editor) =>
+                    editor && {
+                      ...editor,
+                      draft: { ...editor.draft, view: { ...editor.draft.view, startFrom } } as Review,
+                    },
+                )
+              }
               tagGroups={tagGroups}
               trees={trees}
-              isDisabled={gridActionBlocked}
-              busy={pending || queueLoading}
-              onApply={(action) => void execute(action)}
-              onFind={() => setFindOpen(true)}
-              status={pending ? `Applying action to ${pendingTargetLabel}…` : ""}
-              summary={
-                <>
-                  {/* Always name the target: with nothing selected, actions fall back to the
-                      focused card, which its ring alone does not say. */}
-                  <p className="dq-bar-target">
-                    {selectedIds.size
-                      ? `${selectedIds.size} selected`
-                      : focusedId == null
-                        ? "Nothing to apply to"
-                        : `Applies to the focused ${noun}`}
-                  </p>
-                  <button
-                    type="button"
-                    className="dq-text-button"
-                    aria-keyshortcuts="Control+A Meta+A"
-                    title="Select every card on this page"
-                    disabled={!itemIds.length || allShownSelected}
-                    onClick={() =>
-                      updateSelection((selected) => new Set([...selected, ...itemIds]))
-                    }
-                  >
-                    Select all
-                    <KeyCap binding={keyLabels.selectAll} hidden />
-                  </button>
-                  <button
-                    type="button"
-                    className="dq-text-button"
-                    aria-keyshortcuts="Escape"
-                    disabled={!selectedIds.size}
-                    onClick={() => updateSelection(() => new Set())}
-                  >
-                    Clear
-                    <KeyCap binding="Esc" hidden />
-                  </button>
-                </>
-              }
-              hints={
-                notes.length
-                  ? notes.join(" ")
-                  : `Arrows move · Space selects · Enter ${tagReview ? "opens" : "previews"}`
-              }
+              saving={gridEditor.saving}
+              // A queue that failed to load shows other criteria than the ones Save would keep.
+              saveDisabled={queueLoading || !!queueError}
+              error={gridEditor.error}
+              dirty={gridDirty}
               notices={
-                showsError || message ? (
-                  <>
-                    {showsError && (
-                      <div role="alert" className="dq-alert">
-                        <AlertTriangle aria-hidden="true" />
-                        {actionError}
-                      </div>
-                    )}
-                    {message && (
-                      <p role="status" className="dq-status">
-                        {message}
-                      </p>
-                    )}
-                  </>
+                // The grid's own error sits under the drawer at narrower widths.
+                queueError && !queueLoading ? (
+                  <p className="dq-alert">
+                    <AlertTriangle aria-hidden="true" />
+                    <span>
+                      The queue could not load: {queueError}{" "}
+                      <button type="button" className="dq-link-button" onClick={retryGridQueue}>
+                        Retry
+                      </button>
+                    </span>
+                  </p>
                 ) : undefined
               }
+              onSave={() => void saveGridEditor()}
+              onCancel={cancelGridEditor}
             />
+          )}
+          <div
+            className="dq-grid-stage"
+            style={{ "--dq-dock-height": `${dockHeight}px` } as React.CSSProperties}
+          >
+            <div className="dq-grid-content">
+              {queueLoading && !queue.items.length && (
+                <CenteredStatus label="Loading review queue…" />
+              )}
+              {queueError && !queueLoading && (
+                <ErrorState
+                  message={queueError}
+                  retryLabel={queueUrlError ? "Reset to review defaults" : "Retry"}
+                  onRetry={() => {
+                    if (queueUrlError && savedReview && reviewEntityType(savedReview) === "video") {
+                      const defaults = defaultQuery(savedReview as VideoReview);
+                      writeQuery(savedReview.id, { ...defaults, filter: { ...defaults.filter, page: undefined } });
+                      setQueryRevision(value => value + 1);
+                      return;
+                    }
+                    retryGridQueue();
+                  }}
+                />
+              )}
+              {!pending && !queueLoading && !queueError && !queue.items.length && (
+                <div className="dq-empty">
+                  <Film />
+                  <p>No {noun}s match this review.</p>
+                </div>
+              )}
+              {!!queue.items.length && (
+                <div ref={gridRef}>
+                  <div
+                    className={displayMode === "list" ? "dq-tag-list" : "dq-grid"}
+                    style={{ "--dq-card-width": `${cardSize}px` } as React.CSSProperties}
+                  >
+                    {queue.items.map(renderCard)}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="dq-bar-dock" ref={dockRef}>
+              <ActionBar
+                // While the drawer is open the paused bar shows the draft's actions, as the pad does.
+                actions={gridEditor ? (gridEditor.draft.actions as ReviewAction[]) : current.actions}
+                tagGroups={tagGroups}
+                trees={trees}
+                isDisabled={gridActionBlocked}
+                paused={!!gridEditor}
+                busy={pending || queueLoading}
+                onApply={(action) => void execute(action)}
+                onFind={() => setFindOpen(true)}
+                status={pending ? `Applying action to ${pendingTargetLabel}…` : ""}
+                summary={
+                  <>
+                    {/* Always name the target: with nothing selected, actions fall back to the
+                        focused card, which its ring alone does not say. */}
+                    <p className="dq-bar-target">
+                      {selectedIds.size
+                        ? `${selectedIds.size} selected`
+                        : focusedId == null
+                          ? "Nothing to apply to"
+                          : `Applies to the focused ${noun}`}
+                    </p>
+                    <button
+                      type="button"
+                      className="dq-text-button"
+                      aria-keyshortcuts="Control+A Meta+A"
+                      title="Select every card on this page"
+                      disabled={!itemIds.length || allShownSelected}
+                      onClick={() =>
+                        updateSelection((selected) => new Set([...selected, ...itemIds]))
+                      }
+                    >
+                      Select all
+                      <KeyCap binding={keyLabels.selectAll} hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="dq-text-button"
+                      aria-keyshortcuts="Escape"
+                      disabled={!selectedIds.size}
+                      onClick={() => updateSelection(() => new Set())}
+                    >
+                      Clear
+                      <KeyCap binding="Esc" hidden />
+                    </button>
+                  </>
+                }
+                hints={
+                  notes.length
+                    ? notes.join(" ")
+                    : tagReview
+                      ? "Arrows move · Space selects · Enter opens"
+                      : gridEditor
+                        ? "Arrows move · Space selects"
+                        : "Arrows move · Space selects · Enter previews"
+                }
+                notices={
+                  showsError || message ? (
+                    <>
+                      {showsError && (
+                        <div role="alert" className="dq-alert">
+                          <AlertTriangle aria-hidden="true" />
+                          {actionError}
+                        </div>
+                      )}
+                      {message && (
+                        <p role="status" className="dq-status">
+                          {message}
+                        </p>
+                      )}
+                    </>
+                  ) : undefined
+                }
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -2218,6 +2448,8 @@ export function DataQualityPage({
           updateSelection((current) => toggleOne(current, video.id))
         }
         onPreview={() => {
+          // The preview would cover the editor drawer, and its actions are paused meanwhile.
+          if (gridEditor) return;
           setFocusedId(video.id);
           setPreviewOpen(true);
         }}
@@ -2852,33 +3084,88 @@ function ReviewPreview({
   );
 }
 
+/** A new review of the given kind, keeping only its id, name and description: no actions and the
+ * kind's default queue. */
+function newReview(
+  entityType: ReviewEntityType,
+  { id, name, description }: Pick<Review, "id" | "name" | "description">,
+): Review {
+  const base = { id, name, description };
+  const view = (filter: Record<string, unknown>, extra: Partial<Review["view"]> = {}) => ({
+    filter: { page: 1, perPage: 40, ...filter },
+    objectFilter: {},
+    displayMode: "grid" as const,
+    searchMode: "text",
+    ...extra,
+  });
+  switch (entityType) {
+    case "tag":
+      // Tag reviews start with the ungrouped tags, by name.
+      return {
+        ...base,
+        entityType: "tag",
+        view: {
+          ...view({ sort: "name", direction: "asc" }, { startFrom: "beginning" }),
+          objectFilter: { tagGroupsCriterion: { value: [], modifier: "IS_NULL" } },
+        },
+        actions: [],
+      };
+    case "audio":
+      // Audios have no card grid, so an audio review always runs the single-item workspace.
+      return {
+        ...base,
+        entityType: "audio",
+        view: view({ sort: "date", direction: "desc" }, { startFrom: "end", reviewMode: "single" }),
+        actions: [],
+      };
+    case "performerOccurrence":
+    case "audioPerformerOccurrence":
+      return {
+        ...base,
+        entityType,
+        view: view({ sort: "date", direction: "desc" }, { startFrom: "end" }),
+        actions: [],
+        occurrence: {
+          targetMode: "all",
+          performerIds: [],
+          performerFilter: {},
+          condition: "any",
+          conditionTagIds: [],
+          tagIds: [],
+          multiple: true,
+        },
+      };
+    default:
+      return {
+        ...base,
+        entityType: "video",
+        view: view({ sort: "date", direction: "desc" }, { startFrom: "end" }),
+        actions: [],
+      };
+  }
+}
+
+/**
+ * Manage reviews: the list with New review, Duplicate, Delete, Import and Export. Edit opens the
+ * review with its editor drawer. New review and Duplicate first ask for the kind, name and
+ * description; Create & configure saves the review and opens it in the drawer.
+ */
 function ReviewManager({
   reviews,
-  activeReview,
-  tagGroups,
-  initialEdit = false,
-  onEditWorkspace,
+  onEdit,
   onSave,
-  onChoose,
   onClose,
 }: {
   reviews: Review[];
-  activeReview: Review | null;
-  tagGroups: TagGroup[];
-  initialEdit?: boolean;
-  onEditWorkspace(id: string): void;
+  /** Opens the review with its editor drawer, closing the manager. */
+  onEdit(id: string): void;
   onSave: (reviews: Review[]) => boolean | Promise<boolean>;
-  onChoose: (id: string) => void;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState<Review | null>(() =>
-    initialEdit && activeReview ? structuredClone(activeReview) : null,
-  );
+  const [draft, setDraft] = useState<Review | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [entityTypeLocked, setEntityTypeLocked] = useState(
-    initialEdit && activeReview != null,
-  );
+  const [entityTypeLocked, setEntityTypeLocked] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -2929,49 +3216,28 @@ function ReviewManager({
       focusable[0].focus();
     } else event.stopPropagation();
   }
-  function begin(review?: Review, lockEntityType = Boolean(review)) {
-    setEntityTypeLocked(lockEntityType);
+  function begin(review?: Review) {
+    setEntityTypeLocked(Boolean(review));
     setDraft(
       review
         ? structuredClone(review)
-        : {
-            id: crypto.randomUUID(),
-            name: "",
-            description: "",
-            entityType: "video",
-            view: {
-              filter: {
-                page: 1,
-                perPage: 40,
-                sort: "date",
-                direction: "desc",
-              },
-              objectFilter: {},
-              displayMode: "grid",
-              searchMode: "text",
-              startFrom: "end",
-            },
-            actions: [],
-          },
+        : newReview("video", { id: crypto.randomUUID(), name: "", description: "" }),
     );
     setError("");
   }
-  async function persistDraft() {
-    if (saving) return;
-    if (!draft || reviewValidation(draft)) {
-      setError(draft ? reviewValidation(draft) : "Choose a review.");
+  async function createFromDraft() {
+    if (saving || !draft) return;
+    const invalid = reviewValidation(draft);
+    if (invalid) {
+      setError(invalid);
       return;
     }
-    const saved = { ...draft, name: draft.name.trim() };
-    const next = reviews.some((item) => item.id === saved.id)
-      ? reviews.map((item) => (item.id === saved.id ? saved : item))
-      : [...reviews, saved];
+    const created = { ...draft, name: draft.name.trim() };
     setSaving(true);
     setError("");
     try {
-      if (!(await onSave(next))) throw new Error("Could not save reviews.");
-      if (!reviews.some(item => item.id === saved.id) && saved.entityType !== "tag") onEditWorkspace(saved.id);
-      else { onChoose(saved.id); onClose(); }
+      if (!(await onSave([...reviews, created]))) throw new Error("Could not save reviews.");
+      onEdit(created.id);
     } catch (error) {
       setError(
         "Could not save reviews. Your edits are still open. " +
@@ -3033,14 +3299,12 @@ function ReviewManager({
       <div className="dq-manager">
         <header>
           <div>
-            <h2>
+            <h2>{draft ? "New review" : "Manage reviews"}</h2>
+            <p>
               {draft
-                ? reviews.some((item) => item.id === draft.id)
-                  ? "Edit review"
-                  : "New review"
-                : "Manage reviews"}
-            </h2>
-            <p>Edit your review, then save or cancel to resume your position.</p>
+                ? "Name the review, then configure its queue and actions."
+                : "Edit opens a review with its editor beside the queue."}
+            </p>
           </div>
           <button
             type="button"
@@ -3058,16 +3322,39 @@ function ReviewManager({
         )}
         <fieldset disabled={saving} className="dq-manager-content">
           {draft ? (
-            <ReviewEditor
-              setup={draft.entityType !== "tag" && !reviews.some(item => item.id === draft.id)}
-              draft={draft}
-              entityTypeLocked={entityTypeLocked}
-              tagGroups={tagGroups}
-              saving={saving}
-              setDraft={setDraft}
-              onSave={() => void persistDraft()}
-              onCancel={onClose}
-            />
+            <div className="dq-new-review">
+              <div className="dq-new-review-fields">
+                <ReviewDetailsFields
+                  review={draft}
+                  onChange={setDraft}
+                  entityTypeLocked={entityTypeLocked}
+                  onEntityTypeChange={(entityType) => {
+                    if (!entityTypeLocked && entityType !== reviewEntityType(draft))
+                      setDraft(newReview(entityType, draft));
+                  }}
+                  autoFocus
+                />
+              </div>
+              <div className="dq-new-review-footer">
+                <button
+                  className="dq-button"
+                  type="button"
+                  onClick={() => exportReviewDraft(draft)}
+                >
+                  Export draft
+                </button>
+                <button className="dq-button" type="button" onClick={onClose}>
+                  Cancel
+                </button>
+                <button
+                  className="dq-button primary"
+                  type="button"
+                  onClick={() => void createFromDraft()}
+                >
+                  Create & configure
+                </button>
+              </div>
+            </div>
           ) : (
             <>
               <div className="dq-manager-tools">
@@ -3101,7 +3388,7 @@ function ReviewManager({
                       </div>
                       <p>{review.description || "No description"}</p>
                     </div>
-                    <button type="button" onClick={() => review.entityType === "tag" || (reviewEntityType(review) === "video" && review.view.reviewMode === "multiple") ? begin(review) : onEditWorkspace(review.id)}>
+                    <button type="button" onClick={() => onEdit(review.id)}>
                       <Pencil /> Edit
                     </button>
                     <button
@@ -3111,7 +3398,7 @@ function ReviewManager({
                           ...structuredClone(review),
                           id: crypto.randomUUID(),
                           name: `${review.name} copy`,
-                        }, true)
+                        })
                       }
                     >
                       Duplicate
@@ -3135,679 +3422,6 @@ function ReviewManager({
           )}
         </fieldset>
       </div>
-    </div>
-  );
-}
-
-function ReviewEditor({
-  workspace = false,
-  setup = false,
-  draft,
-  entityTypeLocked,
-  tagGroups,
-  saving = false,
-  setDraft,
-  onSave,
-  onCancel,
-}: {
-  draft: Review;
-  workspace?: boolean;
-  setup?: boolean;
-  entityTypeLocked: boolean;
-  tagGroups: TagGroup[];
-  saving?: boolean;
-  setDraft: (review: Review) => void;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  const [section, setSection] = useState("Review");
-  const entityType = reviewEntityType(draft);
-  const occurrenceDraft = isOccurrenceReview(draft);
-  const changeEntityType = (next: ReviewEntityType) => {
-    if (entityTypeLocked || next === entityType) return;
-    if (next === "performerOccurrence" || next === "audioPerformerOccurrence") {
-      setDraft({ id: draft.id, entityType: next, name: draft.name, description: draft.description,
-        view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "end" },
-        actions: [], occurrence: { targetMode: "all", performerIds: [], performerFilter: {}, condition: "any", conditionTagIds: [], tagIds: [], multiple: true },
-      });
-      return;
-    }
-    if (next === "audio") {
-      // Audios have no card grid, so an audio review always runs the single-item workspace.
-      setDraft({ id: draft.id, entityType: "audio", name: draft.name, description: draft.description,
-        view: { filter: { page: 1, perPage: 40, sort: "date", direction: "desc" }, objectFilter: {}, displayMode: "grid", searchMode: "text", startFrom: "end", reviewMode: "single" },
-        actions: [],
-      });
-      return;
-    }
-    setDraft(
-      next === "tag"
-        ? {
-            id: draft.id,
-            entityType: "tag",
-            name: draft.name,
-            description: draft.description,
-            view: {
-              filter: {
-                page: 1,
-                perPage: 40,
-                sort: "name",
-                direction: "asc",
-              },
-              objectFilter: {
-                tagGroupsCriterion: { value: [], modifier: "IS_NULL" },
-              },
-              displayMode: "grid",
-              searchMode: "text",
-              startFrom: "beginning",
-            },
-            actions: [],
-          }
-        : {
-            id: draft.id,
-            entityType: "video",
-            name: draft.name,
-            description: draft.description,
-            view: {
-              filter: {
-                page: 1,
-                perPage: 40,
-                sort: "date",
-                direction: "desc",
-              },
-              objectFilter: {},
-              displayMode: "grid",
-              searchMode: "text",
-              startFrom: "end",
-            },
-            actions: [],
-          },
-    );
-  };
-  const stepKeys = useRef(new WeakMap<ReviewStep, string>());
-  const stepKey = (step: ReviewStep): string => {
-    let key = stepKeys.current.get(step);
-    if (!key) {
-      key = crypto.randomUUID();
-      stepKeys.current.set(step, key);
-    }
-    return key;
-  };
-  return (
-    <div className="dq-editor">
-      <div className="dq-editor-nav">
-        <EntityDetailTabs
-          tabs={(setup ? ["Review"] : workspace ? ["Review", ...(entityType === "video" ? ["Appearance"] : []), "Actions", ...(occurrenceDraft ? ["Tag choices"] : [])] : occurrenceDraft ? ["Review", "Queue", "Actions", ...((draft as OccurrenceReview).occurrence.tagIds.length ? ["Tag choices"] : [])] : entityType === "audio" ? ["Review", "Queue", "Actions"] : ["Review", "Queue", "Appearance", "Actions"]).map((name) => ({
-            key: name,
-            label: name,
-            count: name === "Actions" ? draft.actions.length : undefined,
-            disabled: saving,
-          }))}
-          activeTab={section}
-          onTabChange={setSection}
-        />
-      </div>
-      <div className="dq-editor-body">
-        <section hidden={section !== "Review"} className="dq-editor-section">
-            <h3>Review details</h3>
-            <p className="dq-editor-note">
-              Give this review a name and describe what you want to check.
-            </p>
-            <label>
-              Entity type
-              <select
-                aria-label="Entity type"
-                value={entityType}
-                disabled={entityTypeLocked}
-                onChange={(event) =>
-                  changeEntityType(event.target.value as ReviewEntityType)
-                }
-              >
-                <option value="video">Videos</option>
-                <option value="audio">Audios</option>
-                <option value="tag">Tags</option>
-                <option value="performerOccurrence">Performer occurrence tags</option>
-                <option value="audioPerformerOccurrence">
-                  Audio performer occurrence tags
-                </option>
-              </select>
-            </label>
-            <label>
-              Review name
-              <input
-                autoFocus
-                aria-label="Review name"
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft({ ...draft, name: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Description
-              <textarea
-                aria-label="Description"
-                value={draft.description}
-                onChange={(event) =>
-                  setDraft({ ...draft, description: event.target.value })
-                }
-              />
-            </label>
-            {occurrenceDraft && !setup && (
-              <PerformerFlagSettings
-                review={draft as OccurrenceReview}
-                onChange={setDraft}
-              />
-            )}
-        </section>
-        {!workspace && !setup && <section hidden={section !== "Queue"} className="dq-editor-section">
-          <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
-          {occurrenceDraft && <OccurrenceSettings review={draft as OccurrenceReview} onChange={setDraft} />}
-        </section>}
-        {!setup && occurrenceDraft && <section hidden={section !== "Tag choices"} className="dq-editor-section"><OccurrenceSettings review={draft as OccurrenceReview} onChange={setDraft} choices /></section>}
-        {!setup && entityType !== "audio" && !occurrenceDraft && (!workspace || entityType === "video") && <section hidden={section !== "Appearance"} className="dq-editor-section">
-            <QueueEditor draft={draft} onChange={setDraft} queue={false} />
-        </section>}
-        {!setup && <section hidden={section !== "Actions"} className="dq-editor-section">
-          {entityType === "tag" ? (
-            <TagActionsEditor
-              draft={draft as TagReview}
-              saving={saving}
-              tagGroups={tagGroups}
-              setDraft={setDraft}
-            />
-          ) : (
-            <VideoActionsEditor
-              draft={draft as VideoReview | OccurrenceReview}
-              saving={saving}
-              stepKey={stepKey}
-              rememberStepKey={(next, previous) =>
-                stepKeys.current.set(next, stepKey(previous))
-              }
-              setDraft={setDraft}
-            />
-          )}
-        </section>}
-      </div>
-      {!workspace && <div className="dq-editor-footer">
-        <button
-          className="dq-button"
-          type="button"
-          onClick={() => {
-            const url = URL.createObjectURL(
-              new Blob([JSON.stringify([draft], null, 2)], {
-                type: "application/json",
-              }),
-            );
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "data-quality-review.json";
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-        >
-          Export draft
-        </button>
-        <button className="dq-button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="dq-button primary" type="button" onClick={onSave}>
-          {setup ? "Create & configure" : "Save review"}
-        </button>
-      </div>}
-    </div>
-  );
-}
-
-function ActionIdentityFields({
-  action,
-  onChange,
-}: {
-  action: ReviewAction;
-  onChange: (action: ReviewAction) => void;
-}) {
-  return (
-    <div className="dq-field-grid">
-      <label>
-        Button label
-        <input
-          value={action.label}
-          onChange={(event) =>
-            onChange({ ...action, label: event.target.value })
-          }
-        />
-      </label>
-    </div>
-  );
-}
-
-function VideoActionsEditor({
-  draft,
-  saving,
-  stepKey,
-  rememberStepKey,
-  setDraft,
-}: {
-  draft: VideoReview | OccurrenceReview;
-  saving: boolean;
-  stepKey: (step: ReviewStep) => string;
-  rememberStepKey: (next: ReviewStep, previous: ReviewStep) => void;
-  setDraft: (review: Review) => void;
-}) {
-  const [fromTags, setFromTags] = useState(false);
-  // The confirmation lasts until the actions change again.
-  const [added, setAdded] = useState<{ actions: MediaReviewAction[]; count: number } | null>(null);
-  const fromTagsButton = useRef<HTMLButtonElement>(null);
-  const fromTagsPanel = useId();
-  const closeFromTags = () => {
-    setFromTags(false);
-    requestAnimationFrame(() => fromTagsButton.current?.focus());
-  };
-  const updateAction = (index: number, action: MediaReviewAction) =>
-    setDraft({
-      ...draft,
-      actions: draft.actions.map((item, itemIndex) =>
-        itemIndex === index ? action : item,
-      ),
-    });
-  return (
-    <>
-      <h3>Actions</h3>
-      {isOccurrenceReview(draft) && <p>Actions apply only to the active performer in this {mediaLabel(reviewMediaKind(draft)).one}. Set performer matching in the review filters below. Save review keeps those criteria with this rule.</p>}
-      <p>
-        Steps run in order. No steps means Skip. Earlier steps may remain
-        applied if a later step fails. Removing tags and descendants never
-        removes a tag the same action adds.
-      </p>
-      <p className="dq-editor-note">
-        Drag the handles to reorder. With a handle focused, use Alt + ↑ or ↓.
-      </p>
-      <SortableList
-        items={draft.actions}
-        getKey={(action) => action.id}
-        disabled={saving}
-        className="dq-sortable-list"
-        onReorder={(actions) => setDraft({ ...draft, actions })}
-        renderItem={(action, { index, dragHandleProps, isOver }) => (
-          <fieldset
-            className={isOver ? "dq-action-card dq-drag-over" : "dq-action-card"}
-          >
-            <legend>Action {index + 1}</legend>
-            <div className="dq-action-heading">
-              <button
-                type="button"
-                {...dragHandleProps}
-                disabled={saving}
-                className="dq-drag-handle"
-                aria-label={`Reorder action ${index + 1}`}
-              >
-                <GripVertical />
-              </button>
-              <strong>{action.label || "New action"}</strong>
-              <button
-                type="button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    actions: [
-                      ...draft.actions.slice(0, index + 1),
-                      {
-                        ...structuredClone(action),
-                        id: crypto.randomUUID(),
-                        label: action.label + " copy",
-                      },
-                      ...draft.actions.slice(index + 1),
-                    ],
-                  })
-                }
-              >
-                Duplicate action
-              </button>
-            </div>
-            <ActionIdentityFields
-              action={action}
-              onChange={(next) =>
-                updateAction(index, next as MediaReviewAction)
-              }
-            />
-            <SortableList
-              items={action.steps}
-              getKey={stepKey}
-              disabled={saving}
-              className="dq-sortable-list"
-              onReorder={(steps) => updateAction(index, { ...action, steps })}
-              renderItem={(step, state) => (
-                <ActionStep
-                  dragHandleProps={state.dragHandleProps}
-                  saving={saving}
-                  isOver={state.isOver}
-                  step={step}
-                  index={state.index}
-                  onChange={(next) => {
-                    rememberStepKey(next, step);
-                    updateAction(index, {
-                      ...action,
-                      steps: action.steps.map((item, itemIndex) =>
-                        itemIndex === state.index ? next : item,
-                      ),
-                    });
-                  }}
-                  onRemove={() =>
-                    updateAction(index, {
-                      ...action,
-                      steps: action.steps.filter(
-                        (_, itemIndex) => itemIndex !== state.index,
-                      ),
-                    })
-                  }
-                />
-              )}
-            />
-            <div className="dq-row">
-              <button
-                className="dq-button"
-                type="button"
-                onClick={() =>
-                  updateAction(index, {
-                    ...action,
-                    steps: [...action.steps, { mode: "ADD", tagIds: [] }],
-                  })
-                }
-              >
-                Add step
-              </button>
-              <button
-                className="dq-button"
-                type="button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    actions: draft.actions.filter(
-                      (_, itemIndex) => itemIndex !== index,
-                    ),
-                  })
-                }
-              >
-                Remove action
-              </button>
-            </div>
-          </fieldset>
-        )}
-      />
-      <div className="dq-row dq-add-actions">
-        <button
-          className="dq-button"
-          type="button"
-          onClick={() =>
-            setDraft({
-              ...draft,
-              actions: [
-                ...draft.actions,
-                { id: crypto.randomUUID(), label: "", steps: [] },
-              ],
-            })
-          }
-        >
-          Add action
-        </button>
-        <button
-          ref={fromTagsButton}
-          className="dq-button"
-          type="button"
-          aria-expanded={fromTags}
-          aria-controls={fromTags ? fromTagsPanel : undefined}
-          disabled={saving}
-          onClick={() => {
-            setAdded(null);
-            setFromTags(!fromTags);
-          }}
-        >
-          Add actions from parent tags…
-        </button>
-        <span role="status" className="dq-editor-note">
-          {added?.actions === draft.actions
-            ? `Added ${added.count} action${added.count === 1 ? "" : "s"} at the end.`
-            : ""}
-        </span>
-      </div>
-      {fromTags && (
-        <ActionsFromTags
-          id={fromTagsPanel}
-          review={draft}
-          disabled={saving}
-          onAdd={(actions) => {
-            const next = [...draft.actions, ...actions];
-            setDraft({ ...draft, actions: next });
-            setAdded({ actions: next, count: actions.length });
-            closeFromTags();
-          }}
-          onCancel={closeFromTags}
-        />
-      )}
-    </>
-  );
-}
-
-function TagActionsEditor({
-  draft,
-  saving,
-  tagGroups,
-  setDraft,
-}: {
-  draft: TagReview;
-  saving: boolean;
-  tagGroups: TagGroup[];
-  setDraft: (review: Review) => void;
-}) {
-  const updateAction = (index: number, action: TagReviewAction) =>
-    setDraft({
-      ...draft,
-      actions: draft.actions.map((item, itemIndex) =>
-        itemIndex === index ? action : item,
-      ),
-    });
-  return (
-    <>
-      <h3>Actions</h3>
-      <p>Each action assigns one tag group, clears the group, or skips.</p>
-      <p className="dq-editor-note">
-        Drag the handles to reorder. With a handle focused, use Alt + ↑ or ↓.
-      </p>
-      <SortableList
-        items={draft.actions}
-        getKey={(action) => action.id}
-        disabled={saving}
-        className="dq-sortable-list"
-        onReorder={(actions) => setDraft({ ...draft, actions })}
-        renderItem={(action, { index, dragHandleProps, isOver }) => (
-          <fieldset
-            className={isOver ? "dq-action-card dq-drag-over" : "dq-action-card"}
-          >
-            <legend>Action {index + 1}</legend>
-            <div className="dq-action-heading">
-              <button
-                type="button"
-                {...dragHandleProps}
-                disabled={saving}
-                className="dq-drag-handle"
-                aria-label={`Reorder action ${index + 1}`}
-              >
-                <GripVertical />
-              </button>
-              <strong>{action.label || "New action"}</strong>
-              <button
-                type="button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    actions: [
-                      ...draft.actions.slice(0, index + 1),
-                      {
-                        ...structuredClone(action),
-                        id: crypto.randomUUID(),
-                        label: action.label + " copy",
-                      },
-                      ...draft.actions.slice(index + 1),
-                    ],
-                  })
-                }
-              >
-                Duplicate action
-              </button>
-            </div>
-            <ActionIdentityFields
-              action={action}
-              onChange={(next) => updateAction(index, next as TagReviewAction)}
-            />
-            <label>
-              Action effect
-              <select
-                aria-label="Tag group action"
-                value={
-                  action.effect.mode === "SET_TAG_GROUP"
-                    ? `group:${action.effect.tagGroupId}`
-                    : action.effect.mode
-                }
-                onChange={(event) => {
-                  const value = event.target.value;
-                  updateAction(index, {
-                    ...action,
-                    effect:
-                      value === "SKIP"
-                        ? { mode: "SKIP" }
-                        : value === "CLEAR_TAG_GROUP"
-                          ? { mode: "CLEAR_TAG_GROUP" }
-                          : {
-                              mode: "SET_TAG_GROUP",
-                              tagGroupId: Number(value.slice("group:".length)),
-                            },
-                  });
-                }}
-              >
-                <option value="SKIP">Skip</option>
-                <option value="CLEAR_TAG_GROUP">Ungrouped</option>
-                {action.effect.mode === "SET_TAG_GROUP" &&
-                  !tagGroups.some(
-                    (group) =>
-                      group.id ===
-                      (action.effect as Extract<
-                        TagReviewEffect,
-                        { mode: "SET_TAG_GROUP" }
-                      >).tagGroupId,
-                  ) && (
-                    <option
-                      value={`group:${action.effect.tagGroupId}`}
-                      disabled
-                    >
-                      Unavailable tag group
-                    </option>
-                  )}
-                {tagGroups.map((group) => (
-                  <option key={group.id} value={`group:${group.id}`}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="dq-button"
-              type="button"
-              onClick={() =>
-                setDraft({
-                  ...draft,
-                  actions: draft.actions.filter(
-                    (_, itemIndex) => itemIndex !== index,
-                  ),
-                })
-              }
-            >
-              Remove action
-            </button>
-          </fieldset>
-        )}
-      />
-      <button
-        className="dq-button"
-        type="button"
-        onClick={() =>
-          setDraft({
-            ...draft,
-            actions: [
-              ...draft.actions,
-              {
-                id: crypto.randomUUID(),
-                label: "",
-                effect: { mode: "SKIP" as const },
-              },
-            ],
-          })
-        }
-      >
-        Add action
-      </button>
-    </>
-  );
-}
-
-function ActionStep({
-  step,
-  index,
-  dragHandleProps,
-  saving,
-  isOver,
-  onChange,
-  onRemove,
-}: {
-  step: ReviewStep;
-  index: number;
-  dragHandleProps: DragHandleProps;
-  saving: boolean;
-  isOver: boolean;
-  onChange: (step: ReviewStep) => void;
-  onRemove: () => void;
-}) {
-  const tone = reviewStepTone(step.mode);
-  return (
-    <div
-      className={isOver ? "dq-action-step dq-drag-over" : "dq-action-step"}
-      data-step-tone={tone}
-    >
-      <button
-        type="button"
-        {...dragHandleProps}
-        disabled={saving}
-        className="dq-drag-handle"
-        aria-label={`Reorder step ${index + 1}`}
-      >
-        <GripVertical />
-      </button>
-      <span>Step {index + 1}</span>
-      <select
-        aria-label="Tag operation"
-        value={step.mode}
-        onChange={(event) =>
-          onChange({ ...step, mode: event.target.value as ReviewStep["mode"] })
-        }
-      >
-        <option value="ADD">Add tags</option>
-        <option value="REMOVE">Remove tags</option>
-        <option value="REMOVE_TREE">Remove tags and descendants</option>
-        <option value="MARK_PRESENT">Mark present</option>
-        <option value="MARK_ABSENT">Mark absent</option>
-        <option value="CLEAR_ABSENCE">Clear absence</option>
-      </select>
-      <div className="dq-step-tags">
-        <EntityReferenceMultiSelector
-          entityType="tag"
-          values={step.tagIds}
-          onChange={(tagIds) => onChange({ ...step, tagIds })}
-          placeholder="Choose tags"
-          allowCreate={false}
-        />
-      </div>
-      <button type="button" aria-label="Remove step" onClick={onRemove}>
-        <Trash2 />
-      </button>
     </div>
   );
 }

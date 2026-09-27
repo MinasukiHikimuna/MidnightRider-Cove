@@ -5,7 +5,7 @@ import {
   type FocusEvent as ReactFocusEvent,
   type ReactNode,
 } from "react";
-import { Ban, Pin, Search } from "@cove/runtime/lucide-react";
+import { Ban, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
 import { actionEffectParts } from "./FindAction";
 import { previewActionEffect, type TagTrees } from "./effectPreview";
 import {
@@ -116,6 +116,7 @@ export function ActionPad({
   onApply,
   onFind,
   findDisabled,
+  paused = false,
 }: {
   actions: readonly MediaReviewAction[];
   mediaKind: MediaKind;
@@ -129,6 +130,8 @@ export function ActionPad({
   onApply(action: MediaReviewAction, stay: boolean): void;
   onFind(): void;
   findDisabled: boolean;
+  /** The review is being edited: the pad says so and dims its tiles, which stay disabled. */
+  paused?: boolean;
 }) {
   const keys = useReviewKeyLabels();
   const baseId = useId();
@@ -169,7 +172,7 @@ export function ActionPad({
     const disabled = isDisabled(action);
     const effectId = `${baseId}-effect-${slot}`;
     return (
-      <div key={slot} className="dq-pad-slot" {...previewHandlers(action)}>
+      <div key={slot} className="dq-pad-slot" {...(paused ? {} : previewHandlers(action))}>
         {/* What the action changes, read out with the tile (the line above the pad is visual). */}
         <span id={effectId} className="dq-sr-only">
           {actionEffectParts(action, names, [], trees)
@@ -213,21 +216,34 @@ export function ActionPad({
   };
 
   return (
-    <section className="dq-pad" aria-label="Actions" aria-busy={busy || undefined}>
+    <section
+      className={`dq-pad${paused ? " dq-pad-paused" : ""}`}
+      aria-label={paused ? "Actions, paused while editing" : "Actions"}
+      aria-busy={busy || undefined}
+    >
       <div className="dq-pad-header">
-        <PadEffectLine
-          actions={actions}
-          names={names}
-          tags={tags}
-          trees={trees}
-          preview={preview}
-          extra={extra}
-          findKey={keys.find}
-        />
-        <span className="dq-pad-hint">
-          <kbd className="dq-key">Shift</kbd>
-          <span>+ key applies and stays</span>
-        </span>
+        {paused ? (
+          <p className="dq-pad-paused-note">
+            <Pencil aria-hidden="true" />
+            Actions are paused while you edit the review
+          </p>
+        ) : (
+          <>
+            <PadEffectLine
+              actions={actions}
+              names={names}
+              tags={tags}
+              trees={trees}
+              preview={preview}
+              extra={extra}
+              findKey={keys.find}
+            />
+            <span className="dq-pad-hint">
+              <kbd className="dq-key">Shift</kbd>
+              <span>+ key applies and stays</span>
+            </span>
+          </>
+        )}
         {!bottomRow && (
           <button
             type="button"

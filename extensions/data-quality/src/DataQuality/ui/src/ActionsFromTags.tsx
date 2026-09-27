@@ -143,7 +143,7 @@ export function ActionsFromTags({
   return (
     <fieldset id={id} className="dq-actions-from-tags">
       <legend>Add actions from parent tags</legend>
-      <p className="dq-editor-note">
+      <p className="dq-drawer-note">
         Each ticked child tag becomes an action that adds it, most used{" "}
         {occurrences ? "on performers " : ""}first. Tags an action already adds
         start unticked. The new actions go at the end, ready to reorder and
@@ -161,7 +161,7 @@ export function ActionsFromTags({
         const state = groups[parentId];
         if (!state || state.status === "loading")
           return (
-            <p key={parentId} className="dq-editor-note">
+            <p key={parentId} className="dq-drawer-note">
               Loading child tags…
             </p>
           );
@@ -186,7 +186,7 @@ export function ActionsFromTags({
           <fieldset key={parentId} className="dq-child-tag-group">
             <legend>{parentName}</legend>
             {state.group.children.length === 0 ? (
-              <p className="dq-editor-note">This tag has no child tags.</p>
+              <p className="dq-drawer-note">This tag has no child tags.</p>
             ) : (
               <>
                 <label className="dq-checkbox">
@@ -205,7 +205,7 @@ export function ActionsFromTags({
                   in the {parentName} tree
                 </label>
                 {group.children.length === 0 ? (
-                  <p className="dq-editor-note">
+                  <p className="dq-drawer-note">
                     Every child tag is already listed under an earlier parent.
                   </p>
                 ) : (

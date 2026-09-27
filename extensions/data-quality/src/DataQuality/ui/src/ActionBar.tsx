@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Search } from "@cove/runtime/lucide-react";
+import { Pencil, Search } from "@cove/runtime/lucide-react";
 import {
   KeyCap,
   createActionPreviewStore,
@@ -43,6 +43,7 @@ export function ActionBar({
   notices,
   status,
   className = "",
+  paused = false,
 }: {
   actions: readonly ReviewAction[];
   /** Names the groups tag actions assign. */
@@ -63,6 +64,8 @@ export function ActionBar({
   /** Read out while an action runs. */
   status?: string;
   className?: string;
+  /** The review is being edited: every tile is disabled and dimmed, and the bar says why. */
+  paused?: boolean;
 }) {
   const keys = useReviewKeyLabels();
   const baseId = useId();
@@ -88,7 +91,7 @@ export function ActionBar({
   return (
     <section
       ref={bar}
-      className={`dq-action-bar${stacked ? " dq-bar-stacked" : ""}${busy ? " dq-bar-busy" : ""}${className ? ` ${className}` : ""}`}
+      className={`dq-action-bar${stacked ? " dq-bar-stacked" : ""}${busy ? " dq-bar-busy" : ""}${paused ? " dq-bar-paused" : ""}${className ? ` ${className}` : ""}`}
       aria-label="Actions"
     >
       <div className="dq-bar-summary">{summary}</div>
@@ -104,9 +107,9 @@ export function ActionBar({
               title={action.label}
               aria-keyshortcuts={binding || undefined}
               aria-describedby={`${baseId}-effect-${index}`}
-              disabled={isDisabled(action)}
+              disabled={paused || isDisabled(action)}
               onClick={() => onApply(action)}
-              {...previewHandlers(action)}
+              {...(paused ? {} : previewHandlers(action))}
             >
               {/* The space keeps the accessible name readable: "q Observation". */}
               {binding && <KeyCap binding={binding} />}{" "}
@@ -120,6 +123,7 @@ export function ActionBar({
             className="dq-bar-tile dq-bar-find"
             aria-label={extra > 0 ? `Find action, ${extra} more` : "Find action"}
             aria-keyshortcuts={keys.find}
+            disabled={paused}
             onClick={onFind}
           >
             <KeyCap binding={keys.find} hidden />
@@ -131,7 +135,15 @@ export function ActionBar({
         )}
       </div>
       {hints && <p className="dq-bar-hints">{hints}</p>}
-      <BarEffect actions={keyed} preview={preview} names={names} tagGroups={tagGroups} trees={trees} />
+      {/* Paused, the tiles preview nothing: the line above the bar says why they wait instead. */}
+      {paused ? (
+        <p className="dq-bar-effect dq-bar-paused-note">
+          <Pencil aria-hidden="true" />
+          Actions are paused while you edit the review
+        </p>
+      ) : (
+        <BarEffect actions={keyed} preview={preview} names={names} tagGroups={tagGroups} trees={trees} />
+      )}
       {notices && <div className="dq-bar-notices">{notices}</div>}
       {/* What each tile changes, read out with the tile; the line above the bar is visual. */}
       <div hidden>

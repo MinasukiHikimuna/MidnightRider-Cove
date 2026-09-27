@@ -31,11 +31,13 @@ function pad(
     disabled = () => false,
     trees = new Map(),
     tags = null,
+    paused = false,
   }: {
     mediaKind?: MediaKind;
     disabled?(action: MediaReviewAction): boolean;
     trees?: Map<number, number[]>;
     tags?: TagState | null;
+    paused?: boolean;
   } = {},
 ) {
   const preview = createActionPreviewStore();
@@ -52,7 +54,8 @@ function pad(
       preview={preview}
       onApply={onApply}
       onFind={onFind}
-      findDisabled={false}
+      findDisabled={paused}
+      paused={paused}
     />,
   );
   return { ...view, preview, onApply, onFind };
@@ -189,4 +192,16 @@ it("describes each tile's effect for assistive technology", async () => {
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "q Present" })).toHaveAccessibleDescription("+ Tag 1"),
   );
+});
+
+it("says its actions wait while the review is edited, and previews none of them", () => {
+  const { container, preview } = pad(numbered(2), { paused: true, disabled: () => true });
+  const region = screen.getByRole("region", { name: "Actions, paused while editing" });
+  expect(region).toHaveTextContent("Actions are paused while you edit the review");
+  expect(region).not.toHaveTextContent("applies and stays");
+  expect(container.querySelector(".dq-pad-effect")).toBeNull();
+  const tile = screen.getByRole("button", { name: "q Action 1" });
+  expect(tile).toBeDisabled();
+  fireEvent.mouseEnter(tile.parentElement!);
+  expect(preview.get()).toBeNull();
 });

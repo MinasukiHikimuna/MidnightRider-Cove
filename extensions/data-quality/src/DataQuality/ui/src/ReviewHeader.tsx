@@ -30,6 +30,7 @@ export function ReviewHeader({
   backDisabled,
   onEdit,
   editDisabled,
+  editing = false,
   toolbar,
   trailing,
   chipsStart,
@@ -43,6 +44,8 @@ export function ReviewHeader({
   backDisabled?: boolean;
   onEdit?(): void;
   editDisabled?: boolean;
+  /** The editor drawer is open; Edit review then takes focus back to it. */
+  editing?: boolean;
   /** The host list toolbar, wrapped in .dq-review-toolbar. */
   toolbar: ReactNode;
   /** Controls after the toolbar: Scope, Batch…, Single/Grid, Cards/Wall, More. */
@@ -80,6 +83,8 @@ export function ReviewHeader({
             className="dq-icon-button dq-icon-button-small"
             aria-label="Edit review"
             title="Edit review"
+            aria-haspopup="dialog"
+            aria-expanded={editing}
             disabled={editDisabled}
             onClick={onEdit}
           >

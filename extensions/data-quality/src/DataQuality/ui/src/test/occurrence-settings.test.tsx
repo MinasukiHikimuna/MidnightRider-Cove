@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { OccurrenceSettings, PerformerFlagSettings } from "../OccurrenceReview";
+import { PerformerFlagSettings, TagChoiceSettings } from "../OccurrenceReview";
 import type { OccurrenceReview } from "../model";
 
 const review: OccurrenceReview = {
@@ -39,9 +39,18 @@ it("saves performer flag tags with the rule and drops the field once cleared", (
   expect(onChange.mock.lastCall![0].occurrence).not.toHaveProperty("flagPerformerTagIds");
 });
 
-it("offers the missing-at-least-one condition with absence hiding in the rule editor", () => {
-  render(<OccurrenceSettings review={review} onChange={() => {}} />);
-  expect(screen.getByRole("combobox", { name: "Occurrence condition" })).toHaveValue("excludesAll");
-  expect(screen.getByRole("option", { name: "Missing at least one selected tag" })).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Hide occurrences confirmed absent" })).toBeChecked();
+// The occurrence condition lives in the header's Scope popover (see occurrence-workspace tests).
+it("edits a legacy review's tag choices and whether several may be chosen", () => {
+  const onChange = vi.fn();
+  const legacy = { ...review, occurrence: { ...review.occurrence, tagIds: [31, 32] } };
+  render(<TagChoiceSettings review={legacy} onChange={onChange} />);
+  const choices = screen.getByPlaceholderText("Search review tag choices...");
+  expect(choices).toHaveValue("31,32");
+  fireEvent.change(choices, { target: { value: "31" } });
+  expect(onChange).toHaveBeenLastCalledWith({
+    ...legacy,
+    occurrence: { ...legacy.occurrence, tagIds: [31] },
+  });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Allow multiple tags/ }));
+  expect(onChange.mock.lastCall![0].occurrence.multiple).toBe(false);
 });

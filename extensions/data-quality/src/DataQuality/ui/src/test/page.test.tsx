@@ -208,6 +208,16 @@ async function openManagerFromWorkspace() {
   fireEvent.click(screen.getByRole("menuitem", { name: "Manage reviews" }));
 }
 
+/** Edit review in the header opens the editor drawer beside the queue. */
+async function openEditor() {
+  const edit = screen.getByRole("button", { name: "Edit review" });
+  await waitFor(() => expect(edit).toBeEnabled());
+  // A click focuses the button in the browser; the drawer hands focus back to it when it closes.
+  edit.focus();
+  fireEvent.click(edit);
+  return screen.findByRole("dialog", { name: "Edit review" });
+}
+
 /** The header's Single | Grid switch, for this visit. */
 async function switchLayout(mode: "Single" | "Grid") {
   const button = within(screen.getByRole("group", { name: "Review layout" })).getByRole(
@@ -343,7 +353,7 @@ describe("Data Quality extension page", () => {
     );
   });
 
-  it("creates tag reviews with an ungrouped queue and one-effect actions", async () => {
+  it("creates tag reviews with an ungrouped queue, then configures them in the grid's drawer", async () => {
     window.history.replaceState(null, "", "/data-quality");
     api.loadReviews.mockResolvedValueOnce({
       reviews: [],
@@ -356,29 +366,44 @@ describe("Data Quality extension page", () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Manage reviews" }));
     fireEvent.click(screen.getByRole("button", { name: "New review" }));
+    // New reviews ask only for their kind, name and description first.
+    expect(screen.queryByRole("tab", { name: "Actions" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Entity type"), {
       target: { value: "tag" },
     });
-    fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
-    expect(
-      screen.getByText((_, element) =>
-        Boolean(
-          element?.tagName === "P" &&
-            element.textContent?.includes("Tag filters configured"),
-        ),
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Sort")).toHaveValue("name");
-    expect(screen.getByLabelText("Start from")).toHaveValue("beginning");
-
-    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add action" }));
-    expect(screen.getByLabelText("Tag group action")).toHaveValue("SKIP");
-    await screen.findByRole("option", { name: "Classification" });
-    fireEvent.change(screen.getByLabelText("Tag group action"), {
+    fireEvent.change(screen.getByLabelText("Review name"), {
+      target: { value: "Group tags" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create & configure" }));
+    await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
+    const created = api.saveReviews.mock.calls[0][1][0];
+    expect(created).toMatchObject({
+      entityType: "tag",
+      name: "Group tags",
+      actions: [],
+      view: {
+        filter: { sort: "name", direction: "asc" },
+        objectFilter: { tagGroupsCriterion: { value: [], modifier: "IS_NULL" } },
+        startFrom: "beginning",
+      },
+    });
+    // The new review opens in the card grid, with its editor drawer.
+    const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+    expect(api.findTags).toHaveBeenCalledWith(
+      expect.objectContaining({ id: created.id }),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(screen.queryByRole("dialog", { name: "Manage Data Quality reviews" })).not.toBeInTheDocument();
+    expect(within(drawer).getByLabelText("Entity type")).toBeDisabled();
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Add action" }));
+    expect(within(drawer).getByLabelText("Tag group action")).toHaveValue("SKIP");
+    await within(drawer).findByRole("option", { name: "Classification" });
+    fireEvent.change(within(drawer).getByLabelText("Tag group action"), {
       target: { value: "group:8" },
     });
-    expect(screen.getByLabelText("Tag group action")).toHaveValue("group:8");
+    expect(within(drawer).getByLabelText("Tag group action")).toHaveValue("group:8");
   });
   it("restores tag card focus after mouse selection so action shortcuts work", async () => {
     const tagReview = {
@@ -855,16 +880,23 @@ it("disables competing edits while an import file is being read", async () => {
 it("duplicates and reorders actions with fixed positional shortcuts", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-  fireEvent.click(screen.getByRole("button", { name: "Duplicate action" }));
-  fireEvent.keyDown(screen.getByRole("button", { name: "Reorder action 2" }), {
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Duplicate Apply" }));
+  // The copy follows its original, open with its label ready to edit.
+  expect(within(drawer).getByRole("textbox", { name: "Button label" })).toHaveValue("Apply copy");
+  expect(within(drawer).getByRole("textbox", { name: "Button label" })).toHaveFocus();
+  fireEvent.keyDown(within(drawer).getByRole("button", { name: "Reorder Apply copy" }), {
     key: "ArrowUp",
     altKey: true,
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   const saved = api.saveReviews.mock.calls[0][1][0];
+  expect(saved.actions.map((action: { label: string }) => action.label)).toEqual([
+    "Apply copy",
+    "Apply",
+  ]);
   expect(saved.actions[1].id).toBe("apply");
   expect(saved.actions[0].id).not.toBe("apply");
   expect(saved.actions[0].steps).toEqual(review.actions[0].steps);
@@ -887,61 +919,64 @@ it("clears the added-actions confirmation once the actions change again", async 
   mockRoomTags();
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-  fireEvent.click(screen.getByRole("button", { name: "Add actions from parent tags…" }));
-  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), {
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Add from parent tags…" }));
+  fireEvent.change(within(drawer).getByPlaceholderText("Search parent tags..."), {
     target: { value: "40" },
   });
-  await screen.findByRole("group", { name: "Rooms" });
-  fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
-  expect(screen.getByText("Added 2 actions at the end.")).toBeInTheDocument();
-  fireEvent.click(screen.getAllByRole("button", { name: "Remove action" })[2]);
-  expect(screen.queryByText("Added 2 actions at the end.")).not.toBeInTheDocument();
+  await within(drawer).findByRole("group", { name: "Rooms" });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Add 2 actions" }));
+  expect(within(drawer).getByText("Added 2 actions at the end.")).toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Delete Kitchen" }));
+  expect(within(drawer).queryByText("Added 2 actions at the end.")).not.toBeInTheDocument();
 });
 it("clears the confirmation when the generator opens again and points the toggle at it", async () => {
   mockRoomTags();
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-  const toggle = screen.getByRole("button", { name: "Add actions from parent tags…" });
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  const toggle = within(drawer).getByRole("button", { name: "Add from parent tags…" });
   expect(toggle).not.toHaveAttribute("aria-controls");
   fireEvent.click(toggle);
-  const panel = screen.getByRole("group", { name: "Add actions from parent tags" });
+  const panel = within(drawer).getByRole("group", { name: "Add actions from parent tags" });
   expect(toggle).toHaveAttribute("aria-controls", panel.id);
-  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), {
+  fireEvent.change(within(drawer).getByPlaceholderText("Search parent tags..."), {
     target: { value: "40" },
   });
-  await screen.findByRole("group", { name: "Rooms" });
-  fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
-  expect(screen.getByText("Added 2 actions at the end.")).toBeInTheDocument();
+  await within(drawer).findByRole("group", { name: "Rooms" });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Add 2 actions" }));
+  expect(within(drawer).getByText("Added 2 actions at the end.")).toBeInTheDocument();
   fireEvent.click(toggle);
-  expect(screen.queryByText("Added 2 actions at the end.")).not.toBeInTheDocument();
+  expect(within(drawer).queryByText("Added 2 actions at the end.")).not.toBeInTheDocument();
 });
 it("adds actions generated from a parent tag's children after the existing ones", async () => {
   mockRoomTags();
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-  const open = screen.getByRole("button", { name: "Add actions from parent tags…" });
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  const open = within(drawer).getByRole("button", { name: "Add from parent tags…" });
   expect(open).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(open);
   expect(open).toHaveAttribute("aria-expanded", "true");
-  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), {
+  fireEvent.change(within(drawer).getByPlaceholderText("Search parent tags..."), {
     target: { value: "40" },
   });
-  const rooms = await screen.findByRole("group", { name: "Rooms" });
+  const rooms = await within(drawer).findByRole("group", { name: "Rooms" });
   fireEvent.click(
     within(rooms).getByRole("checkbox", { name: /Only one per video/ }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
-  expect(screen.getByText("Added 2 actions at the end.")).toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Add 2 actions" }));
+  expect(within(drawer).getByText("Added 2 actions at the end.")).toBeInTheDocument();
   expect(
-    screen.queryByRole("group", { name: "Add actions from parent tags" }),
+    within(drawer).queryByRole("group", { name: "Add actions from parent tags" }),
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  // The new actions are compact rows after the existing one, on the next keys.
+  expect(within(drawer).getByRole("button", { name: "Expand Bedroom" })).toBeInTheDocument();
+  expect(within(drawer).getByRole("tab", { name: "Actions" })).toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   const onlyOne = (id: number) => [
     { mode: "ADD", tagIds: [id] },
@@ -974,13 +1009,14 @@ it("saves explicitly reordered tag operations", async () => {
   });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-  fireEvent.keyDown(screen.getByRole("button", { name: "Reorder step 1" }), {
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Expand Apply" }));
+  fireEvent.keyDown(within(drawer).getByRole("button", { name: "Reorder step 1" }), {
     key: "ArrowDown",
     altKey: true,
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
     { mode: "REMOVE", tagIds: [4] },
@@ -991,14 +1027,15 @@ it("saves explicitly reordered tag operations", async () => {
 it("edits and saves all tag assessment modes", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-  const operation = screen.getByLabelText("Tag operation");
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Expand Apply" }));
+  const operation = within(drawer).getByLabelText("Step 1 operation");
   expect(operation).toHaveTextContent("Mark present");
   expect(operation).toHaveTextContent("Mark absent");
   expect(operation).toHaveTextContent("Clear absence");
   fireEvent.change(operation, { target: { value: "MARK_ABSENT" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
     { mode: "MARK_ABSENT", tagIds: [3] },
@@ -1040,7 +1077,7 @@ it("reopens the same media rule from management after cancel without clearing it
   for (let i = 0; i < 2; i++) {
     await openManagerFromWorkspace();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Edit$/ }));
-    await screen.findByRole("region", { name: "Edit review rule" });
+    await screen.findByRole("dialog", { name: "Edit review" });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await screen.findByRole("heading", { name: "Reviewing this video" });
     expect(window.location.search).toBe(original);
@@ -1056,12 +1093,13 @@ it("creates media review details then configures the rule in the workspace", asy
   expect(screen.queryByRole("tab", {name: "Actions"})).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Review name"), {target: {value: "New media review"}});
   fireEvent.click(screen.getByRole("button", {name: "Create & configure"}));
-  await screen.findByRole("region", {name: "Edit review rule"});
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Review name")).toHaveValue("New media review");
-  expect(screen.getByRole("tab", {name: "Actions"})).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  const drawer = await screen.findByRole("dialog", {name: "Edit review"});
+  expect(screen.queryByRole("dialog", {name: "Manage Data Quality reviews"})).not.toBeInTheDocument();
+  expect(within(drawer).getByLabelText("Review name")).toHaveValue("New media review");
+  expect(within(drawer).getByRole("tab", {name: "Actions"})).toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("button", {name: "Cancel"}));
   await screen.findByRole("heading", {name: "Reviewing this video"});
+  expect(screen.queryByRole("dialog", {name: "Edit review"})).not.toBeInTheDocument();
 });
 
 it("restores multi-video cards, selection actions, and the single-video layout switch", async () => {
@@ -1104,13 +1142,15 @@ it("shows configured descendant tags on each card independently of the queue fil
 it("saves card parent tags and the preferred multi-video layout from the rule editor", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Edit review" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(await screen.findByRole("tab", { name: "Appearance" }));
-  fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "multiple" } });
-  fireEvent.click(screen.getByRole("checkbox", { name: "tags" }));
-  fireEvent.change(screen.getByPlaceholderText("Search annotation parent tags..."), { target: { value: "100" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Appearance" }));
+  expect(within(drawer).getByRole("radio", { name: "Single video" })).toBeChecked();
+  fireEvent.click(within(drawer).getByRole("radio", { name: "Grid" }));
+  // Tags on cards appears once cards show tags.
+  expect(within(drawer).queryByRole("textbox", { name: "Add a parent tag for card tags" })).not.toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("checkbox", { name: "Tags" }));
+  fireEvent.change(within(drawer).getByRole("textbox", { name: "Add a parent tag for card tags" }), { target: { value: "100" } });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   const saved = api.saveReviews.mock.calls.at(-1)?.[1][0];
   expect(saved.view.reviewMode).toBe("multiple");
@@ -1139,12 +1179,13 @@ it("edits an existing multi-video rule without losing its card presentation", as
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" }, presentation: { annotations: ["tags"], annotationParents: [100] } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
-  expect(screen.getByLabelText("Preferred review layout")).toHaveValue("multiple");
-  expect(screen.getByPlaceholderText("Search annotation parent tags...")).toHaveValue("100");
-  fireEvent.change(screen.getByPlaceholderText("Search annotation parent tags..."), { target: { value: "101" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Appearance" }));
+  expect(within(drawer).getByRole("radio", { name: "Grid" })).toBeChecked();
+  const parents = within(drawer).getByRole("textbox", { name: "Add a parent tag for card tags" });
+  expect(parents).toHaveValue("100");
+  fireEvent.change(parents, { target: { value: "101" } });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(api.saveReviews.mock.calls.at(-1)?.[1][0].presentation.annotationParents).toEqual([101]);
   await screen.findByRole("article", { name: "Video 1" });
@@ -1156,10 +1197,10 @@ it("applies saved layout preferences while URL criteria remain active", async ()
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
   expect(screen.getByRole("toolbar", { name: "Video list controls" })).toHaveAttribute("data-custom-field-entity-type", "video");
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
-  fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "single" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Appearance" }));
+  fireEvent.click(within(drawer).getByRole("radio", { name: "Single video" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await screen.findByRole("heading", { name: "Reviewing this video" });
   expect(screen.getByRole("button", { name: "Single" })).toHaveAttribute("aria-pressed", "true");
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
@@ -1170,18 +1211,21 @@ it("keeps newly saved queue criteria when the editor switches to single video", 
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Queue" }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit video filters" }));
-  expect(screen.getByRole("dialog", { name: "Video filters" })).toHaveAttribute("data-custom-sections", "custom-fields");
+  const drawer = await openEditor();
+  // The header's toolbar stays live beside the drawer: its criteria are the draft's.
+  fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
-  fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "single" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true }));
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Appearance" }));
+  fireEvent.click(within(drawer).getByRole("radio", { name: "Single video" }));
+  const save = within(drawer).getByRole("button", { name: "Save review" });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
   await screen.findByRole("heading", { name: "Reviewing this video" });
+  expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.objectFilter).toEqual({ organized: true });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
-  expect(screen.queryByRole("region", { name: "Edit review rule" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
 });
 
 it("restores the saved multiple layout after editing from a temporary single layout", async () => {
@@ -1351,13 +1395,12 @@ it("selects every video on each page load when the review asks for it", async ()
 it("saves the select-all-on-load preference from the rule editor", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Edit review" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
-  fireEvent.click(await screen.findByRole("tab", { name: "Appearance" }));
-  const option = screen.getByRole("checkbox", { name: /Select all videos on page load/ });
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Appearance" }));
+  const option = within(drawer).getByRole("checkbox", { name: "Select every card when a page opens" });
   expect(option).not.toBeChecked();
   fireEvent.click(option);
-  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
   expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.selectAllOnLoad).toBe(true);
 });
@@ -1979,4 +2022,313 @@ it("leaves focus on a preview button pressed from the keyboard, and recovers it 
   expect(document.body).toHaveFocus();
   await act(async () => finish());
   await waitFor(() => expect(preview).toHaveFocus());
+});
+
+it("edits a grid review in a drawer beside the cards, with actions paused, and Cancel restores the queue", async () => {
+  openGrid(numberedActions(2));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(activeTestKeys()).toContain("local:q");
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  const before = window.location.search;
+  const drawer = await openEditor();
+  // The drawer, not the manager's dialog, edits the review.
+  expect(screen.queryByRole("dialog", { name: "Manage Data Quality reviews" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Edit review" })).toHaveAttribute("aria-expanded", "true");
+  expect(within(drawer).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Review",
+    "Appearance",
+    "Actions",
+  ]);
+  // The review's actions pause: no keys, the bar says so, and Enter previews nothing.
+  expect(activeTestKeys()).not.toContain("local:q");
+  const bar = screen.getByRole("region", { name: "Actions" });
+  expect(within(bar).getByText("Actions are paused while you edit the review")).toBeInTheDocument();
+  expect(within(bar).getByRole("button", { name: "q Action 1" })).toBeDisabled();
+  fireEvent.keyDown(first, { key: "Enter" });
+  fireEvent.click(within(first).getByRole("button", { name: "Preview Video 1" }));
+  expect(screen.queryByRole("dialog", { name: /Review preview/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "More review options" })).toBeDisabled();
+  // The cards stay live: Esc on one clears the selection, and the drawer stays.
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "Escape" });
+  expect(screen.getByRole("article", { name: "Video 2" })).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
+  // The header's toolbar stays live as the draft's preview.
+  api.findMedia.mockResolvedValue({ items: [video(3)], totalCount: 1 });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "draft" },
+  });
+  await screen.findByRole("article", { name: "Video 3" });
+  expect(screen.getByText("Previewing the draft")).toBeInTheDocument();
+  expect(within(drawer).getByText("Unsaved changes")).toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+  // The queue as it was, with its selection and focused card, and its URL; nothing was saved.
+  expect(screen.getByRole("article", { name: "Video 1" })).toHaveAttribute("aria-current", "true");
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: "Video 3" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("");
+  await waitFor(() => expect(window.location.search).toBe(before));
+  expect(api.saveReviews).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Edit review" })).toHaveFocus();
+  await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
+});
+
+it("saves the grid's draft with the toolbar's criteria, keeping the drawer open when saving fails", async () => {
+  api.saveReviews.mockRejectedValueOnce(new Error("Storage offline"));
+  openGrid(numberedActions(2));
+  await screen.findByRole("article", { name: "Video 1" });
+  const drawer = await openEditor();
+  fireEvent.change(within(drawer).getByLabelText("Description"), {
+    target: { value: "Checked in the grid" },
+  });
+  fireEvent.change(within(drawer).getByLabelText("Review direction"), {
+    target: { value: "end" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "draft" },
+  });
+  const save = within(drawer).getByRole("button", { name: "Save review" });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
+  expect(await within(drawer).findByRole("alert")).toHaveTextContent(
+    "Could not save review. Your edits are still open. Storage offline",
+  );
+  expect(within(drawer).getByLabelText("Description")).toHaveValue("Checked in the grid");
+  fireEvent.click(save);
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument(),
+  );
+  expect(api.saveReviews.mock.calls.at(-1)?.[1][0]).toMatchObject({
+    description: "Checked in the grid",
+    view: { filter: { q: "draft", page: 1 }, reviewMode: "multiple", startFrom: "end" },
+  });
+  // The saved review holds the queue's criteria now.
+  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.getByText("Review saved.")).toBeInTheDocument();
+});
+
+it("opens a grid review's drawer from Manage reviews, once", async () => {
+  const gridReview = {
+    ...review,
+    id: "grid",
+    name: "Grid review",
+    view: { ...review.view, reviewMode: "multiple" as const },
+  };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [review, gridReview],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await openManagerFromWorkspace();
+  const manager = screen.getByRole("dialog", { name: "Manage Data Quality reviews" });
+  const row = within(manager).getByText("Grid review").closest("article")!;
+  fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+  // The review opens in its own layout, the card grid, with its drawer.
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  expect(screen.getByRole("article", { name: "Video 1" })).toBeInTheDocument();
+  expect(within(drawer).getByLabelText("Review name")).toHaveValue("Grid review");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  // Switching layouts later does not open it again.
+  await switchLayout("Single");
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await act(async () => {});
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+});
+
+it("opens the workspace's drawer from Manage reviews only once, however often its layout changes", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await openManagerFromWorkspace();
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Manage Data Quality reviews" })).getByRole(
+      "button",
+      { name: "Edit" },
+    ),
+  );
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  await switchLayout("Grid");
+  await screen.findByRole("article", { name: "Video 1" });
+  await switchLayout("Single");
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await act(async () => {});
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+});
+
+it("opens a video grid review from a tag review's Manage reviews without drawing the tags as videos", async () => {
+  const tagReview = {
+    id: "tags",
+    entityType: "tag" as const,
+    name: "Tag review",
+    description: "",
+    view: {
+      filter: { page: 1, perPage: 40 },
+      objectFilter: {},
+      displayMode: "grid" as const,
+      searchMode: "text",
+    },
+    actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+  };
+  const gridReview = {
+    ...review,
+    id: "grid",
+    name: "Grid review",
+    view: { ...review.view, reviewMode: "multiple" as const },
+  };
+  window.history.replaceState(null, "", "/data-quality?review=tags");
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [tagReview, gridReview],
+    storageKey: "reviews",
+    canWrite: true,
+    canWriteTags: true,
+    canReadTagGroups: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Tag 11" });
+  await openManagerFromWorkspace();
+  const manager = screen.getByRole("dialog", { name: "Manage Data Quality reviews" });
+  const row = within(manager).getByText("Grid review").closest("article")!;
+  fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  expect(within(drawer).getByLabelText("Review name")).toHaveValue("Grid review");
+  expect(screen.getByRole("article", { name: "Video 1" })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: "Tag 11" })).not.toBeInTheDocument();
+});
+
+it("holds the grid's queue controls while the drawer saves, and keeps Save focused", async () => {
+  let finish!: () => void;
+  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  openGrid(numberedActions(2));
+  await screen.findByRole("article", { name: "Video 1" });
+  const drawer = await openEditor();
+  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Saving" } });
+  const save = within(drawer).getByRole("button", { name: "Save review" });
+  save.focus();
+  fireEvent.click(save);
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
+  // The queue being saved stays as it is: no search, page or bin changes meanwhile.
+  expect(screen.getByRole("textbox", { name: "Search list" })).toBeDisabled();
+  // Save stays focusable (a disabled button would drop focus to the page) and ignores clicks.
+  expect(save).not.toBeDisabled();
+  expect(save).toHaveAttribute("aria-disabled", "true");
+  expect(save).toHaveFocus();
+  fireEvent.click(save);
+  expect(api.saveReviews).toHaveBeenCalledTimes(1);
+  await act(async () => finish());
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument(),
+  );
+  expect(screen.getByRole("textbox", { name: "Search list" })).toBeEnabled();
+});
+
+it("never saves the last review's queue as the next one's progress when Edit switches reviews", async () => {
+  const tagReview = {
+    id: "tags",
+    entityType: "tag" as const,
+    name: "Tag review",
+    description: "",
+    view: {
+      filter: { page: 1, perPage: 40 },
+      objectFilter: {},
+      displayMode: "grid" as const,
+      searchMode: "text",
+    },
+    actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+  };
+  const gridReview = {
+    ...review,
+    id: "grid",
+    name: "Grid review",
+    view: { ...review.view, filter: { page: 1, perPage: 24 }, reviewMode: "multiple" as const },
+  };
+  window.history.replaceState(null, "", "/data-quality?review=tags");
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [tagReview, gridReview],
+    storageKey: "reviews",
+    canWrite: true,
+    canWriteTags: true,
+    canReadTagGroups: true,
+  });
+  const setItem = vi.spyOn(Storage.prototype, "setItem");
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Tag 11" });
+  await openManagerFromWorkspace();
+  const manager = screen.getByRole("dialog", { name: "Manage Data Quality reviews" });
+  fireEvent.click(
+    within(within(manager).getByText("Grid review").closest("article")!).getByRole("button", {
+      name: "Edit",
+    }),
+  );
+  await screen.findByRole("dialog", { name: "Edit review" });
+  await waitFor(() =>
+    expect(setItem.mock.calls.some(([key]) => key === "reviews:progress:grid")).toBe(true),
+  );
+  const saved = setItem.mock.calls
+    .filter(([key]) => key === "reviews:progress:grid")
+    .map(([, value]) => JSON.parse(value).filter.perPage);
+  expect(saved.every((perPage) => perPage === 24)).toBe(true);
+});
+
+it("drops a Manage reviews edit request when the review's URL cannot be read", async () => {
+  window.history.replaceState(null, "", "/data-quality?review=review&filters=invalid");
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const error = await screen.findByRole("alert");
+  // The drawer saves the queue's criteria, so the URL must be reset first.
+  expect(screen.getByRole("button", { name: "Edit review" })).toBeDisabled();
+  await openManagerFromWorkspace();
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Manage Data Quality reviews" })).getByRole(
+      "button",
+      { name: "Edit" },
+    ),
+  );
+  await act(async () => {});
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+  // Nor does it open later, once the queue loads.
+  fireEvent.click(within(error).getByRole("button", { name: "Reset to review defaults" }));
+  await screen.findByRole("article", { name: "Video 1" });
+  await act(async () => {});
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+});
+
+it("still opens a tag with Enter while its review is edited", async () => {
+  const tagReview = {
+    id: "tags",
+    entityType: "tag" as const,
+    name: "Tag review",
+    description: "",
+    view: {
+      filter: { page: 1, perPage: 40 },
+      objectFilter: {},
+      displayMode: "grid" as const,
+      searchMode: "text",
+    },
+    actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+  };
+  window.history.replaceState(null, "", "/data-quality?review=tags");
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [tagReview],
+    storageKey: "reviews",
+    canWrite: true,
+    canWriteTags: true,
+    canReadTagGroups: true,
+  });
+  const open = vi.spyOn(window, "open").mockImplementation(() => null);
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Tag 11" });
+  await openEditor();
+  expect(screen.getByRole("region", { name: "Actions" })).toHaveTextContent(
+    "Arrows move · Space selects · Enter opens",
+  );
+  fireEvent.keyDown(first, { key: "Enter" });
+  expect(open).toHaveBeenCalledWith("/tag/11", "_blank", "noopener,noreferrer");
 });

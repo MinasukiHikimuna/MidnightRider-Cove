@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { LayoutSwitch, MoreMenu, ReviewPager } from "../ReviewHeader";
+import { LayoutSwitch, MoreMenu, ReviewHeader, ReviewPager } from "../ReviewHeader";
 
 it("opens the More menu on its first item, moves with the arrows and closes with Esc or Tab", () => {
   const first = vi.fn();
@@ -103,4 +103,26 @@ it("closes a More menu without available items from its button", () => {
   fireEvent.keyDown(button, { key: "Escape" });
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(button).toHaveFocus();
+});
+
+it("marks Edit review as open while the editor drawer is", () => {
+  const onEdit = vi.fn();
+  const header = (editing: boolean) => (
+    <ReviewHeader
+      name="Review"
+      entityType="video"
+      onEdit={onEdit}
+      editing={editing}
+      toolbar={null}
+      trailing={null}
+    />
+  );
+  const { rerender } = render(header(false));
+  const edit = screen.getByRole("button", { name: "Edit review" });
+  expect(edit).toHaveAttribute("aria-haspopup", "dialog");
+  expect(edit).toHaveAttribute("aria-expanded", "false");
+  rerender(header(true));
+  expect(edit).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(edit);
+  expect(onEdit).toHaveBeenCalledTimes(1);
 });

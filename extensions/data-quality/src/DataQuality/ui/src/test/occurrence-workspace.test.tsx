@@ -433,7 +433,7 @@ it("lets users toggle subtags and save the choice as review defaults", async () 
   await waitFor(() => expect(save).toHaveBeenCalledWith(
     expect.objectContaining({ occurrence: expect.objectContaining({ includeSubtags: false }) }),
   ));
-  expect(screen.queryByRole("region", { name: "Edit review rule" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
 });
 
 it("gives single-video reviews the same compact save and reset controls", async () => {
@@ -456,7 +456,7 @@ it("gives single-video reviews the same compact save and reset controls", async 
       }),
     }),
   ));
-  expect(screen.queryByRole("region", { name: "Edit review rule" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
 });
 
 it("keeps changed queue criteria available when a compact save fails", async () => {
@@ -1024,7 +1024,7 @@ it("cancels rule criteria without changing saved defaults or the selected partne
   fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
   const before = window.location.search;
   rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />);
-  await screen.findByRole("region", { name: "Edit review rule" });
+  await screen.findByRole("dialog", { name: "Edit review" });
   fireEvent.click(openScope().getByRole("button", { name: "Matching criteria" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft search" } });
   await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
@@ -1041,7 +1041,7 @@ it("keeps a failed rule save open and persists performer scope when retried", as
   testFilterControls.result = female;
   const save = vi.fn().mockRejectedValueOnce(new Error("Denied")).mockResolvedValueOnce(true);
   open(review, true, save, 1);
-  await screen.findByRole("region", { name: "Edit review rule" });
+  await screen.findByRole("dialog", { name: "Edit review" });
   fireEvent.click(openScope().getByRole("button", { name: "Matching criteria" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit criteria" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
@@ -1059,9 +1059,9 @@ it("waits for the initial queue before opening a requested rule draft", async ()
   api.loadOccurrencePage.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   render(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
   await waitFor(() => expect(api.loadOccurrencePage).toHaveBeenCalled());
-  expect(screen.queryByRole("region", {name: "Edit review rule"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", {name: "Edit review"})).not.toBeInTheDocument();
   await act(async () => finish({items: [first, second], totalCount: 1}));
-  await screen.findByRole("region", {name: "Edit review rule"});
+  await screen.findByRole("dialog", {name: "Edit review"});
   fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
   await screen.findByRole("heading", {name: "Reviewing First performer"});
 });
@@ -1070,7 +1070,7 @@ it("allows requested rule editing after an initial queue failure and preserves r
   api.loadOccurrencePage.mockRejectedValueOnce(new Error("Queue offline"));
   const original = window.location.search;
   render(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
-  await screen.findByRole("region", {name: "Edit review rule"});
+  await screen.findByRole("dialog", {name: "Edit review"});
   fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
   expect(screen.getByRole("alert")).toHaveTextContent("Queue offline");
   expect(window.location.search).toBe(original);
@@ -1619,7 +1619,7 @@ it("restores the pinned cursor when cancelling a rule edit after a queue reload"
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
-  await screen.findByRole("region", { name: "Edit review rule" });
+  await screen.findByRole("dialog", { name: "Edit review" });
   const loads = api.loadOccurrencePage.mock.calls.length;
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft" } });
   await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads));
@@ -1900,9 +1900,72 @@ it("pauses action keys while tags or the rule are edited", async () => {
   rendered.rerender(
     <ReviewWorkspace review={{ ...review, actions: numberedActions(2) }} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />,
   );
-  await screen.findByRole("region", { name: "Edit review rule" });
+  await screen.findByRole("dialog", { name: "Edit review" });
   expect(activeTestKeys()).not.toContain("local:q");
   expect(activeTestKeys()).not.toContain("local:-");
+});
+
+it("keeps the header, Scope and queue live beside the drawer while its actions and Batch pause", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 2 });
+  const save = vi.fn().mockResolvedValue(true);
+  const rule = { ...review, actions: numberedActions(2) };
+  const rendered = open(rule, true, save);
+  await ready();
+  rendered.rerender(
+    <ReviewWorkspace review={rule} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />,
+  );
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  // Batch… stays in the header, disabled, and the pad says why its tiles wait.
+  expect(screen.getByRole("button", { name: "Batch…" })).toBeDisabled();
+  const pad = screen.getByRole("region", { name: "Actions, paused while editing" });
+  expect(pad).toHaveTextContent("Actions are paused while you edit the review");
+  expect(within(pad).getByRole("button", { name: "q Action 1" })).toBeDisabled();
+  expect(screen.getByText("Previewing the draft")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Edit review" })).toHaveAttribute("aria-expanded", "true");
+  expect(openScope().getByText("Applies to this queue at once, and Save review keeps it.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  // The queue stays live: it shows another item on request.
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "First performer — Next scene" }));
+  await screen.findByRole("link", { name: "Next scene" });
+  // Review direction lives in the Review tab and reshapes the queue at once.
+  fireEvent.change(within(drawer).getByLabelText("Review direction"), { target: { value: "end" } });
+  await waitFor(() =>
+    expect(new URLSearchParams(window.location.search).get("startFrom")).toBe("end"),
+  );
+  expect(within(drawer).getByText("Unsaved changes")).toBeInTheDocument();
+  const saveButton = within(drawer).getByRole("button", { name: "Save review" });
+  await waitFor(() => expect(saveButton).toBeEnabled());
+  fireEvent.click(saveButton);
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ view: expect.objectContaining({ startFrom: "end" }) }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument(),
+  );
+  // Closed, the keys and Batch… are back.
+  await ready();
+  expect(activeTestKeys()).toContain("local:q");
+  expect(screen.getByRole("button", { name: "Batch…" })).toBeEnabled();
+});
+
+it("shows the queue's errors in the drawer while it covers the item column", async () => {
+  const rendered = open();
+  await ready();
+  rendered.rerender(
+    <ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />,
+  );
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  api.loadOccurrencePage.mockRejectedValueOnce(new Error("Queue offline"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "draft" },
+  });
+  expect(await within(drawer).findByRole("alert")).toHaveTextContent("Queue offline");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  fireEvent.click(within(drawer).getByRole("button", { name: "Retry queue" }));
+  await waitFor(() => expect(within(drawer).queryByRole("alert")).not.toBeInTheDocument());
 });
 
 it("previews the hovered action on the current tags", async () => {

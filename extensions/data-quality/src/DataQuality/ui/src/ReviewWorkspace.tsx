@@ -32,6 +32,7 @@ import {
   mediaStreamUrl,
   request,
   type MediaItem,
+  type TagGroup,
   type TagInfo,
 } from "./api";
 import {
@@ -46,6 +47,7 @@ import {
   useTagTrees,
   type TagTrees,
 } from "./effectPreview";
+import { draftSignature, EditorDrawer } from "./EditorDrawer";
 import { MediaDescription } from "./MediaDescription";
 import { ExistingAnswers } from "./ExistingAnswers";
 import { FindAction } from "./FindAction";
@@ -110,8 +112,13 @@ import {
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
 const RANKING_PAGE = 50;
-/** Host dialogs, not the extension's own scope popover, hold focus while they are open. */
-const HOST_DIALOG = '[role="dialog"]:not(.dq-scope-popover), dialog[open]';
+/** Only tag reviews assign tag groups; media reviews edit their actions without any. */
+const NO_TAG_GROUPS: readonly TagGroup[] = [];
+/**
+ * Host dialogs, not the extension's own scope popover or editor drawer, hold focus while they are
+ * open.
+ */
+const HOST_DIALOG = '[role="dialog"]:not(.dq-scope-popover):not(.dq-drawer), dialog[open]';
 
 interface StayedCursor {
   key: string;
@@ -291,7 +298,7 @@ export function ReviewWorkspace({
   onBusy,
   onSaveDefaults,
   editRequest = 0,
-  renderRuleEditor,
+  onEditRequestHandled,
   pageControls,
 }: {
   review: MediaReview;
@@ -299,12 +306,10 @@ export function ReviewWorkspace({
   canAssess?: boolean;
   onBusy(value: boolean): void;
   onSaveDefaults?(review: MediaReview): Promise<unknown>;
+  /** A new non-zero value opens the editor once the first queue has loaded. */
   editRequest?: number;
-  renderRuleEditor?(
-    draft: MediaReview,
-    onChange: (draft: MediaReview) => void,
-    saving: boolean,
-  ): ReactNode;
+  /** Called once a request has opened the editor, so a later mount does not open it again. */
+  onEditRequestHandled?(): void;
   pageControls?: WorkspacePageControls;
 }) {
   const mediaKind: MediaKind = reviewMediaKind(saved);
@@ -328,6 +333,10 @@ export function ReviewWorkspace({
     }
   }
   const [ruleDraft, setRuleDraft] = useState<MediaReview | null>(null);
+  // Why the drawer's last save failed, and the draft as it was when editing began.
+  const [ruleError, setRuleError] = useState("");
+  const [ruleBaseline, setRuleBaseline] = useState("");
+  const drawerRef = useRef<HTMLElement>(null);
   const ruleSnapshot = useRef<{
     error: string;
     url: string;
@@ -993,24 +1002,33 @@ export function ReviewWorkspace({
       targets: targets.current,
       stayedCursor: stayedCursor.current,
     };
-    setRuleDraft(structuredClone(effectiveReview(saved, queryRef.current)));
+    const draft = structuredClone(effectiveReview(saved, queryRef.current));
+    setRuleDraft(draft);
+    setRuleBaseline(draftSignature(draft));
+    setRuleError("");
     setNotice("");
     setError("");
   }
   useEffect(() => {
-    if (
-      editRequest &&
-      editRequest !== handledEditRequest.current &&
-      initialLoadSettled &&
-      !loading
-    ) {
+    // The page clears a handled request, so the next one counts again.
+    if (!editRequest) {
+      handledEditRequest.current = 0;
+      return;
+    }
+    if (editRequest !== handledEditRequest.current && initialLoadSettled && !loading) {
       handledEditRequest.current = editRequest;
       beginRuleEdit();
+      onEditRequestHandled?.();
     }
   }, [editRequest, loading, initialLoadSettled]);
   function finishRuleEdit() {
     setRuleDraft(null);
-    requestAnimationFrame(() => ruleOpener.current?.focus());
+    setRuleError("");
+    requestAnimationFrame(() => {
+      // Only an opener still on the page takes focus back; the page itself would drop it.
+      const opener = ruleOpener.current;
+      if (opener?.isConnected && opener !== document.body) opener.focus();
+    });
   }
   function cancelRuleEdit() {
     const snapshot = ruleSnapshot.current;
@@ -1038,19 +1056,19 @@ export function ReviewWorkspace({
     );
     const invalid = reviewValidation(updated);
     if (invalid) {
-      setError(invalid);
+      setRuleError(invalid);
       return;
     }
     lock.current = true;
     setPending(true);
-    setError("");
+    setRuleError("");
     try {
       const result = await onSaveDefaults(updated);
       if (result === false) throw new Error("Could not save review.");
       finishRuleEdit();
       setNotice("Review saved.");
     } catch (error) {
-      setError(
+      setRuleError(
         "Could not save review. Your edits are still open. " + errorText(error),
       );
     } finally {
@@ -1215,6 +1233,30 @@ export function ReviewWorkspace({
   }, [current?.key]);
   // Header controls that leave or reshape the view wait for any running write, load or edit.
   const busy = pending || loading || editing || !!ruleDraft;
+  // The drawer edits the review as Save would store it: the draft with the live queue's criteria.
+  const ruleView = useMemo(
+    () => (ruleDraft ? effectiveReview(ruleDraft, query) : null),
+    [ruleDraft, query],
+  );
+  const ruleDirty = useMemo(
+    () => ruleView != null && draftSignature(ruleView) !== ruleBaseline,
+    [ruleView, ruleBaseline],
+  );
+  function retryAfterError() {
+    if (current) {
+      void readTags(mediaKind, current)
+        .then(setTags)
+        .catch((error) => setError(errorText(error)));
+    } else replaceQuery(queryRef.current);
+  }
+  const errorMessage = error ? (
+    <p role="alert">
+      {error}{" "}
+      <button type="button" disabled={pending} onClick={retryAfterError}>
+        {current ? "Reload tags" : "Retry queue"}
+      </button>
+    </p>
+  ) : null;
   // Between items (a write, a load, or the next item's tags on their way) controls only pause;
   // fading them for a moment on every action would flicker.
   const settling = pending || loading || (current != null && !tags);
@@ -1244,7 +1286,7 @@ export function ReviewWorkspace({
 
   return (
     <section
-      className={`dq-review-workspace${mediaKind === "audio" ? " dq-audio" : ""}${ruleDraft ? " dq-editing-rule" : ""}`}
+      className={`dq-review-workspace${mediaKind === "audio" ? " dq-audio" : ""}`}
       aria-label={
         scope
           ? mediaKind === "audio"
@@ -1274,8 +1316,10 @@ export function ReviewWorkspace({
         entityType={reviewEntityType(saved)}
         onBack={pageControls?.onBack}
         backDisabled={busy}
-        onEdit={beginRuleEdit}
-        editDisabled={busy || !onSaveDefaults}
+        // While the drawer is open, Edit review takes focus back to it.
+        onEdit={ruleDraft ? () => drawerRef.current?.focus() : beginRuleEdit}
+        editDisabled={!ruleDraft && (busy || !onSaveDefaults)}
+        editing={!!ruleDraft}
         toolbar={
           // Not disabled while the queue reloads: a search being typed keeps its focus (a
           // disabled field would drop it to the page, where the next letters are action keys),
@@ -1344,6 +1388,7 @@ export function ReviewWorkspace({
               <ScopePopover
                 scope={scope}
                 disabled={pending || editing}
+                editing={!!ruleDraft}
                 onChange={updateScope}
                 onEditCriteria={() => setPerformerDialog(true)}
               />
@@ -1351,7 +1396,6 @@ export function ReviewWorkspace({
             {isOccurrenceReview(review) && canWrite && (
               <BatchOccurrenceDialog
                 review={review}
-                hidden={!!ruleDraft}
                 disabled={blocked || !!ruleDraft}
                 performerFlags={query.performerFocus ? focusInfo?.flags : undefined}
                 onOpen={() => { lock.current = true; setPending(true); }}
@@ -1426,7 +1470,9 @@ export function ReviewWorkspace({
           ) : undefined
         }
         chipsEnd={
-          !ruleDraft && queueDefaultsChanged ? (
+          ruleDraft ? (
+            <span className="dq-defaults-note">Previewing the draft</span>
+          ) : queueDefaultsChanged ? (
             <>
               <span className="dq-defaults-note">Queue differs from the saved review</span>
               <button
@@ -1457,495 +1503,450 @@ export function ReviewWorkspace({
         }
       />
       {pageControls?.notices}
-      <div className="dq-review-main">
-        {ruleDraft && (
-          <section className="dq-rule-editor" aria-label="Edit review rule">
-            <h2>Edit review</h2>
-            <p>
-              Preview matching scenes below. Save review keeps all rule changes;
-              Cancel restores your previous view.
-            </p>
-            <fieldset disabled={pending}>
-              {renderRuleEditor?.(
-                effectiveReview(ruleDraft, query),
-                setRuleDraft,
-                pending,
-              )}
-              <label>
-                Review direction
-                <select
-                  aria-label="Review direction"
-                  value={query.startFrom}
-                  onChange={(event) =>
-                    replaceQuery({
-                      ...queryRef.current,
-                      startFrom: event.target.value as "beginning" | "end",
-                    })
-                  }
-                >
-                  <option value="end">Start from the end</option>
-                  <option value="beginning">Start from the beginning</option>
-                </select>
-              </label>
-            </fieldset>
-            <div className="dq-row">
-              <button
-                className="dq-button primary"
-                type="button"
-                disabled={pending || loading}
-                onClick={() => void saveRuleEdit()}
-              >
-                Save review
-              </button>
-              <button
-                className="dq-button"
-                type="button"
-                disabled={pending}
-                onClick={cancelRuleEdit}
-              >
-                Cancel
-              </button>
-            </div>
-          </section>
+      <div className="dq-review-area">
+        {ruleDraft && ruleView && (
+          <EditorDrawer
+            drawerRef={drawerRef}
+            draft={ruleView}
+            onChange={(next) => setRuleDraft(next as MediaReview)}
+            direction={query.startFrom}
+            onDirectionChange={(startFrom) => replaceQuery({ ...queryRef.current, startFrom })}
+            tagGroups={NO_TAG_GROUPS}
+            trees={trees}
+            saving={pending}
+            saveDisabled={loading}
+            error={ruleError}
+            dirty={ruleDirty}
+            notices={errorMessage && <div className="dq-review-feedback">{errorMessage}</div>}
+            onSave={() => void saveRuleEdit()}
+            onCancel={cancelRuleEdit}
+          />
         )}
-        <div className="dq-review-body">
-          <div className="dq-review-stage">
-            {current ? (
-              <>
-                <div className="dq-stage-title">
-                  <h2 className="dq-review-video-title">
-                    <a
-                      href={`/${mediaKind}/${current.media.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={`Open this ${labels.one} in a new tab`}
-                    >
-                      <span>{title(current.media)}</span>
-                      <ExternalLink aria-hidden="true" />
-                    </a>
-                  </h2>
-                  {meta && <span className="dq-stage-meta">{meta}</span>}
-                </div>
-                <div className="dq-review-media">
-                  <div className="dq-player-frame">
-                    {[current, nextItemToPreload].filter(Boolean).map((item) => {
-                      const playerItem = item as ReviewItem;
-                      const active = playerItem.key === current.key;
-                      return (
-                        <div
-                          key={`${playerItem.media.id}:${playerRevision}`}
-                          className={active ? "dq-review-video-current" : "dq-review-video-preload"}
-                          aria-hidden={active ? undefined : true}
-                          inert={active ? undefined : true}
-                        >
-                          {mediaKind === "audio" ? (
-                            <AudioPlayer
-                              streamUrl={mediaStreamUrl("audio", playerItem.media.id)}
-                              format={playerItem.media.files[0]?.format ?? ""}
-                              title={mediaTitle(playerItem.media)}
-                              coverUrl={
-                                active ? mediaCoverUrl("audio", playerItem.media) : undefined
-                              }
-                              duration={playerItem.media.files[0]?.duration ?? 0}
-                              autostart={
-                                active && autostartMediaId === playerItem.media.id
-                              }
-                            />
-                          ) : (
-                            <VideoPlayer
-                              videoId={playerItem.media.id}
-                              streamUrl={mediaStreamUrl("video", playerItem.media.id)}
-                              posterUrl={
-                                active ? mediaCoverUrl("video", playerItem.media) : undefined
-                              }
-                              duration={playerItem.media.files[0]?.duration ?? 0}
-                              format={playerItem.media.files[0]?.format}
-                              audioCodec={playerItem.media.files[0]?.audioCodec}
-                              extensionSurface={active ? "quick-view" : undefined}
-                              autostart={active && autostartMediaId === playerItem.media.id}
-                              keyboardShortcutsEnabled={active}
-                              showAbLoop={active}
-                              clip={
-                                playerItem.media.parentVideoId != null
-                                  ? {
-                                      start: playerItem.media.clipStartSec ?? 0,
-                                      end: playerItem.media.clipEndSec,
-                                      loop: false,
-                                    }
-                                  : undefined
-                              }
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {mediaKind === "audio" && (
-                    <MediaDescription
-                      key={current.media.id}
-                      details={current.media.details}
-                      label={labels.one}
-                    />
-                  )}
-                </div>
-              </>
-            ) : (
-              <p role="status" className="dq-stage-status">
-                {loading
-                  ? "Loading review…"
-                  : total
-                    ? "Reached the end in this direction."
-                    : `No matching ${labels.many}.`}
-              </p>
-            )}
-            {definition.actions.length > 0 ? (
-              <ActionPad
-                actions={definition.actions}
-                mediaKind={mediaKind}
-                isDisabled={(action) => editing || actionBlocked(action)}
-                busy={settling}
-                tags={tags}
-                trees={trees}
-                preview={preview}
-                onApply={(action, stay) => void execute(action, stay)}
-                onFind={() => setFindOpen(true)}
-                findDisabled={editing || !!ruleDraft}
-              />
-            ) : (
-              isOccurrenceReview(saved) &&
-              saved.occurrence.tagIds.length > 0 && (
-                <fieldset
-                  className="dq-tag-choices"
-                  disabled={!canWrite || pending || editing || !tags || !!ruleDraft || !current}
-                >
-                  <legend>Tag choices</legend>
-                  {saved.occurrence.tagIds.map((id) => (
-                    <label key={id}>
-                      <input
-                        type={saved.occurrence.multiple ? "checkbox" : "radio"}
-                        name="legacy-choice"
-                        checked={legacySelected.includes(id)}
-                        onChange={(event) =>
-                          setLegacySelected(
-                            saved.occurrence.multiple
-                              ? event.target.checked
-                                ? [...legacySelected, id]
-                                : legacySelected.filter((value) => value !== id)
-                              : [id],
-                          )
-                        }
-                      />
-                      {legacyNames[id] ?? "Loading tag…"}
-                    </label>
-                  ))}
-                  <div className="dq-row">
-                    <button
-                      type="button"
-                      className="dq-button"
-                      onClick={() => setLegacySelected([])}
-                    >
-                      No applicable tags
-                    </button>
-                    <button
-                      type="button"
-                      className="dq-button"
-                      onClick={() => void execute(undefined, true, false, true)}
-                    >
-                      Save choices
-                    </button>
-                    <button
-                      type="button"
-                      className="dq-button primary"
-                      onClick={() => void execute(undefined, false, false, true)}
-                    >
-                      Save & next performer
-                    </button>
-                  </div>
-                </fieldset>
-              )
-            )}
-          </div>
-          <aside className="dq-review-panel" aria-label="Current item">
-            <div className="dq-panel-body" ref={panelBody}>
-              {current && (
+        <div className="dq-review-main">
+          <div className="dq-review-body">
+            <div className="dq-review-stage">
+              {current ? (
                 <>
-                  <section className="dq-panel-section dq-reviewing">
-                    <h2 className="dq-eyebrow">
-                      Reviewing{" "}
-                      <span className="dq-sr-only">
-                        {current.occurrence
-                          ? current.occurrence.performer.name
-                          : `this ${labels.one}`}
-                      </span>
+                  <div className="dq-stage-title">
+                    <h2 className="dq-review-video-title">
+                      <a
+                        href={`/${mediaKind}/${current.media.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`Open this ${labels.one} in a new tab`}
+                      >
+                        <span>{title(current.media)}</span>
+                        <ExternalLink aria-hidden="true" />
+                      </a>
                     </h2>
-                    <div className="dq-reviewing-who">
-                      {current.occurrence && (
-                        <PerformerAvatar performer={current.occurrence.performer} />
-                      )}
-                      <div>
-                        <p className="dq-reviewing-name" aria-hidden="true">
+                    {meta && <span className="dq-stage-meta">{meta}</span>}
+                  </div>
+                  <div className="dq-review-media">
+                    <div className="dq-player-frame">
+                      {[current, nextItemToPreload].filter(Boolean).map((item) => {
+                        const playerItem = item as ReviewItem;
+                        const active = playerItem.key === current.key;
+                        return (
+                          <div
+                            key={`${playerItem.media.id}:${playerRevision}`}
+                            className={active ? "dq-review-video-current" : "dq-review-video-preload"}
+                            aria-hidden={active ? undefined : true}
+                            inert={active ? undefined : true}
+                          >
+                            {mediaKind === "audio" ? (
+                              <AudioPlayer
+                                streamUrl={mediaStreamUrl("audio", playerItem.media.id)}
+                                format={playerItem.media.files[0]?.format ?? ""}
+                                title={mediaTitle(playerItem.media)}
+                                coverUrl={
+                                  active ? mediaCoverUrl("audio", playerItem.media) : undefined
+                                }
+                                duration={playerItem.media.files[0]?.duration ?? 0}
+                                autostart={
+                                  active && autostartMediaId === playerItem.media.id
+                                }
+                              />
+                            ) : (
+                              <VideoPlayer
+                                videoId={playerItem.media.id}
+                                streamUrl={mediaStreamUrl("video", playerItem.media.id)}
+                                posterUrl={
+                                  active ? mediaCoverUrl("video", playerItem.media) : undefined
+                                }
+                                duration={playerItem.media.files[0]?.duration ?? 0}
+                                format={playerItem.media.files[0]?.format}
+                                audioCodec={playerItem.media.files[0]?.audioCodec}
+                                extensionSurface={active ? "quick-view" : undefined}
+                                autostart={active && autostartMediaId === playerItem.media.id}
+                                keyboardShortcutsEnabled={active}
+                                showAbLoop={active}
+                                clip={
+                                  playerItem.media.parentVideoId != null
+                                    ? {
+                                        start: playerItem.media.clipStartSec ?? 0,
+                                        end: playerItem.media.clipEndSec,
+                                        loop: false,
+                                      }
+                                    : undefined
+                                }
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {mediaKind === "audio" && (
+                      <MediaDescription
+                        key={current.media.id}
+                        details={current.media.details}
+                        label={labels.one}
+                      />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p role="status" className="dq-stage-status">
+                  {loading
+                    ? "Loading review…"
+                    : total
+                      ? "Reached the end in this direction."
+                      : `No matching ${labels.many}.`}
+                </p>
+              )}
+              {definition.actions.length > 0 ? (
+                <ActionPad
+                  actions={definition.actions}
+                  mediaKind={mediaKind}
+                  isDisabled={(action) => editing || actionBlocked(action)}
+                  busy={settling}
+                  tags={tags}
+                  trees={trees}
+                  preview={preview}
+                  onApply={(action, stay) => void execute(action, stay)}
+                  onFind={() => setFindOpen(true)}
+                  findDisabled={editing || !!ruleDraft}
+                  paused={!!ruleDraft}
+                />
+              ) : (
+                isOccurrenceReview(saved) &&
+                saved.occurrence.tagIds.length > 0 && (
+                  <fieldset
+                    className="dq-tag-choices"
+                    disabled={!canWrite || pending || editing || !tags || !!ruleDraft || !current}
+                  >
+                    <legend>Tag choices</legend>
+                    {saved.occurrence.tagIds.map((id) => (
+                      <label key={id}>
+                        <input
+                          type={saved.occurrence.multiple ? "checkbox" : "radio"}
+                          name="legacy-choice"
+                          checked={legacySelected.includes(id)}
+                          onChange={(event) =>
+                            setLegacySelected(
+                              saved.occurrence.multiple
+                                ? event.target.checked
+                                  ? [...legacySelected, id]
+                                  : legacySelected.filter((value) => value !== id)
+                                : [id],
+                            )
+                          }
+                        />
+                        {legacyNames[id] ?? "Loading tag…"}
+                      </label>
+                    ))}
+                    <div className="dq-row">
+                      <button
+                        type="button"
+                        className="dq-button"
+                        onClick={() => setLegacySelected([])}
+                      >
+                        No applicable tags
+                      </button>
+                      <button
+                        type="button"
+                        className="dq-button"
+                        onClick={() => void execute(undefined, true, false, true)}
+                      >
+                        Save choices
+                      </button>
+                      <button
+                        type="button"
+                        className="dq-button primary"
+                        onClick={() => void execute(undefined, false, false, true)}
+                      >
+                        Save & next performer
+                      </button>
+                    </div>
+                  </fieldset>
+                )
+              )}
+            </div>
+            <aside className="dq-review-panel" aria-label="Current item">
+              <div className="dq-panel-body" ref={panelBody}>
+                {current && (
+                  <>
+                    <section className="dq-panel-section dq-reviewing">
+                      <h2 className="dq-eyebrow">
+                        Reviewing{" "}
+                        <span className="dq-sr-only">
                           {current.occurrence
                             ? current.occurrence.performer.name
-                            : `This ${labels.one}`}
-                        </p>
-                        <p className="dq-reviewing-note">
-                          {scope
-                            ? `Tags apply to this performer in this ${labels.queue}`
-                            : `Tags apply to the whole ${labels.one}`}
-                        </p>
+                            : `this ${labels.one}`}
+                        </span>
+                      </h2>
+                      <div className="dq-reviewing-who">
+                        {current.occurrence && (
+                          <PerformerAvatar performer={current.occurrence.performer} />
+                        )}
+                        <div>
+                          <p className="dq-reviewing-name" aria-hidden="true">
+                            {current.occurrence
+                              ? current.occurrence.performer.name
+                              : `This ${labels.one}`}
+                          </p>
+                          <p className="dq-reviewing-note">
+                            {scope
+                              ? `Tags apply to this performer in this ${labels.queue}`
+                              : `Tags apply to the whole ${labels.one}`}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    {focusedFlags.length > 0 && (
-                      <p className="dq-badge dq-badge-warning dq-flag-badge">
-                        <Flag aria-hidden="true" />
-                        Flagged: {focusedFlags.join(", ")}
-                      </p>
+                      {focusedFlags.length > 0 && (
+                        <p className="dq-badge dq-badge-warning dq-flag-badge">
+                          <Flag aria-hidden="true" />
+                          Flagged: {focusedFlags.join(", ")}
+                        </p>
+                      )}
+                    </section>
+                    {partners.length > 0 && (
+                      <section
+                        className="dq-panel-section"
+                        aria-label={`Also in this ${labels.queue}`}
+                      >
+                        <h3 className="dq-eyebrow">Also in this {labels.queue}</h3>
+                        <div className="dq-partners">
+                          {partners.map((item) => (
+                            <button
+                              type="button"
+                              className="dq-partner"
+                              title={item.occurrence?.performer.name}
+                              aria-label={item.occurrence?.performer.name}
+                              data-partner-key={item.key}
+                              disabled={blocked}
+                              key={item.key}
+                              onClick={() => {
+                                partnerFocus.current = current.key;
+                                showItem(item);
+                                setError("");
+                              }}
+                            >
+                              {item.occurrence && (
+                                <PerformerAvatar performer={item.occurrence.performer} />
+                              )}
+                              <span>{item.occurrence?.performer.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </section>
                     )}
-                  </section>
-                  {partners.length > 0 && (
-                    <section
-                      className="dq-panel-section"
-                      aria-label={`Also in this ${labels.queue}`}
-                    >
-                      <h3 className="dq-eyebrow">Also in this {labels.queue}</h3>
-                      <div className="dq-partners">
-                        {partners.map((item) => (
+                    <CurrentTags
+                      tags={tags}
+                      preview={preview}
+                      showPreview={!editing}
+                      trees={trees}
+                      actionTagIds={actionTagIds}
+                      label={`Current ${scope ? "occurrence" : labels.one} tags`}
+                    />
+                    {editing && (
+                      <fieldset
+                        ref={editor}
+                        disabled={pending}
+                        className="dq-panel-section dq-tag-editor"
+                      >
+                        <legend className="dq-eyebrow">
+                          Edit {scope ? "occurrence" : labels.one} tags
+                        </legend>
+                        <EntityReferenceMultiSelector
+                          entityType="tag"
+                          values={draft}
+                          onChange={setDraft}
+                          placeholder="Choose tags for this item..."
+                          allowCreate={false}
+                        />
+                        <div className="dq-row">
                           <button
                             type="button"
-                            className="dq-partner"
-                            title={item.occurrence?.performer.name}
-                            aria-label={item.occurrence?.performer.name}
-                            data-partner-key={item.key}
-                            disabled={blocked}
-                            key={item.key}
+                            className="dq-button primary"
+                            disabled={!tags}
+                            onClick={() => void execute(undefined, true, true)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="dq-button"
+                            disabled={!tags}
+                            onClick={() => void execute(undefined, false, true)}
+                          >
+                            Save & next
+                          </button>
+                          <button
+                            type="button"
+                            className="dq-button"
                             onClick={() => {
-                              partnerFocus.current = current.key;
-                              showItem(item);
-                              setError("");
+                              setEditing(false);
+                              requestAnimationFrame(() => editButton.current?.focus());
                             }}
                           >
-                            {item.occurrence && (
-                              <PerformerAvatar performer={item.occurrence.performer} />
-                            )}
-                            <span>{item.occurrence?.performer.name}</span>
+                            Cancel
                           </button>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                  <CurrentTags
-                    tags={tags}
-                    preview={preview}
-                    showPreview={!editing}
-                    trees={trees}
-                    actionTagIds={actionTagIds}
-                    label={`Current ${scope ? "occurrence" : labels.one} tags`}
+                        </div>
+                      </fieldset>
+                    )}
+                  </>
+                )}
+                {/* Stays while the focused queue loads or runs out, so it is not read again. */}
+                {isOccurrenceReview(scopedReview) && query.performerFocus && (
+                  <ExistingAnswers
+                    review={scopedReview}
+                    performerId={query.performerFocus}
+                    revision={answersRevision}
                   />
-                  {editing && (
-                    <fieldset
-                      ref={editor}
-                      disabled={pending}
-                      className="dq-panel-section dq-tag-editor"
-                    >
-                      <legend className="dq-eyebrow">
-                        Edit {scope ? "occurrence" : labels.one} tags
-                      </legend>
-                      <EntityReferenceMultiSelector
-                        entityType="tag"
-                        values={draft}
-                        onChange={setDraft}
-                        placeholder="Choose tags for this item..."
-                        allowCreate={false}
-                      />
-                      <div className="dq-row">
-                        <button
-                          type="button"
-                          className="dq-button primary"
-                          disabled={!tags}
-                          onClick={() => void execute(undefined, true, true)}
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="dq-button"
-                          disabled={!tags}
-                          onClick={() => void execute(undefined, false, true)}
-                        >
-                          Save & next
-                        </button>
-                        <button
-                          type="button"
-                          className="dq-button"
-                          onClick={() => {
-                            setEditing(false);
-                            requestAnimationFrame(() => editButton.current?.focus());
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </fieldset>
-                  )}
-                </>
-              )}
-              {/* Stays while the focused queue loads or runs out, so it is not read again. */}
-              {isOccurrenceReview(scopedReview) && query.performerFocus && (
-                <ExistingAnswers
-                  review={scopedReview}
-                  performerId={query.performerFocus}
-                  revision={answersRevision}
-                />
-              )}
-            </div>
-            <div className="dq-panel-footer">
-              <div className="dq-review-feedback" aria-live="polite">
-                {error && (
-                  <p role="alert">
-                    {error}{" "}
+                )}
+              </div>
+              <div className="dq-panel-footer">
+                <div className="dq-review-feedback" aria-live="polite">
+                  {/* While the editor drawer covers this column, it shows the error instead. */}
+                  {!ruleDraft && errorMessage}
+                  {notice && <p role="status">{notice}</p>}
+                </div>
+                {!canWrite && (
+                  <p className="dq-muted">Write permission is required to change tags.</p>
+                )}
+                {current && (
+                  <div className="dq-panel-actions" aria-busy={settling || undefined}>
                     <button
                       type="button"
-                      disabled={pending}
+                      ref={editButton}
+                      className="dq-button"
+                      disabled={blocked || !!ruleDraft || !canWrite || !tags}
                       onClick={() => {
-                        if (current) {
-                          void readTags(mediaKind, current)
-                            .then(setTags)
-                            .catch((error) => setError(errorText(error)));
-                        } else replaceQuery(queryRef.current);
+                        editorBase.current = [...tags!.ids];
+                        setDraft([...tags!.ids]);
+                        setEditing(true);
                       }}
                     >
-                      {current ? "Reload tags" : "Retry queue"}
+                      <Tag aria-hidden="true" />
+                      Edit tags
                     </button>
-                  </p>
+                    <button
+                      type="button"
+                      className="dq-button"
+                      disabled={blocked || !!ruleDraft}
+                      onClick={() => void execute()}
+                    >
+                      <SkipForward aria-hidden="true" />
+                      Skip{scope ? " performer" : ` ${labels.one}`}
+                    </button>
+                  </div>
                 )}
-                {notice && <p role="status">{notice}</p>}
               </div>
-              {!canWrite && (
-                <p className="dq-muted">Write permission is required to change tags.</p>
-              )}
-              {current && (
-                <div className="dq-panel-actions" aria-busy={settling || undefined}>
+            </aside>
+            <aside className="dq-review-queue" aria-label="Review queue">
+              {scope && (
+                <div
+                  className="dq-segmented dq-segmented-fill"
+                  role="group"
+                  aria-label="Queue view"
+                >
                   <button
                     type="button"
-                    ref={editButton}
-                    className="dq-button"
-                    disabled={blocked || !!ruleDraft || !canWrite || !tags}
-                    onClick={() => {
-                      editorBase.current = [...tags!.ids];
-                      setDraft([...tags!.ids]);
-                      setEditing(true);
-                    }}
+                    aria-pressed={queueView === "items"}
+                    onClick={() => setQueueView("items")}
                   >
-                    <Tag aria-hidden="true" />
-                    Edit tags
+                    {mediaKind === "audio" ? "Audios" : "Scenes"}
                   </button>
                   <button
                     type="button"
-                    className="dq-button"
-                    disabled={blocked || !!ruleDraft}
-                    onClick={() => void execute()}
+                    aria-pressed={queueView === "performers"}
+                    onClick={() => setQueueView("performers")}
                   >
-                    <SkipForward aria-hidden="true" />
-                    Skip{scope ? " performer" : ` ${labels.one}`}
+                    Performers
                   </button>
                 </div>
               )}
-            </div>
-          </aside>
-          <aside className="dq-review-queue" aria-label="Review queue">
-            {scope && (
-              <div
-                className="dq-segmented dq-segmented-fill"
-                role="group"
-                aria-label="Queue view"
-              >
-                <button
-                  type="button"
-                  aria-pressed={queueView === "items"}
-                  onClick={() => setQueueView("items")}
-                >
-                  {mediaKind === "audio" ? "Audios" : "Scenes"}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={queueView === "performers"}
-                  onClick={() => setQueueView("performers")}
-                >
-                  Performers
-                </button>
-              </div>
-            )}
-            {scope && queueView === "performers" ? (
-              <PerformerRankingList
-                ranking={ranking?.signature === signature ? ranking : null}
-                busy={rankingBusy}
-                error={
-                  rankingError?.signature === signature ? rankingError.message : ""
-                }
-                focus={query.performerFocus}
-                disabled={blocked}
-                labels={labels}
-                onFocus={focusOn}
-                onMore={() => {
-                  const current = rankingNow.current;
-                  if (current) void runRanking(current, current.limit + RANKING_PAGE);
-                }}
-                onRefresh={() => {
-                  storeRanking(null);
-                  void runRanking(null, RANKING_PAGE);
-                }}
-              />
-            ) : (
-              <div className="dq-queue-list" ref={queueList}>
-                {items.map((item) => {
-                  const active = current?.key === item.key;
-                  return (
-                    <button
-                      type="button"
-                      className="dq-queue-row"
-                      key={item.key}
-                      title={queueItemLabel(item)}
-                      aria-label={queueItemLabel(item)}
-                      aria-current={active ? "true" : undefined}
-                      disabled={blocked}
-                      onClick={() => {
-                        showItem(item);
-                        setError("");
-                        setNotice("");
-                      }}
-                    >
-                      <QueueThumbnail media={item.media} kind={mediaKind} />
-                      <span className="dq-queue-row-text">
-                        <span className="dq-queue-row-title">{mediaTitle(item.media)}</span>
-                        <span className="dq-queue-row-meta">
-                          {item.occurrence && (
-                            <>
-                              <PerformerAvatar performer={item.occurrence.performer} />
-                              <span className="dq-queue-row-performer">
-                                {item.occurrence.performer.name}
-                              </span>
-                            </>
-                          )}
-                          <span className="dq-queue-row-detail">
-                            {[
-                              item.media.date,
-                              item.occurrence
-                                ? ""
-                                : item.media.files[0]?.duration
-                                  ? formatDuration(item.media.files[0].duration)
-                                  : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
+              {scope && queueView === "performers" ? (
+                <PerformerRankingList
+                  ranking={ranking?.signature === signature ? ranking : null}
+                  busy={rankingBusy}
+                  error={
+                    rankingError?.signature === signature ? rankingError.message : ""
+                  }
+                  focus={query.performerFocus}
+                  disabled={blocked}
+                  labels={labels}
+                  onFocus={focusOn}
+                  onMore={() => {
+                    const current = rankingNow.current;
+                    if (current) void runRanking(current, current.limit + RANKING_PAGE);
+                  }}
+                  onRefresh={() => {
+                    storeRanking(null);
+                    void runRanking(null, RANKING_PAGE);
+                  }}
+                />
+              ) : (
+                <div className="dq-queue-list" ref={queueList}>
+                  {items.map((item) => {
+                    const active = current?.key === item.key;
+                    return (
+                      <button
+                        type="button"
+                        className="dq-queue-row"
+                        key={item.key}
+                        title={queueItemLabel(item)}
+                        aria-label={queueItemLabel(item)}
+                        aria-current={active ? "true" : undefined}
+                        disabled={blocked}
+                        onClick={() => {
+                          showItem(item);
+                          setError("");
+                          setNotice("");
+                        }}
+                      >
+                        <QueueThumbnail media={item.media} kind={mediaKind} />
+                        <span className="dq-queue-row-text">
+                          <span className="dq-queue-row-title">{mediaTitle(item.media)}</span>
+                          <span className="dq-queue-row-meta">
+                            {item.occurrence && (
+                              <>
+                                <PerformerAvatar performer={item.occurrence.performer} />
+                                <span className="dq-queue-row-performer">
+                                  {item.occurrence.performer.name}
+                                </span>
+                              </>
+                            )}
+                            <span className="dq-queue-row-detail">
+                              {[
+                                item.media.date,
+                                item.occurrence
+                                  ? ""
+                                  : item.media.files[0]?.duration
+                                    ? formatDuration(item.media.files[0].duration)
+                                    : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
                           </span>
                         </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </aside>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </aside>
+          </div>
         </div>
       </div>
       {scope && (

@@ -367,7 +367,8 @@ export function hasAssessmentSteps(action: ReviewAction): boolean {
   return action.steps.some((step) => isAssessmentMode(step.mode));
 }
 
-function hasContradictoryAssessments(action: MediaReviewAction): boolean {
+/** Whether one of the action's tags is both marked present and absent, or cleared and marked. */
+export function hasContradictoryAssessments(action: MediaReviewAction): boolean {
   const assessments = new Map<number, ReviewStep["mode"]>();
   for (const step of action.steps) {
     if (!isAssessmentMode(step.mode))

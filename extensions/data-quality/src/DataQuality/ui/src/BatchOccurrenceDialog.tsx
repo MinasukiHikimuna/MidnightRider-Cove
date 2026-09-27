@@ -86,7 +86,6 @@ function settle(since: number, signal: AbortSignal) {
 export function BatchOccurrenceDialog({
   review,
   disabled,
-  hidden = false,
   performerFlags = [],
   onOpen,
   onClose,
@@ -94,7 +93,6 @@ export function BatchOccurrenceDialog({
 }: {
   review: OccurrenceReview;
   disabled: boolean;
-  hidden?: boolean;
   /** Flag tags on the one performer this batch targets. */
   performerFlags?: string[];
   onOpen(): void;
@@ -363,7 +361,6 @@ export function BatchOccurrenceDialog({
       <button
         type="button"
         className="dq-header-button"
-        hidden={hidden}
         ref={opener}
         title="Apply answers to all matching occurrences"
         disabled={disabled || !actions.length}

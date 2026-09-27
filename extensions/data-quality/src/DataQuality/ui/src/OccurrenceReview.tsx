@@ -1,114 +1,49 @@
 import { EntityReferenceMultiSelector } from "@cove/runtime/components";
 import { mediaLabel } from "./api";
-import {
-  conditionSeeksMissingTags,
-  OCCURRENCE_CONDITION_LABELS,
-  OCCURRENCE_CONDITIONS,
-  reviewMediaKind,
-  type OccurrenceReview,
-} from "./model";
+import { reviewMediaKind, type OccurrenceReview } from "./model";
 
-export function OccurrenceSettings({
+/**
+ * The tags a legacy occurrence review (one without actions) offers as choices on the reviewed
+ * performer's occurrence, and whether several may be chosen.
+ */
+export function TagChoiceSettings({
   review,
   onChange,
-  choices = false,
 }: {
   review: OccurrenceReview;
   onChange(review: OccurrenceReview): void;
-  choices?: boolean;
 }) {
   const settings = review.occurrence;
   const host = mediaLabel(reviewMediaKind(review)).queue;
   const update = (change: Partial<OccurrenceReview["occurrence"]>) =>
     onChange({ ...review, occurrence: { ...settings, ...change } });
-  if (choices)
-    return (
-      <fieldset className="dq-queue-fields">
-        <legend>Tag choices</legend>
-        <p>
-          Choose the tags this review can change on the active performer’s
-          appearance in one {host}. Other tags are preserved.
-        </p>
-        <EntityReferenceMultiSelector
-          entityType="tag"
-          values={settings.tagIds}
-          onChange={(tagIds) => update({ tagIds })}
-          placeholder="Search review tag choices..."
-          allowCreate={false}
-        />
-        <label className="dq-checkbox">
-          <input
-            type="checkbox"
-            checked={settings.multiple}
-            onChange={(event) => update({ multiple: event.target.checked })}
-          />
-          Allow multiple tags, for example when something changes part-way
-          through the {host}
-        </label>
-        <p>
-          Save & next performer applies the selected tags and advances. Save
-          choices stays on the performer. Skip only moves the cursor;
-          eligibility comes from the filters.
-        </p>
-      </fieldset>
-    );
   return (
-    <fieldset className="dq-queue-fields">
-      <legend>Occurrence condition (optional)</legend>
+    <fieldset className="dq-settings-group">
+      <legend>Tag choices</legend>
       <p>
-        Leave this unrestricted to review any appearance. Set performer matching
-        in the review workspace and save it with the rule.
+        Choose the tags this review can change on the active performer’s
+        appearance in one {host}. Other tags are preserved.
       </p>
-      <label>
-        Occurrence condition
-        <select
-          aria-label="Occurrence condition"
-          value={settings.condition}
-          onChange={(event) =>
-            update({
-              condition: event.target.value as typeof settings.condition,
-            })
-          }
-        >
-          {OCCURRENCE_CONDITIONS.map((condition) => (
-            <option value={condition} key={condition}>
-              {OCCURRENCE_CONDITION_LABELS[condition]}
-            </option>
-          ))}
-        </select>
+      <EntityReferenceMultiSelector
+        entityType="tag"
+        values={settings.tagIds}
+        onChange={(tagIds) => update({ tagIds })}
+        placeholder="Search review tag choices..."
+        allowCreate={false}
+      />
+      <label className="dq-checkbox">
+        <input
+          type="checkbox"
+          checked={settings.multiple}
+          onChange={(event) => update({ multiple: event.target.checked })}
+        />
+        Allow multiple tags, for example when something changes part-way
+        through the {host}
       </label>
-      {!["any", "isNull"].includes(settings.condition) && (
-        <>
-          <EntityReferenceMultiSelector
-            entityType="tag"
-            values={settings.conditionTagIds}
-            onChange={(conditionTagIds) => update({ conditionTagIds })}
-            placeholder="Search occurrence condition tags..."
-            allowCreate={false}
-          />
-          <label className="dq-checkbox">
-            <input
-              type="checkbox"
-              checked={settings.includeSubtags ?? true}
-              onChange={(event) => update({ includeSubtags: event.target.checked })}
-            />
-            Include subtags
-          </label>
-          {conditionSeeksMissingTags(settings.condition) && (
-            <label className="dq-checkbox">
-              <input
-                type="checkbox"
-                checked={settings.hideConfirmedAbsent ?? true}
-                onChange={(event) => update({ hideConfirmedAbsent: event.target.checked })}
-              />
-              Hide occurrences confirmed absent
-            </label>
-          )}
-        </>
-      )}
       <p>
-        Conditions check tags on the same performer’s occurrence,
-        independently of {host} tags and the performer’s profile.
+        Save & next performer applies the selected tags and advances. Save
+        choices stays on the performer. Skip only moves the cursor;
+        eligibility comes from the filters.
       </p>
     </fieldset>
   );
@@ -123,7 +58,7 @@ export function PerformerFlagSettings({
 }) {
   const host = mediaLabel(reviewMediaKind(review)).many;
   return (
-    <fieldset className="dq-queue-fields">
+    <fieldset className="dq-settings-group">
       <legend>Performer flags</legend>
       <p>
         Flag performers whose profile has any of these tags in the performer

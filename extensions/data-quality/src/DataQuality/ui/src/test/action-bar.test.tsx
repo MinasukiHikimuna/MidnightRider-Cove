@@ -109,3 +109,17 @@ it("keeps the summary beside the tiles when that takes no more rows", () => {
   // 4 tiles: 2 rows beside the summary, 1 + 1 under it.
   expect(bar(actions(3)).region).not.toHaveClass("dq-bar-stacked");
 });
+
+it("pauses every tile, Find action included, and says why while the review is edited", () => {
+  const { region, onApply, onFind } = bar(actions(2), { paused: true });
+  expect(region).toHaveClass("dq-bar-paused");
+  expect(within(region).getByText("Actions are paused while you edit the review")).toBeInTheDocument();
+  const tile = within(region).getByRole("button", { name: "q Action 1" });
+  expect(tile).toBeDisabled();
+  expect(within(region).getByRole("button", { name: "Find action" })).toBeDisabled();
+  fireEvent.mouseEnter(tile);
+  expect(region.querySelector(".dq-bar-effect:not(.dq-bar-paused-note)")).toBeNull();
+  fireEvent.click(tile);
+  expect(onApply).not.toHaveBeenCalled();
+  expect(onFind).not.toHaveBeenCalled();
+});

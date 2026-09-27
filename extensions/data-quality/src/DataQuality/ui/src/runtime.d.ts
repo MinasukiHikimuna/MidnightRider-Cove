@@ -74,15 +74,6 @@ declare module "@cove/runtime/components" {
     | "group"
     | "studio"
     | "face";
-  export interface FilterDialogCustomSection {
-    id: string;
-    label: string;
-    filterKey: string;
-  }
-  export function useCustomFieldFilterSection(
-    entityType: CustomFieldEntityType | undefined,
-    objectFilter: Record<string, unknown> | undefined,
-  ): FilterDialogCustomSection | undefined;
   export const DetailListToolbar: ComponentType<{
     filter: { page?: number; perPage?: number; [key: string]: unknown };
     onFilterChange(filter: {
@@ -222,7 +213,6 @@ declare module "@cove/runtime/components" {
     onClose(): void;
     criteria: typeof VIDEO_CRITERIA;
     activeFilter: Record<string, unknown>;
-    customSections?: FilterDialogCustomSection[];
     onApply(filter: Record<string, unknown>): void;
     supportsFilterExpressions?: boolean;
     subjectLabel?: string;
@@ -275,6 +265,20 @@ declare module "@cove/runtime/components" {
     allowCreate?: boolean;
     selectedDisplay?: "chip" | "input";
     children?: ReactNode;
+    /**
+     * Replaces the wrapper's layout classes (chips above the search field by default). The review
+     * lays chips and field out on one line through it (.dq-chip-input in styles.css), which relies
+     * on the chips sitting in a div of their own as spans; a host that changes that markup falls
+     * back to its stacked layout.
+     */
+    containerClassName?: string;
+    /** Replaces the search field's classes. */
+    inputClassName?: string;
+    /**
+     * The search field's accessible name. Cove v1.5.0 and later; earlier hosts ignore it and the
+     * field keeps only its placeholder.
+     */
+    inputAriaLabel?: string;
   }>;
   export function formatDuration(seconds: number): string;
   export function getResolutionLabel(width?: number, height?: number): string;
@@ -297,6 +301,7 @@ declare module "@cove/runtime/lucide-react" {
   export const ChevronDown: Icon;
   export const ChevronLeft: Icon;
   export const ChevronRight: Icon;
+  export const Copy: Icon;
   export const ExternalLink: Icon;
   export const Film: Icon;
   export const Flag: Icon;

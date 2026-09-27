@@ -216,26 +216,6 @@
   flex: none;
   font-variant-numeric: tabular-nums;
 }
-.data-quality-page [data-step-tone="positive"],
-.dq-manager [data-step-tone="positive"] {
-  --dq-step-color: rgb(34 197 94);
-}
-.data-quality-page [data-step-tone="negative"],
-.dq-manager [data-step-tone="negative"] {
-  --dq-step-color: rgb(239 68 68);
-}
-.data-quality-page [data-step-tone="present"],
-.dq-manager [data-step-tone="present"] {
-  --dq-step-color: rgb(14 165 233);
-}
-.data-quality-page [data-step-tone="absent"],
-.dq-manager [data-step-tone="absent"] {
-  --dq-step-color: rgb(245 158 11);
-}
-.data-quality-page [data-step-tone="neutral"],
-.dq-manager [data-step-tone="neutral"] {
-  --dq-step-color: var(--color-muted);
-}
 .dq-grid {
   display: grid;
   grid-template-columns: repeat(
@@ -417,8 +397,7 @@
   background: var(--color-background);
   box-shadow: 0 1rem 3rem rgb(0 0 0 / 40%);
 }
-.dq-manager-content,
-.dq-editor fieldset {
+.dq-manager-content {
   min-width: 0;
 }
 .dq-manager header {
@@ -433,13 +412,11 @@
   font-size: 1.1rem;
   font-weight: 600;
 }
-.dq-manager header p,
-.dq-editor-note {
+.dq-manager header p {
   color: var(--color-secondary);
   font-size: 0.75rem;
 }
 .dq-manager-tools,
-.dq-editor-footer,
 .dq-row {
   display: flex;
   flex-wrap: wrap;
@@ -475,71 +452,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dq-editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0.75rem;
-}
-.dq-editor label:not(.filter-dialog *) {
-  display: grid;
-  gap: 0.25rem;
-  font-size: 0.8rem;
-}
-.dq-editor input:not(.filter-dialog *),
-.dq-editor textarea:not(.filter-dialog *),
-.dq-editor select:not(.filter-dialog *) {
-  width: 100%;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.35rem;
-  background: var(--color-input);
-  color: var(--color-foreground);
-}
-.dq-editor fieldset:not(.filter-dialog *) {
-  display: grid;
-  gap: 0.6rem;
-  padding: 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-}
-.dq-editor legend:not(.filter-dialog *) {
-  padding: 0 0.3rem;
-  color: var(--color-secondary);
-  font-size: 0.75rem;
-}
-.dq-action-step {
-  display: grid;
-  grid-template-columns:
-    auto auto auto minmax(8rem, 1fr) minmax(10rem, 2fr)
-    auto;
-  align-items: start;
-  gap: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-border);
-}
-.dq-editor-footer {
-  justify-content: flex-end;
-  padding: 0;
-}
-
-.dq-action-step > * {
-  min-width: 0;
-}
-/* Outranks the grid layout of plain editor labels, which would stack the box above its text. */
-.dq-editor label.dq-checkbox:not(.filter-dialog *) {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.dq-editor .dq-checkbox input {
-  width: auto;
-}
-.dq-editor button:not([role="tab"]):not(.filter-dialog *) {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.35rem;
-}
 @media (max-width: 700px) {
   .dq-review-list article {
     flex-wrap: wrap;
@@ -549,187 +461,6 @@
   }
 }
 
-/* Review settings share one draft, with a fixed save bar. */
-.dq-manager:has(.dq-editor) {
-  display: flex;
-  flex-direction: column;
-  height: min(48rem, calc(100dvh - 2rem));
-  overflow: hidden;
-}
-.dq-manager-content:has(.dq-editor) {
-  min-height: 0;
-  flex: 1;
-}
-.dq-editor {
-  height: 100%;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 0;
-  padding: 0;
-}
-.dq-editor:not(:has(.dq-editor-nav)) {
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-.dq-editor-nav {
-  padding: 0 1.25rem;
-}
-.dq-editor-body {
-  overflow-y: auto;
-  min-height: 0;
-  padding: 1.25rem;
-}
-.dq-editor-section {
-  display: grid;
-  gap: 1rem;
-}
-.dq-editor-section[hidden] {
-  display: none;
-}
-.dq-editor-section h3:not(.filter-dialog *) {
-  font-weight: 600;
-  font-size: 1rem;
-}
-.dq-editor-section h4 {
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-top: 0.5rem;
-}
-.dq-editor-section > p {
-  color: var(--color-secondary);
-  font-size: 0.8rem;
-}
-.dq-editor textarea:not(.filter-dialog *) {
-  min-height: 7rem;
-  resize: vertical;
-}
-.dq-field-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.75rem;
-}
-.dq-annotation-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  text-transform: capitalize;
-}
-.dq-editor .dq-queue-fields {
-  border: 0;
-  padding: 0;
-  gap: 1rem;
-}
-.dq-queue-fields legend {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-foreground);
-  margin-bottom: 1rem;
-  padding: 0;
-}
-.dq-queue-fields > button {
-  justify-self: start;
-}
-.dq-queue-fields > p {
-  color: var(--color-secondary);
-  font-size: 0.8rem;
-}
-.dq-editor-footer {
-  padding: 0.85rem 1.25rem;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background);
-}
-.dq-editor-footer > button:first-child {
-  margin-right: auto;
-}
-.dq-sortable-list {
-  display: grid;
-  gap: 0.75rem;
-}
-.dq-editor .dq-action-card {
-  padding: 0.75rem;
-  background: var(--color-input);
-}
-.dq-add-actions,
-.dq-actions-from-tags .dq-row {
-  padding: 0;
-}
-.dq-actions-from-tags .dq-row {
-  align-items: center;
-}
-.dq-child-tags {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 0.35rem 1rem;
-}
-.dq-editor label.dq-child-tag:not(.filter-dialog *) {
-  align-items: baseline;
-}
-.dq-child-tag small {
-  color: var(--color-secondary);
-  font-size: 0.72rem;
-}
-.dq-action-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.dq-action-heading strong {
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-.dq-action-heading .dq-row {
-  padding: 0;
-}
-.dq-editor .dq-drag-handle {
-  border: 0;
-  color: var(--color-secondary);
-  cursor: grab;
-}
-.dq-editor .dq-drag-handle:active {
-  cursor: grabbing;
-}
-.dq-editor .dq-drag-handle[aria-pressed="true"],
-.dq-drag-over {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-.dq-action-step {
-  grid-template-columns: auto auto minmax(8rem, 1fr) minmax(10rem, 2fr) auto;
-  align-items: center;
-  padding: 0.5rem;
-  border-left: 3px solid
-    color-mix(in srgb, var(--dq-step-color) 38%, transparent);
-  border-radius: 0.35rem;
-  background: color-mix(in srgb, var(--dq-step-color) 4%, transparent);
-}
-.dq-action-step .dq-step-tags > div > div:first-child > span {
-  border-color: color-mix(
-    in srgb,
-    var(--dq-step-color) 32%,
-    var(--color-border)
-  );
-  background: color-mix(in srgb, var(--dq-step-color) 8%, var(--color-card));
-}
-@media (max-width: 700px) {
-  .dq-editor-nav {
-    padding: 0 0.5rem;
-  }
-  .dq-editor-body {
-    padding: 0.75rem;
-  }
-  .dq-action-step {
-    grid-template-columns: auto 1fr auto;
-  }
-  .dq-action-step > select,
-  .dq-action-step > div {
-    grid-column: 1 / -1;
-  }
-  .dq-action-step > button:last-child {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .dq-editor-footer {
-    padding: 0.75rem;
-  }
-}
 /* The single-item workspace (Step 2 layout): one header row and a chip row, then the queue rail,
    the stage (player and action pad) and the current item's column. Colours come from the host
    theme so every Cove theme works. */
@@ -788,16 +519,12 @@
   .dq-page-fit .dq-review-body {
     flex: 1 1 auto;
   }
-  /* A short window scrolls the workspace under the header rather than squeezing the player;
-     the inline rule editor scrolls above the workspace, which keeps the full visible height. */
+  /* A short window scrolls the workspace under the header rather than squeezing the player. */
   .dq-page-fit .dq-review-main {
     overflow-y: auto;
   }
   .dq-page-fit .dq-review-body {
     min-height: 36rem;
-  }
-  .dq-page-fit .dq-editing-rule .dq-review-body {
-    flex: 0 0 100%;
   }
 }
 
@@ -2339,48 +2066,11 @@
 .dq-review-workspace .dq-row {
   padding: 0;
 }
-.dq-rule-editor {
-  display: grid;
-  flex: none;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-surface);
-}
-.dq-rule-editor h2 {
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-.dq-rule-editor > p {
-  color: var(--color-secondary);
-  font-size: 0.875rem;
-}
-.dq-rule-editor input,
-.dq-rule-editor textarea,
-.dq-rule-editor select {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  background: var(--color-input);
-  color: var(--color-foreground);
-}
-.dq-rule-editor label {
-  display: grid;
-  gap: 0.35rem;
-}
 /* Host components (list toolbar, filter dialog, criteria chips, entity selectors) draw their own
    focus rings and must not be matched here; a blanket :focus-visible rule doubled them. Only the
-   extension's own controls get an explicit accent ring, in the workspace and the manager editor. */
+   extension's own controls get an explicit accent ring, in the workspace and the editor drawer. */
 .dq-button:focus-visible,
-.dq-queue-fields label > select:focus-visible:not(.filter-dialog *),
-.dq-queue-fields label > input:focus-visible:not(.filter-dialog *),
-.dq-editor-section > label > :is(input, select, textarea):focus-visible,
-.dq-field-grid > label > :is(input, select):focus-visible,
-.dq-action-heading > button:focus-visible,
-.dq-action-step > select:focus-visible,
-.dq-action-step > button:focus-visible,
-.dq-rule-editor > fieldset > label > select:focus-visible,
+.dq-input:focus-visible,
 .dq-select:focus-visible,
 .dq-pager-input:focus-visible,
 .dq-menu-list [role="menuitem"]:focus-visible,
@@ -3120,4 +2810,762 @@
   flex: none;
   color: var(--color-foreground);
   text-align: center;
+}
+
+/* Edit review: a drawer over the right-hand column of the single-item workspace or the card grid.
+   The area under the review header is its containing block, so the header, its chip row and the
+   queue beside it stay in view and live as the draft's preview. */
+.dq-review-area {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+@media (min-width: 900px) {
+  .dq-page-fit .dq-review-area {
+    flex: 1 1 auto;
+  }
+}
+.dq-drawer {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(720px, 100%);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: -24px 0 60px rgb(0 0 0 / 45%);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+}
+.dq-drawer:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+/* Narrow windows have no room beside it: the drawer sits in the page above the review, under
+   the header, which stays usable. */
+@media (max-width: 899px) {
+  .dq-drawer {
+    position: relative;
+    inset: auto;
+    width: auto;
+    max-height: min(44rem, 85dvh);
+    margin-bottom: 12px;
+    box-shadow: none;
+  }
+}
+.dq-drawer-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 4px 20px;
+}
+.dq-drawer-title {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+.dq-drawer-title h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-drawer-tabs {
+  flex: none;
+  padding: 0 12px;
+}
+.dq-drawer-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dq-drawer-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-drawer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 20px;
+}
+.dq-drawer-panel[hidden] {
+  display: none;
+}
+.dq-drawer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-input {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-input);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+}
+textarea.dq-input {
+  min-height: 5rem;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.dq-drawer-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78125rem;
+}
+.dq-drawer-notices {
+  display: grid;
+  flex: none;
+  gap: 8px;
+  padding: 12px 16px 0;
+  border-top: 1px solid var(--color-border);
+}
+.dq-drawer-notices .dq-alert {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 0.78125rem;
+}
+.dq-drawer-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+.dq-drawer-notices + .dq-drawer-footer {
+  border-top: 0;
+}
+.dq-drawer-footer .dq-button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.4;
+}
+.dq-link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dq-link-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-drawer-dirty {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--dq-warn);
+  font-size: 0.78125rem;
+}
+.dq-drawer .dq-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+}
+.dq-drawer input[type="checkbox"],
+.dq-drawer input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+/* Performer flags and legacy tag choices. */
+.dq-drawer .dq-settings-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-drawer .dq-settings-group > legend {
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dq-drawer .dq-settings-group > p {
+  margin: 0;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+/* A review with a card grid: its default layout and the grid's settings. */
+.dq-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dq-layout-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.dq-layout-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+  cursor: pointer;
+}
+.dq-layout-card:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border));
+}
+.dq-layout-card:has(input:checked) {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+.dq-layout-card:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-layout-picture {
+  display: block;
+  width: 100%;
+  height: 96px;
+  color: var(--color-secondary);
+}
+.dq-picture-ground {
+  fill: color-mix(in srgb, currentColor 8%, transparent);
+}
+.dq-picture-part {
+  fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+.dq-picture-strong {
+  fill: color-mix(in srgb, currentColor 24%, transparent);
+}
+.dq-picture-key {
+  fill: color-mix(in srgb, currentColor 34%, transparent);
+}
+.dq-picture-selected {
+  fill: color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+.dq-layout-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.dq-layout-card-text {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.dq-setting-row-top {
+  align-items: flex-start;
+}
+.dq-setting-row-top > .dq-setting-name {
+  padding-top: 8px;
+}
+.dq-setting-name {
+  width: 110px;
+  flex: none;
+  color: var(--color-secondary);
+}
+.dq-setting-value {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+}
+.dq-setting-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.dq-drawer .dq-setting-indent {
+  padding-left: 124px;
+}
+/* Cove's tag selector drawn as one field: its chips flow inline with its search field. */
+.dq-chip-input {
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-input);
+}
+.dq-chip-input:focus-within {
+  border-color: var(--color-accent);
+}
+.dq-chip-input > div {
+  display: contents;
+}
+.dq-chip-input > div > span {
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: 5px;
+  font-size: 0.75rem;
+}
+.dq-chip-input > div > span svg {
+  width: 11px;
+  height: 11px;
+}
+.dq-chip-input-field {
+  min-width: 7rem;
+  height: 26px;
+  flex: 1 1 7rem;
+  padding: 0 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+}
+/* The Actions tab: a toolbar that stays put, then compact rows with one action open. */
+.dq-drawer-panel.dq-actions-panel {
+  gap: 0;
+  padding-top: 0;
+}
+.dq-actions-editor {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+.dq-actions-head {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 -20px;
+  padding: 14px 20px 8px;
+  background: var(--color-surface);
+}
+.dq-actions-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dq-actions-filter {
+  display: flex;
+  width: 200px;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-input);
+  color: var(--color-muted);
+}
+.dq-actions-filter:focus-within {
+  border-color: var(--color-accent);
+}
+.dq-actions-filter svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dq-actions-filter input {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+}
+.dq-actions-hint,
+.dq-actions-status {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-actions-status:empty {
+  display: none;
+}
+.dq-actions-empty {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+}
+.dq-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dq-action-row {
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.dq-action-row:not(.dq-action-row-open):hover {
+  background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+}
+.dq-action-row-open {
+  margin: 4px 0;
+  padding-bottom: 14px;
+  border-color: var(--color-border);
+  background: var(--color-card);
+}
+.dq-action-row-head {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 2px;
+}
+.dq-action-row-head > .dq-key {
+  width: 24px;
+  flex: none;
+  padding-inline: 0;
+}
+.dq-key-none {
+  color: var(--color-muted);
+}
+.dq-action-row-open .dq-action-row-head > .dq-key {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: white;
+}
+.dq-action-row-summary {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  align-self: stretch;
+  gap: 12px;
+  cursor: pointer;
+}
+.dq-action-row-label {
+  width: 150px;
+  flex: none;
+  overflow: hidden;
+  font-size: 0.84375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-action-row-open .dq-action-row-label {
+  width: auto;
+  flex: 1 1 auto;
+  font-weight: 600;
+}
+.dq-action-row-effect {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 10px;
+  overflow: hidden;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+.dq-action-row-effect [data-effect-tone="add"] {
+  color: var(--dq-add);
+}
+.dq-action-row-effect [data-effect-tone="remove"] {
+  color: var(--dq-remove);
+}
+.dq-action-row-effect [data-effect-tone="assess"] {
+  color: var(--color-foreground);
+}
+.dq-action-problem {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--dq-warn);
+  font-size: 0.75rem;
+}
+.dq-action-problem svg {
+  width: 13px;
+  height: 13px;
+}
+.dq-action-toggle svg {
+  transition: transform 0.15s;
+}
+.dq-action-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.dq-drag-handle,
+.dq-step-handle {
+  display: inline-flex;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: grab;
+}
+.dq-drag-handle {
+  width: 22px;
+}
+.dq-step-handle {
+  width: 34px;
+  gap: 1px;
+  font-size: 0.75rem;
+}
+.dq-drag-handle svg {
+  width: 15px;
+  height: 15px;
+}
+.dq-step-handle svg {
+  width: 13px;
+  height: 13px;
+}
+.dq-drag-handle:hover:not(:disabled),
+.dq-step-handle:hover:not(:disabled) {
+  color: var(--color-foreground);
+}
+.dq-drag-handle:active,
+.dq-step-handle:active {
+  cursor: grabbing;
+}
+/* Touch screens keep Cove's full-size drag targets. */
+@media (pointer: coarse) {
+  .dq-drag-handle,
+  .dq-step-handle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.dq-drag-handle:disabled,
+.dq-step-handle:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.dq-drag-handle:focus-visible,
+.dq-step-handle:focus-visible,
+.dq-add-step:focus-visible,
+.dq-drag-handle[aria-pressed="true"],
+.dq-step-handle[aria-pressed="true"],
+.dq-drag-over {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-action-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 10px 0 34px;
+}
+.dq-action-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-action-field-top {
+  align-items: flex-start;
+}
+.dq-action-field-top > .dq-action-field-name {
+  padding-top: 8px;
+}
+.dq-action-field-name {
+  width: 84px;
+  flex: none;
+}
+.dq-action-field > .dq-input,
+.dq-action-field > .dq-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.dq-steps {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dq-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dq-drawer .dq-step-mode {
+  width: 14rem;
+  flex: none;
+}
+.dq-step[data-step-tone="add"] .dq-chip-input > div > span {
+  border-color: color-mix(in srgb, var(--dq-add) 40%, transparent);
+  background: color-mix(in srgb, var(--dq-add) 14%, transparent);
+}
+.dq-step[data-step-tone="remove"] .dq-chip-input > div > span {
+  border-color: color-mix(in srgb, var(--dq-remove) 40%, transparent);
+  background: color-mix(in srgb, var(--dq-remove) 14%, transparent);
+}
+.dq-add-step {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-add-step:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-foreground);
+}
+.dq-add-step svg {
+  width: 13px;
+  height: 13px;
+}
+/* Add from parent tags, inside the Actions tab. */
+.dq-actions-from-tags {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+}
+.dq-actions-from-tags > legend {
+  padding: 0 4px;
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.dq-actions-from-tags .dq-row {
+  align-items: center;
+  padding: 0;
+}
+.dq-child-tag-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.dq-child-tag-group > legend {
+  padding: 0 4px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+.dq-child-tag-group .dq-row > button {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+.dq-child-tags {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.35rem 1rem;
+}
+.dq-drawer .dq-child-tag {
+  align-items: baseline;
+}
+.dq-child-tag small {
+  color: var(--color-secondary);
+  font-size: 0.72rem;
+}
+/* New review, in Manage reviews: its kind, name and description, then Create & configure. */
+.dq-new-review-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 1rem 1.25rem;
+}
+.dq-new-review-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+.dq-new-review-footer > button:first-child {
+  margin-right: auto;
+}
+/* While the drawer is open the review's actions pause: the pad and the bar say so and dim. */
+.dq-pad-paused-note {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--dq-warn);
+}
+.dq-pad-paused-note svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dq-pad-paused .dq-pad-row,
+.dq-bar-paused .dq-bar-tiles {
+  opacity: 0.35;
+}
+.dq-bar-paused-note {
+  color: var(--dq-warn);
+}
+.dq-bar-paused-note svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dq-review-header-lead .dq-icon-button[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+  color: var(--color-foreground);
 }

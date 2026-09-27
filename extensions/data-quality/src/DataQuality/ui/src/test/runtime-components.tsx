@@ -282,14 +282,17 @@ export function NarrativeText({
 }) {
   return <div className={className}>{children}</div>;
 }
+/** The chosen ids as a comma-separated field; typing ids chooses them. */
 export function EntityReferenceMultiSelector({
   placeholder,
+  inputAriaLabel,
   values = [], onChange, disabled,
 }: {
   placeholder?: string;
+  inputAriaLabel?: string;
   values?: number[]; onChange?: (ids: number[]) => void; disabled?: boolean;
 }) {
-  return <input data-testid="tag-selector" placeholder={placeholder} disabled={disabled} value={values.join(",")} onChange={(event) => onChange?.(event.target.value.split(",").filter(Boolean).map(Number))} />;
+  return <input data-testid="tag-selector" aria-label={inputAriaLabel} placeholder={placeholder} disabled={disabled} value={values.join(",")} onChange={(event) => onChange?.(event.target.value.split(",").filter(Boolean).map(Number))} />;
 }
 export function formatDuration(seconds: number) {
   return `${seconds}s`;
@@ -527,19 +530,16 @@ export function FilterDialog({
   open,
   onApply,
   onClose,
-  customSections,
 }: {
   open?: boolean;
   onApply(filter: Record<string, unknown>): void;
   onClose(): void;
-  customSections?: Array<{ id: string }>;
 }) {
   if (open === false) return null;
   return (
     <div
       role="dialog"
       aria-label="Video filters"
-      data-custom-sections={customSections?.map((section) => section.id).join(",")}
     >
       <button aria-label="Edit filter: Nested criterion">Nested criterion</button>
       <button onClick={() => (testFilterControls.result = {})}>Clear all</button>
@@ -871,8 +871,3 @@ export function DetailListPagination({
   );
 }
 
-export function useCustomFieldFilterSection(entityType?: string) {
-  return entityType === "video"
-    ? { id: "custom-fields", label: "Custom Fields", filterKey: "customFieldCriteria" }
-    : undefined;
-}

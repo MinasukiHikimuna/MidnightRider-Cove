@@ -87,11 +87,14 @@ export function scopeSummary(
 export function ScopePopover({
   scope,
   disabled,
+  editing = false,
   onChange,
   onEditCriteria,
 }: {
   scope: PerformerScope;
   disabled: boolean;
+  /** The review is being edited: the scope is the draft's and saves with it. */
+  editing?: boolean;
   onChange(change: Partial<PerformerScope>): void;
   onEditCriteria(): void;
 }) {
@@ -289,7 +292,11 @@ export function ScopePopover({
               )}
             </fieldset>
             <div className="dq-scope-footer">
-              <p>Applies to this queue at once. Save it to the review from the filter row.</p>
+              <p>
+                {editing
+                  ? "Applies to this queue at once, and Save review keeps it."
+                  : "Applies to this queue at once. Save it to the review from the filter row."}
+              </p>
               <button type="button" className="dq-button" onClick={close}>
                 Done
               </button>

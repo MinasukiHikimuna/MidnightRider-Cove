@@ -5,6 +5,7 @@ export const AlertTriangle = Icon;
 export const Check = Icon;
 export const ChevronLeft = Icon;
 export const ChevronRight = Icon;
+export const Copy = Icon;
 export const ExternalLink = Icon;
 export const Film = Icon;
 export const Headphones = Icon;
