@@ -82,10 +82,6 @@ public sealed class ExtensionTests
         builder.Services.AddScoped<ILineageIntegrityService>(_ => null!);
         builder.Services.AddScoped<INativeAiProvenanceIngestionService>(_ => null!);
         builder.Services.AddScoped<INativeSegmentImportService>(_ => null!);
-        builder.Services.AddSingleton<ISegmentStudioAnalysisSettingsStore>(_ => null!);
-        builder.Services.AddScoped<ISegmentStudioAnalysisClient>(_ => null!);
-        builder.Services.AddScoped<ISegmentStudioVideoAnalysisService>(_ => null!);
-        builder.Services.AddScoped<ISegmentStudioAnalysisProvenanceService>(_ => null!);
         builder.Services.AddSingleton<IJobService>(_ => null!);
         await using var app = builder.Build();
         CreateExtension().MapEndpoints(app);
@@ -97,7 +93,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(95, endpoints.Length);
+        Assert.Equal(90, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -175,18 +171,8 @@ public sealed class ExtensionTests
 
         var expected = new Dictionary<string, EndpointPolicy>
         {
-            ["GET /api/plugins/segment-studio/analysis/status"] =
-                new([Permissions.SegmentsRead]),
-            ["GET /api/plugins/segment-studio/analysis/catalog"] =
-                new([Permissions.SegmentsRead]),
-            ["GET /api/plugins/segment-studio/analysis/settings"] =
-                new([SegmentStudioExtension.AnalysisSettingsManagePermission]),
-            ["PUT /api/plugins/segment-studio/analysis/settings"] =
-                new([SegmentStudioExtension.AnalysisSettingsManagePermission]),
             ["GET /api/plugins/segment-studio/videos/{videoId:int}/analysis-runs"] =
                 new([Permissions.SegmentsRead], EntityKinds.Video, "videoId", Permissions.VideosRead),
-            ["POST /api/plugins/segment-studio/videos/{videoId:int}/analysis-runs"] =
-                new([Permissions.SegmentsWrite, Permissions.JobsRun], EntityKinds.Video, "videoId", Permissions.VideosWrite),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/native-segments/import"] =
                 new([Permissions.SegmentsWrite], EntityKinds.Video, "videoId", Permissions.VideosWrite),
             ["GET /api/plugins/segment-studio/compatibility"] =
@@ -435,7 +421,6 @@ public sealed class ExtensionTests
                 SegmentStudioExtension.ProvenanceManagePermission,
                 SegmentStudioExtension.LineageManagePermission,
                 SegmentStudioExtension.LineageMaintenancePermission,
-                SegmentStudioExtension.AnalysisSettingsManagePermission,
             ],
             definitions.Select(definition => definition.Key));
         Assert.All(definitions, definition => Assert.True(definition.GrantToAdminsByDefault));
@@ -506,41 +491,6 @@ public sealed class ExtensionTests
         Assert.Contains("SegmentEditorMetadataService.LoadAsync", source);
         Assert.Contains("provenanceAccess.Allowed", source);
         Assert.Contains("IReadOnlyDictionary<long, SegmentEditorItemMetadata> ItemMetadata", source);
-    }
-
-    [Fact]
-    public void QueuedAnalysisRechecksModeWhileHoldingSharedModeLock()
-    {
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "..",
-            "src",
-            "SegmentStudio",
-            "SegmentStudioExtension.cs"));
-        var enqueue = source.IndexOf(
-            "\"segment-studio-analysis\"",
-            StringComparison.Ordinal);
-        var sharedLock = source.IndexOf(
-            "SegmentStudioModeLock.AcquireSharedAsync",
-            enqueue,
-            StringComparison.Ordinal);
-        var profileCheck = source.IndexOf(
-            "currentProfile.EffectiveMode != outputMode",
-            sharedLock,
-            StringComparison.Ordinal);
-        var execute = source.IndexOf(
-            "scopedAnalysis.ExecuteRunAsync",
-            profileCheck,
-            StringComparison.Ordinal);
-
-        Assert.True(enqueue >= 0);
-        Assert.True(sharedLock > enqueue);
-        Assert.True(profileCheck > sharedLock);
-        Assert.True(execute > profileCheck);
     }
 
     [Fact]

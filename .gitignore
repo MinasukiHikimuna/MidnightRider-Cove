@@ -10,8 +10,6 @@ extensions/segment-studio/src/SegmentStudio/ui/node_modules/
 **/.venv/
 **/__pycache__/
 **/.pytest_cache/
-services/segment-studio-analysis/.env
-services/segment-studio-analysis/private/
 tools/export-omnishotcut/out/
 *.pt
 *.pt2

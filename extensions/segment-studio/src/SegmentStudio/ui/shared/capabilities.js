@@ -18,7 +18,7 @@ export const SEGMENT_STUDIO_CAPABILITIES = Object.freeze({
   provenanceRead: "provenance.read",
   lineageManage: "lineage.manage",
   performerSlotsManage: "performerSlots.manage",
-  analysisFullScan: "analysis.fullScan",
+  analysisReview: "analysis.review",
   shotBoundariesManage: "shotBoundaries.manage",
   editorUndo: "editor.undo",
   editorFiltersNative: "editor.filters.native",

@@ -54,7 +54,7 @@ public static class SegmentStudioCapabilities
     public const string ProvenanceRead = "provenance.read";
     public const string LineageManage = "lineage.manage";
     public const string PerformerSlotsManage = "performerSlots.manage";
-    public const string AnalysisFullScan = "analysis.fullScan";
+    public const string AnalysisReview = "analysis.review";
     public const string ShotBoundariesManage = "shotBoundaries.manage";
     public const string EditorUndo = "editor.undo";
     public const string EditorFiltersNative = "editor.filters.native";
@@ -116,7 +116,7 @@ public static class SegmentStudioFeatureProfileService
         SegmentStudioCapabilities.SegmentReview,
         SegmentStudioCapabilities.LineageManage,
         SegmentStudioCapabilities.PerformerSlotsManage,
-        SegmentStudioCapabilities.AnalysisFullScan,
+        SegmentStudioCapabilities.AnalysisReview,
         SegmentStudioCapabilities.ShotBoundariesManage,
         SegmentStudioCapabilities.EditorFiltersWorkflow,
         SegmentStudioCapabilities.WorkflowDeletionManage,

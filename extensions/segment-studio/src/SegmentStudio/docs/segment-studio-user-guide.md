@@ -320,13 +320,6 @@ assignment, and the other filters available to the current Segment Studio
 version. Filters and counts cover both published native segments and unpublished
 drafts.
 
-### Run Full Scan
-
-**Full Scan** can add shot boundaries and extension-owned AI drafts to the Full
-review workflow. When an AI model emits a label that is not yet a Cove tag,
-Segment Studio creates that source tag so the result is not silently discarded.
-Basic mode does not expose Full Scan or this review workflow.
-
 ### Run AI
 
 The **Run AI** dialog that the AI Core extension adds to a video's page offers

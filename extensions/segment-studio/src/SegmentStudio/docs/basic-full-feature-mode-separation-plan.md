@@ -4,6 +4,14 @@ Status: proposed architecture and implementation plan. Product decisions marked
 **Settled** are requirements. Items marked **Open** must be decided before
 implementation reaches the affected phase.
 
+> **Superseded: Full Scan.** Segment Studio no longer has Full Scan or its
+> analysis service. AI tagging now runs through AI Core's **Run AI**
+> dialog, where Segment Studio's capability always queues candidates for Full
+> review and never writes native segments, and Segment Studio no longer detects
+> shot boundaries. Everything below about Full Scan, the Basic and Full scan
+> projectors, and splitting Full Scan persistence (Phase 6) is kept as a record
+> of the earlier design, not as current requirements.
+
 ## Outcome
 
 Segment Studio has two deliberately different products sharing neutral editor
@@ -359,6 +367,8 @@ Reject unexpected Full-only fields during deserialization or validation.
 
 ### Mode-specific Full Scan
 
+> Superseded: Full Scan was removed; see the note at the top of this plan.
+
 Keep Full Scan owned entirely by Segment Studio for this rearchitecture. Do
 not change Cove core/runtime and do not directly import or invoke AI.Core
 internals.
@@ -573,6 +583,9 @@ behind the user's back.
 
 ### Full Scan and Undo controls
 
+> Superseded for Full Scan, which was removed; the Undo design below still
+> applies.
+
 Full Scan appears in the Basic toolbar when Segment Studio analysis is
 configured and the user has the required Cove segment/job permissions.
 Activating it queues the Basic-native scan implementation. Queued status uses
@@ -664,6 +677,8 @@ Keep compatibility response aliases only while known callers migrate.
 - Keep all shot-boundary UI, state, and requests out of Basic.
 
 ### Phase 6: Split Full Scan persistence
+
+> Superseded: Full Scan was removed; see the note at the top of this plan.
 
 - Separate shared analysis invocation from Basic and Full result projection.
 - Make Basic request AI tagging only and persist unambiguous results as native

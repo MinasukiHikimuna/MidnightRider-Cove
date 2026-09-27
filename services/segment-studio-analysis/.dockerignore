@@ -1,8 +1,0 @@
-.env
-.git
-.pytest_cache
-.venv
-__pycache__
-private
-tests
-*.pyc

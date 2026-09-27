@@ -4,7 +4,7 @@ import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from
 
 import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, selectionReferenceForSegment, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
-import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode, shotBoundaryFingerprint } from "./model/shortcuts.js";
+import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode } from "./model/shortcuts.js";
 
 import { requestJson } from "../shared/api.js";
 
@@ -117,18 +117,12 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [autoAssignError, setAutoAssignError] = useState("");
   const {
-    analysisError,
-    analysisRun,
-    analysisStatus,
     importNativeSegments,
     nativeImportState,
-    startFullAnalysis,
   } = useSegmentAnalysis(
     detail.video.id,
     onReload,
     compatibilityMode,
-    detail.shotBoundaries?.length || 0,
-    shotBoundaryFingerprint(detail.shotBoundaries || []),
     (kind, lockId) => saveQueue.acquire({ kind, lockId }),
   );
   const [materializeOpen, setMaterializeOpen] = useState(false);
@@ -947,9 +941,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   return h(SegmentEditorView, {
     activeFilterCount,
     allSwimlanes,
-    analysisError,
-    analysisRun,
-    analysisStatus,
     approvalFacetCounts,
     autoAssignCandidates,
     autoAssignError,
@@ -1083,7 +1074,6 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
     slotButtonRef,
     splitLayout,
     splitSegment,
-    startFullAnalysis,
     tagEditing,
     creatingSegmentId,
     tagSearchRef,

@@ -15,20 +15,14 @@ The detailed design, release boundary, implementation slices, and native
 adoption path are recorded in
 [Segment Studio-Owned Audio Segments Plan](audio-segment-support-plan.md).
 
-## Analysis controls
+## Shot boundaries
 
-- Let users remove all shot boundaries from a video.
-- Let users run shot-boundary analysis without AI analysis.
-- Let users run AI analysis without shot-boundary analysis.
-- Build analysis options from the capabilities and models reported by the
-  Segment Studio analysis service catalog.
-- Hide **Full Scan** in Basic mode. Basic mode should use Cove's native
-  **Run AI** action instead.
+- Let users remove all shot boundaries from a video, as a destructive action
+  that is clearly separate from editing them.
 
-These items should converge on one analysis dialog in Full mode. The dialog
-should present currently available service capabilities, make each analysis
-kind independently selectable, and distinguish running analysis from the
-destructive action that clears existing shot boundaries.
+Segment Studio no longer detects shot boundaries: the analysis service that did
+is removed, and AI analysis runs through AI Core's **Run AI** dialog. Shot
+boundaries already stored stay editable.
 
 ## Native import performance
 

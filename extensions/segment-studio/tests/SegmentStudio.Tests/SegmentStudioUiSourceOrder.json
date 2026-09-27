@@ -32,7 +32,6 @@
   "editor/actions/history-and-layout.js",
   "editor/actions/shortcuts.js",
   "editor/SegmentEditorView.js",
-  "discovery/analysis.js",
   "discovery/components.js",
   "settings/organization.js",
   "settings/derivation/model.js",

@@ -21,24 +21,12 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
     public const string ProvenanceManagePermission = "segment-studio.provenance.manage";
     public const string LineageManagePermission = "segment-studio.lineage.manage";
     public const string LineageMaintenancePermission = "segment-studio.lineage.maintenance";
-    public const string AnalysisSettingsManagePermission = "segment-studio.analysis.settings.manage";
 
     private CancellationTokenSource? _cleanupCancellation;
     private Task? _cleanupTask;
 
     public override void ConfigureServices(IServiceCollection services, ExtensionContext context)
     {
-        services.AddSingleton<ISegmentStudioAnalysisSettingsStore>(
-            _ => new SegmentStudioAnalysisSettingsStore(() => Store));
-        services.AddHttpClient<ISegmentStudioAnalysisClient, SegmentStudioAnalysisClient>(client =>
-        {
-            client.Timeout = Timeout.InfiniteTimeSpan;
-        }).ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler
-        {
-            AllowAutoRedirect = false,
-        });
-        services.AddScoped<ISegmentStudioVideoAnalysisService, SegmentStudioVideoAnalysisService>();
-        services.AddScoped<ISegmentStudioAnalysisProvenanceService, SegmentStudioAnalysisProvenanceService>();
         services.AddSingleton<SegmentStudioBlobCleanupWorker>();
         services.AddScoped<ISegmentSourceRegistry, SegmentSourceRegistry>();
         services.AddScoped<IProvenanceActivityService, ProvenanceActivityService>();
@@ -92,13 +80,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             "Scan and repair segment lineage integrity.",
             Dangerous: true,
             Implies: [ProvenanceReadPermission],
-            Source: "extension:segment-studio",
-            GrantToAdminsByDefault: true),
-        new(
-            AnalysisSettingsManagePermission,
-            "Segment Studio",
-            "Change the trusted network target used for Segment Studio analysis.",
-            Dangerous: true,
             Source: "extension:segment-studio",
             GrantToAdminsByDefault: true),
     ];
@@ -203,90 +184,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
-                "/api/plugins/segment-studio/analysis/settings",
-                async ([FromServices] ISegmentStudioAnalysisSettingsStore settings,
-                    CancellationToken ct) => Results.Ok(await settings.LoadAsync(ct)))
-            .RequireAuthorization()
-            .RequireCovePermission(AnalysisSettingsManagePermission);
-
-        endpoints.MapPut(
-                "/api/plugins/segment-studio/analysis/settings",
-                async Task<IResult> (SegmentStudioAnalysisSettings request,
-                    [FromServices] ISegmentStudioAnalysisSettingsStore settings,
-                    CancellationToken ct) =>
-                {
-                    try
-                    {
-                        return Results.Ok(await settings.SaveAsync(request, ct));
-                    }
-                    catch (InvalidOperationException error)
-                    {
-                        return Results.BadRequest(new { error = error.Message });
-                    }
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(AnalysisSettingsManagePermission);
-
-        endpoints.MapGet(
-                "/api/plugins/segment-studio/analysis/status",
-                async Task<IResult> ([FromServices] ISegmentStudioAnalysisSettingsStore settingsStore,
-                    [FromServices] ISegmentStudioAnalysisClient client, CancellationToken ct) =>
-                {
-                    var settings = await settingsStore.LoadAsync(ct);
-                    if (!settings.IsConfigured)
-                        return Results.Ok(new
-                        {
-                            configured = false,
-                            ready = false,
-                            error = settings.ConfigurationError,
-                        });
-                    try
-                    {
-                        var ready = await client.ReadyAsync(ct);
-                        return Results.Ok(new
-                        {
-                            configured = true,
-                            ready = ready.Ok,
-                            ready.ServiceVersion,
-                            ready.SchemaVersion,
-                            ready.Checks,
-                        });
-                    }
-                    catch (SegmentStudioAnalysisNotConfiguredException exception)
-                    {
-                        return Results.Ok(new
-                        {
-                            configured = false,
-                            ready = false,
-                            error = exception.Message,
-                        });
-                    }
-                    catch (SegmentStudioAnalysisServiceException exception)
-                    {
-                        return Results.Ok(new
-                        {
-                            configured = true,
-                            ready = false,
-                            errorCode = exception.Code,
-                            error = exception.Message,
-                        });
-                    }
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(Permissions.SegmentsRead)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
-
-        endpoints.MapGet(
-                "/api/plugins/segment-studio/analysis/catalog",
-                async ([FromServices] ISegmentStudioAnalysisClient client, CancellationToken ct) =>
-                    Results.Ok(await client.GetCatalogAsync(ct)))
-            .RequireAuthorization()
-            .RequireCovePermission(Permissions.SegmentsRead)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
-
-        endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/analysis-runs",
                 async Task<IResult> (int videoId, DbContext db,
                     ICurrentPrincipalAccessor principalAccessor,
@@ -344,133 +241,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireCovePermission(Permissions.SegmentsRead)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
             .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
-
-        endpoints.MapPost(
-                "/api/plugins/segment-studio/videos/{videoId:int}/analysis-runs",
-                async Task<IResult> (int videoId, [FromBody] StartSegmentStudioAnalysisRequest request,
-                    DbContext db, [FromServices] ISegmentStudioVideoAnalysisService analysis,
-                    ICurrentPrincipalAccessor principalAccessor,
-                    Cove.Core.Auth.IAuthorizationService authorization,
-                    [FromServices] IJobService jobs, [FromServices] IServiceScopeFactory scopeFactory,
-                    CancellationToken ct) =>
-                {
-                    if (principalAccessor.Current?.UserId is not int userId)
-                        return Results.Unauthorized();
-                    var outputMode =
-                        (await SegmentStudioFeatureProfileService.GetAsync(
-                            db, userId, ct)).EffectiveMode;
-                    IReadOnlyList<SegmentStudioAnalysisKind> requestedAnalyses;
-                    try
-                    {
-                        requestedAnalyses = SegmentStudioVideoAnalysisService.NormalizeAnalyses(
-                            request.Analyses,
-                            outputMode);
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return Results.BadRequest(new { error = exception.Message });
-                    }
-                    if (requestedAnalyses.Contains(SegmentStudioAnalysisKind.AiTagging))
-                    {
-                        var tagWriteAccess = await authorization.AuthorizeAsync(
-                            principalAccessor.Current,
-                            Permissions.TagsWrite,
-                            null,
-                            ct);
-                        if (!tagWriteAccess.Allowed)
-                        {
-                            return Results.Json(
-                                new { error = tagWriteAccess.Reason },
-                                statusCode: StatusCodes.Status403Forbidden);
-                        }
-                    }
-                    SegmentStudioAnalysisRun run;
-                    try
-                    {
-                        run = await analysis.CreateRunAsync(
-                            db, videoId, request, outputMode, ct);
-                    }
-                    catch (KeyNotFoundException)
-                    {
-                        return Results.NotFound(new { error = "Video or source file not found." });
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return Results.BadRequest(new { error = exception.Message });
-                    }
-                    catch (SegmentStudioAnalysisAlreadyRunningException exception)
-                    {
-                        return Results.Conflict(new { error = exception.Message });
-                    }
-
-                    var jobId = jobs.Enqueue(
-                        "segment-studio-analysis",
-                        "Analyze video for Segment Studio",
-                        async (progress, jobCt) =>
-                        {
-                            progress.Report(0.02, "Starting video analysis");
-                            await using var scope = scopeFactory.CreateAsyncScope();
-                            var scopedDb = scope.ServiceProvider.GetRequiredService<DbContext>();
-                            var scopedAnalysis = scope.ServiceProvider
-                                .GetRequiredService<ISegmentStudioVideoAnalysisService>();
-                            await using var modeLock =
-                                await SegmentStudioModeLock.AcquireSharedAsync(
-                                    scopedDb, userId, jobCt);
-                            var currentProfile =
-                                await SegmentStudioFeatureProfileService.GetAsync(
-                                    scopedDb, userId, jobCt);
-                            if (currentProfile.EffectiveMode != outputMode)
-                            {
-                                var cancelledRun = await scopedDb
-                                    .Set<SegmentStudioAnalysisRun>()
-                                    .SingleAsync(candidate =>
-                                        candidate.Id == run.Id, jobCt);
-                                var now = DateTime.UtcNow;
-                                cancelledRun.Status = "cancelled";
-                                cancelledRun.ErrorCode = "mode_changed";
-                                cancelledRun.ErrorMessage =
-                                    "Analysis was cancelled because the Segment Studio mode changed before it started.";
-                                cancelledRun.UpdatedAt = now;
-                                cancelledRun.CompletedAt = now;
-                                await scopedDb.SaveChangesAsync(jobCt);
-                                progress.Report(
-                                    1,
-                                    "Video analysis cancelled after mode change");
-                                return;
-                            }
-                            var jobAnalyses = SegmentStudioVideoAnalysisService.NormalizeAnalyses(
-                                request.Analyses,
-                                outputMode);
-                            await scopedAnalysis.ExecuteRunAsync(
-                                scopedDb,
-                                run.Id,
-                                request,
-                                outputMode,
-                                new SegmentStudioAnalysisProgressRelay(update =>
-                                    progress.Report(
-                                        SegmentStudioAnalysisClient.EstimateProgress(
-                                            update,
-                                            jobAnalyses),
-                                        SegmentStudioAnalysisClient.FormatPhase(update.Phase))),
-                                jobCt);
-                            progress.Report(1, "Video analysis complete");
-                        });
-                    run.JobId = jobId;
-                    run.UpdatedAt = DateTime.UtcNow;
-                    await db.SaveChangesAsync(ct);
-                    return Results.Accepted(
-                        $"/api/plugins/segment-studio/videos/{videoId}/analysis-runs",
-                        ToAnalysisRunResponse(run, []));
-                })
-            .RequireAuthorization()
-            .RequireCovePermission(
-                PermissionMode.All,
-                Permissions.SegmentsWrite,
-                Permissions.JobsRun)
-            .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosWrite)
-            .RequireSegmentStudioCapability(
-                SegmentStudioCapabilities.AnalysisFullScan);
+                SegmentStudioCapabilities.AnalysisReview);
 
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/history",
@@ -4394,11 +4165,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             run.VideoId,
             run.VideoFileId,
             run.Status,
-            JsonSerializer.Deserialize<IReadOnlyList<SegmentStudioAnalysisKind>>(
-                run.AnalysesJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)
-                {
-                    Converters = { new JsonStringEnumConverter<SegmentStudioAnalysisKind>(JsonNamingPolicy.CamelCase) },
-                }) ?? [],
+            JsonSerializer.Deserialize<IReadOnlyList<string>>(
+                run.AnalysesJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [],
             run.JobId,
             run.ServiceRunId,
             run.SourceFingerprint,
@@ -4557,11 +4326,4 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         string SourceKey,
         string? SourceRunId,
         float? Confidence);
-}
-
-public sealed class SegmentStudioAnalysisProgressRelay(
-    Action<SegmentStudioAnalysisProgress> report)
-    : IProgress<SegmentStudioAnalysisProgress>
-{
-    public void Report(SegmentStudioAnalysisProgress value) => report(value);
 }

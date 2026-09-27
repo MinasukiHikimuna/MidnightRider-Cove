@@ -30,12 +30,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
   const [groups, setGroups] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [analysisBaseUrl, setAnalysisBaseUrl] = useState("");
-  const [analysisStatus, setAnalysisStatus] = useState(null);
-  const [analysisLoading, setAnalysisLoading] = useState(true);
-  const [analysisBusy, setAnalysisBusy] = useState(false);
-  const [analysisMessage, setAnalysisMessage] = useState("");
-  const [analysisCanManage, setAnalysisCanManage] = useState(true);
   const [confirmMerges, setConfirmMerges] = useState(readMergeConfirmationPreference);
   const settingsTabs = visibleSegmentStudioSettingsTabs(profile);
   const visibleSettingsTabKeys = settingsTabs.map(([key]) => key);
@@ -56,36 +50,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
       .catch((error) => { if (error.name !== "AbortError") setMessage(error.message || "Unable to load tag groups."); });
     return () => controller.abort();
   }, []);
-
-  useEffect(() => {
-    if (profile.effectiveMode !== "full") {
-      setAnalysisLoading(false);
-      return undefined;
-    }
-    const controller = new AbortController();
-    setAnalysisMessage("");
-    setAnalysisLoading(true);
-    Promise.all([
-      requestJson("/analysis/settings", { signal: controller.signal }),
-      requestJson("/analysis/status", { signal: controller.signal }),
-    ])
-      .then(([settings, status]) => {
-        setAnalysisCanManage(true);
-        setAnalysisBaseUrl(settings?.baseUrl || "");
-        setAnalysisStatus(status);
-      })
-      .catch((error) => {
-        if (error.name === "AbortError") return;
-        if (error.status === 403) {
-          setAnalysisCanManage(false);
-          setAnalysisMessage("You do not have permission to manage the analysis service connection.");
-          return;
-        }
-        setAnalysisMessage(error.message || "Unable to load analysis service settings.");
-      })
-      .finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
-    return () => controller.abort();
-  }, [profile.effectiveMode]);
 
   async function saveMode(nextMode) {
     if (nextMode === profile.requestedMode) return;
@@ -141,31 +105,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
       setMessage(error.message || "Unable to save workflow mode.");
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function saveAnalysisSettings(event) {
-    event.preventDefault();
-    setAnalysisBusy(true);
-    setAnalysisMessage("");
-    try {
-      const saved = await requestJson("/analysis/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl: analysisBaseUrl }),
-      });
-      setAnalysisBaseUrl(saved?.baseUrl || "");
-      const status = await requestJson("/analysis/status");
-      setAnalysisStatus(status);
-      setAnalysisMessage(!saved?.baseUrl
-        ? "Analysis service disabled."
-        : status?.ready
-          ? "Analysis Server URL saved. The service is ready."
-          : `Analysis Server URL saved. ${status?.error || "The service is not ready."}`);
-    } catch (error) {
-      setAnalysisMessage(error.message || "Unable to save analysis service settings.");
-    } finally {
-      setAnalysisBusy(false);
     }
   }
 
@@ -247,46 +186,6 @@ function SegmentStudioSettingsPage({ onNavigate, profile, onProfileChange }) {
         ]),
       ]),
     ]),
-    profile.effectiveMode === "full"
-      ? h("section", { key: "analysis", hidden: activeSettingsTab !== "general", className: "space-y-3 rounded-lg border border-border bg-surface p-4" }, [
-        h("div", { key: "heading" }, [
-          h("h2", { key: "title", className: "text-lg font-semibold text-foreground" }, "Analysis service"),
-          h("p", { key: "description", className: "mt-1 text-sm text-secondary" },
-            "Connect Full Scan to the Segment Studio analysis service. The URL must be reachable from the Cove API process."),
-        ]),
-        h("form", { key: "form", onSubmit: saveAnalysisSettings, className: "flex flex-col gap-3 sm:flex-row sm:items-end" }, [
-          h("label", { key: "url", className: "min-w-0 flex-1 space-y-1" }, [
-            h("span", { key: "label", className: "block text-sm font-medium text-foreground" }, "Server URL"),
-            h("input", {
-              key: "input",
-              type: "url",
-              value: analysisBaseUrl,
-              onChange: (event) => setAnalysisBaseUrl(event.target.value),
-              placeholder: "http://segment-studio-analysis:8766",
-              autoComplete: "off",
-              spellCheck: false,
-              disabled: analysisLoading || analysisBusy || !analysisCanManage,
-              className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-            }),
-          ]),
-          h("button", {
-            key: "save",
-            type: "submit",
-            disabled: analysisLoading || analysisBusy || !analysisCanManage,
-            className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50",
-          }, analysisBusy ? "Saving…" : "Save"),
-        ]),
-        h("p", { key: "status", className: "text-xs text-secondary", role: "status" },
-          analysisMessage
-            || (analysisLoading
-              ? "Loading analysis service settings…"
-              : analysisStatus?.configured === false
-                ? "Full Scan is not configured."
-                : analysisStatus?.ready
-                  ? "Analysis service is ready."
-                  : analysisStatus?.error || "Analysis service is configured but not ready.")),
-      ])
-      : null,
     visibleSettingsTabKeys.includes("derivation")
       ? h("div", { key: "derivation-rules-panel", hidden: activeSettingsTab !== "derivation" },
       h(DerivedSegmentRuleSettings, {

@@ -18,7 +18,6 @@ export { provenanceSourceLabel, compactProvenanceSummary } from "./editor/Segmen
 export { groupMaterializationOutputs } from "./editor/dialogs/MaterializationDialog.js";
 export { groupApprovedDraftsForPublishing } from "./editor/dialogs/EditorDialogs.js";
 export { DISCOVERY_SORT_OPTIONS, buildDiscoverySearchParams, normalizeDiscoveryIds, setBackLinkNavigation, updateDiscoverySelection } from "./discovery/components.js";
-export { createBulkAnalysisCoordinator, runSelectedDiscoveryAnalysis } from "./discovery/analysis.js";
 export { createSegmentAnalysisRequestScope, shouldLoadSegmentAnalysis } from "./editor/hooks/useSegmentAnalysis.js";
 export { buildPerformerSlotOverview, filterPerformerSlotOverview } from "./settings/organization.js";
 export { buildDerivationRuleGraph, layoutDerivationRuleComponent, layoutDerivationRuleComponents, validateDerivationRuleDraft, resolveSelectedDerivationRule } from "./settings/derivation/model.js";

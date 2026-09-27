@@ -3,7 +3,6 @@ const runtimeModules = {
   "@cove/runtime/react-dom": "export const createPortal = (child) => child;",
   "@cove/runtime/api": "export const extensionFetch = (...args) => { if (!globalThis.__segmentStudioFetch) throw new Error('not used'); return globalThis.__segmentStudioFetch(...args); };",
   "@cove/runtime/lucide-react": [
-    "export const ChevronDown = () => null;",
     "export const Loader2 = () => null;",
     "export const StepBack = () => null;",
     "export const StepForward = () => null;",
