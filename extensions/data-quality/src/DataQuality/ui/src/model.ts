@@ -105,7 +105,9 @@ export function conditionSeeksMissingTags(condition: OccurrenceCondition): boole
 }
 
 /** No selected performers and an empty performer filter both leave the scope unnarrowed. */
-export function targetsAllPerformers(settings: OccurrenceReview["occurrence"]): boolean {
+export function targetsAllPerformers(
+  settings: Pick<OccurrenceReview["occurrence"], "targetMode" | "performerIds" | "performerFilter">,
+): boolean {
   return (
     settings.targetMode === "all" ||
     (settings.targetMode === "selected" && settings.performerIds.length === 0) ||

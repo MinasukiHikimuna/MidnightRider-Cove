@@ -335,8 +335,9 @@ export function listTagGroups(signal?: AbortSignal): Promise<TagGroup[]> {
   return request<TagGroup[]>("/api/taggroups", { signal });
 }
 
-export function mediaCoverUrl(kind: MediaKind, item: MediaItem): string {
-  return `/api/${mediaCollection(kind)}/${item.id}/image?max=1280&v=${encodeURIComponent(item.updatedAt)}`;
+/** The item's cover image, scaled to at most `max` pixels on its longer side. */
+export function mediaCoverUrl(kind: MediaKind, item: MediaItem, max = 1280): string {
+  return `/api/${mediaCollection(kind)}/${item.id}/image?max=${max}&v=${encodeURIComponent(item.updatedAt)}`;
 }
 
 // Videos stream through the transcoding stream controller; audios serve their own file directly.

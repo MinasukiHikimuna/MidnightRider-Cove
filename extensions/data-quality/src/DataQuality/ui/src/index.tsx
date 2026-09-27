@@ -30,7 +30,6 @@ import {
   ChevronRight,
   ExternalLink,
   Film,
-  Headphones,
   GripVertical,
   Loader2,
   Pencil,
@@ -38,7 +37,6 @@ import {
   RotateCcw,
   Save,
   Settings,
-  Tags as TagsIcon,
   Trash2,
   Upload,
   X,
@@ -100,6 +98,7 @@ import { OccurrenceSettings, PerformerFlagSettings } from "./OccurrenceReview";
 import { ActionsFromTags } from "./ActionsFromTags";
 import { FindAction, FindActionButton } from "./FindAction";
 import { ReviewWorkspace } from "./ReviewWorkspace";
+import { ReviewEntityIcon } from "./ReviewEntityIcon";
 import {
   SELECT_ALL_KEY_LABEL,
   useReviewKeyLabels,
@@ -140,24 +139,6 @@ type ReviewBrowserSort = "name" | "count";
 type ReviewBrowserDirection = "asc" | "desc";
 
 const defaultCardSize = 180;
-
-const REVIEW_ENTITY_LABELS: Record<ReviewEntityType, string> = {
-  video: "Video review",
-  audio: "Audio review",
-  tag: "Tag review",
-  performerOccurrence: "Performer occurrence review",
-  audioPerformerOccurrence: "Audio performer occurrence review",
-};
-
-function ReviewEntityIcon({ entityType }: { entityType: ReviewEntityType }) {
-  const label = REVIEW_ENTITY_LABELS[entityType];
-  if (entityType === "tag") return <TagsIcon role="img" aria-label={label} />;
-  return mediaKindOf(entityType) === "audio" ? (
-    <Headphones role="img" aria-label={label} />
-  ) : (
-    <Film role="img" aria-label={label} />
-  );
-}
 
 function initialDisplayMode(review: Review): ReviewDisplayMode {
   if (reviewEntityType(review) === "tag")
@@ -436,6 +417,34 @@ export function DataQualityPage({
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
+  // The single-item workspace fills the window below Cove's navbar, so only its queue and
+  // side column scroll. The page's top offset (navbar plus the host's main padding) and the
+  // main padding under it are measured rather than assumed.
+  const fitsWindow = !!review && usesWorkspace;
+  const [fitOffsets, setFitOffsets] = useState({ top: 0, bottom: 0 });
+  useLayoutEffect(() => {
+    if (!fitsWindow) return;
+    const measure = () => {
+      const page = pageRef.current;
+      if (!page) return;
+      const top = Math.round(page.getBoundingClientRect().top + window.scrollY);
+      const main = page.closest("main");
+      const bottom = main ? Math.round(parseFloat(getComputedStyle(main).paddingBottom) || 0) : 0;
+      setFitOffsets((current) =>
+        current.top === top && current.bottom === bottom ? current : { top, bottom },
+      );
+    };
+    measure();
+    // Content above the page can change height without a window resize.
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(document.body);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [fitsWindow]);
   const sidebarResizeRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1435,57 +1444,8 @@ export function DataQualityPage({
       </>
     );
 
-  return (
-    <div ref={pageRef} className="data-quality-page">
-      <header className="data-quality-header">
-        {review && (
-          <button
-            className="dq-header-action"
-            type="button"
-            aria-label="All reviews"
-            title="All reviews"
-            disabled={pending}
-            onClick={showAllReviews}
-          >
-            <ChevronLeft />
-          </button>
-        )}
-        <div className="dq-header-copy">
-          <h1>{review?.name ?? "Data Quality"}</h1>
-          {review?.description && (
-            <p className="dq-header-description">{review.description}</p>
-          )}
-        </div>
-        {review && savedReview && (
-          <button
-            type="button"
-            className="dq-header-action"
-            aria-label="Edit review"
-            title="Edit review"
-            disabled={pending || queueLoading || !canConfigure}
-            onClick={() => {
-              if (usesWorkspace) setWorkspaceEditRequest(value => value + 1);
-              else { setEditCurrent(true); setManagerOpen(true); }
-            }}
-          >
-            <Pencil />
-          </button>
-        )}
-        <button
-          className="dq-header-action"
-          type="button"
-          aria-label="Manage reviews"
-          title="Manage reviews"
-          disabled={pending || queueLoading || !canConfigure}
-          onClick={() => {
-            setEditCurrent(false);
-            setManagerOpen(true);
-          }}
-        >
-          <Settings />
-        </button>
-      </header>
-
+  const pageNotices = (
+    <>
       {storageNotice && <p className="dq-status">{storageNotice}</p>}
       {showsAbsenceSetup && absenceFieldStatus?.kind === "missing" && (
         <div role="status" className="dq-status">
@@ -1585,6 +1545,97 @@ export function DataQualityPage({
           </button>
         </p>
       )}
+    </>
+  );
+
+  return (
+    <div
+      ref={pageRef}
+      className={`data-quality-page${fitsWindow ? " dq-page-fit" : ""}`}
+      style={
+        fitsWindow
+          ? ({
+              "--dq-fit-top": `${fitOffsets.top}px`,
+              "--dq-fit-bottom": `${fitOffsets.bottom}px`,
+            } as React.CSSProperties)
+          : undefined
+      }
+    >
+      {fitsWindow && review ? (
+        <ReviewWorkspace
+          key={review.id}
+          review={review as MediaReview}
+          canWrite={occurrenceReview ? canWriteTags : canWriteMedia}
+          canAssess={absenceFieldStatus?.kind === "ready" && canWriteMedia}
+          onBusy={setPending}
+          editRequest={workspaceEditRequest}
+          renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as MediaReview)} onSave={() => {}} onCancel={() => {}} />}
+          onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined}
+          pageControls={{
+            onBack: showAllReviews,
+            onManage: () => {
+              setEditCurrent(false);
+              setManagerOpen(true);
+            },
+            manageDisabled: !canConfigure,
+            onGrid: videoReview
+              ? () => setLayoutOverride({ id: videoReview.id, mode: "multiple" })
+              : undefined,
+            notices: pageNotices,
+          }}
+        />
+      ) : (
+      <>
+      <header className="data-quality-header">
+        {review && (
+          <button
+            className="dq-header-action"
+            type="button"
+            aria-label="All reviews"
+            title="All reviews"
+            disabled={pending}
+            onClick={showAllReviews}
+          >
+            <ChevronLeft />
+          </button>
+        )}
+        <div className="dq-header-copy">
+          <h1>{review?.name ?? "Data Quality"}</h1>
+          {review?.description && (
+            <p className="dq-header-description">{review.description}</p>
+          )}
+        </div>
+        {review && savedReview && (
+          <button
+            type="button"
+            className="dq-header-action"
+            aria-label="Edit review"
+            title="Edit review"
+            disabled={pending || queueLoading || !canConfigure}
+            onClick={() => {
+              setEditCurrent(true);
+              setManagerOpen(true);
+            }}
+          >
+            <Pencil />
+          </button>
+        )}
+        <button
+          className="dq-header-action"
+          type="button"
+          aria-label="Manage reviews"
+          title="Manage reviews"
+          disabled={pending || queueLoading || !canConfigure}
+          onClick={() => {
+            setEditCurrent(false);
+            setManagerOpen(true);
+          }}
+        >
+          <Settings />
+        </button>
+      </header>
+
+      {pageNotices}
       {videoReview && <label className="dq-layout-control">
         Review layout
         <select aria-label="Review layout" value={reviewMode} disabled={pending || queueLoading || managerOpen}
@@ -1593,7 +1644,7 @@ export function DataQualityPage({
           <option value="multiple">Multiple videos</option>
         </select>
       </label>}
-      {review && savedReview && !usesWorkspace && (
+      {review && savedReview && (
         <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
           <div
             className={`dq-native-toolbar-host${
@@ -1787,8 +1838,6 @@ export function DataQualityPage({
             <p>No saved reviews are available in this browser.</p>
           </div>
         )
-      ) : usesWorkspace ? (
-        <ReviewWorkspace key={review.id} review={review as MediaReview} canWrite={occurrenceReview ? canWriteTags : canWriteMedia} canAssess={absenceFieldStatus?.kind === "ready" && canWriteMedia} onBusy={setPending} editRequest={workspaceEditRequest} renderRuleEditor={(draft, setDraft, saving) => <ReviewEditor workspace draft={draft} entityTypeLocked tagGroups={tagGroups} saving={saving} setDraft={next => setDraft(next as MediaReview)} onSave={() => {}} onCancel={() => {}} />} onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined} />
       ) : (
         <>
           {videoReview && presentationTags.error && (
@@ -2040,6 +2089,8 @@ export function DataQualityPage({
           </div>
           {renderPagination("bottom")}
         </>
+      )}
+      </>
       )}
 
       {previewOpen && previewVideo && videoReview && (

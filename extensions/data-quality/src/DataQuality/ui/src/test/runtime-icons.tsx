@@ -27,3 +27,14 @@ export const ZoomIn = Icon;
 export const ZoomOut = Icon;
 
 export const GripVertical = Icon;
+export const Ban = Icon;
+export const ChevronDown = Icon;
+export const MoreHorizontal = Icon;
+export const Flag = Icon;
+export const Layers = Icon;
+export const Pin = Icon;
+export const RectangleHorizontal = Icon;
+export const RefreshCw = Icon;
+export const SkipForward = Icon;
+export const Tag = Icon;
+export const Users = Icon;

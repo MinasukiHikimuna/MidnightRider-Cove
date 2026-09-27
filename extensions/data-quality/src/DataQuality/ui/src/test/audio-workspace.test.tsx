@@ -201,7 +201,7 @@ it("reviews performer occurrences on an audio with the description in view", asy
     screen.getByRole("region", { name: "audio description" }),
   ).toHaveTextContent("A spoken introduction, then the interview.");
   expect(
-    screen.getByText("Tags apply only to this performer in this audio."),
+    screen.getByText("Tags apply to this performer in this audio"),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());

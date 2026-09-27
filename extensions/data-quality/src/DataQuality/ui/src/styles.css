@@ -985,22 +985,699 @@
   justify-content: center;
   padding: 0.75rem 0;
 }
-/* Media reviews retain usable navigation independently of the player height. */
-.dq-review-workspace { display: grid; gap: .65rem; min-width: 0; }
-.dq-review-filters { display: grid; gap: .5rem; min-width: 0; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem; }
-.dq-review-filters legend { font-size: .8rem; color: var(--color-secondary); }
-.dq-scope-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.dq-scope-controls label { display: flex; align-items: center; gap: .4rem; }
-.dq-scope-controls select { background: var(--color-card); color: var(--color-foreground); border: 1px solid var(--color-border); border-radius: .3rem; padding: .3rem; }
-.dq-review-layout { display: grid; grid-template-columns: minmax(13rem, 19rem) minmax(0, 1fr); align-items: start; gap: .75rem; }
-.dq-review-inspector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 28rem); gap: .75rem; min-width: 0; }
-/* Cove's audio player lays its transport, artwork and settings out for a full-width media area,
-   so an audio review gives it the whole row and puts the review panel underneath it. */
-.dq-review-workspace.dq-audio .dq-review-inspector { grid-template-columns: minmax(0, 1fr); }
-.dq-review-media, .dq-review-panel { min-width: 0; overflow-wrap: anywhere; }
-.dq-review-media video { width: 100%; max-height: max(18rem, calc(100dvh - 24rem)); object-fit: contain; }
-.dq-review-media :fullscreen video,
-.dq-review-media video:fullscreen { height: 100%; max-height: none; }
+/* The single-item workspace (Step 2 layout): one header row and a chip row, then the queue rail,
+   the stage (player and action pad) and the current item's column. Colours come from the host
+   theme so every Cove theme works. */
+/* No font size here: host components inside (dialogs, selectors, the player) keep their own. */
+.dq-review-workspace {
+  --dq-queue-width: 300px;
+  --dq-panel-width: 340px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+.dq-review-workspace > .dq-status,
+.dq-review-workspace > .dq-alert,
+.dq-review-workspace > details,
+.dq-review-workspace > p {
+  flex: none;
+}
+.dq-review-main {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+.dq-review-body {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: var(--dq-queue-width) minmax(0, 1fr) var(--dq-panel-width);
+  grid-template-areas: "queue stage panel";
+  gap: 12px;
+}
+@media (max-width: 1699px) {
+  .dq-review-workspace {
+    --dq-queue-width: 260px;
+    --dq-panel-width: 300px;
+  }
+}
+
+/* Fill the window below Cove's navbar: the page height is measured (see DataQualityPage), and
+   only the queue list and the item column scroll. */
+@media (min-width: 900px) {
+  .data-quality-page.dq-page-fit {
+    display: flex;
+    height: calc(100dvh - var(--dq-fit-top, 0px) - var(--dq-fit-bottom, 0px));
+    min-height: 34rem;
+    flex-direction: column;
+    gap: 0;
+  }
+  .dq-page-fit > .dq-review-workspace {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .dq-page-fit .dq-review-main,
+  .dq-page-fit .dq-review-body {
+    flex: 1 1 auto;
+  }
+  /* A short window scrolls the workspace under the header rather than squeezing the player;
+     the inline rule editor scrolls above the workspace, which keeps the full visible height. */
+  .dq-page-fit .dq-review-main {
+    overflow-y: auto;
+  }
+  .dq-page-fit .dq-review-body {
+    min-height: 36rem;
+  }
+  .dq-page-fit .dq-editing-rule .dq-review-body {
+    flex: 0 0 100%;
+  }
+}
+
+/* Header row and chip row. The host toolbar renders its controls row and its filter chips as
+   siblings; its wrapper is display: contents so both join this flex container, and a zero-height
+   break puts the chips on the second row. */
+.dq-review-header {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.dq-review-header [hidden] {
+  display: none;
+}
+.dq-review-header-lead {
+  order: 1;
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+.dq-review-header-lead h1 {
+  min-width: 0;
+  max-width: 20rem;
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-review-type {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-secondary);
+}
+.dq-review-type svg {
+  width: 15px;
+  height: 15px;
+}
+.dq-review-header-divider {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--color-border);
+}
+.dq-review-toolbar {
+  display: contents;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-review-toolbar > div:first-of-type {
+  order: 2;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.dq-review-toolbar > div:first-of-type > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  margin: 0;
+  padding: 0;
+}
+.dq-review-toolbar > div:first-of-type > div:first-child > span:first-child {
+  overflow: hidden;
+  font-size: 0.78125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-review-toolbar > div:first-of-type > div:nth-child(2) {
+  flex-wrap: nowrap;
+}
+.dq-review-toolbar > div:first-of-type > div[aria-hidden="true"]:last-child {
+  display: none;
+}
+.dq-review-toolbar > div:first-of-type form {
+  width: 15rem;
+}
+.dq-review-toolbar > [role="region"] {
+  order: 6;
+  min-width: 0;
+  flex: 1 1 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.dq-review-header-trail {
+  order: 3;
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+.dq-review-header-break {
+  order: 4;
+  height: 0;
+  flex-basis: 100%;
+}
+.dq-focus-chip {
+  order: 5;
+}
+.dq-review-chips-end {
+  order: 7;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+/* One header row at common widths: long names and the scope summary give way first. */
+@media (max-width: 1799px) {
+  .dq-review-toolbar > div:first-of-type form {
+    width: 12rem;
+  }
+  .dq-review-header-lead h1 {
+    max-width: 14rem;
+  }
+  .dq-scope-summary {
+    max-width: 8rem;
+  }
+}
+@media (max-width: 1599px) {
+  .dq-scope-summary {
+    display: none;
+  }
+  .dq-review-toolbar > div:first-of-type form {
+    width: 10rem;
+  }
+}
+@media (max-width: 1199px) {
+  /* The pager keeps the position; the range text returns on wider windows. */
+  .dq-review-toolbar > div:first-of-type > div:first-child > span:first-child {
+    display: none;
+  }
+}
+@media (max-width: 1499px) {
+  .dq-review-header-lead h1 {
+    max-width: 11rem;
+  }
+  .dq-review-toolbar > div:first-of-type form {
+    width: 8.5rem;
+  }
+}
+@media (max-width: 1399px) {
+  .dq-review-toolbar > div:first-of-type form {
+    width: 10rem;
+  }
+  /* The header controls wrap onto their own rows instead of running off the window. */
+  .dq-review-toolbar > div:first-of-type,
+  .dq-review-toolbar > div:first-of-type > div:nth-child(2) {
+    flex-wrap: wrap;
+  }
+}
+
+.dq-icon-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-secondary);
+}
+.dq-icon-button:hover:not(:disabled) {
+  background: var(--color-card-hover);
+  color: var(--color-foreground);
+}
+.dq-icon-button:disabled {
+  opacity: 0.4;
+}
+.dq-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+.dq-icon-button-small svg {
+  width: 15px;
+  height: 15px;
+}
+.dq-header-button,
+.dq-text-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.dq-header-button:hover:not(:disabled),
+.dq-text-button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+.dq-header-button:disabled,
+.dq-text-button:disabled {
+  opacity: 0.45;
+}
+.dq-header-button svg,
+.dq-text-button svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dq-text-button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 0.78125rem;
+}
+.dq-text-button + .dq-text-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-secondary);
+}
+.dq-defaults-note {
+  color: var(--color-muted);
+  font-size: 0.78125rem;
+}
+
+.dq-segmented {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+}
+.dq-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+  white-space: nowrap;
+}
+.dq-segmented button:hover:not(:disabled) {
+  color: var(--color-foreground);
+}
+.dq-segmented button[aria-pressed="true"] {
+  background: var(--dq-pressed-bg);
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+.dq-segmented button:disabled {
+  opacity: 0.45;
+}
+.dq-segmented svg {
+  width: 13px;
+  height: 13px;
+}
+.dq-segmented-fill {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+}
+.dq-segmented-fill button {
+  min-height: 28px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
+
+.dq-pager {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.dq-pager .dq-icon-button {
+  width: 28px;
+  height: 28px;
+}
+.dq-pager .dq-icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+.dq-pager-page,
+.dq-pager-input {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dq-pager-page:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+.dq-pager-input {
+  width: 4.75rem;
+  background: var(--color-input);
+}
+
+.dq-menu {
+  position: relative;
+  flex: none;
+}
+.dq-menu-backdrop,
+.dq-scope-backdrop {
+  position: fixed;
+  z-index: 44;
+  inset: 0;
+}
+.dq-menu-list {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  min-width: 12rem;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 45%);
+}
+.dq-menu-list [role="menuitem"] {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.dq-menu-list [role="menuitem"]:hover:not(:disabled),
+.dq-menu-list [role="menuitem"]:focus-visible {
+  background: var(--color-card-hover);
+  outline: none;
+}
+.dq-menu-list [role="menuitem"]:disabled {
+  opacity: 0.45;
+}
+
+/* Scope: a header button summarising the occurrence scope, with its controls in a popover. It
+   stays below Cove's dialogs (z-index 50), so the performer criteria dialog opens over it. */
+.dq-scope {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.dq-scope-button {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+.dq-scope-button[aria-expanded="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card));
+}
+.dq-scope-name {
+  color: var(--color-muted);
+}
+.dq-scope-summary {
+  min-width: 0;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Fixed and placed from its button when it opens (see ScopePopover); these are fallbacks. */
+.dq-scope-popover {
+  position: fixed;
+  z-index: 45;
+  top: 7rem;
+  right: 1rem;
+  display: flex;
+  width: min(600px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 9rem);
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 1.25rem 3.5rem rgb(0 0 0 / 55%);
+  color: var(--color-foreground);
+  white-space: normal;
+}
+/* The criteria chips open Cove's filter dialog inside the popover; lift the popover over
+   Cove's navbar meanwhile, so that dialog covers the whole window as it would elsewhere. */
+.dq-scope-popover:has([role="dialog"]) {
+  z-index: 60;
+}
+.dq-scope-popover .dq-checkbox,
+.dq-scope-popover .dq-segmented-fill button {
+  font-size: 0.8125rem;
+}
+.dq-scope-popover:focus {
+  outline: none;
+}
+.dq-scope-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-scope-section > legend {
+  margin-bottom: 10px;
+  padding: 0;
+}
+.dq-scope-criteria {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dq-scope-criteria .dq-performer-criteria {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.dq-scope-criteria .dq-performer-criteria [role="region"] {
+  margin: 0;
+}
+.dq-scope-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+}
+.dq-scope-popover .dq-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dq-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-input);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+}
+.dq-scope-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+.dq-scope-footer p {
+  flex: 1;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78125rem;
+}
+
+/* The chip row: performer focus, the host's filter chips, and the save/reset controls. */
+.dq-focus-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 3px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  font-size: 0.78125rem;
+  white-space: nowrap;
+}
+.dq-focus-chip strong {
+  font-weight: 600;
+}
+.dq-focus-chip .dq-performer-avatar {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+  font-size: 0.53rem;
+}
+.dq-focus-flag {
+  display: inline-flex;
+  color: var(--dq-warn);
+}
+.dq-focus-flag svg,
+.dq-flag-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--dq-warn);
+}
+.dq-chip-button {
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--dq-pressed-bg);
+  color: var(--color-foreground);
+  font-size: 0.75rem;
+}
+.dq-chip-button:hover:not(:disabled) {
+  background: var(--color-card-hover);
+}
+
+/* The stage: title line, player sized to the space left above the action pad, and the pad. */
+.dq-review-stage {
+  grid-area: stage;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-stage-title {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: baseline;
+  gap: 10px;
+}
+.dq-review-video-title {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  margin: 0;
+  color: var(--color-foreground);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.dq-review-video-title a {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+}
+.dq-review-video-title a > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-review-video-title a:hover > span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dq-review-video-title svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--color-muted);
+}
+.dq-stage-meta {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.78125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-review-media {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The player sits under the title; spare height stays above the pad, which keeps its place. */
+.dq-player-frame {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  justify-content: center;
+  container-type: size;
+}
+/* 16:9, as wide as fits and as tall as fits, centred. The host player fills its box; nothing
+   clips it, because its speed and quality menus open upwards past a short player. */
+.dq-review-video-current {
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  max-height: 100cqh;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
 .dq-review-video-preload {
   position: absolute;
   left: -10000px;
@@ -1011,39 +1688,893 @@
   opacity: 0;
   pointer-events: none;
 }
-/* The description sits under the player, not beside it, so the reading width matches the player. */
-.dq-media-description { display: grid; gap: .4rem; margin-top: .6rem; min-width: 0; }
-.dq-description-toggle { justify-self: start; font-size: .8rem; }
+.dq-stage-status {
+  display: flex;
+  min-height: 8rem;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+}
+/* Audio: Cove's audio player takes the full width at its own height; the description fills the
+   space down to the pad and scrolls. */
+.dq-audio .dq-player-frame {
+  display: block;
+  flex: none;
+  container-type: normal;
+}
+.dq-audio .dq-review-video-current {
+  width: auto;
+  max-height: none;
+  aspect-ratio: auto;
+  background: none;
+}
+.dq-media-description {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 6px;
+}
+.dq-description-toggle {
+  align-self: flex-start;
+  font-size: 0.8rem;
+}
 .dq-description-body {
-  font-size: .875rem;
-  line-height: 1.5;
+  min-height: 0;
   max-height: min(18rem, 40dvh);
   overflow-y: auto;
-  overflow-wrap: anywhere;
+  padding: 0.5rem 0.6rem;
   border: 1px solid var(--color-border);
-  border-radius: .4rem;
-  padding: .5rem .6rem;
+  border-radius: 0.4rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
-.dq-description-empty { opacity: .7; }
-.dq-review-panel { display: grid; align-content: start; gap: .65rem; }
-.dq-review-panel h2 { font-size: 1.2rem; font-weight: 600; }
-.dq-review-panel p { font-size: .875rem; }
-.dq-review-partners, .dq-action-pair, .dq-review-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
-.dq-review-actions { flex-direction: column; }
-.dq-action-pair > .primary { flex: 1; white-space: normal; overflow-wrap: anywhere; }
-.dq-apply-stay-button { width: 2rem; flex: none; padding-inline: 0; }
-.dq-review-queue { position: sticky; top: .5rem; display: flex; flex-direction: column; gap: .5rem; max-height: calc(100dvh - 6rem); min-height: 12rem; min-width: 0; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem; }
-.dq-review-queue > p { font-size: .8rem; }
-/* Keep wrapped labels at their intrinsic height inside the scrollable list. */
-.dq-review-queue-items { display: grid; grid-auto-rows: max-content; align-content: start; gap: .4rem; overflow-y: auto; min-height: 6rem; }
-.dq-review-queue-items button { justify-content: start; text-align: left; overflow-wrap: anywhere; }
-/* Saving locks navigation without fading the queue as the next video appears. */
-.dq-review-queue-items button:disabled { opacity: 1; }
-.dq-review-workspace [aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-card); font-weight: 600; }
-/* Host components (list toolbar, filter dialog, criteria chips, entity
-   selectors) draw their own focus rings and must not be matched here; a
-   blanket :focus-visible rule doubled them. Only the extension's own controls
-   get an explicit accent ring, in the workspace and in the manager editor. */
+.dq-page-fit .dq-media-description .dq-description-body {
+  max-height: none;
+}
+.dq-description-empty {
+  opacity: 0.7;
+}
+.dq-tag-choices {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.dq-tag-choices legend {
+  padding: 0 4px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+.dq-tag-choices label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+
+/* The action pad: rows shaped like the keyboard, tiles by the keys' default positions. Tiles
+   shrink with the stage (container units) so a whole row always fits. */
+.dq-pad {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  container-type: inline-size;
+}
+.dq-pad-header {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+  white-space: nowrap;
+}
+.dq-pad-effect {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  overflow: hidden;
+}
+.dq-pad-effect strong {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+.dq-pad-effect [data-effect-tone="add"] {
+  color: var(--dq-add);
+}
+.dq-pad-effect [data-effect-tone="remove"] {
+  color: var(--dq-remove);
+}
+.dq-pad-effect [data-effect-tone="assess"] {
+  color: var(--color-foreground);
+}
+.dq-pad-summary {
+  gap: 6px;
+}
+.dq-pad-unchanged {
+  color: var(--color-muted);
+}
+.dq-pad-hint {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+}
+.dq-pad-find-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin-left: 10px;
+  padding: 0 9px 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-pad-find-button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-foreground);
+}
+.dq-pad-find-button:disabled {
+  opacity: 0.45;
+}
+.dq-key {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 2px 5px 1px;
+  border: 1px solid var(--dq-key-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--dq-key-bg);
+  color: var(--color-foreground);
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+.dq-key-letter {
+  text-transform: uppercase;
+}
+.dq-pad-hint .dq-key {
+  background: transparent;
+  color: var(--color-secondary);
+}
+.dq-pad-row {
+  --dq-tile: min(104px, calc((100cqw - 60px) / 11.2));
+  display: flex;
+  gap: 6px;
+}
+.dq-pad-row[data-indent="1"] {
+  padding-left: calc(var(--dq-tile) * 0.17);
+}
+.dq-pad-row[data-indent="2"] {
+  padding-left: calc(var(--dq-tile) * 0.48);
+}
+.dq-pad-slot {
+  position: relative;
+  width: var(--dq-tile);
+  height: 64px;
+  flex: none;
+}
+.dq-pad-tile {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 4px 6px;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  text-align: left;
+}
+.dq-pad-tile > .dq-key {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+.dq-pad-label {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  overflow: hidden;
+  font-size: 0.78125rem;
+  line-height: 15px;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dq-pad-marker {
+  display: inline-flex;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  color: var(--dq-remove);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.dq-pad-marker svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.dq-pad-slot:hover > .dq-pad-tile:not(:disabled),
+.dq-pad-slot:focus-within > .dq-pad-tile:not(:disabled) {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.dq-pad-slot:hover > .dq-pad-tile:not(:disabled) > .dq-key,
+.dq-pad-slot:focus-within > .dq-pad-tile:not(:disabled) > .dq-key {
+  border-color: color-mix(in srgb, var(--color-accent) 75%, white);
+  background: var(--color-accent);
+  color: white;
+}
+.dq-pad-slot:hover > .dq-pad-tile:not(:disabled) > .dq-pad-label,
+.dq-pad-slot:focus-within > .dq-pad-tile:not(:disabled) > .dq-pad-label {
+  font-weight: 600;
+}
+.dq-pad-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* While a write or load runs the tiles only pause; fading them on every action would flicker. */
+.dq-pad[aria-busy="true"] .dq-pad-tile:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+.dq-pad-pin {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dq-key-border);
+  border-radius: 6px;
+  background: var(--dq-key-bg);
+  color: var(--color-foreground);
+  opacity: 0;
+  pointer-events: none;
+}
+.dq-pad-pin svg {
+  width: 13px;
+  height: 13px;
+}
+.dq-pad-slot:hover > .dq-pad-pin:not(:disabled),
+.dq-pad-slot:focus-within > .dq-pad-pin:not(:disabled) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.dq-pad-pin:hover {
+  border-color: var(--color-accent);
+}
+.dq-pad-free {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--color-muted);
+}
+.dq-pad-free .dq-key {
+  border-bottom-width: 1px;
+  background: transparent;
+  color: var(--color-muted);
+}
+.dq-pad-free:not(.dq-pad-reserved) {
+  opacity: 0.6;
+}
+.dq-pad-free .dq-pad-label {
+  font-size: 0.75rem;
+}
+.dq-pad-find {
+  background: var(--color-surface);
+  color: var(--color-secondary);
+}
+.dq-pad-find .dq-pad-label {
+  display: flex;
+  align-items: center;
+  align-self: start;
+  gap: 5px;
+}
+.dq-pad-find svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.dq-pad-tile:focus-visible,
+.dq-pad-pin:focus-visible,
+.dq-pad-find-button:focus-visible,
+.dq-icon-button:focus-visible,
+.dq-header-button:focus-visible,
+.dq-text-button:focus-visible,
+.dq-segmented button:focus-visible,
+.dq-pager-page:focus-visible,
+.dq-chip-button:focus-visible,
+.dq-partner:focus-visible,
+.dq-queue-row:focus-visible,
+.dq-review-video-title a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* Narrow stages: tiles give their labels more of their width. */
+@container (max-width: 1000px) {
+  .dq-pad-tile,
+  .dq-pad-free {
+    padding: 5px 6px;
+  }
+  .dq-pad-label {
+    font-size: 0.75rem;
+    line-height: 14px;
+  }
+}
+@container (max-width: 700px) {
+  .dq-pad-hint {
+    display: none;
+  }
+  .dq-pad-slot {
+    height: 58px;
+  }
+  .dq-pad-tile,
+  .dq-pad-free {
+    padding: 5px 6px;
+  }
+  .dq-pad-label {
+    font-size: 0.72rem;
+    line-height: 14px;
+  }
+}
+
+/* The current item's column: sections scroll, Edit tags and Skip stay at the bottom. */
+.dq-review-panel {
+  grid-area: panel;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+.dq-panel-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 22px;
+  overflow-y: auto;
+  padding: 16px;
+}
+.dq-panel-footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.dq-panel-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.dq-panel-actions[aria-busy="true"] .dq-button:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+.dq-panel-actions .dq-button {
+  min-width: 0;
+  min-height: 36px;
+  gap: 5px;
+  padding-inline: 6px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.dq-panel-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-eyebrow {
+  margin: 0;
+  padding: 0;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dq-reviewing {
+  gap: 10px;
+}
+.dq-reviewing-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dq-reviewing-who .dq-performer-avatar {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  box-shadow:
+    0 0 0 2px var(--color-surface),
+    0 0 0 4px var(--color-accent);
+  font-size: 0.875rem;
+}
+.dq-reviewing-name {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dq-reviewing-note {
+  margin: 2px 0 0;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  margin: 0;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+.dq-badge svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.dq-badge-warning {
+  border: 1px solid color-mix(in srgb, var(--dq-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--dq-warn) 12%, transparent);
+  color: var(--dq-warn);
+}
+.dq-partners {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dq-partner {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  font-size: 0.78125rem;
+}
+.dq-partner > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-partner:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+.dq-partner:disabled {
+  opacity: 1;
+}
+.dq-partner .dq-performer-avatar {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+  font-size: 0.56rem;
+}
+.dq-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dq-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  font-size: 0.78125rem;
+  overflow-wrap: anywhere;
+}
+.dq-chip ins,
+.dq-chip del {
+  text-decoration: none;
+}
+.dq-chip-added {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--dq-add) 70%, transparent);
+  background: color-mix(in srgb, var(--dq-add) 10%, transparent);
+  color: var(--dq-add);
+}
+/* A tag the action would newly record as absent, which the item does not have now. */
+.dq-chip-absent-new {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--dq-remove) 60%, transparent);
+  background: color-mix(in srgb, var(--dq-remove) 8%, transparent);
+  color: var(--dq-remove);
+}
+.dq-chip-removed {
+  border-color: color-mix(in srgb, var(--dq-remove) 55%, transparent);
+  color: var(--dq-remove);
+}
+.dq-chip-removed del {
+  text-decoration: line-through;
+}
+.dq-chip-absent > svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--color-muted);
+}
+.dq-chip-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--dq-remove);
+  font-size: 0.6875rem;
+}
+.dq-chip-marker svg {
+  width: 12px;
+  height: 12px;
+}
+.dq-chip-count {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.dq-subheading {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.dq-muted {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78125rem;
+}
+.dq-panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dq-panel-heading > span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-performer-answers {
+  gap: 12px;
+}
+.dq-answer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dq-answer-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-answer-category .dq-badge {
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.dq-tag-editor {
+  gap: 10px;
+}
+.dq-tag-editor > legend {
+  margin-bottom: 8px;
+}
+.dq-review-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dq-review-feedback:empty {
+  display: none;
+}
+.dq-review-feedback [role="alert"] {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgb(239 68 68 / 50%);
+  border-radius: 6px;
+  background: rgb(239 68 68 / 10%);
+  color: color-mix(in srgb, rgb(239 68 68) 65%, var(--color-foreground));
+  font-size: 0.78125rem;
+  overflow-wrap: anywhere;
+}
+.dq-review-feedback [role="alert"] button {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dq-review-feedback [role="status"] {
+  margin: 0;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+
+/* The queue rail: compact rows, the active one outlined; the list scrolls on its own. */
+.dq-review-queue {
+  grid-area: queue;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-queue-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.dq-queue-row {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-foreground);
+  text-align: left;
+}
+.dq-queue-row:hover:not(:disabled) {
+  background: var(--color-card-hover);
+}
+.dq-queue-row[aria-current="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-card);
+}
+.dq-queue-row[aria-current="true"] .dq-queue-row-title {
+  font-weight: 600;
+}
+/* Saving locks navigation without fading the queue as the next item appears. */
+.dq-queue-row:disabled {
+  opacity: 1;
+}
+.dq-queue-thumb {
+  display: flex;
+  width: 76px;
+  height: 43px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--color-card);
+  color: var(--color-muted);
+}
+.dq-queue-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dq-queue-thumb svg {
+  width: 18px;
+  height: 18px;
+}
+.dq-queue-row-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.dq-queue-row-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-queue-row-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.dq-queue-row-meta .dq-performer-avatar {
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+  font-size: 0.53rem;
+}
+.dq-queue-row-performer {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dq-queue-row-detail {
+  flex: none;
+  color: var(--color-muted);
+}
+.dq-queue-row-performer + .dq-queue-row-detail:not(:empty)::before {
+  content: "· ";
+}
+.dq-ranked-performer {
+  min-height: 44px;
+  padding: 0 10px 0 8px;
+}
+.dq-ranked-performer .dq-performer-avatar {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+.dq-ranked-performer .dq-queue-row-title {
+  flex: 1 1 auto;
+}
+.dq-ranked-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.dq-ranked-performer[aria-current="true"] .dq-ranked-count {
+  font-weight: 600;
+}
+.dq-performer-ranking {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-performer-ranking-status {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 0 6px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-performer-ranking-status p {
+  margin: 0;
+}
+.dq-performer-ranking-status .dq-icon-button {
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+}
+.dq-performer-ranking-status .dq-icon-button svg {
+  width: 14px;
+  height: 14px;
+}
+.dq-ranking-more {
+  flex: none;
+  min-height: 34px;
+}
+.dq-performer-avatar {
+  position: relative;
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-card);
+  color: var(--color-secondary);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.dq-performer-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Only the host's criteria chips are relevant to performer targeting. Its list count and
+   page-size toolbar describe a different, nonexistent list. */
+.dq-performer-criteria > div:first-child {
+  display: none;
+}
+.dq-review-workspace .dq-row {
+  padding: 0;
+}
+.dq-rule-editor {
+  display: grid;
+  flex: none;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+}
+.dq-rule-editor h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+.dq-rule-editor > p {
+  color: var(--color-secondary);
+  font-size: 0.875rem;
+}
+.dq-rule-editor input,
+.dq-rule-editor textarea,
+.dq-rule-editor select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: var(--color-input);
+  color: var(--color-foreground);
+}
+.dq-rule-editor label {
+  display: grid;
+  gap: 0.35rem;
+}
+/* Host components (list toolbar, filter dialog, criteria chips, entity selectors) draw their own
+   focus rings and must not be matched here; a blanket :focus-visible rule doubled them. Only the
+   extension's own controls get an explicit accent ring, in the workspace and the manager editor. */
 .dq-button:focus-visible,
 .dq-queue-fields label > select:focus-visible:not(.filter-dialog *),
 .dq-queue-fields label > input:focus-visible:not(.filter-dialog *),
@@ -1053,39 +2584,83 @@
 .dq-action-step > select:focus-visible,
 .dq-action-step > button:focus-visible,
 .dq-rule-editor > fieldset > label > select:focus-visible,
-.dq-scope-controls > label > select:focus-visible,
+.dq-select:focus-visible,
+.dq-pager-input:focus-visible,
+.dq-menu-list [role="menuitem"]:focus-visible,
 .dq-checkbox > input:focus-visible,
 .dq-review-feedback button:focus-visible,
-.dq-review-video-title > a:focus-visible,
 .dq-tag-choices > label > input:focus-visible,
-.dq-tag-choices > button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
-.dq-tag-editor { display: grid; gap: .6rem; padding: .5rem; border: 1px solid var(--color-border); }
-.dq-review-feedback:empty { display: none; }
-@media (max-width: 1200px) { .dq-review-inspector { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 760px) {
-  .dq-review-layout { grid-template-columns: minmax(0, 1fr); }
-  .dq-review-queue { position: static; max-height: 22rem; }
-  .dq-scope-controls { align-items: stretch; flex-direction: column; }
+.dq-tag-choices button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
 }
-.dq-review-action-summary { flex-basis: 100%; color: var(--color-secondary); font-size: .75rem; overflow-wrap: anywhere; }
-.dq-review-workspace .dq-row { padding: 0; }
-/* Only the host's criteria chips are relevant to performer targeting. Its
-   list count and page-size toolbar describe a different, nonexistent list. */
-.dq-performer-criteria > div:first-child { display: none; }
-.dq-review-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.dq-performer-avatar { position: relative; display: inline-flex; flex: 0 0 2rem; width: 2rem; height: 2rem; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-card); color: var(--color-secondary); font-size: .65rem; }
-.dq-performer-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.dq-review-partners .dq-partner-button { border-radius: 50%; padding: .2rem; }
-.dq-review-workspace [aria-pressed="true"] .dq-performer-avatar { border-color: var(--color-accent); }
-.dq-queue-scene-title { min-width: 0; overflow-wrap: anywhere; }
 
-.dq-review-video-title { margin-top: .25rem; margin-bottom: .5rem; overflow-wrap: anywhere; font-size: 1.25rem; font-weight: 600; line-height: 1.375; color: var(--color-foreground); }
-@media (min-width: 640px) { .dq-review-video-title { font-size: 1.5rem; } }
-.dq-rule-editor { display: grid; gap: .75rem; border: 1px solid var(--color-border); border-radius: .5rem; padding: 1rem; background: var(--color-surface); }
-.dq-rule-editor h2 { font-size: 1.2rem; font-weight: 600; }
-.dq-rule-editor > p { color: var(--color-secondary); font-size: .875rem; }
-.dq-rule-editor input, .dq-rule-editor textarea, .dq-rule-editor select { color: var(--color-foreground); background: var(--color-input); border: 1px solid var(--color-border); border-radius: .375rem; padding: .4rem .5rem; }
-.dq-rule-editor label { display: grid; gap: .35rem; }
+/* Narrower windows: below ~1400px the item column becomes a band under the pad; below 900px
+   everything stacks, with the queue after the workspace, and the page scrolls. */
+@media (max-width: 1399px) {
+  .dq-review-body {
+    grid-template-columns: var(--dq-queue-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "queue stage"
+      "queue panel";
+  }
+  .dq-page-fit .dq-review-body {
+    min-height: 40rem;
+  }
+  .dq-review-panel {
+    max-height: 11rem;
+    flex-direction: row;
+  }
+  .dq-panel-body {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 14px 28px;
+  }
+  .dq-panel-body > * {
+    flex: 1 1 14rem;
+  }
+  .dq-panel-footer {
+    width: 17rem;
+    justify-content: flex-end;
+    padding: 16px;
+  }
+}
+@media (max-width: 899px) {
+  .dq-review-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      "stage"
+      "panel"
+      "queue";
+  }
+  .dq-player-frame {
+    display: block;
+    container-type: inline-size;
+  }
+  .dq-review-video-current {
+    width: 100%;
+    max-height: none;
+  }
+  .dq-review-panel {
+    max-height: none;
+    flex-direction: column;
+  }
+  .dq-panel-body {
+    overflow: visible;
+  }
+  .dq-panel-footer {
+    width: auto;
+  }
+  .dq-queue-list {
+    max-height: 26rem;
+  }
+  .dq-review-header-lead h1 {
+    max-width: 60vw;
+  }
+}
 
 .dq-layout-control { display: flex; align-items: center; gap: .5rem; font-size: .875rem; }
 .dq-layout-control select { padding: .3rem .5rem; border: 1px solid var(--color-border); border-radius: .375rem; background: var(--color-input); color: var(--color-foreground); }
@@ -1141,19 +2716,6 @@
 .dq-batch-dialog p { margin: 0.35rem 0; }
 .dq-batch-dialog legend { font-weight: 600; }
 
-/* Performer ranking and focus for occurrence reviews. */
-.dq-queue-view { display: flex; gap: .4rem; }
-.dq-queue-view .dq-button { flex: 1; }
-.dq-performer-ranking { display: flex; flex-direction: column; gap: .5rem; min-height: 0; flex: 1; }
-.dq-performer-ranking-status { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .8rem; color: var(--color-secondary); }
-.dq-ranked-performer { justify-content: start; text-align: left; }
-.dq-ranked-count { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
-.dq-performer-flag { flex: none; padding: .05rem .35rem; border: 1px solid var(--color-accent); border-radius: .3rem; color: var(--color-accent); font-size: .7rem; }
-.dq-performer-focus { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .25rem .5rem; border: 1px solid var(--color-accent); border-radius: .4rem; font-size: .875rem; }
-.dq-performer-answers { display: grid; gap: .25rem; font-size: .8rem; }
-.dq-performer-answers h3 { font-size: .8rem; font-weight: 600; color: var(--color-secondary); }
-.dq-performer-answers ul { display: grid; gap: .15rem; margin: 0; padding-left: 1rem; list-style: disc; overflow-wrap: anywhere; }
-.dq-answers-mixed { color: var(--color-accent); }
 .dq-batch-dialog .dq-batch-answers { display: flex; flex-wrap: wrap; gap: .4rem 1rem; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem .75rem; }
 .dq-batch-dialog .dq-batch-answers label { gap: .4rem; }
 .dq-batch-flag { padding: .4rem .6rem; border: 1px solid var(--color-accent); border-radius: .4rem; }
@@ -1165,6 +2727,11 @@
 .data-quality-page {
   --dq-add: color-mix(in srgb, #6ea8ff 60%, var(--color-foreground, currentColor));
   --dq-remove: color-mix(in srgb, #f0a445 60%, var(--color-foreground, currentColor));
+  /* Flags and mixed answers share the amber of removals. */
+  --dq-warn: var(--dq-remove);
+  --dq-key-bg: color-mix(in srgb, var(--color-foreground) 10%, var(--color-card));
+  --dq-key-border: color-mix(in srgb, var(--color-foreground) 22%, var(--color-card));
+  --dq-pressed-bg: color-mix(in srgb, var(--color-foreground) 13%, var(--color-surface));
 }
 
 /* Find action: a small command popover over the page, the grid or the preview. */

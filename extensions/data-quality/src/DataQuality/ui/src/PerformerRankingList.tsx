@@ -1,3 +1,4 @@
+import { Flag, RefreshCw } from "@cove/runtime/lucide-react";
 import { PerformerAvatar } from "./PerformerAvatar";
 import type { PerformerRanking } from "./performerRanking";
 
@@ -17,7 +18,7 @@ export function PerformerRankingList({
   error: string;
   focus?: number;
   disabled: boolean;
-  labels: { one: string; many: string };
+  labels: { one: string; many: string; queue: string };
   onFocus(performerId: number): void;
   onMore(): void;
   onRefresh(): void;
@@ -38,20 +39,22 @@ export function PerformerRankingList({
         ) : ranking ? (
           <p>
             {shown.length
-              ? `Most matching ${labels.many} first.`
+              ? `Most matching ${labels.queue}s first`
               : `No performer has matching ${labels.many}.`}
           </p>
         ) : null}
         <button
           type="button"
-          className="dq-button"
+          className="dq-icon-button"
+          aria-label="Refresh counts"
+          title="Refresh counts"
           disabled={busy || disabled}
           onClick={onRefresh}
         >
-          Refresh
+          <RefreshCw aria-hidden="true" />
         </button>
       </div>
-      <div className="dq-review-queue-items">
+      <div className="dq-queue-list">
         {shown.map((performer) => {
           const count = `${performer.count.toLocaleString()} matching ${performer.count === 1 ? labels.one : labels.many}`;
           const flags = performer.flags.length
@@ -60,21 +63,17 @@ export function PerformerRankingList({
           return (
             <button
               type="button"
-              className="dq-button dq-ranked-performer"
+              className="dq-queue-row dq-ranked-performer"
               key={performer.id}
               aria-label={`${performer.name}, ${count}${flags ? `. ${flags}` : ""}`}
               title={flags || undefined}
-              aria-pressed={focus === performer.id}
+              aria-current={focus === performer.id ? "true" : undefined}
               disabled={disabled}
               onClick={() => onFocus(performer.id)}
             >
               <PerformerAvatar performer={performer} />
-              <span className="dq-queue-scene-title">{performer.name}</span>
-              {flags && (
-                <span className="dq-performer-flag" aria-hidden="true">
-                  Flag
-                </span>
-              )}
+              <span className="dq-queue-row-title">{performer.name}</span>
+              {flags && <Flag className="dq-flag-icon" aria-hidden="true" />}
               <span className="dq-ranked-count" aria-hidden="true">
                 {performer.count.toLocaleString()}
               </span>
@@ -85,7 +84,7 @@ export function PerformerRankingList({
       {more && !busy && !error && (
         <button
           type="button"
-          className="dq-button"
+          className="dq-button dq-ranking-more"
           disabled={disabled}
           onClick={onMore}
         >

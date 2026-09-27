@@ -116,6 +116,8 @@ declare module "@cove/runtime/components" {
     objectFilter?: Record<string, unknown>;
     onObjectFilterChange?(filter: Record<string, unknown>): void;
     showPagingControls?: boolean;
+    /** Shown after the range text ("1–40 of 172"); present since before the extension's floor. */
+    metadataByline?: ReactNode;
   }>;
   export const EntityDetailTabs: ComponentType<{
     tabs: Array<{
@@ -283,27 +285,38 @@ declare module "@cove/runtime/lucide-react" {
     SVGProps<SVGSVGElement> & { size?: number | string }
   >;
   export const AlertTriangle: Icon;
+  export const Ban: Icon;
   export const Check: Icon;
+  export const ChevronDown: Icon;
   export const ChevronLeft: Icon;
   export const ChevronRight: Icon;
   export const ExternalLink: Icon;
   export const Film: Icon;
+  export const Flag: Icon;
   export const Grid3X3: Icon;
   export const GripVertical: Icon;
   export const Headphones: Icon;
+  export const Layers: Icon;
   export const LayoutGrid: Icon;
   export const List: Icon;
   export const Loader2: Icon;
+  export const MoreHorizontal: Icon;
   export const Pencil: Icon;
+  export const Pin: Icon;
   export const Play: Icon;
   export const Plus: Icon;
+  export const RectangleHorizontal: Icon;
+  export const RefreshCw: Icon;
   export const RotateCcw: Icon;
   export const Save: Icon;
   export const Search: Icon;
   export const Settings: Icon;
+  export const SkipForward: Icon;
+  export const Tag: Icon;
   export const Tags: Icon;
   export const Trash2: Icon;
   export const Upload: Icon;
+  export const Users: Icon;
   export const X: Icon;
   export const ZoomIn: Icon;
   export const ZoomOut: Icon;

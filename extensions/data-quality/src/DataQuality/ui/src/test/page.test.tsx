@@ -199,6 +199,14 @@ beforeEach(() => {
   );
 });
 
+/** In the single-item workspace, review management sits in the header's More menu. */
+async function openManagerFromWorkspace() {
+  const more = screen.getByRole("button", { name: "More review options" });
+  await waitFor(() => expect(more).toBeEnabled());
+  fireEvent.click(more);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Manage reviews" }));
+}
+
 describe("Data Quality extension page", () => {
   it("shows entity icons beside review names instead of type badges", async () => {
     const tagReview = {
@@ -628,16 +636,20 @@ describe("Data Quality extension page", () => {
     ).toHaveClass("dq-status");
   });
 
-  it("places review management beside the title as an icon", async () => {
+  it("places review management in the header's More menu", async () => {
     render(<DataQualityPage onNavigate={vi.fn()} />);
 
     await screen.findByRole("heading", { name: "Reviewing this video" });
     const heading = screen.getByRole("heading", { name: review.name });
-    const manage = screen.getByRole("button", { name: "Manage reviews" });
+    const more = screen.getByRole("button", { name: "More review options" });
 
-    expect(heading.closest("header")).toContainElement(manage);
-    expect(manage).toContainHTML("svg");
-    expect(manage).toHaveTextContent("");
+    expect(heading.closest("header")).toContainElement(more);
+    expect(more).toContainHTML("svg");
+    expect(more).toHaveTextContent("");
+    await openManagerFromWorkspace();
+    expect(
+      screen.getByRole("dialog", { name: "Manage Data Quality reviews" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(
         "A focused queue for previewing videos and applying saved review actions.",
@@ -799,7 +811,7 @@ it("exports a corrupt browser payload without modifying it", async () => {
 it("disables competing edits while an import file is being read", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.click(screen.getByRole("button", { name: "Manage reviews" }));
+  await openManagerFromWorkspace();
   let finish!: (value: string) => void;
   const file = new File(["[]"], "reviews.json", { type: "application/json" });
   Object.defineProperty(file, "text", {
@@ -1007,7 +1019,7 @@ it("reopens the same media rule from management after cancel without clearing it
   await screen.findByRole("heading", { name: "Reviewing this video" });
   const original = window.location.search;
   for (let i = 0; i < 2; i++) {
-    fireEvent.click(screen.getByRole("button", { name: "Manage reviews" }));
+    await openManagerFromWorkspace();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Edit$/ }));
     await screen.findByRole("region", { name: "Edit review rule" });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -1019,7 +1031,7 @@ it("reopens the same media rule from management after cancel without clearing it
 it("creates media review details then configures the rule in the workspace", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", {name: "Reviewing this video"});
-  fireEvent.click(screen.getByRole("button", {name: "Manage reviews"}));
+  await openManagerFromWorkspace();
   fireEvent.click(screen.getByRole("button", {name: "New review"}));
   expect(screen.queryByRole("tab", {name: "Queue"})).not.toBeInTheDocument();
   expect(screen.queryByRole("tab", {name: "Actions"})).not.toBeInTheDocument();
@@ -1046,7 +1058,11 @@ it("restores multi-video cards, selection actions, and the single-video layout s
   await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
   fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "multiple" } });
+  // The workspace header switches this visit back to the grid.
+  const grid = screen.getByRole("button", { name: "Grid" });
+  expect(screen.getByRole("button", { name: "Single" })).toHaveAttribute("aria-pressed", "true");
+  await waitFor(() => expect(grid).toBeEnabled());
+  fireEvent.click(grid);
   await screen.findByRole("article", { name: "Video 1" });
 });
 
@@ -1089,8 +1105,9 @@ it("preserves temporary queue criteria when switching video layouts", async () =
   await screen.findByRole("heading", { name: "Reviewing this video" });
   fireEvent.click(screen.getByRole("button", { name: "Filters" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
-  await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
-  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "multiple" } });
+  const grid = screen.getByRole("button", { name: "Grid" });
+  await waitFor(() => expect(grid).toBeEnabled());
+  fireEvent.click(grid);
   await screen.findByRole("article", { name: "Video 1" });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
   fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
@@ -1124,7 +1141,7 @@ it("applies saved layout preferences while URL criteria remain active", async ()
   fireEvent.change(screen.getByLabelText("Preferred review layout"), { target: { value: "single" } });
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  expect(screen.getByLabelText("Review layout")).toHaveValue("single");
+  expect(screen.getByRole("button", { name: "Single" })).toHaveAttribute("aria-pressed", "true");
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
 });
 
@@ -1594,4 +1611,24 @@ it("closes Find action with Esc when focus has left its search field", async () 
   fireEvent.keyDown(preview, { key: "Escape" });
   expect(within(preview).queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
+});
+
+it("fits the single-item workspace to the window, with the page's notices under its header", async () => {
+  for (const id of Object.keys(testKeyboardBindings)) testKeyboardBindings[id] = [];
+  const { container } = render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  const page = container.querySelector(".data-quality-page")!;
+  expect(page).toHaveClass("dq-page-fit");
+  expect(page.getAttribute("style")).toMatch(/--dq-fit-top: \d+px; --dq-fit-bottom: \d+px/);
+  const header = screen.getByRole("heading", { name: review.name }).closest("header")!;
+  const notice = screen.getByText(/has no keys for Data Quality actions/);
+  expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Unbound keys leave the tiles without key caps.
+  expect(screen.getByRole("button", { name: "Apply" }).querySelector("kbd")).toBeNull();
+  // The card grid keeps the page's normal flow.
+  const grid = screen.getByRole("button", { name: "Grid" });
+  await waitFor(() => expect(grid).toBeEnabled());
+  fireEvent.click(grid);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(page).not.toHaveClass("dq-page-fit");
 });

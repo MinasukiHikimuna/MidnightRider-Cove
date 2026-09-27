@@ -159,6 +159,12 @@ async function ready() {
     expect(screen.getByRole("button", { name: "Edit tags" })).toBeEnabled(),
   );
 }
+/** The Scope popover holds the occurrence controls; opening it twice would close it. */
+function openScope() {
+  if (!screen.queryByRole("dialog", { name: "Queue scope" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Scope/ }));
+  return within(screen.getByRole("dialog", { name: "Queue scope" }));
+}
 it("preloads the next distinct video in a reusable player", async () => {
   api.loadOccurrencePage.mockResolvedValue({
     items: [first, second, third],
@@ -183,8 +189,8 @@ it("renders Apply and stay as an accessible icon button", async () => {
   open();
   await ready();
 
-  const stay = screen.getByRole("button", { name: "Apply & stay: Observation" });
-  expect(stay).toHaveAttribute("title", "Apply & stay: Observation");
+  const stay = screen.getByRole("button", { name: "Apply and stay: Observation" });
+  expect(stay).toHaveAttribute("title", "Apply and stay (Shift)");
   expect(stay.querySelector("svg")).not.toBeNull();
   expect(stay).toHaveTextContent("");
 });
@@ -245,7 +251,7 @@ it.each(["shift-click", "stay button", "shift shortcut"])(
       });
     else if (alternative === "stay button")
       fireEvent.click(
-        screen.getByRole("button", { name: "Apply & stay: Observation" }),
+        screen.getByRole("button", { name: "Apply and stay: Observation" }),
       );
     else
       fireEvent.keyDown(document.body, {
@@ -325,7 +331,9 @@ it("retains editor inputs on partial failure and refreshes actual tags", async (
   expect(
     screen.getByRole("heading", { name: "Reviewing First performer" }),
   ).toBeInTheDocument();
-  await screen.findByText("Current occurrence tags: Saved part");
+  await waitFor(() =>
+    expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Saved part"),
+  );
 });
 it("Skip only moves the stable cursor and reloading makes items available again", async () => {
   const view = open();
@@ -405,7 +413,8 @@ it("lets users toggle subtags and save the choice as review defaults", async () 
   const save = vi.fn().mockResolvedValue(true);
   open({ ...review, occurrence: { ...review.occurrence, condition: "includes", conditionTagIds: [21] } }, true, save);
   await ready();
-  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
+  openScope();
   expect(screen.getByRole("checkbox", { name: "Include subtags" })).toBeChecked();
   fireEvent.click(screen.getByRole("checkbox", { name: "Include subtags" }));
   await waitFor(() => expect(api.loadOccurrencePage).toHaveBeenLastCalledWith(
@@ -413,7 +422,7 @@ it("lets users toggle subtags and save the choice as review defaults", async () 
     null, 1, expect.anything(),
   ));
   expect(JSON.parse(new URLSearchParams(window.location.search).get("performerScope")!).includeSubtags).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save to review" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(
     expect.objectContaining({ occurrence: expect.objectContaining({ includeSubtags: false }) }),
   ));
@@ -425,13 +434,13 @@ it("gives single-video reviews the same compact save and reset controls", async 
   const save = vi.fn().mockResolvedValue(true);
   open(rule, true, save);
   await ready();
-  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
 
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
     target: { value: "temporary" },
   });
 
-  fireEvent.click(await screen.findByRole("button", { name: "Save changes to review filters" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Save to review" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(
     expect.objectContaining({
       entityType: "video",
@@ -454,14 +463,14 @@ it("keeps changed queue criteria available when a compact save fails", async () 
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
     target: { value: "temporary" },
   });
-  fireEvent.click(await screen.findByRole("button", { name: "Save changes to review filters" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Save to review" }));
 
   expect(await screen.findByText("Could not save queue. Temporary failure")).toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
-  expect(screen.getByRole("button", { name: "Save changes to review filters" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "Reset to default review filters" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Save to review" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
 
-  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save to review" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
   expect(await screen.findByText("Queue saved to this review.")).toBeInTheDocument();
 });
@@ -491,10 +500,10 @@ it("shows compact controls when only the review direction differs", async () => 
   open();
   await ready();
 
-  expect(screen.getByRole("button", { name: "Save changes to review filters" })).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: "Reset to default review filters" }));
+  expect(screen.getByRole("button", { name: "Save to review" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
   await waitFor(() => expect(new URLSearchParams(window.location.search).get("startFrom")).toBe("beginning"));
-  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
 });
 
 it("does not show compact controls for a canonical URL matching the review defaults", async () => {
@@ -522,8 +531,8 @@ it("does not show compact controls for a canonical URL matching the review defau
   open();
   await ready();
 
-  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Reset to default review filters" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
 });
 
 it("keeps saved defaults separate from reset and restores browser URL state", async () => {
@@ -548,7 +557,7 @@ it("keeps saved defaults separate from reset and restores browser URL state", as
       expect.anything(),
     ),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save to review" }));
   await waitFor(() =>
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -560,7 +569,7 @@ it("keeps saved defaults separate from reset and restores browser URL state", as
   );
   await ready();
   fireEvent.click(
-    screen.getByRole("button", { name: "Reset to default review filters" }),
+    screen.getByRole("button", { name: "Reset" }),
   );
   await waitFor(() =>
     expect(new URLSearchParams(window.location.search).get("q")).toBe(""),
@@ -674,7 +683,7 @@ it("blocks duplicate submissions and keeps Skip available without write permissi
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(api.applyTags).not.toHaveBeenCalled();
 });
-it("shows the 27 action keys in order and no badge after them", async () => {
+it("shows the 27 action keys in order and reaches later actions through Find action", async () => {
   open({
     ...review,
     actions: Array.from({ length: 28 }, (_, index) => ({
@@ -692,7 +701,9 @@ it("shows the 27 action keys in order and no badge after them", async () => {
   expect(screen.getByRole("button", { name: "k Action 19" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "ö Action 21" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "b Action 27" }).querySelector("kbd")).not.toBeNull();
-  expect(screen.getByRole("button", { name: "Action 28" }).querySelector("kbd")).toBeNull();
+  // Action 28 has no key: the pad has no tile for it, and its Find tile counts it.
+  expect(screen.queryByRole("button", { name: /Action 28$/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Find action, 1 more" })).toBeEnabled();
 });
 it("preserves legacy choices and clip boundaries", async () => {
   api.loadOccurrencePage.mockResolvedValue({
@@ -925,7 +936,8 @@ it("does not rewrite a destination URL after the workspace unmounts during savin
 it.each(["Cancel filters", "Apply filters"])("restores the performer filter opener after %s", async choice => {
   open({ ...review, occurrence: { ...review.occurrence, targetMode: "filter" } });
   await ready();
-  const trigger = screen.getByRole("button", { name: "Edit performer criteria" });
+  openScope();
+  const trigger = screen.getByRole("button", { name: "Edit criteria" });
   trigger.focus();
   fireEvent.click(trigger);
   fireEvent.click(screen.getByRole("button", { name: choice }));
@@ -943,28 +955,59 @@ it("retains the outer filter opener when editing chips inside a dialog", async (
   await waitFor(() => expect(trigger).toHaveFocus());
 });
 
-it("labels portrait controls and preserves selection when an image is missing", async () => {
+it("offers the other matching partners and keeps their initials when an image is missing", async () => {
   open(); await ready();
-  const first = screen.getByRole("button", { name: /^First performer$/ });
-  expect(first).toHaveAttribute("aria-pressed", "true");
-  expect(first).toHaveAttribute("title", "First performer");
-  const portrait = first.querySelector("img")!;
+  const player = screen.getByTestId("video-player");
+  const partners = within(screen.getByRole("region", { name: "Also in this scene" }));
+  expect(partners.queryByRole("button", { name: /^First performer$/ })).not.toBeInTheDocument();
+  const second = partners.getByRole("button", { name: /^Second performer$/ });
+  expect(second).toHaveAttribute("title", "Second performer");
+  const portrait = second.querySelector("img")!;
   fireEvent.error(portrait);
   expect(portrait).toHaveStyle({ display: "none" });
-  expect(first).toHaveTextContent("FP");
-  expect(screen.queryByText(/· Active/)).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+  expect(second).toHaveTextContent("SP");
+  fireEvent.click(second);
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
-  expect(first).toHaveAttribute("aria-pressed", "false");
+  // Switching partners keeps the scene playing in the same player.
+  expect(screen.getByTestId("video-player")).toBe(player);
+  expect(
+    within(screen.getByRole("region", { name: "Also in this scene" })).getByRole("button", {
+      name: /^First performer$/,
+    }),
+  ).toBeInTheDocument();
 });
 
-it("keeps only native pagination in the queue before the player", async () => {
+it("pages from the header and lists the queue after the workspace", async () => {
   open(); await ready();
   const queue = screen.getByRole("complementary", { name: "Review queue" });
   expect(queue).not.toHaveTextContent(/matching scenes|Position|Scene page|Toward/);
-  expect(within(queue).queryByRole("button", { name: /scene page|Refresh page/ })).not.toBeInTheDocument();
+  expect(within(queue).queryByRole("button", { name: /page/i })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Page 1 of 1. Go to page" })).toBeDisabled();
+  // Narrow windows stack the workspace first and the queue below it.
   const title = screen.getByRole("heading", { name: "First scene" });
-  expect(queue.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(queue.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+});
+
+it("moves between queue pages with the header pager and its go-to field", async () => {
+  api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({
+    items: [{ ...first, key: `${page}:11`, media: { ...video, id: page, title: `Scene ${page}` } }],
+    totalCount: 5,
+  }));
+  open(); await ready();
+  expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+  await screen.findByRole("link", { name: "Scene 2" });
+  expect(new URLSearchParams(window.location.search).get("page")).toBe("2");
+  fireEvent.click(screen.getByRole("button", { name: "Page 2 of 3. Go to page" }));
+  const field = screen.getByRole("spinbutton", { name: "Go to page, 1 to 3" });
+  fireEvent.change(field, { target: { value: "3" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await screen.findByRole("link", { name: "Scene 3" });
+  expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+  // Esc leaves the page as it is.
+  fireEvent.click(screen.getByRole("button", { name: "Page 3 of 3. Go to page" }));
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Go to page, 1 to 3" }), { key: "Escape" });
+  expect(screen.getByRole("button", { name: "Page 3 of 3. Go to page" })).toBeInTheDocument();
 });
 
 it("cancels rule criteria without changing saved defaults or the selected partner", async () => {
@@ -975,7 +1018,7 @@ it("cancels rule criteria without changing saved defaults or the selected partne
   const before = window.location.search;
   rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />);
   await screen.findByRole("region", { name: "Edit review rule" });
-  fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
+  fireEvent.click(openScope().getByRole("button", { name: "Matching criteria" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft search" } });
   await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
   fireEvent.keyDown(document.body, { key: "q", code: "KeyQ" });
@@ -992,13 +1035,13 @@ it("keeps a failed rule save open and persists performer scope when retried", as
   const save = vi.fn().mockRejectedValueOnce(new Error("Denied")).mockResolvedValueOnce(true);
   open(review, true, save, 1);
   await screen.findByRole("region", { name: "Edit review rule" });
-  fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "filter" } });
-  fireEvent.click(screen.getByRole("button", { name: "Edit performer criteria" }));
+  fireEvent.click(openScope().getByRole("button", { name: "Matching criteria" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit criteria" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Your edits are still open");
-  expect(screen.getByRole("combobox", { name: "Performers to review" })).toHaveValue("filter");
+  expect(openScope().getByRole("button", { name: "Matching criteria" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await screen.findByText("Review saved.");
   expect(save).toHaveBeenLastCalledWith(expect.objectContaining({occurrence: expect.objectContaining({targetMode: "filter", performerFilter: female})}));
@@ -1031,7 +1074,7 @@ it("allows requested rule editing after an initial queue failure and preserves r
 it("drops batch results when the dialog closes and refreshes the queue", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   open(); await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
   fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
   await screen.findByText("Preview ready. No tags have been changed.");
@@ -1043,7 +1086,7 @@ it("drops batch results when the dialog closes and refreshes the queue", async (
   await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads), { timeout: 3000 });
   await ready();
   expect(screen.queryByRole("button", { name: "Batch results / undo" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
   expect(screen.queryByRole("button", { name: "Undo batch" })).not.toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Observation" })).not.toBeChecked();
 });
@@ -1111,7 +1154,7 @@ it("ranks performers beside the queue and focuses the queue on one without savin
   expect(JSON.parse(params.get("performerScope")!).targetMode).toBe("filter");
   expect(queue.getByRole("button", { name: "Scenes" })).toHaveAttribute("aria-pressed", "true");
   expect(await screen.findByRole("group", { name: "Performer focus" })).toHaveTextContent("Only Choice");
-  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Show all performers" }));
   await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
   await waitFor(() => expect(api.resolvePerformers).toHaveBeenLastCalledWith(
@@ -1124,7 +1167,7 @@ it("keeps a performer focus through condition changes and drops it with a new pe
   window.history.replaceState(null, "", "/data-quality?review=r&performer=12");
   open(); await ready();
   expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(12), expect.anything());
-  fireEvent.change(screen.getByRole("combobox", { name: "Occurrence tags" }), { target: { value: "isNull" } });
+  fireEvent.change(openScope().getByRole("combobox", { name: "Occurrence condition" }), { target: { value: "isNull" } });
   await waitFor(() => expect(api.resolvePerformers).toHaveBeenLastCalledWith(
     expect.objectContaining({
       occurrence: expect.objectContaining({ condition: "isNull", performerIds: [12] }),
@@ -1132,7 +1175,7 @@ it("keeps a performer focus through condition changes and drops it with a new pe
     expect.anything(),
   ));
   await ready();
-  fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "selected" } });
+  fireEvent.click(openScope().getByRole("button", { name: "Specific performers" }));
   await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
   expect(screen.queryByRole("group", { name: "Performer focus" })).not.toBeInTheDocument();
 });
@@ -1153,13 +1196,18 @@ it("shows the focused performer's existing answers and flags, and batches only t
   const focus = await screen.findByRole("group", { name: "Performer focus" });
   await waitFor(() => expect(focus).toHaveTextContent("Only First performer"));
   expect(focus).toHaveTextContent("Flagged: Changed");
-  expect(await screen.findByText(/Size: Small ×1, Medium ×1/)).toBeInTheDocument();
-  expect(screen.getByText("Mixed answers")).toBeInTheDocument();
+  const answers = within(await screen.findByRole("region", { name: "Existing answers" }));
+  const size = await answers.findByRole("list", { name: "Size" });
+  expect(size).toHaveTextContent("Small1, 1 video");
+  expect(size).toHaveTextContent("Medium1, 1 video");
+  expect(answers.getByText("Mixed")).toBeInTheDocument();
+  // The item column flags the focused performer too.
+  expect(screen.getByRole("complementary", { name: "Current item" })).toHaveTextContent("Flagged: Changed");
   const answerLoads = panels.loadPerformerAnswers.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await waitFor(() => expect(panels.loadPerformerAnswers.mock.calls.length).toBeGreaterThan(answerLoads), { timeout: 3000 });
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
   expect(screen.getByText(/Flagged: Changed./)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
   fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
@@ -1202,7 +1250,7 @@ it("counts again after an unfocused batch and recounts only the focused performe
   panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
   panels.countPerformer.mockResolvedValue(2);
   const batch = async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+    fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
     fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
     await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
@@ -1245,7 +1293,7 @@ it("shows more performers on request and retries a failed ranking with Refresh",
   const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
   fireEvent.click(queue.getByRole("button", { name: "Performers" }));
   expect(await queue.findByRole("alert")).toHaveTextContent("Could not rank performers. Performers offline");
-  fireEvent.click(queue.getByRole("button", { name: "Refresh" }));
+  fireEvent.click(queue.getByRole("button", { name: "Refresh counts" }));
   await queue.findByRole("button", { name: "First performer, 12 matching videos" });
   fireEvent.click(queue.getByRole("button", { name: "Show more performers" }));
   await waitFor(() => expect(panels.extendRanking).toHaveBeenLastCalledWith(
@@ -1275,12 +1323,13 @@ it("drops the focus when the selected performers change and never saves it with 
   window.history.replaceState(null, "", `/data-quality?${params}`);
   open(review, true, save); await ready();
   expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(12), expect.anything());
-  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save to review" }));
   await waitFor(() => expect(save).toHaveBeenCalled());
   const saved = save.mock.calls[0][0] as OccurrenceReview;
   expect(saved.occurrence).toMatchObject({ targetMode: "selected", performerIds: [11, 12] });
   expect(JSON.stringify(saved)).not.toContain("performerFocus");
   await ready();
+  openScope();
   fireEvent.change(screen.getByPlaceholderText("All performers..."), { target: { value: "11" } });
   await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
   expect(api.resolvePerformers).toHaveBeenLastCalledWith(
@@ -1319,13 +1368,13 @@ it("stops counting for criteria no longer shown and lends the loaded performers 
   fireEvent.click(queue.getByRole("button", { name: "Performers" }));
   await waitFor(() => expect(firstSignal).toBeDefined());
   fireEvent.click(queue.getByRole("button", { name: "Scenes" }));
-  fireEvent.change(screen.getByRole("combobox", { name: "Occurrence tags" }), { target: { value: "isNull" } });
+  fireEvent.change(openScope().getByRole("combobox", { name: "Occurrence condition" }), { target: { value: "isNull" } });
   await waitFor(() => expect(firstSignal.aborted).toBe(true));
   await ready();
   fireEvent.click(queue.getByRole("button", { name: "Performers" }));
   const previous = await queue.findByRole("button", { name: "First performer, 12 matching videos" });
   expect(previous).toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox", { name: "Occurrence tags" }), { target: { value: "any" } });
+  fireEvent.change(openScope().getByRole("combobox", { name: "Occurrence condition" }), { target: { value: "any" } });
   await waitFor(() => expect(panels.extendRanking).toHaveBeenCalledTimes(3));
   // The ranking counted for the previous condition is handed over, so its performers are reused.
   expect(panels.extendRanking.mock.calls[2][1]).toMatchObject({
@@ -1394,7 +1443,8 @@ it("counts once even when the run's last partial snapshot renders after the run 
 it("offers the missing-at-least-one condition and its absence hiding in the workspace", async () => {
   open({ ...review, occurrence: { ...review.occurrence, condition: "excludesAll", conditionTagIds: [21, 22] } });
   await ready();
-  expect(screen.getByRole("combobox", { name: "Occurrence tags" })).toHaveValue("excludesAll");
+  expect(screen.getByRole("button", { name: /^Scope/ })).toHaveTextContent("missing Choice or Choice");
+  expect(openScope().getByRole("combobox", { name: "Occurrence condition" })).toHaveValue("excludesAll");
   expect(screen.getByRole("checkbox", { name: "Hide occurrences confirmed absent" })).toBeChecked();
 });
 
@@ -1434,7 +1484,7 @@ it("refreshes on Apply & stay without closing or restarting the current video", 
   open(); await ready();
   const player = screen.getByTestId("video-player");
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
@@ -1498,7 +1548,7 @@ it("does not revisit a reverse-page refill after Apply & stay removes the active
   window.history.replaceState(null, "", "/data-quality?review=r&page=2&perPage=1&startFrom=end");
   open(); await ready();
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({ items: page === 1 ? [first] : [traversed], totalCount: 2 }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
@@ -1516,8 +1566,8 @@ it("does not restart a paused autoplay video when a query reload returns the sam
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Pause review video" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "temporary" } });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Reset to default review filters" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Reset to default review filters" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
   await ready();
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "false");
 });
@@ -1530,7 +1580,7 @@ it("continues past skipped performers after Apply & stay removes a middle row", 
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
@@ -1543,7 +1593,7 @@ it("continues into the preceding page when Apply & stay clamps a removed last sc
   window.history.replaceState(null, "", "/data-quality?review=r&page=2&perPage=1&startFrom=end");
   open(); await ready();
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({ items: page === 1 ? [first] : [], totalCount: 1 }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   expect(new URLSearchParams(window.location.search).get("page")).toBe("1");
@@ -1558,7 +1608,7 @@ it("restores the pinned cursor when cancelling a rule edit after a queue reload"
   const rendered = open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Apply & stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
@@ -1577,8 +1627,8 @@ it("autoplays after an action even when query navigation remounted a paused play
   open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "temporary" } });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Reset to default review filters" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Reset to default review filters" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
@@ -1773,4 +1823,200 @@ it("pauses action keys while tags or the rule are edited", async () => {
   await screen.findByRole("region", { name: "Edit review rule" });
   expect(activeTestKeyboardActions()).not.toContain("local:action-01");
   expect(activeTestKeyboardActions()).not.toContain("local:find-action");
+});
+
+it("previews the hovered action on the current tags", async () => {
+  state = { ids: [30, 31], names: ["Kept", "Dropped"], absent: [60] };
+  api.request.mockImplementation(async (path: string) => ({ name: `Tag ${path.split("/").at(-1)}` }));
+  open({
+    ...review,
+    actions: [
+      {
+        id: "change",
+        label: "Change",
+        steps: [
+          { mode: "ADD", tagIds: [40] },
+          { mode: "REMOVE", tagIds: [31] },
+          { mode: "MARK_ABSENT", tagIds: [50] },
+          { mode: "CLEAR_ABSENCE", tagIds: [60] },
+        ],
+      },
+    ],
+  });
+  await ready();
+  const tags = () => screen.getByRole("list", { name: "Current tags" });
+  expect(tags()).toHaveTextContent("KeptDropped");
+  const tile = screen.getByRole("button", { name: "q Change absent" });
+  fireEvent.mouseEnter(tile.parentElement!);
+  await waitFor(() => expect(tags().querySelector("ins")).toHaveTextContent("+ Tag 40"));
+  expect(tags().querySelector("del")).toHaveTextContent("Dropped");
+  expect(within(tags()).getByText("Tag 50").closest("li")).toHaveTextContent("Tag 50absent");
+  expect(
+    screen.getByRole("list", { name: "Confirmed absent tags" }).querySelector("del"),
+  ).toHaveTextContent("Tag 60");
+  fireEvent.mouseLeave(tile.parentElement!);
+  expect(tags().querySelector("ins, del")).toBeNull();
+  expect(tags()).toHaveTextContent("KeptDropped");
+});
+
+it("summarises the scope on its button and keeps its controls in a popover", async () => {
+  open({
+    ...review,
+    actions: numberedActions(2),
+    occurrence: { ...review.occurrence, targetMode: "selected", performerIds: [11, 12], condition: "includes", conditionTagIds: [21] },
+  });
+  await ready();
+  const button = screen.getByRole("button", { name: /^Scope/ });
+  expect(button).toHaveTextContent("2 performers · has Choice");
+  expect(button).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(button);
+  const scope = within(screen.getByRole("dialog", { name: "Queue scope" }));
+  expect(button).toHaveAttribute("aria-expanded", "true");
+  expect(scope.getByRole("button", { name: "Specific performers" })).toHaveFocus();
+  // While it is open, the action keys wait, as behind any dialog.
+  fireEvent.keyDown(document.body, { key: "q" });
+  await act(async () => {});
+  expect(api.applyTags).not.toHaveBeenCalled();
+  fireEvent.keyDown(scope.getByRole("combobox", { name: "Occurrence condition" }), { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Queue scope" })).not.toBeInTheDocument();
+  await waitFor(() => expect(button).toHaveFocus());
+  fireEvent.click(button);
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(screen.queryByRole("dialog", { name: "Queue scope" })).not.toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: "q" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+});
+
+it("keeps the scope popover open when Esc closes the criteria dialog opened from it", async () => {
+  open({ ...review, occurrence: { ...review.occurrence, targetMode: "filter", performerFilter: { gender: "FEMALE" } } });
+  await ready();
+  openScope();
+  // The host's criteria chips open their own dialog inside the popover.
+  fireEvent.click(screen.getByRole("button", { name: "Edit filter: gender" }));
+  const nested = screen.getByRole("dialog", { name: "Video filters" });
+  fireEvent.keyDown(within(nested).getByRole("button", { name: "Cancel filters" }), { key: "Escape" });
+  expect(screen.getByRole("dialog", { name: "Queue scope" })).toBeInTheDocument();
+});
+
+it("tells video reviews that tags apply to the whole video and offers saving a changed queue", async () => {
+  const save = vi.fn().mockResolvedValue(true);
+  open({ ...review, entityType: "video" } as VideoReview, true, save);
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing this video" })).toBeInTheDocument();
+  expect(screen.getByText("Tags apply to the whole video")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Scope/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "changed" } });
+  expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
+  const header = screen.getByRole("heading", { name: "Review" }).closest("header")!;
+  expect(within(header).getByRole("button", { name: "Save to review" })).toBeInTheDocument();
+  expect(within(header).getByRole("button", { name: "Reset" })).toBeInTheDocument();
+});
+
+it("pauses the pad and its preview while tags are edited by hand", async () => {
+  state = { ids: [30], names: ["Kept"], absent: [] };
+  open({ ...review, actions: numberedActions(2) });
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+  const tile = screen.getByRole("button", { name: "q Action 1" });
+  expect(tile).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Find action" })).toBeDisabled();
+  fireEvent.mouseEnter(tile.parentElement!);
+  expect(screen.getByRole("list", { name: "Current tags" }).querySelector("ins")).toBeNull();
+  // The current tags stay in view above the editor.
+  expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Kept");
+  expect(screen.getByRole("group", { name: "Edit occurrence tags" })).toBeInTheDocument();
+});
+
+it("closes the scope popover from outside it and keeps Tab inside it", async () => {
+  open({ ...review, occurrence: { ...review.occurrence, condition: "includes", conditionTagIds: [21] } });
+  await ready();
+  const button = screen.getByRole("button", { name: /^Scope/ });
+  fireEvent.click(button);
+  const dialog = screen.getByRole("dialog", { name: "Queue scope" });
+  // Placed in the window from its button, not from the header's edge.
+  expect(dialog.style.left).not.toBe("");
+  const done = within(dialog).getByRole("button", { name: "Done" });
+  done.focus();
+  fireEvent.keyDown(done, { key: "Tab" });
+  expect(within(dialog).getByRole("button", { name: "All performers" })).toHaveFocus();
+  fireEvent.keyDown(within(dialog).getByRole("button", { name: "All performers" }), {
+    key: "Tab",
+    shiftKey: true,
+  });
+  expect(done).toHaveFocus();
+  // A press anywhere outside closes it.
+  fireEvent.mouseDown(document.querySelector(".dq-scope-backdrop")!);
+  expect(screen.queryByRole("dialog", { name: "Queue scope" })).not.toBeInTheDocument();
+  await waitFor(() => expect(button).toHaveFocus());
+});
+
+it("keeps the focused performer's existing answers while their queue is empty", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [], totalCount: 0 });
+  panels.loadPerformerAnswers.mockResolvedValue({
+    answered: 1,
+    groups: [{ id: 30, name: "Size", tags: [{ id: 31, name: "Small", count: 1 }] }],
+  });
+  window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+  open();
+  await screen.findByText("No matching videos.");
+  const answers = await screen.findByRole("region", { name: "Existing answers" });
+  expect(await within(answers).findByRole("list", { name: "Size" })).toHaveTextContent("Small");
+});
+
+it("pauses legacy tag choices while tags are edited by hand", async () => {
+  open({ ...review, actions: [] });
+  await ready();
+  expect(screen.getByRole("group", { name: "Tag choices" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+  expect(screen.getByRole("group", { name: "Tag choices" })).toBeDisabled();
+});
+
+it("moves focus to the partner just left after switching partners", async () => {
+  open();
+  await ready();
+  const second = screen.getByRole("button", { name: /^Second performer$/ });
+  second.focus();
+  fireEvent.click(second);
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^First performer$/ })).toHaveFocus(),
+  );
+});
+
+it("scrolls only the queue list to keep the item on screen in view", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 3 });
+  const scrollIntoView = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+  const rect = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} }) as DOMRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains("dq-queue-list")) return rect(0, 100);
+    if (this.getAttribute("aria-current") === "true") return rect(150, 206);
+    return rect(0, 0);
+  });
+  open();
+  await ready();
+  const list = document.querySelector<HTMLElement>(".dq-review-queue .dq-queue-list")!;
+  let scrollTop = 0;
+  Object.defineProperty(list, "scrollTop", { configurable: true, get: () => scrollTop, set: (value: number) => { scrollTop = value; } });
+  fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  await waitFor(() => expect(scrollTop).toBe(106));
+  expect(scrollIntoView).not.toHaveBeenCalled();
+});
+
+it("names occurrence tags from their applications", async () => {
+  state = {
+    ids: [1, 2],
+    names: ["Same"],
+    absent: [],
+    applications: [
+      { id: 100, hostType: "video", hostId: 1, contextType: "performer", contextId: 11, tag: { id: 1, name: "Same" } },
+      { id: 101, hostType: "video", hostId: 1, contextType: "performer", contextId: 11, tag: { id: 2, name: "Same" } },
+    ],
+  };
+  open();
+  await ready();
+  const chips = within(screen.getByRole("list", { name: "Current tags" })).getAllByRole("listitem");
+  expect(chips.map((chip) => chip.textContent)).toEqual(["Same", "Same"]);
 });

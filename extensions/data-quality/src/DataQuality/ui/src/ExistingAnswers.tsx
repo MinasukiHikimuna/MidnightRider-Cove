@@ -40,38 +40,55 @@ export function ExistingAnswers({
       });
     return () => abort.abort();
   }, [key, revision]);
+  const items = (count: number) =>
+    `${count.toLocaleString()} ${count === 1 ? labels.one : labels.many}`;
   return (
-    <section className="dq-performer-answers" aria-label="Existing answers">
-      <h3>Existing answers</h3>
+    <section className="dq-panel-section dq-performer-answers" aria-label="Existing answers">
+      <div className="dq-panel-heading">
+        <h3 className="dq-eyebrow">Existing answers</h3>
+        {summary && (
+          <span>
+            {summary.answered ? `${items(summary.answered)} answered` : "none answered yet"}
+          </span>
+        )}
+      </div>
       {error ? (
         <p role="alert">Could not load existing answers. {error}</p>
       ) : !summary ? (
-        <p>Loading existing answers…</p>
+        <p className="dq-muted">Loading existing answers…</p>
       ) : (
-        <>
-          <p>
-            {summary.answered
-              ? `Answered on ${summary.answered.toLocaleString()} of this performer’s ${labels.many}.`
-              : `None of this performer’s ${labels.many} is answered yet.`}
-          </p>
-          <ul>
-            {summary.groups
-              .filter((group) => group.id !== null || group.tags.length)
-              .map((group) => (
-                <li key={group.id ?? "other"}>
-                  {group.name}:{" "}
-                  {group.tags.length
-                    ? group.tags
-                        .map((tag) => `${tag.name} ×${tag.count.toLocaleString()}`)
-                        .join(", ")
-                    : "None"}
-                  {group.id !== null && group.tags.length > 1 && (
-                    <strong className="dq-answers-mixed"> Mixed answers</strong>
-                  )}
-                </li>
-              ))}
-          </ul>
-        </>
+        summary.groups
+          .filter((group) => group.id !== null || group.tags.length)
+          .map((group) => (
+            <div className="dq-answer-group" key={group.id ?? "other"}>
+              <div className="dq-answer-category">
+                <span>{group.name}</span>
+                {group.id !== null && group.tags.length > 1 && (
+                  <span
+                    className="dq-badge dq-badge-warning"
+                    title="This performer has different answers in this category."
+                  >
+                    Mixed
+                  </span>
+                )}
+              </div>
+              {group.tags.length ? (
+                <ul className="dq-chips" aria-label={group.name}>
+                  {group.tags.map((tag) => (
+                    <li className="dq-chip" key={tag.id}>
+                      {tag.name}
+                      <span className="dq-chip-count" aria-hidden="true">
+                        {tag.count.toLocaleString()}
+                      </span>
+                      <span className="dq-sr-only">, {items(tag.count)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="dq-muted">None</p>
+              )}
+            </div>
+          ))
       )}
     </section>
   );

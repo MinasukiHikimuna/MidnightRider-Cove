@@ -497,6 +497,7 @@ export function DetailListToolbar({
   objectFilter = {},
   customFieldEntityType,
   onObjectFilterChange,
+  metadataByline,
 }: {
   filter: Record<string, unknown>;
   onFilterChange(filter: Record<string, unknown>): void;
@@ -517,6 +518,7 @@ export function DetailListToolbar({
   objectFilter?: Record<string, unknown>;
   onObjectFilterChange?(filter: Record<string, unknown>): void;
   customFieldEntityType?: string;
+  metadataByline?: React.ReactNode;
 }) {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const activeCount = Object.keys(objectFilter).length;
@@ -533,6 +535,7 @@ export function DetailListToolbar({
         data-object-filter={JSON.stringify(objectFilter)}
       >
         <span>{totalCount ? `${start}–${end} of ${totalCount}` : "0 items"}</span>
+        {metadataByline}
         {showSearch && (
           <input
             aria-label="Search list"

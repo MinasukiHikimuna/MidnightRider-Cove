@@ -9,6 +9,7 @@ import {
   VIDEO_CRITERIA,
   PERFORMER_CRITERIA,
 } from "@cove/runtime/components";
+import { Layers } from "@cove/runtime/lucide-react";
 import { mediaLabel, request } from "./api";
 import {
   conditionSeeksMissingTags,
@@ -361,9 +362,10 @@ export function BatchOccurrenceDialog({
     <>
       <button
         type="button"
-        className="dq-button"
+        className="dq-header-button"
         hidden={hidden}
         ref={opener}
+        title="Apply answers to all matching occurrences"
         disabled={disabled || !actions.length}
         onClick={() => {
           reset();
@@ -371,7 +373,8 @@ export function BatchOccurrenceDialog({
           setOpen(true);
         }}
       >
-        Apply to all matching occurrences
+        <Layers aria-hidden="true" />
+        Batch…
       </button>
       {open && (
         <dialog

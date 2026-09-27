@@ -127,7 +127,7 @@ function mount(rule: OccurrenceReview = review, performerFlags?: string[]) {
   return { ...rendered, onOpen, onClose, onWrite };
 }
 const openButton = () =>
-  screen.getByRole("button", { name: "Apply to all matching occurrences" });
+  screen.getByRole("button", { name: "Batch…" });
 async function preview(answers = ["Answer"], timeout?: number) {
   fireEvent.click(openButton());
   for (const answer of answers)
@@ -440,7 +440,7 @@ it("warns about a flagged performer and shows their existing answers", async () 
   fireEvent.click(openButton());
   expect(screen.getByText(/Flagged: Changed\./)).toBeInTheDocument();
   expect(
-    await screen.findByText("None of this performer’s videos is answered yet."),
+    await screen.findByText("none answered yet"),
   ).toBeInTheDocument();
 });
 

@@ -8,7 +8,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Search } from "@cove/runtime/lucide-react";
-import { type ReviewAction, type ReviewStep } from "./model";
+import type { TagTrees } from "./effectPreview";
+import { tagsAddedBy, type ReviewAction, type ReviewStep } from "./model";
 import { useReviewKeyLabels } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
 
@@ -17,14 +18,15 @@ export interface EffectPart {
   tone: "add" | "remove" | "assess" | "neutral";
 }
 
-function stepPart(mode: ReviewStep["mode"], name: string): EffectPart {
+function stepPart(mode: ReviewStep["mode"], name: string, spares = false): EffectPart {
   switch (mode) {
     case "ADD":
       return { text: `+ ${name}`, tone: "add" };
     case "REMOVE":
       return { text: `− ${name}`, tone: "remove" };
     case "REMOVE_TREE":
-      return { text: `− ${name} tree`, tone: "remove" };
+      // A tree removal spares the tags the same action adds, so it clears "the rest" of the tree.
+      return { text: spares ? `− rest of ${name}` : `− ${name} tree`, tone: "remove" };
     case "MARK_PRESENT":
       return { text: `Mark ${name} present`, tone: "assess" };
     case "MARK_ABSENT":
@@ -36,12 +38,14 @@ function stepPart(mode: ReviewStep["mode"], name: string): EffectPart {
 
 /**
  * A short account of what an action changes, one part per tag: "+" adds, "−" removes, and
- * assessments say so in words, so the summary never depends on colour.
+ * assessments say so in words, so the summary never depends on colour. With the resolved
+ * removal trees, a tree removal that spares a tag the action adds reads "− rest of <tree>".
  */
 export function actionEffectParts(
   action: ReviewAction,
   tagNames: Record<number, string | null>,
   tagGroups: ReadonlyArray<{ id: number; name: string }> = [],
+  trees?: TagTrees,
 ): EffectPart[] {
   if ("effect" in action) {
     const effect = action.effect;
@@ -57,11 +61,15 @@ export function actionEffectParts(
     ];
   }
   if (!action.steps.length) return [{ text: "Skip", tone: "neutral" }];
+  const kept = tagsAddedBy(action);
+  const spares = (parent: number) =>
+    kept.has(parent) || [...kept].some((id) => trees?.get(parent)?.includes(id));
   return action.steps.flatMap((step) =>
     step.tagIds.map((id) =>
       stepPart(
         step.mode,
         tagNames[id] === undefined ? "…" : (tagNames[id] ?? "Unavailable tag"),
+        step.mode === "REMOVE_TREE" && spares(id),
       ),
     ),
   );
@@ -81,6 +89,7 @@ function actionTagIds(actions: readonly ReviewAction[]): number[] {
 export function FindAction({
   actions,
   tagGroups,
+  trees,
   isDisabled,
   canStay = true,
   onApply,
@@ -88,6 +97,8 @@ export function FindAction({
 }: {
   actions: readonly ReviewAction[];
   tagGroups?: ReadonlyArray<{ id: number; name: string }>;
+  /** Resolved removal trees, for "− rest of <tree>" wording. */
+  trees?: TagTrees;
   isDisabled?(action: ReviewAction): boolean;
   /** False where applying always moves on (the grid and its preview). */
   canStay?: boolean;
@@ -224,7 +235,7 @@ export function FindAction({
                   )}
                   <span className="dq-find-label">{row.action.label}</span>
                   <span className="dq-find-effect">
-                    {actionEffectParts(row.action, tagNames, tagGroups).map(
+                    {actionEffectParts(row.action, tagNames, tagGroups, trees).map(
                       (part, index) => (
                         <span key={index} data-effect-tone={part.tone}>
                           {part.text}
