@@ -1398,6 +1398,7 @@ export function ReviewWorkspace({
                 review={review}
                 disabled={blocked || !!ruleDraft}
                 performerFlags={query.performerFocus ? focusInfo?.flags : undefined}
+                trees={trees}
                 onOpen={() => { lock.current = true; setPending(true); }}
                 onWrite={() => { lastWriteAt.current = Date.now(); }}
                 onClose={(wrote) => {
@@ -1409,7 +1410,12 @@ export function ReviewWorkspace({
                     setAnswersRevision((value) => value + 1);
                     void new Promise(resolve => window.setTimeout(resolve, 1100)).then(() => {
                       endOperation();
-                      if (alive.current) setRevision(value => value + 1);
+                      if (!alive.current) return;
+                      // Busy straight into the reload, as replaceQuery does, so the review never
+                      // looks ready for a frame in between (Batch… hands focus back only then).
+                      // A queue whose URL could not be read does not load, so it is not marked.
+                      if (!initialError.current) setLoading(true);
+                      setRevision(value => value + 1);
                     });
                   } else endOperation();
                 }}

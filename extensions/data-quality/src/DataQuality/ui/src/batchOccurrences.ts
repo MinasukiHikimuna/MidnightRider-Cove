@@ -271,6 +271,18 @@ async function workers(
   );
 }
 
+/** The occurrences a run processes: the pending ones, or on a retry the failed ones. */
+export function runEntries(batch: OccurrenceBatch, retry = false): BatchEntry[] {
+  return batch.entries.filter((e) =>
+    retry ? e.status === "failed" : e.status === "pending",
+  );
+}
+
+/** The occurrences an undo processes: those with a recorded change. */
+export function undoEntries(batch: OccurrenceBatch): BatchEntry[] {
+  return batch.entries.filter((e) => e.operation);
+}
+
 export async function runOccurrenceBatch(
   batch: OccurrenceBatch,
   replaceConflicts: boolean,
@@ -278,11 +290,8 @@ export async function runOccurrenceBatch(
   update: () => void,
   retry = false,
 ) {
-  const entries = batch.entries.filter((e) =>
-    retry ? e.status === "failed" : e.status === "pending",
-  );
   await workers(
-    entries,
+    runEntries(batch, retry),
     cancelled,
     async (entry) => {
       if (entry.conflict && !replaceConflicts) {
@@ -392,7 +401,7 @@ export async function undoOccurrenceBatch(
   update: () => void,
 ) {
   await workers(
-    batch.entries.filter((e) => e.operation),
+    undoEntries(batch),
     cancelled,
     async (entry) => {
       const operation = entry.operation!;

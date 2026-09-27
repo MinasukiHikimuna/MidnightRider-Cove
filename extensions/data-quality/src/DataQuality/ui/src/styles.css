@@ -2613,39 +2613,718 @@
   opacity: 1;
 }
 
+/* Apply to all matching occurrences: a modal in three steps (Answers, Preview, Run) with a
+   fixed header, stepper and footer around a scrolling body. */
+/* Anchored near the top, so the header and stepper stay put while a step's height changes. */
 .dq-batch-dialog {
-  margin: auto;
-  width: min(850px, calc(100vw - 2rem));
-  max-height: calc(100dvh - 3rem);
-  overflow: auto;
-  padding: 1.5rem;
-  border: 1px solid var(--color-border, #555);
-  border-radius: 0.75rem;
-  background: var(--color-background);
+  --dq-batch-top: clamp(1rem, 6.5dvh, 70px);
+  width: min(960px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2 * var(--dq-batch-top));
+  margin: var(--dq-batch-top) auto auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 55%);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+.dq-batch-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.dq-batch-dialog::backdrop {
+  background: rgb(0 0 0 / 70%);
+}
+.dq-batch-dialog p {
+  margin: 0;
+}
+.dq-batch-dialog a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dq-batch-dialog a:hover {
+  color: var(--color-accent-hover, var(--color-accent));
+}
+.dq-batch-header {
+  display: flex;
+  min-height: 62px;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 0 22px;
+  border-bottom: 1px solid var(--color-border);
+}
+.dq-batch-header > svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--color-secondary);
+}
+.dq-batch-header h2 {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.dq-batch-close {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--color-secondary);
+}
+.dq-batch-close:hover:not(:disabled) {
+  background: var(--color-card-hover);
   color: var(--color-foreground);
 }
-.dq-button[hidden] { display: none; }
-.dq-batch-dialog::backdrop { background: #0009; }
-.dq-batch-dialog fieldset { display: grid; gap: 0.75rem; }
-.dq-batch-dialog label { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
-.dq-batch-dialog select { max-width: 100%; color: inherit; background: var(--color-surface, #27272a); padding: 0.5rem; }
-.dq-batch-dialog .dq-row { margin-top: 1rem; flex-wrap: wrap; }
-.dq-batch-items { max-height: 20rem; overflow: auto; margin: 1rem 0; }
-.dq-batch-items table { width: 100%; border-collapse: collapse; }
-.dq-batch-items td, .dq-batch-items th { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border, #555); }
-
-/* Keep the shared applied-filter chips, without its redundant list controls. */
-.dq-batch-filter-summary > div:first-child { display: none; }
-.dq-batch-dialog .dq-batch-filter-summary { border: 0; padding: 0; }
-
-.dq-batch-dialog h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; }
-.dq-batch-dialog p { margin: 0.35rem 0; }
-.dq-batch-dialog legend { font-weight: 600; }
-
-.dq-batch-dialog .dq-batch-answers { display: flex; flex-wrap: wrap; gap: .4rem 1rem; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem .75rem; }
-.dq-batch-dialog .dq-batch-answers label { gap: .4rem; }
-.dq-batch-flag { padding: .4rem .6rem; border: 1px solid var(--color-accent); border-radius: .4rem; }
-.dq-batch-dialog a { text-decoration: underline; text-underline-offset: 2px; }
+.dq-batch-close:disabled {
+  opacity: 0.4;
+}
+.dq-batch-close svg {
+  width: 16px;
+  height: 16px;
+}
+.dq-batch-steps {
+  display: flex;
+  min-height: 50px;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 8px 22px;
+  border-bottom: 1px solid var(--color-border);
+  list-style: none;
+  color: var(--color-secondary);
+}
+.dq-batch-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dq-batch-steps li + li::before {
+  width: 48px;
+  height: 1px;
+  margin-right: 6px;
+  background: var(--color-border);
+  content: "";
+}
+.dq-batch-steps li[data-state="current"] {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+.dq-batch-steps li[data-state="next"] {
+  color: var(--color-muted);
+}
+.dq-batch-step-mark {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.dq-batch-steps li[data-state="done"] .dq-batch-step-mark {
+  border-color: transparent;
+  background: var(--dq-pressed-bg);
+  color: var(--color-foreground);
+}
+.dq-batch-steps li[data-state="current"] .dq-batch-step-mark {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: white;
+}
+.dq-batch-step-mark svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3;
+}
+.dq-batch-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 22px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dq-batch-body:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.dq-batch-footer {
+  display: flex;
+  min-height: 64px;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-background) 45%, var(--color-surface));
+}
+.dq-batch-footer-space {
+  flex: 1 1 auto;
+}
+.dq-batch-footer .dq-button,
+.dq-batch-undo .dq-button {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.8125rem;
+}
+.dq-batch-footer .dq-button.primary {
+  padding: 0 18px;
+  font-weight: 600;
+}
+.dq-batch-footer .dq-button:first-child svg {
+  margin-left: -4px;
+}
+.dq-batch-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The live region stays rendered (a message added to a hidden region is often not announced);
+   empty, it takes back the gap after it. */
+.dq-batch-messages:empty {
+  margin-bottom: -18px;
+}
+.dq-batch-messages [role="status"] {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-batch-messages .dq-alert {
+  padding: 8px 10px;
+  font-size: 0.8125rem;
+}
+/* "Uses this queue": who and which occurrences the batch reaches, as chips. */
+.dq-batch-scope {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.dq-batch-scope-label {
+  margin-right: 4px;
+  color: var(--color-muted);
+  font-size: 0.78125rem;
+}
+.dq-batch-chip {
+  display: inline-flex;
+  min-height: 26px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+  overflow-wrap: anywhere;
+}
+.dq-batch-chip-performer {
+  padding-left: 3px;
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-foreground);
+}
+.dq-batch-chip-performer .dq-performer-avatar {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+  font-size: 0.53rem;
+}
+.dq-batch-chip-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* The host's applied-filter chips, read-only, without its list controls. */
+.dq-batch-filter-summary {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-batch-filter-summary > div:first-child {
+  display: none;
+}
+.dq-batch-filter-summary > [role="region"] {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.dq-batch-flag {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--dq-warn) 35%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dq-warn) 8%, transparent);
+}
+.dq-batch-flag > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--dq-warn);
+}
+.dq-batch-flag > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+.dq-batch-flag strong {
+  font-weight: 600;
+}
+.dq-batch-flag-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 0.78125rem;
+}
+/* Answers: each configured tag action as a checkbox with its key and effect. */
+.dq-batch-pick {
+  display: grid;
+  gap: 16px;
+}
+.dq-batch-pick-answers {
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 17rem);
+  align-items: start;
+}
+.dq-batch-answers-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-batch-answers-field > legend {
+  margin-bottom: 8px;
+}
+.dq-batch-answers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 6px;
+}
+.dq-batch-answer {
+  display: grid;
+  min-width: 0;
+  min-height: 44px;
+  grid-template-columns: auto 1.625rem minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+  cursor: pointer;
+}
+.dq-batch-answer:hover {
+  background: var(--color-card-hover);
+}
+.dq-batch-answer:has(> input:checked) {
+  border-color: color-mix(in srgb, var(--dq-add) 65%, transparent);
+  background: color-mix(in srgb, var(--dq-add) 10%, var(--color-card));
+}
+.dq-batch-answer > input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+.dq-batch-answer > input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-batch-answer-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.dq-batch-answer-label {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-batch-effect {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+.dq-batch-answer .dq-batch-effect {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
+}
+.dq-batch-effect [data-effect-tone="add"] {
+  color: var(--dq-add);
+}
+.dq-batch-effect [data-effect-tone="remove"] {
+  color: var(--dq-remove);
+}
+.dq-batch-effect [data-effect-tone="assess"] {
+  color: var(--color-foreground);
+}
+/* Preview: the chosen answers beside the performer's existing answers, then the counts. */
+.dq-batch-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.dq-batch-cards-one {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dq-batch-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+}
+.dq-batch-dialog .dq-link-button {
+  color: var(--color-accent);
+  font-size: 0.78125rem;
+}
+.dq-batch-dialog .dq-link-button:disabled {
+  opacity: 0.45;
+}
+.dq-batch-chosen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dq-batch-chosen li {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.dq-batch-chosen-chip {
+  display: inline-flex;
+  min-height: 28px;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--dq-add) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dq-add) 12%, transparent);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dq-batch-results {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+.dq-batch-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.dq-batch-stats[data-count="5"] {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.dq-batch-stat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  text-align: left;
+}
+.dq-batch-stat:hover:not(:disabled) {
+  background: var(--color-card-hover);
+}
+.dq-batch-stat:disabled {
+  cursor: default;
+}
+.dq-batch-stat[aria-pressed="true"] {
+  border-color: var(--color-foreground);
+  box-shadow: inset 0 0 0 1px var(--color-foreground);
+}
+.dq-batch-stat:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-batch-stat-value {
+  font-size: 1.625rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.dq-batch-stat-label {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-batch-stat-detail {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-batch-stat[data-tone="add"] {
+  border-color: color-mix(in srgb, var(--dq-add) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--dq-add) 9%, var(--color-card));
+}
+.dq-batch-stat[data-tone="add"] .dq-batch-stat-value {
+  color: var(--dq-add);
+}
+.dq-batch-stat[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--dq-warn) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--dq-warn) 8%, var(--color-card));
+}
+.dq-batch-stat[data-tone="warn"] .dq-batch-stat-value {
+  color: var(--dq-warn);
+}
+.dq-batch-stat[data-tone][aria-pressed="true"] {
+  border-color: currentColor;
+}
+.dq-batch-hint {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-batch-dates,
+.dq-batch-planned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-batch-planned {
+  gap: 6px 12px;
+}
+.dq-batch-planned-label,
+.dq-batch-choice-label {
+  color: var(--color-secondary);
+}
+.dq-batch-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.dq-batch-choice .dq-segmented-fill button {
+  min-height: 30px;
+  padding: 0 14px;
+}
+.dq-batch-choice > p {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+}
+.dq-batch-loading {
+  padding: 6px 0;
+}
+.dq-batch-bar {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-border);
+}
+.dq-batch-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--dq-add);
+  transition: width 0.2s ease;
+}
+.dq-batch-bar-busy > span {
+  width: 30%;
+  animation: dq-batch-busy 1.2s ease-in-out infinite;
+}
+@keyframes dq-batch-busy {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dq-batch-bar-busy > span {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
+}
+/* Run: progress, results and undo. */
+.dq-batch-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-batch-progress h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.dq-batch-progress h3:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-batch-undone {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-batch-progress .dq-panel-heading > span {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+}
+.dq-batch-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-batch-reasons li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.dq-batch-undo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+}
+.dq-batch-undo .dq-button {
+  flex: none;
+  font-weight: 600;
+}
+.dq-batch-undo p {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+/* The occurrences behind a count, each linking to its item. */
+.dq-batch-list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-batch-list-scroll {
+  max-height: 20rem;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.dq-batch-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dq-batch-list th,
+.dq-batch-list td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+.dq-batch-list th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-card);
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dq-batch-list tr:last-child td {
+  border-bottom: 0;
+}
+.dq-batch-list-date {
+  color: var(--color-secondary);
+  white-space: nowrap;
+}
+.dq-batch-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.dq-batch-plan-note,
+.dq-batch-plan-kept {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+@media (max-width: 560px) {
+  .dq-batch-steps li + li::before {
+    width: 12px;
+    margin-right: 0;
+  }
+}
+@media (max-width: 760px) {
+  .dq-batch-pick-answers,
+  .dq-batch-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dq-batch-stats,
+  .dq-batch-stats[data-count="5"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dq-batch-undo {
+    flex-wrap: wrap;
+  }
+}
 
 /* Add and remove colours for action effects, defined once. Mixing with the theme's foreground
    keeps them readable on light and dark themes; the text also carries + or − (or says what it

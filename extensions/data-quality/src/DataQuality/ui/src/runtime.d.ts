@@ -327,6 +327,7 @@ declare module "@cove/runtime/lucide-react" {
   export const Tag: Icon;
   export const Tags: Icon;
   export const Trash2: Icon;
+  export const Undo2: Icon;
   export const Upload: Icon;
   export const Users: Icon;
   export const X: Icon;

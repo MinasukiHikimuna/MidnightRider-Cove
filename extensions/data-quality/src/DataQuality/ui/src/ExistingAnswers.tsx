@@ -1,22 +1,25 @@
 import { useEffect, useState } from "react";
 import { mediaLabel } from "./api";
-import { reviewMediaKind, type OccurrenceReview } from "./model";
+import { reviewMediaKind, type MediaKind, type OccurrenceReview } from "./model";
 import { loadPerformerAnswers, type AnswerSummary } from "./performerAnswers";
 import { ReviewTagBadge } from "./TagDisplay";
 
-export function ExistingAnswers({
-  review,
-  performerId,
+export interface PerformerAnswers {
+  summary: AnswerSummary | null;
+  error: string;
+}
+const NO_ANSWERS: PerformerAnswers = { summary: null, error: "" };
+
+/**
+ * The answers one performer already has, read again when the review's answers change or
+ * `revision` does (after writes). Without a performer nothing is read.
+ */
+export function usePerformerAnswers(
+  review: OccurrenceReview,
+  performerId: number | null,
   revision = 0,
-}: {
-  review: OccurrenceReview;
-  performerId: number;
-  /** Changes after writes, so the summary reflects them. */
-  revision?: number;
-}) {
-  const [summary, setSummary] = useState<AnswerSummary | null>(null);
-  const [error, setError] = useState("");
-  const labels = mediaLabel(reviewMediaKind(review));
+): PerformerAnswers {
+  const [answers, setAnswers] = useState<PerformerAnswers>(NO_ANSWERS);
   const settings = review.occurrence;
   const key = JSON.stringify([
     review.entityType,
@@ -28,23 +31,54 @@ export function ExistingAnswers({
     review.actions.map((action) => action.steps),
   ]);
   useEffect(() => {
+    setAnswers(NO_ANSWERS);
+    if (performerId === null) return;
     const abort = new AbortController();
-    setSummary(null);
-    setError("");
     loadPerformerAnswers(review, performerId, abort.signal)
-      .then((result) => {
-        if (!abort.signal.aborted) setSummary(result);
+      .then((summary) => {
+        if (!abort.signal.aborted) setAnswers({ summary, error: "" });
       })
       .catch((failure) => {
         if (!abort.signal.aborted)
-          setError(failure instanceof Error ? failure.message : "Request failed.");
+          setAnswers({
+            summary: null,
+            error: failure instanceof Error ? failure.message : "Request failed.",
+          });
       });
     return () => abort.abort();
   }, [key, revision]);
+  return answers;
+}
+
+export function ExistingAnswers({
+  review,
+  performerId,
+  revision = 0,
+}: {
+  review: OccurrenceReview;
+  performerId: number;
+  /** Changes after writes, so the summary reflects them. */
+  revision?: number;
+}) {
+  const answers = usePerformerAnswers(review, performerId, revision);
+  return <ExistingAnswersView {...answers} mediaKind={reviewMediaKind(review)} />;
+}
+
+/** A performer's answers per condition category, with a Mixed badge where they differ. */
+export function ExistingAnswersView({
+  summary,
+  error,
+  mediaKind,
+  className = "",
+}: PerformerAnswers & { mediaKind: MediaKind; className?: string }) {
+  const labels = mediaLabel(mediaKind);
   const items = (count: number) =>
     `${count.toLocaleString()} ${count === 1 ? labels.one : labels.many}`;
   return (
-    <section className="dq-panel-section dq-performer-answers" aria-label="Existing answers">
+    <section
+      className={`dq-panel-section dq-performer-answers ${className}`.trim()}
+      aria-label="Existing answers"
+    >
       <div className="dq-panel-heading">
         <h3 className="dq-eyebrow">Existing answers</h3>
         {summary && (

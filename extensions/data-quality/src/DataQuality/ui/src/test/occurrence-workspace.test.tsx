@@ -1085,13 +1085,15 @@ it("drops batch results when the dialog closes and refreshes the queue", async (
   fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
   fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
   await screen.findByText("Preview ready. No tags have been changed.");
-  fireEvent.click(screen.getByRole("button", { name: "Apply batch" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Apply to \d+ occurrences?$/ }));
   await screen.findByText(/Batch finished/);
   expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
   const loads = api.loadOccurrencePage.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads), { timeout: 3000 });
   await ready();
+  // Focus comes back to Batch… once the refreshed queue lets it be used.
+  await waitFor(() => expect(screen.getByRole("button", { name: "Batch…" })).toHaveFocus());
   expect(screen.queryByRole("button", { name: "Batch results / undo" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
   expect(screen.queryByRole("button", { name: "Undo batch" })).not.toBeInTheDocument();
@@ -1215,7 +1217,10 @@ it("shows the focused performer's existing answers and flags, and batches only t
   await waitFor(() => expect(panels.loadPerformerAnswers.mock.calls.length).toBeGreaterThan(answerLoads), { timeout: 3000 });
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
-  expect(screen.getByText(/Flagged: Changed./)).toBeInTheDocument();
+  const dialog = within(screen.getByRole("dialog", { name: "Apply to all matching occurrences" }));
+  await waitFor(() =>
+    expect(dialog.getByRole("note")).toHaveTextContent("First performer is flagged: Changed."),
+  );
   fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
   fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
   await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
@@ -1261,7 +1266,7 @@ it("counts again after an unfocused batch and recounts only the focused performe
     fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
     fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
     await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
-    fireEvent.click(screen.getByRole("button", { name: "Apply batch" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apply to \d+ occurrences?$/ }));
     await screen.findByText(/Batch finished/);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await ready();

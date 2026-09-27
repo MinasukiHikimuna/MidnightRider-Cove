@@ -181,7 +181,8 @@ export function loadTags(
   });
 }
 
-function namesOf<T extends TagInfo | null>(known: Record<number, T>): Record<number, string | null> {
+/** The names of tags read with `useTags`: a string, or null for a tag that cannot be read. */
+export function namesOf<T extends TagInfo | null>(known: Record<number, T>): Record<number, string | null> {
   const names: Record<number, string | null> = {};
   for (const [id, tag] of Object.entries(known)) names[Number(id)] = tag?.name ?? null;
   return names;

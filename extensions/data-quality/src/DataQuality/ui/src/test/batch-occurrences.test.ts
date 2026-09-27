@@ -3,7 +3,9 @@ import { extensionFetch } from "@cove/runtime/api";
 import {
   planTags,
   previewOccurrenceBatch,
+  runEntries,
   runOccurrenceBatch,
+  undoEntries,
   undoOccurrenceBatch,
 } from "../batchOccurrences";
 import type { OccurrenceReview, MediaReviewAction } from "../model";
@@ -346,6 +348,29 @@ it("retains partial changes, retries only failures, and undoes the combined oper
   expect(ids(1)).toEqual([22, 98, 99]);
   expect(ids(2)).toEqual([]);
   expect(batch.entries.every((e) => !e.operation)).toBe(true);
+});
+
+it("names what a run, a retry and an undo process, and reports each processed occurrence once", async () => {
+  fixtures(2);
+  add(1, 11, 22);
+  const batch = await preview();
+  expect(runEntries(batch)).toHaveLength(2);
+  failDelete = true;
+  let updates = 0;
+  await runOccurrenceBatch(batch, true, () => false, () => updates++);
+  expect(updates).toBe(2);
+  expect(runEntries(batch)).toHaveLength(0);
+  expect(runEntries(batch, true)).toEqual([batch.entries[0]]);
+  // The failed occurrence's partial write is recorded too.
+  expect(undoEntries(batch)).toEqual(batch.entries);
+  failDelete = false;
+  updates = 0;
+  await runOccurrenceBatch(batch, true, () => false, () => updates++, true);
+  expect(updates).toBe(1);
+  updates = 0;
+  await undoOccurrenceBatch(batch, () => false, () => updates++);
+  expect(updates).toBe(2);
+  expect(undoEntries(batch)).toEqual([]);
 });
 
 it("does not overwrite an undo conflict and permits retry after a partial undo", async () => {
