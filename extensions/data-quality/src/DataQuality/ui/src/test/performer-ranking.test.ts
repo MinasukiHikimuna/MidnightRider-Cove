@@ -169,6 +169,18 @@ it("ranks only the performers a review selects, and audio reviews by audio total
   expect(audio.ranked[0]).toMatchObject({ name: "F", total: 6 });
 });
 
+it("ranks every performer when specific performers are chosen but none are picked", async () => {
+  const ranking = await extendRanking(
+    { ...review, occurrence: { ...review.occurrence, targetMode: "selected", performerIds: [] } },
+    null,
+    3,
+    signal(),
+    { concurrency: 1 },
+  );
+  expect(finds[0].objectFilter).toEqual({});
+  expect(ranking.ranked.slice(0, ranking.limit).map((p) => p.name)).toEqual(["B", "C", "D"]);
+});
+
 it("keys a ranking by the queue criteria, not by paging or sort", () => {
   const moved = { ...review, view: { ...review.view, filter: { ...review.view.filter, page: 9, sort: "title" } } };
   expect(rankingSignature(moved)).toBe(rankingSignature(review));

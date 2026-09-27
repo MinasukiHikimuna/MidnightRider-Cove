@@ -15,6 +15,7 @@ import {
   hasAssessmentSteps,
   OCCURRENCE_CONDITION_LABELS,
   reviewMediaKind,
+  targetsAllPerformers,
   type OccurrenceReview,
 } from "./model";
 import { difference } from "./reviewTags";
@@ -400,7 +401,7 @@ export function BatchOccurrenceDialog({
             </p>
             <p>
               Performer scope:{" "}
-              {displayReview.occurrence.targetMode === "all"
+              {targetsAllPerformers(displayReview.occurrence)
                 ? "All performers"
                 : displayReview.occurrence.targetMode === "selected"
                   ? performerNames.join(", ") ||

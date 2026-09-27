@@ -1274,7 +1274,7 @@ it("drops the focus when the selected performers change and never saves it with 
   expect(saved.occurrence).toMatchObject({ targetMode: "selected", performerIds: [11, 12] });
   expect(JSON.stringify(saved)).not.toContain("performerFocus");
   await ready();
-  fireEvent.change(screen.getByPlaceholderText("Select performers to review..."), { target: { value: "11" } });
+  fireEvent.change(screen.getByPlaceholderText("All performers..."), { target: { value: "11" } });
   await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
   expect(api.resolvePerformers).toHaveBeenLastCalledWith(
     expect.objectContaining({ occurrence: expect.objectContaining({ performerIds: [11] }) }),

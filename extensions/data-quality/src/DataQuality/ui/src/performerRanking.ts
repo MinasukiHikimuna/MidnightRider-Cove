@@ -84,7 +84,7 @@ async function loadCandidates(
   });
   const settings = review.occurrence;
   const candidates: Candidate[] = [];
-  if (settings.targetMode === "selected") {
+  if (settings.targetMode === "selected" && settings.performerIds.length > 0) {
     for (const id of settings.performerIds) {
       const performer = await requestIfFound<PerformerDto>(
         `/api/performers/${id}`,

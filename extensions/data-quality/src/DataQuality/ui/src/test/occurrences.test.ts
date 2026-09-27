@@ -390,7 +390,7 @@ it("accepts occurrence assessments but rejects contradictory ones", () => {
   ).toContain("contradictory");
 });
 
-it("round trips occurrence reviews and rejects missing targets and invalid choices", () => {
+it("round trips occurrence reviews, saves an empty selection as everyone and rejects invalid choices", () => {
   expect(parseReviews(JSON.stringify([occurrenceReview]))).toEqual([
     occurrenceReview,
   ]);
@@ -399,7 +399,7 @@ it("round trips occurrence reviews and rejects missing targets and invalid choic
       ...occurrenceReview,
       occurrence: { ...occurrenceReview.occurrence, performerIds: [] },
     }),
-  ).toBeTruthy();
+  ).toBe("");
   expect(() =>
     parseReviews(
       JSON.stringify([
@@ -693,6 +693,12 @@ it("explains partial failure and can safely retry to finish the desired state", 
 
 it('treats empty performer criteria as all without enumerating the library', async () => {
   const ids = await resolvePerformers({ ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, targetMode: 'filter', performerFilter: {} } });
+  expect(ids).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('treats specific performers with none picked as all', async () => {
+  const ids = await resolvePerformers({ ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, targetMode: 'selected', performerIds: [] } });
   expect(ids).toBeNull();
   expect(fetchMock).not.toHaveBeenCalled();
 });

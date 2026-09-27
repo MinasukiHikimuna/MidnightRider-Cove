@@ -16,6 +16,7 @@ import {
   conditionSeeksMissingTags,
   isAssessmentMode,
   reviewMediaKind,
+  targetsAllPerformers,
   validAction,
   type MediaReview,
   type OccurrenceReview,
@@ -94,7 +95,7 @@ export async function resolvePerformers(
   signal?: AbortSignal,
 ): Promise<number[] | null> {
   const settings = review.occurrence;
-  if (settings.targetMode === "all" || (settings.targetMode === "filter" && Object.keys(settings.performerFilter).length === 0)) return null;
+  if (targetsAllPerformers(settings)) return null;
   if (settings.targetMode === "selected") return settings.performerIds;
   const ids = new Set<number>();
   const { _filterExpression: filterExpression, ...objectFilter } =

@@ -1257,7 +1257,7 @@ export function ReviewWorkspace({
                 entityType="performer"
                 values={scope.performerIds}
                 onChange={(performerIds) => updateScope({ performerIds })}
-                placeholder="Select performers to review..."
+                placeholder="All performers..."
                 allowCreate={false}
               />
             )}

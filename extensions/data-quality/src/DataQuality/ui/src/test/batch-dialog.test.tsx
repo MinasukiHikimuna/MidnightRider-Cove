@@ -270,7 +270,8 @@ it("starts a new batch at once, dropping the results without a confirmation", as
   const next = {
     ...review,
     actions: [{ ...review.actions[0], id: "new", label: "New answer" }],
-    occurrence: { ...review.occurrence, targetMode: "all" as const },
+    // Specific performers with none picked reviews everyone.
+    occurrence: { ...review.occurrence, targetMode: "selected" as const, performerIds: [] },
   };
   rerender(
     <BatchOccurrenceDialog

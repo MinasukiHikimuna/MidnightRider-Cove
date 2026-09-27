@@ -104,6 +104,15 @@ export function conditionSeeksMissingTags(condition: OccurrenceCondition): boole
   return condition === "excludes" || condition === "excludesAll";
 }
 
+/** No selected performers and an empty performer filter both leave the scope unnarrowed. */
+export function targetsAllPerformers(settings: OccurrenceReview["occurrence"]): boolean {
+  return (
+    settings.targetMode === "all" ||
+    (settings.targetMode === "selected" && settings.performerIds.length === 0) ||
+    (settings.targetMode === "filter" && Object.keys(settings.performerFilter).length === 0)
+  );
+}
+
 export interface OccurrenceReview extends ReviewBase {
   entityType: "performerOccurrence" | "audioPerformerOccurrence";
   actions: MediaReviewAction[];
@@ -492,7 +501,7 @@ function validOccurrenceSettings(value: unknown): boolean {
   const ids = (value: unknown): value is number[] => Array.isArray(value) &&
     value.every((id) => Number.isSafeInteger(id) && id > 0) && new Set(value).size === value.length;
   return ["all", "selected", "filter"].includes(settings.targetMode) &&
-    ids(settings.performerIds) && (settings.targetMode !== "selected" || settings.performerIds.length > 0) &&
+    ids(settings.performerIds) &&
     !!settings.performerFilter && typeof settings.performerFilter === "object" && !Array.isArray(settings.performerFilter) &&
     OCCURRENCE_CONDITIONS.includes(settings.condition) &&
     ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
