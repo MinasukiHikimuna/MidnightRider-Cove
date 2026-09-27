@@ -1,40 +1,42 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import {
-  useExtensionKeyboardBindings,
-  useRegisterExtensionKeyboardActions,
-  type ExtensionKeyboardActionRegistration,
+  useKeySequence,
   type KeyboardActionInvocation,
 } from "@cove/runtime/components";
 import { ACTION_KEYS } from "./model";
 
 /**
- * Review keys run through Cove's keyboard system. The extension manifest declares one keyboard
- * action per action key ("Review action 1" … "Review action 27", bound to the key and Shift+key),
- * Find action (-) and Select all on page (Ctrl+A, ⌘A on a Mac); this module attaches the page's
- * handlers while it is mounted. Cove then resolves each key against its own shortcuts: a local
- * registration outranks the list, player and global ones, so f, g and k apply actions on this page
- * while their slot holds one, and a slot registered disabled leaves the key to Cove. Cove also
- * skips text entry and, while any dialog is open, every surface below its overlays. The keys a
- * user actually has come from Cove's active keyboard preset, which may rebind or unbind them.
+ * Review keys are fixed and work the same under every Cove keyboard preset: the review's actions
+ * take the letters of ACTION_KEYS in order (Shift + the letter applies and stays in the
+ * single-item review), - opens Find action, and Ctrl+A toggles grid select all (Cove reads ⌘ as
+ * Ctrl, so ⌘A on a Mac too). They run through Cove's own dispatcher: useKeySequence registers
+ * bindings without an action id with exactly the keys given, instead of looking them up in the
+ * active preset. The price is that Cove's ? overview and Settings → Keyboard shortcuts do not
+ * list them, so they cannot be rebound there.
+ *
+ * A "local" registration outranks Cove's list, player and global shortcuts, so f, g and k apply
+ * actions on this page while their slot holds one; keys of empty slots are not registered and
+ * keep whatever the active preset gives them. Cove skips text entry for these keys and, while
+ * any dialog is open, every surface below its overlays. It does not filter key repeat for keys
+ * it has no definition of, so a held key acts on its first stroke only. That relies on Cove
+ * handing each action its invocation, which its useKeySequence typings leave out (see
+ * runtime.d.ts).
  */
-export const EXTENSION_ID = "com.midnightrider.data-quality";
 
-export const FIND_ACTION_ID = "find-action";
-export const SELECT_ALL_ID = "select-all";
+/** Opens Find action. */
+export const FIND_ACTION_KEY = "-";
+/** Grid select all; Cove reads ⌘ as Ctrl, so this one binding covers both. */
+export const SELECT_ALL_KEY = "Ctrl+a";
+/** How grid select all is shown. */
+export const SELECT_ALL_KEY_LABEL = "Ctrl/⌘A";
 
-/** The manifest id of the keyboard action for the action at this position. */
-export function actionSlotId(index: number): string {
-  return `action-${String(index + 1).padStart(2, "0")}`;
-}
+type KeyBinding = Parameters<typeof useKeySequence>[0][number];
 
-function lastStrokeHasShift(sequence: string): boolean {
-  const stroke = sequence.split(" ").at(-1) ?? "";
-  return stroke.split("+").includes("Shift");
-}
-
-/** Shift + an action key applies the action and stays on the item. */
-export function staysOnItem(invocation: KeyboardActionInvocation): boolean {
-  return lastStrokeHasShift(invocation.sequence);
+/** Runs only for the first stroke of a held key; Cove still claims the repeats. */
+function firstStrokeOnly(run: () => void) {
+  return (invocation?: KeyboardActionInvocation) => {
+    if (!invocation?.repeat) run();
+  };
 }
 
 export interface ReviewKeyHandlers {
@@ -45,7 +47,7 @@ export interface ReviewKeyHandlers {
   surface: "local" | "overlay";
   /** Whether the keys belong to this view now; while false Cove keeps its own meaning. */
   enabled: boolean;
-  /** How many of the review's actions exist; slots beyond them stay disabled. */
+  /** How many of the review's actions exist; keys past them stay Cove's. */
   actionCount: number;
   onAction(index: number, stay: boolean): void;
   /** Omit where Find action has nothing to list. */
@@ -63,79 +65,67 @@ export function useReviewKeys({
   onFind,
   onSelectAll,
 }: ReviewKeyHandlers) {
-  const hasFind = Boolean(onFind);
-  const hasSelectAll = surface === "local" && Boolean(onSelectAll);
-  // Cove re-registers only when ids, surfaces or enablement change and always calls the latest
-  // handlers, so these closures may change on every render.
-  const registrations: ExtensionKeyboardActionRegistration[] = ACTION_KEYS.map(
-    (_, index) => ({
-      id: actionSlotId(index),
-      surface,
-      enabled: enabled && index < actionCount,
-      action: (invocation: KeyboardActionInvocation) =>
-        onAction(index, staysOnItem(invocation)),
-    }),
-  );
-  registrations.push({
-    id: FIND_ACTION_ID,
-    surface,
-    enabled: enabled && hasFind && actionCount > 0,
-    action: () => onFind?.(),
+  // The bindings change only with the set of keys, so Cove does not re-register them on every
+  // render; they reach the latest handlers through this ref.
+  const handlers = useRef({ onAction, onFind, onSelectAll });
+  useLayoutEffect(() => {
+    handlers.current = { onAction, onFind, onSelectAll };
   });
-  if (hasSelectAll)
-    registrations.push({
-      id: SELECT_ALL_ID,
-      surface: "local",
-      enabled,
-      action: () => onSelectAll?.(),
-    });
-  useRegisterExtensionKeyboardActions(EXTENSION_ID, registrations);
+  const keyed = Math.max(0, Math.min(actionCount, ACTION_KEYS.length));
+  const hasFind = Boolean(onFind) && actionCount > 0;
+  const hasSelectAll = surface === "local" && Boolean(onSelectAll);
+  const bindings = useMemo(() => {
+    // Until Cove re-registers a changed list, it forwards each registered key by position to the
+    // latest list, so the keys whose presence rarely changes come first and more actions only
+    // append: a stroke in between never reaches another key's handler.
+    const list: KeyBinding[] = [];
+    if (hasSelectAll)
+      list.push({
+        keys: SELECT_ALL_KEY,
+        surface: "local",
+        action: firstStrokeOnly(() => handlers.current.onSelectAll?.()),
+      });
+    if (hasFind)
+      list.push({
+        keys: FIND_ACTION_KEY,
+        surface,
+        action: firstStrokeOnly(() => handlers.current.onFind?.()),
+      });
+    ACTION_KEYS.slice(0, keyed).forEach((key, index) =>
+      list.push(
+        {
+          keys: key,
+          surface,
+          action: firstStrokeOnly(() => handlers.current.onAction(index, false)),
+        },
+        {
+          keys: `Shift+${key}`,
+          surface,
+          action: firstStrokeOnly(() => handlers.current.onAction(index, true)),
+        },
+      ),
+    );
+    return list;
+  }, [surface, keyed, hasFind, hasSelectAll]);
+  useKeySequence(bindings, enabled);
 }
-
-/** Cove reads ⌘ as Ctrl, so the one binding covers both. */
-export const SELECT_ALL_KEY_LABEL = "Ctrl/⌘A";
 
 export interface ReviewKeyLabels {
-  /** The key shown for the action at this position; "" when it has none. */
+  /** The key of the action at this position; "" past the last action key. */
   action(index: number): string;
-  /** The key that opens Find action; "" when it has none. */
+  /** The key that opens Find action. */
   find: string;
-  /** The key for grid select all; "" when it has none. */
+  /** The key for grid select all, as shown. */
   selectAll: string;
-  /**
-   * True when every key this review's actions would use is unbound in Cove's active preset, for
-   * example a personal preset copied before these keys existed: then no action key works at all.
-   */
-  allUnbound(actionCount: number): boolean;
 }
 
-/**
- * The keys to show, from Cove's active keyboard preset. Rebound keys show as rebound; an unbound
- * action shows no key. Before Cove reports a binding, the defaults stand in.
- */
+const REVIEW_KEY_LABELS: ReviewKeyLabels = {
+  action: (index) => ACTION_KEYS[index] ?? "",
+  find: FIND_ACTION_KEY,
+  selectAll: SELECT_ALL_KEY_LABEL,
+};
+
+/** The keys to show on buttons, the pad and Find action: the fixed keys useReviewKeys registers. */
 export function useReviewKeyLabels(): ReviewKeyLabels {
-  const bindings = useExtensionKeyboardBindings(EXTENSION_ID);
-  return useMemo(() => {
-    const label = (id: string, fallback: string) => {
-      const alternatives = bindings[id];
-      if (!alternatives) return fallback;
-      return (
-        alternatives.find((binding) => !lastStrokeHasShift(binding)) ??
-        alternatives[0] ??
-        ""
-      );
-    };
-    const action = (index: number) =>
-      index < ACTION_KEYS.length ? label(actionSlotId(index), ACTION_KEYS[index]) : "";
-    const selectAll = label(SELECT_ALL_ID, "Ctrl+a");
-    return {
-      action,
-      find: label(FIND_ACTION_ID, "-"),
-      selectAll: selectAll === "Ctrl+a" ? SELECT_ALL_KEY_LABEL : selectAll,
-      allUnbound: (actionCount: number) => {
-        const keyed = Math.min(actionCount, ACTION_KEYS.length);
-        return keyed > 0 && Array.from({ length: keyed }, (_, index) => action(index)).every((key) => !key);
-      },
-    };
-  }, [bindings]);
+  return REVIEW_KEY_LABELS;
 }

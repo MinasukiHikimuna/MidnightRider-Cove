@@ -1,52 +1,42 @@
 import React from "react";
 
-export const useKeySequence = vi.fn();
-
 /*
- * A stand-in for Cove's KeyboardShortcutProvider, enough to drive the extension's keyboard
- * actions from ordinary keydown events: one window capture listener normalizes the stroke the
- * way Cove does, skips text entry and key repeat, holds surfaces below "viewer" back while any
- * dialog is in the document, lets the highest surface win, blocks peers bound to the same key
- * (Cove shows a conflict instead), and claims the event before any extension listener sees it.
- * Bindings mirror the defaults DataQualityExtension declares; a test may replace them to act as
- * a user's keyboard preset, and resetTestKeyboardBindings() restores them. Registrations must
- * use the extension id, action ids and surfaces the manifest declares, as Cove drops others.
- * Not modelled: chord prefixes (with an empty "g" slot, Cove waits for a "g …" chord) and
- * the delay before Cove sees a changed enablement.
+ * A stand-in for Cove's keyboard dispatch (the KeyboardShortcutProvider behind useKeySequence),
+ * enough to drive the extension's fixed review keys from ordinary keydown events.
+ *
+ * useKeySequence registers each binding the way Cove registers one without an action id: as its
+ * own "legacy:<index>:<keys>" entry bound to exactly the keys given (the user's keyboard preset
+ * plays no part), on the binding's surface ("page" by default), enabled or disabled with the
+ * whole call, calling the latest action with { sequence, target, repeat }. A binding with an id
+ * would follow the user's preset instead, so the stand-in rejects it. Cove's own shortcuts that
+ * compete for these keys are registered, with their Cove Native keys, by the doubles of the host
+ * components that own them: Filters on f (list toolbar, list surface) and fullscreen on f,
+ * play/pause on Space and k, and mute on m (video player, player surface).
+ *
+ * One window capture listener normalizes each stroke the way Cove does and collects the enabled
+ * entries bound to it, skipping text entry (nothing modelled here may run in it), key repeat for
+ * Cove's own shortcuts only (Cove drops it for defined actions that are not repeatable, which
+ * these are not; fixed keys have no definition), and surfaces below "viewer" while any dialog is
+ * in the document. The highest surface wins; different ids bound to the same key there conflict
+ * (Cove shows a notice; recorded in testKeyboardConflicts), and among entries sharing an id the
+ * most recently registered one runs, as Cove registers a changed registration again at the end.
+ * A resolved or conflicting stroke is claimed before any extension listener sees it.
+ *
+ * Not modelled: chord prefixes (with an empty "g" slot, Cove waits for a "g …" chord), presets
+ * other than Cove Native for Cove's own shortcuts, and the delay before Cove sees a changed
+ * registration.
  */
-type KeyboardRegistration = {
+type TestKeyInvocation = { sequence: string; target: EventTarget | null; repeat: boolean };
+type TestKeyEntry = {
   id: string;
-  action: (context: { sequence: string; target: EventTarget | null; repeat: boolean }) => void;
-  enabled?: boolean;
-  surface?: string;
+  /** The stroke as Cove normalizes it, for example "Shift+q" or "Ctrl+a". */
+  stroke: string;
+  surface: string;
+  enabled: boolean;
+  /** Cove's own shortcuts have a (non-repeatable) definition, so Cove drops their key repeat. */
+  defined: boolean;
+  action(invocation: TestKeyInvocation): void;
 };
-const TEST_ACTION_KEYS = "qwertyuiopåasdfghjklöäzxcvb";
-const TEST_EXTENSION_ID = "com.midnightrider.data-quality";
-function defaultTestKeyboardBindings(): Record<string, string[]> {
-  return {
-    ...Object.fromEntries(
-      Array.from(TEST_ACTION_KEYS, (key, index) => [
-        `action-${String(index + 1).padStart(2, "0")}`,
-        [key, `Shift+${key}`],
-      ]),
-    ),
-    "find-action": ["-"],
-    "select-all": ["Ctrl+a"],
-  };
-}
-const DECLARED_SURFACES: Record<string, string[]> = Object.fromEntries(
-  Object.keys(defaultTestKeyboardBindings()).map((id) => [
-    id,
-    id === "select-all" ? ["local"] : ["local", "overlay"],
-  ]),
-);
-export const testKeyboardBindings: Record<string, string[]> = defaultTestKeyboardBindings();
-export function resetTestKeyboardBindings() {
-  for (const key of Object.keys(testKeyboardBindings)) delete testKeyboardBindings[key];
-  Object.assign(testKeyboardBindings, defaultTestKeyboardBindings());
-}
-/** The last key two different actions claimed at once, as Cove's conflict notice reports it. */
-export const testKeyboardConflicts: string[] = [];
 const SURFACE_PRIORITY: Record<string, number> = {
   global: 0,
   page: 10,
@@ -57,39 +47,134 @@ const SURFACE_PRIORITY: Record<string, number> = {
   viewer: 50,
   overlay: 60,
 };
-const mountedKeyboardRegistrations = new Set<{
-  extensionId: string;
-  current: React.MutableRefObject<KeyboardRegistration[]>;
-}>();
+const mountedKeyEntries = new Set<React.MutableRefObject<TestKeyEntry[]>>();
+/** Strokes that two different entries claimed at once, as Cove's conflict notice reports them. */
+export const testKeyboardConflicts: string[] = [];
 
-/** Enabled registrations, as "surface:id", for assertions. */
-export function activeTestKeyboardActions(): string[] {
-  return [...mountedKeyboardRegistrations].flatMap((entry) =>
-    entry.current.current
-      .filter((registration) => registration.enabled !== false)
-      .map((registration) => `${registration.surface ?? "page"}:${registration.id}`),
+function isLetter(key: string) {
+  return Array.from(key).length === 1 && key.toLowerCase() !== key.toUpperCase();
+}
+function strokeOf(modifiers: { ctrl: boolean; alt: boolean; shift: boolean }, key: string) {
+  const letter = isLetter(key);
+  const parts: string[] = [];
+  if (modifiers.ctrl) parts.push("Ctrl");
+  if (modifiers.alt) parts.push("Alt");
+  // Cove records Shift only for letters and named keys: Shift+- is whatever character it types.
+  if (modifiers.shift && (letter || key.length > 1)) parts.push("Shift");
+  parts.push(letter ? key.toLowerCase() : key);
+  return parts.join("+");
+}
+function normalizeTestEvent(event: KeyboardEvent): string | null {
+  const key = event.key === " " ? "Space" : event.key;
+  if (!key || ["Control", "Shift", "Alt", "Meta"].includes(key)) return null;
+  // Cove reads ⌘ as Ctrl.
+  return strokeOf(
+    { ctrl: event.ctrlKey || event.metaKey, alt: event.altKey, shift: event.shiftKey },
+    key,
+  );
+}
+/** A binding as Cove normalizes it; only single strokes are modelled. */
+function normalizeTestBinding(keys: string): string {
+  const value = keys.trim();
+  if (!value || /\s/.test(value))
+    throw new Error(`'${keys}' is not a single stroke; chords are not modelled.`);
+  const parts = value.endsWith("+")
+    ? [...value.slice(0, -1).split("+").filter(Boolean), "+"]
+    : value.split("+");
+  const key = parts.pop()!;
+  const modifiers = new Set(parts.map((part) => part.toLowerCase()));
+  return strokeOf(
+    {
+      ctrl: ["ctrl", "control", "cmd", "command", "meta"].some((name) => modifiers.has(name)),
+      alt: modifiers.has("alt") || modifiers.has("option"),
+      shift: modifiers.has("shift"),
+    },
+    key,
   );
 }
 
-function normalizeTestStroke(event: KeyboardEvent): string | null {
-  const raw = event.key === " " ? "Space" : event.key;
-  if (!raw || ["Control", "Shift", "Alt", "Meta"].includes(raw)) return null;
-  const letter = Array.from(raw).length === 1 && raw.toLowerCase() !== raw.toUpperCase();
-  const key = letter ? raw.toLowerCase() : raw;
-  const parts: string[] = [];
-  if (event.ctrlKey || event.metaKey) parts.push("Ctrl");
-  if (event.altKey) parts.push("Alt");
-  if (event.shiftKey && (key.length > 1 || letter)) parts.push("Shift");
-  parts.push(key);
-  return parts.join("+");
+function useTestKeyEntries(entries: TestKeyEntry[]) {
+  const current = React.useRef(entries);
+  React.useLayoutEffect(() => {
+    current.current = entries;
+  });
+  // Registered again, at the end, whenever an id, key, surface or enablement changes.
+  const registration = entries
+    .map((entry) => [entry.id, entry.stroke, entry.surface, entry.enabled].join("\u001e"))
+    .join("\u001d");
+  React.useEffect(() => {
+    mountedKeyEntries.add(current);
+    return () => {
+      mountedKeyEntries.delete(current);
+    };
+  }, [registration]);
+}
+
+export function useKeySequence(
+  bindings: Array<{
+    id?: string;
+    keys: string;
+    surface?: string;
+    action(invocation?: TestKeyInvocation): void;
+  }>,
+  enabled = true,
+) {
+  useTestKeyEntries(
+    bindings.map((binding, index) => {
+      if (binding.id !== undefined)
+        throw new Error(
+          `'${binding.id}' would follow the user's keyboard preset; review keys are fixed.`,
+        );
+      return {
+        id: `legacy:${index}:${binding.keys}`,
+        stroke: normalizeTestBinding(binding.keys),
+        surface: binding.surface ?? "page",
+        enabled,
+        defined: false,
+        action: (invocation) => binding.action(invocation),
+      };
+    }),
+  );
+}
+
+/** One of Cove's own shortcuts, registered by the double of the host component that owns it. */
+function useTestCoveShortcut(
+  id: string,
+  keys: string[],
+  surface: string,
+  enabled: boolean,
+  action: () => void,
+) {
+  useTestKeyEntries(
+    keys.map((key) => ({
+      id,
+      stroke: normalizeTestBinding(key),
+      surface,
+      enabled,
+      defined: true,
+      action: () => action(),
+    })),
+  );
+}
+
+/** Cove's player shortcuts that have no counterpart in testVideoControls. */
+export const testPlayerShortcuts = { fullscreen: vi.fn(), mute: vi.fn() };
+
+/** The enabled fixed keys, as "surface:stroke" (for example "local:Shift+q"), for assertions. */
+export function activeTestKeys(): string[] {
+  return [...mountedKeyEntries].flatMap((entries) =>
+    entries.current
+      .filter((entry) => entry.enabled && !entry.defined)
+      .map((entry) => `${entry.surface}:${entry.stroke}`),
+  );
 }
 
 if (typeof window !== "undefined")
   window.addEventListener(
     "keydown",
     (event) => {
-      const stroke = normalizeTestStroke(event);
-      if (!stroke || event.repeat) return;
+      const stroke = normalizeTestEvent(event);
+      if (!stroke) return;
       const target = event.target as HTMLElement | null;
       if (
         target?.isContentEditable ||
@@ -100,63 +185,30 @@ if (typeof window !== "undefined")
       const overlay =
         document.querySelector("[role='dialog'], [aria-modal='true']") != null ||
         (target instanceof Element && target.closest("[role='listbox'], [role='menu']") != null);
-      const matches: Array<{ registration: KeyboardRegistration; priority: number }> = [];
-      for (const entry of mountedKeyboardRegistrations)
-        for (const registration of entry.current.current) {
-          if (registration.enabled === false) continue;
-          const priority = SURFACE_PRIORITY[registration.surface ?? "page"] ?? 10;
+      const matches: Array<{ entry: TestKeyEntry; priority: number }> = [];
+      for (const entries of mountedKeyEntries)
+        for (const entry of entries.current) {
+          if (!entry.enabled || entry.stroke !== stroke) continue;
+          if (event.repeat && entry.defined) continue;
+          const priority = SURFACE_PRIORITY[entry.surface] ?? SURFACE_PRIORITY.page;
           if (overlay && priority < SURFACE_PRIORITY.viewer) continue;
-          if (!testKeyboardBindings[registration.id]?.includes(stroke)) continue;
-          matches.push({ registration, priority });
+          matches.push({ entry, priority });
         }
       if (!matches.length) return;
       const highest = Math.max(...matches.map((match) => match.priority));
       const winners = matches.filter((match) => match.priority === highest);
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (new Set(winners.map((match) => match.registration.id)).size > 1) {
+      if (new Set(winners.map((match) => match.entry.id)).size > 1) {
         testKeyboardConflicts.push(stroke);
         return;
       }
       winners
         .at(-1)!
-        .registration.action({ sequence: stroke, target: event.target, repeat: event.repeat });
+        .entry.action({ sequence: stroke, target: event.target, repeat: event.repeat });
     },
     { capture: true },
   );
-
-export function useRegisterExtensionKeyboardActions(
-  extensionId: string,
-  registrations: KeyboardRegistration[],
-) {
-  if (extensionId !== TEST_EXTENSION_ID)
-    throw new Error(`Unexpected extension id '${extensionId}'.`);
-  const seen = new Set<string>();
-  for (const registration of registrations) {
-    if (seen.has(registration.id))
-      throw new Error(`Duplicate extension keyboard action id '${registration.id}'.`);
-    seen.add(registration.id);
-    if (!DECLARED_SURFACES[registration.id]?.includes(registration.surface ?? ""))
-      throw new Error(
-        `'${registration.id}' is not declared for the '${registration.surface}' surface.`,
-      );
-  }
-  const current = React.useRef(registrations);
-  current.current = registrations;
-  React.useEffect(() => {
-    const entry = { extensionId, current };
-    mountedKeyboardRegistrations.add(entry);
-    return () => {
-      mountedKeyboardRegistrations.delete(entry);
-    };
-  }, [extensionId]);
-}
-
-export function useExtensionKeyboardBindings(extensionId: string) {
-  if (extensionId !== TEST_EXTENSION_ID)
-    throw new Error(`Unexpected extension id '${extensionId}'.`);
-  return { ...testKeyboardBindings };
-}
 
 export const testVideoControls = {
   play: vi.fn().mockResolvedValue(undefined),
@@ -182,6 +234,15 @@ export function VideoPlayer({
   onPlaybackControlRegister?: (controls: typeof testVideoControls) => void;
 }) {
   onPlaybackControlRegister?.(testVideoControls);
+  // Cove's player shortcuts (Cove Native keys), on by default as in Cove.
+  const playerKeys = keyboardShortcutsEnabled ?? true;
+  useTestCoveShortcut("player.playPause", ["Space", "k"], "player", playerKeys, () =>
+    testVideoControls.toggle(),
+  );
+  useTestCoveShortcut("player.mute", ["m"], "player", playerKeys, () => testPlayerShortcuts.mute());
+  useTestCoveShortcut("player.fullscreen", ["f"], "player", playerKeys, () =>
+    testPlayerShortcuts.fullscreen(),
+  );
   return <div data-testid={extensionSurface ? "video-player" : "video-player-preload"} data-video-id={videoId} data-autostart={autostart} data-keyboard-shortcuts-enabled={keyboardShortcutsEnabled} data-clip={clip ? JSON.stringify(clip) : undefined}><button onClick={() => onPlaybackStateChange?.(true)}>Play review video</button><button onClick={() => onPlaybackStateChange?.(false)}>Pause review video</button></div>;
 }
 export function AudioPlayer({
@@ -493,7 +554,7 @@ export function DetailListToolbar({
   availableDisplayModes = [],
   zoomLevel,
   onZoomChange,
-  criteriaDefinitions = [],
+  criteriaDefinitions: givenCriteria,
   objectFilter = {},
   customFieldEntityType,
   onObjectFilterChange,
@@ -521,6 +582,15 @@ export function DetailListToolbar({
   metadataByline?: React.ReactNode;
 }) {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const criteriaDefinitions = givenCriteria ?? [];
+  // Cove's Filters shortcut, which a Data Quality action on f outranks.
+  useTestCoveShortcut(
+    "list.filters",
+    ["f"],
+    "list",
+    Boolean(givenCriteria && onObjectFilterChange),
+    () => setFiltersOpen(true),
+  );
   const activeCount = Object.keys(objectFilter).length;
   const perPage = Number(filter.perPage) || 24;
   const page = Number(filter.page) || 1;

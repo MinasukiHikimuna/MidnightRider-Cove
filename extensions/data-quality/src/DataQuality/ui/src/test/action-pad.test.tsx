@@ -3,7 +3,6 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { ActionPad, createActionPreviewStore } from "../ActionPad";
 import type { MediaKind, MediaReviewAction } from "../model";
 import type { TagState } from "../reviewTags";
-import { testKeyboardBindings } from "./runtime-components";
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("../api", async (original) => ({
@@ -111,20 +110,6 @@ it("shows audio reviews only the Cove keys that still act without a video", () =
   expect(second).toHaveTextContent("Filters");
   expect(second).not.toHaveTextContent("Fullscreen");
   expect(second).not.toHaveTextContent("Play / pause");
-});
-
-it("labels each tile with the key Cove's active preset gives it", () => {
-  testKeyboardBindings["action-01"] = ["1", "Shift+1"];
-  testKeyboardBindings["action-02"] = [];
-  testKeyboardBindings["action-15"] = ["Ctrl+f"];
-  const { container } = pad(numbered(12));
-  // Tiles keep their places; the caps follow the preset.
-  expect(screen.getByRole("button", { name: "1 Action 1" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Action 2" }).querySelector("kbd")).toBeNull();
-  // A rebound empty slot no longer claims Cove's meaning for f.
-  const fSlot = rows(container)[1].querySelectorAll(".dq-pad-slot")[3];
-  expect(fSlot).toHaveTextContent("Ctrl+f");
-  expect(fSlot).not.toHaveTextContent("Fullscreen");
 });
 
 it("applies, stays with the pin or Shift, and marks absence actions", () => {

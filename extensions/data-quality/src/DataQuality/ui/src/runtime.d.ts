@@ -6,46 +6,35 @@ declare module "@cove/runtime/api" {
 }
 
 declare module "@cove/runtime/components" {
-  export function useKeySequence(bindings: Array<{
-    keys: string;
-    action: () => void;
-    surface?: "local";
-  }>, enabled?: boolean): void;
+  /**
+   * Registers keys with Cove's keyboard dispatcher while the calling component is mounted, all
+   * enabled or disabled together. A binding without an action id (the only form declared here)
+   * is registered with exactly the keys given, on its surface ("page" by default), whatever
+   * keyboard preset the user has; Cove does not list it in its shortcut overview or settings,
+   * and does not filter key repeat for it.
+   *
+   * Cove's own typings declare the action without arguments. Its dispatcher nevertheless passes
+   * the binding's action the invocation that resolved it (observed from v1.4.0-rc.1 through the
+   * current host), which is the only way to tell a held key's repeats apart; declared here so
+   * callers treat it as possibly missing. Without Cove's keyboard provider (never inside Cove)
+   * the hook listens on its own and calls the action without an invocation.
+   */
+  export function useKeySequence(
+    bindings: Array<{
+      keys: string;
+      action: (invocation?: KeyboardActionInvocation) => void;
+      surface?: "local" | "overlay";
+    }>,
+    enabled?: boolean,
+  ): void;
   /** Host-owned dispatch context supplied after Cove resolves and claims a shortcut. */
   export interface KeyboardActionInvocation {
     /** The normalized sequence that resolved the action, for example "q" or "Shift+q". */
     sequence: string;
     target: EventTarget | null;
+    /** Whether the stroke came from a held key repeating. */
     repeat: boolean;
   }
-  export interface ExtensionKeyboardActionRegistration {
-    /** The action id declared in the extension manifest, without Cove's namespace. */
-    id: string;
-    action: (context: KeyboardActionInvocation) => void;
-    enabled?: boolean;
-    /** A surface declared for this action in the extension manifest. */
-    surface?:
-      | "global"
-      | "page"
-      | "list"
-      | "detail"
-      | "player"
-      | "viewer"
-      | "overlay"
-      | "local";
-  }
-  /** Attach mounted handlers to manifest-declared keyboard actions of one extension. */
-  export function useRegisterExtensionKeyboardActions(
-    extensionId: string,
-    registrations: ExtensionKeyboardActionRegistration[],
-  ): void;
-  /**
-   * The extension's resolved bindings in Cove's active keyboard preset, keyed by the manifest
-   * action id; an unbound action has an empty list.
-   */
-  export function useExtensionKeyboardBindings(
-    extensionId: string,
-  ): Readonly<Record<string, readonly string[]>>;
   import type { ComponentType, CSSProperties, ReactNode } from "react";
   export type DragHandleProps = import("react").HTMLAttributes<HTMLElement>;
   export function SortableList<T>(props: {

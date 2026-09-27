@@ -379,8 +379,12 @@ export function ReviewWorkspace({
     const frame = requestAnimationFrame(() => {
       if (document.querySelector(HOST_DIALOG)) return;
       const target = filterReturnFocus.current;
-      if (target?.isConnected && !target.disabled) target.focus();
       filterReturnFocus.current = null;
+      // Only hand back focus that was lost, never take it from where the reviewer is now (for
+      // example typing a search after cancelling the dialog).
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      if (target?.isConnected && !target.disabled) target.focus();
     });
     return () => cancelAnimationFrame(frame);
   }, [loading, performerDialog, revision]);
@@ -1255,7 +1259,10 @@ export function ReviewWorkspace({
         onEdit={beginRuleEdit}
         editDisabled={busy || !onSaveDefaults}
         toolbar={
-          <fieldset className="dq-review-toolbar" disabled={blocked}>
+          // Not disabled while the queue reloads: a search being typed keeps its focus (a
+          // disabled field would drop it to the page, where the next letters are action keys),
+          // and a newer query supersedes the load in flight.
+          <fieldset className="dq-review-toolbar" disabled={pending || editing}>
             <legend className="dq-sr-only">
               {mediaKind === "audio" ? "Audio filters" : "Scene filters"}
             </legend>

@@ -194,8 +194,8 @@ export function reviewEntityType(review: Review): ReviewEntityType {
 
 /**
  * Action keys in the order actions are assigned to them: the letter rows of a Finnish/Swedish
- * keyboard, skipping n and m (previous/next in the grid preview). None needs AltGr. The
- * extension manifest declares the same order as Cove keyboard actions.
+ * keyboard, skipping n and m (previous/next in the grid preview). None needs AltGr. The keys are
+ * fixed: reviewKeys.ts registers them with Cove whatever keyboard preset the user has.
  */
 export const ACTION_KEYS = [
   "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å",
@@ -573,7 +573,7 @@ export function toggleShownReviewSelection(
 // Gates the grid's Space and Enter, which plain buttons and links need for
 // themselves. Escape uses isReviewEscapeTarget, arrows the narrower
 // isReviewGridArrowTarget. Action letters, Find action and select all are
-// Cove keyboard actions (see reviewKeys.ts) and are not gated here.
+// fixed keys dispatched by Cove (see reviewKeys.ts) and are not gated here.
 export function isReviewShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return !target.closest(
@@ -602,6 +602,20 @@ export function isReviewEscapeTarget(
     return false;
   return !target.closest(
     'input, textarea, select, video, [contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="menu"], [role="dialog"]:not(.dq-preview), [aria-modal="true"]:not(.dq-preview), [data-review-player-controls]',
+  );
+}
+
+/**
+ * Whether the element takes typed keys itself, as Cove's keyboard dispatch sees it (inputs,
+ * text areas, selects and editable content), so action keys stay out of it. Focus is never
+ * moved away from such an element to a card.
+ */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement) || !target.isConnected) return false;
+  return (
+    ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
+    target.isContentEditable ||
+    target.closest('[contenteditable]:not([contenteditable="false"])') != null
   );
 }
 

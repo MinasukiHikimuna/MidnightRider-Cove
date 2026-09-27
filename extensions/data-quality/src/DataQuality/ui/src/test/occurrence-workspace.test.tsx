@@ -7,8 +7,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { activeTestKeyboardActions, testFilterControls } from "./runtime-components";
+import {
+  activeTestKeys,
+  testFilterControls,
+  testKeyboardConflicts,
+  testPlayerShortcuts,
+  testVideoControls,
+} from "./runtime-components";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
 import type { OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
@@ -1675,6 +1682,12 @@ it.each([
   await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
   expect(appliedLabel()).toBe(`Action ${number}`);
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  // The page's key outranks Cove's own uses of it (Filters, fullscreen, play/pause), without a
+  // conflict.
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
+  expect(testPlayerShortcuts.fullscreen).not.toHaveBeenCalled();
+  expect(testVideoControls.toggle).not.toHaveBeenCalled();
+  expect(testKeyboardConflicts).toEqual([]);
 });
 
 it.each([
@@ -1698,17 +1711,49 @@ it.each([
 it("leaves f, g and k to Cove while their slots hold no action", async () => {
   open({ ...review, actions: numberedActions(13) });
   await ready();
-  const active = activeTestKeyboardActions();
-  expect(active).toContain("local:action-13");
-  expect(active).toContain("local:find-action");
-  for (const slot of ["action-14", "action-15", "action-16", "action-19", "action-27"])
-    expect(active).not.toContain(`local:${slot}`);
-  // With their slots disabled, Cove resolves f, g and k against its own shortcuts.
-  for (const key of ["f", "g", "k"]) fireEvent.keyDown(document.body, { key });
-  await act(async () => {});
-  expect(api.applyTags).not.toHaveBeenCalled();
   // Nothing in the idle workspace counts as an open dialog, which would pause every key.
   expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
+  const active = activeTestKeys();
+  for (const key of ["q", "Shift+q", "s", "Shift+s", "-"]) expect(active).toContain(`local:${key}`);
+  for (const key of ["d", "f", "g", "k", "b"]) {
+    expect(active).not.toContain(`local:${key}`);
+    expect(active).not.toContain(`local:Shift+${key}`);
+  }
+  // Unregistered, f, g and k reach Cove's own shortcuts: k plays or pauses, and f, which both
+  // Filters and fullscreen claim here, gets Cove's conflict notice.
+  for (const key of ["g", "k", "f"]) fireEvent.keyDown(document.body, { key });
+  expect(testVideoControls.toggle).toHaveBeenCalledTimes(1);
+  expect(testKeyboardConflicts).toEqual(["f"]);
+  expect(testPlayerShortcuts.fullscreen).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
+  await act(async () => {});
+  expect(api.applyTags).not.toHaveBeenCalled();
+});
+
+it("applies a held key's action once", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 3 });
+  open({ ...review, actions: numberedActions(3) });
+  await ready();
+  fireEvent.keyDown(document.body, { key: "w" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe("Action 2");
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  await ready();
+  // Still held once the next item is ready: Cove passes the repeats on, and the workspace drops
+  // them while claiming them, so nothing else acts on them either.
+  for (let stroke = 0; stroke < 3; stroke++)
+    expect(fireEvent.keyDown(document.body, { key: "w", repeat: true })).toBe(false);
+  await act(async () => {});
+  expect(api.applyTags).toHaveBeenCalledTimes(1);
+  // Held with Shift, one action too, and the item stays.
+  fireEvent.keyDown(document.body, { key: "E", shiftKey: true });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  await ready();
+  fireEvent.keyDown(document.body, { key: "E", shiftKey: true, repeat: true });
+  await act(async () => {});
+  expect(api.applyTags).toHaveBeenCalledTimes(2);
+  expect(appliedLabel(1)).toBe("Action 3");
+  expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
 });
 
 it("keeps action keys working after clicking a queue item or an action button", async () => {
@@ -1732,6 +1777,41 @@ it("keeps action keys working after clicking a queue item or an action button", 
   fireEvent.keyDown(button, { key: "q" });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(3));
   expect(appliedLabel(2)).toBe("Action 1");
+});
+
+it("keeps the search focused and every letter in it while the queue reloads", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 3 });
+  open({ ...review, actions: numberedActions(27) });
+  await ready();
+  // A cancelled filter dialog leaves nothing to hand focus back to later.
+  fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel filters" }));
+  // Each letter reloads the queue; the loads stay open until released.
+  const loads: Array<() => void> = [];
+  api.loadOccurrencePage.mockImplementation(
+    () =>
+      new Promise((resolve) =>
+        loads.push(() => resolve({ items: [first, second, third], totalCount: 3 })),
+      ),
+  );
+  const user = userEvent.setup();
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  await user.click(search);
+  await user.keyboard("qwf");
+  expect(loads.length).toBeGreaterThan(0);
+  expect(search).toBeEnabled();
+  expect(search).toHaveFocus();
+  loads.forEach((release) => release());
+  await ready();
+  // Still typing after the reload: the letters keep going into the search.
+  await user.keyboard("gå");
+  loads.forEach((release) => release());
+  await ready();
+  await act(async () => {});
+  expect(search).toHaveFocus();
+  expect(search).toHaveValue("qwfgå");
+  expect(api.applyTags).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
 });
 
 it("never applies an action while typing in the search field", async () => {
@@ -1759,7 +1839,7 @@ it("finds any action with -, including those past the 27 keys", async () => {
   await waitFor(() =>
     expect(findOptions()[10]).toHaveTextContent("åAction 11+ Choice"),
   );
-  expect(activeTestKeyboardActions()).not.toContain("local:action-01");
+  expect(activeTestKeys()).not.toContain("local:q");
   fireEvent.change(search, { target: { value: "action 29" } });
   const [only] = findOptions();
   expect(findOptions()).toHaveLength(1);
@@ -1813,16 +1893,16 @@ it("pauses action keys while tags or the rule are edited", async () => {
   const rendered = open({ ...review, actions: numberedActions(2) });
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
-  expect(activeTestKeyboardActions()).not.toContain("local:action-01");
+  expect(activeTestKeys()).not.toContain("local:q");
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await ready();
-  expect(activeTestKeyboardActions()).toContain("local:action-01");
+  expect(activeTestKeys()).toContain("local:q");
   rendered.rerender(
     <ReviewWorkspace review={{ ...review, actions: numberedActions(2) }} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />,
   );
   await screen.findByRole("region", { name: "Edit review rule" });
-  expect(activeTestKeyboardActions()).not.toContain("local:action-01");
-  expect(activeTestKeyboardActions()).not.toContain("local:find-action");
+  expect(activeTestKeys()).not.toContain("local:q");
+  expect(activeTestKeys()).not.toContain("local:-");
 });
 
 it("previews the hovered action on the current tags", async () => {

@@ -67,9 +67,10 @@ function range(start: number, end: number): number[] {
 }
 
 /**
- * What an unassigned key still does in Cove on this page: the slot is registered disabled, so
- * the key keeps Cove's own meaning (with a video on screen, f opens Filters and toggles
- * fullscreen, which is why Cove reports a conflict for it).
+ * What an unassigned key still does in Cove on this page: an empty slot's key is not registered,
+ * so it keeps Cove's own meaning (with a video on screen, f opens Filters and toggles
+ * fullscreen, which is why Cove reports a conflict for it). These are the Cove Native preset's
+ * keys; extensions cannot read Cove's own bindings, so other presets may differ.
  */
 function coveKeyLabel(key: string, mediaKind: MediaKind): string {
   if (key === "g") return "Go to…";
@@ -93,11 +94,10 @@ function hasAbsence(action: MediaReviewAction): boolean {
 }
 
 /**
- * Review actions laid out like the keyboard: action N sits on the key it has by default, so the
- * pad mirrors the hand position, while each cap shows the key Cove's active preset resolves (a
- * rebound action shows its new key, an unbound one none). Rows without any action are left out;
- * the bottom row also carries Find action for the actions past the last key. Hovering or
- * focusing a tile previews its effect above the pad and on the current tags.
+ * Review actions laid out like the keyboard: action N sits on its key's place, so the pad mirrors
+ * the hand position. Rows without any action are left out; the bottom row also carries Find
+ * action for the actions past the last key. Hovering or focusing a tile previews its effect above
+ * the pad and on the current tags.
  */
 export function ActionPad({
   actions,
@@ -148,14 +148,14 @@ export function ActionPad({
     const action = actions[slot];
     const binding = keys.action(slot);
     if (!action) {
-      const label = binding === ACTION_KEYS[slot] ? coveKeyLabel(binding, mediaKind) : "";
+      const label = coveKeyLabel(binding, mediaKind);
       return (
         <div
           key={slot}
           className={`dq-pad-slot dq-pad-free${label ? " dq-pad-reserved" : ""}`}
           aria-hidden="true"
         >
-          {binding && <KeyCap binding={binding} />}
+          <KeyCap binding={binding} />
           {label && <span className="dq-pad-label">{label}</span>}
         </div>
       );
@@ -174,13 +174,13 @@ export function ActionPad({
           type="button"
           className="dq-pad-tile"
           title={action.label}
-          aria-keyshortcuts={binding || undefined}
+          aria-keyshortcuts={binding}
           aria-describedby={effectId}
           disabled={disabled}
           onClick={(event) => onApply(action, event.shiftKey)}
         >
           {/* The spaces keep the accessible name readable: "q Observation absent". */}
-          {binding && <KeyCap binding={binding} />}{" "}
+          <KeyCap binding={binding} />{" "}
           <span className="dq-pad-label">{action.label}</span>
           {hasAbsence(action) && " "}
           {hasAbsence(action) && (
@@ -227,11 +227,11 @@ export function ActionPad({
             type="button"
             className="dq-pad-find-button"
             aria-label="Find action"
-            aria-keyshortcuts={keys.find || undefined}
+            aria-keyshortcuts={keys.find}
             disabled={findDisabled}
             onClick={onFind}
           >
-            {keys.find && <KeyCap binding={keys.find} />}
+            <KeyCap binding={keys.find} />
             <span aria-hidden="true">Find action</span>
           </button>
         )}
@@ -258,11 +258,11 @@ export function ActionPad({
                 type="button"
                 className="dq-pad-tile dq-pad-find"
                 aria-label={extra ? `Find action, ${extra} more` : "Find action"}
-                aria-keyshortcuts={keys.find || undefined}
+                aria-keyshortcuts={keys.find}
                 disabled={findDisabled}
                 onClick={onFind}
               >
-                {keys.find && <KeyCap binding={keys.find} />}
+                <KeyCap binding={keys.find} />
                 <span className="dq-pad-label">
                   <Search aria-hidden="true" />
                   {extra ? `${extra} more` : "Find action"}
@@ -307,7 +307,7 @@ function PadEffectLine({
         {extra > 0 && (
           <>
             {` · ${ACTION_KEYS.length} on keys, ${extra} more under `}
-            {findKey ? <KeyCap binding={findKey} /> : "Find action"}
+            <KeyCap binding={findKey} />
           </>
         )}
       </p>

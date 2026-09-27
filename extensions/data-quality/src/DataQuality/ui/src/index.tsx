@@ -74,6 +74,7 @@ import {
   reviewMediaKind,
   getReviewActionTargets,
   hasAssessmentSteps,
+  isEditableTarget,
   isReviewShortcutTarget,
   isReviewEscapeTarget,
   isReviewGridArrowTarget,
@@ -99,11 +100,7 @@ import { ActionsFromTags } from "./ActionsFromTags";
 import { FindAction, FindActionButton } from "./FindAction";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { ReviewEntityIcon } from "./ReviewEntityIcon";
-import {
-  SELECT_ALL_KEY_LABEL,
-  useReviewKeyLabels,
-  useReviewKeys,
-} from "./reviewKeys";
+import { useReviewKeyLabels, useReviewKeys } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
@@ -937,6 +934,10 @@ export function DataQualityPage({
   const focusCard = useCallback((id: number | null, scroll = true) => {
     if (id == null) return;
     window.requestAnimationFrame(() => {
+      // Never pull focus out of a field the reviewer is in, such as the search
+      // that just reloaded the queue: on a card, their next letters would apply
+      // actions. The card still becomes the focused one for the keys.
+      if (isEditableTarget(document.activeElement)) return;
       const card = cardRefs.current.get(id);
       card?.focus({ preventScroll: true });
       if (scroll) card?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -1208,8 +1209,8 @@ export function DataQualityPage({
     return Math.max(1, template.split(" ").filter(Boolean).length);
   }
 
-  // Action letters, Find action (-) and select all (Ctrl/⌘A) are Cove keyboard
-  // actions, registered below. Escape, Space and Enter stay here, on a
+  // Action letters, Find action (-) and select all (Ctrl/⌘A) are fixed keys
+  // registered with Cove's dispatcher below. Escape, Space and Enter stay here, on a
   // document listener like the arrow keys, so they keep working after focus
   // drifts to the page body or a sidebar button; only keys pressed inside this
   // page, or with nothing focused, belong to the review.
@@ -1316,6 +1317,12 @@ export function DataQualityPage({
     document.addEventListener("keydown", listener);
     return () => document.removeEventListener("keydown", listener);
   }, []);
+
+  // The queue toolbar waits out an action and the review's first load. It stays
+  // live while its own changes reload the queue: a search being typed keeps its
+  // focus (inert, it would drop focus to the page, where the next letters are
+  // action keys), and a newer query supersedes the load in flight.
+  const toolbarLocked = pending || (queueLoading && !progressReady);
 
   // The grid's action keys, Find action and select all, while the grid itself
   // takes keys. The preview registers its own keys on the overlay surface.
@@ -1494,13 +1501,6 @@ export function DataQualityPage({
           </button>
         </div>
       )}
-      {review && keyLabels.allUnbound(review.actions.length) && (
-        <p role="status" className="dq-status">
-          Your keyboard preset has no keys for Data Quality actions, so pressing a
-          letter does nothing. Assign them under Settings → Keyboard shortcuts →
-          Data Quality, or switch to the Cove Native preset.
-        </p>
-      )}
       {unassignedLegacy && (
         <details>
           <summary>Unassigned legacy browser reviews</summary>
@@ -1648,10 +1648,10 @@ export function DataQualityPage({
         <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
           <div
             className={`dq-native-toolbar-host${
-              pending || queueLoading ? " dq-native-toolbar-disabled" : ""
+              toolbarLocked ? " dq-native-toolbar-disabled" : ""
             }`}
-            aria-disabled={pending || queueLoading || undefined}
-            inert={pending || queueLoading ? true : undefined}
+            aria-disabled={toolbarLocked || undefined}
+            inert={toolbarLocked ? true : undefined}
           >
             <DetailListToolbar
               filter={queueError ? loadedFilter : filter}
@@ -1674,7 +1674,7 @@ export function DataQualityPage({
               customFieldEntityType={entityType === "video" ? "video" : undefined}
               objectFilter={toolbarObjectFilter}
               onObjectFilterChange={(objectFilter) => {
-                if (!pending && !queueLoading)
+                if (!toolbarLocked)
                   pendingToolbarObjectFilter.current =
                     entityType === "video"
                       ? stripCustomFieldPresentation(
@@ -1968,11 +1968,7 @@ export function DataQualityPage({
               <button
                 type="button"
                 className="dq-selection-toggle"
-                aria-keyshortcuts={
-                  keyLabels.selectAll === SELECT_ALL_KEY_LABEL
-                    ? "Control+A Meta+A"
-                    : keyLabels.selectAll || undefined
-                }
+                aria-keyshortcuts="Control+A Meta+A"
                 disabled={!itemIds.length}
                 onClick={() =>
                   updateSelection((current) =>
@@ -1981,9 +1977,7 @@ export function DataQualityPage({
                 }
               >
                 {allShownSelected ? "Clear selection" : "Select all on page"}
-                {keyLabels.selectAll && (
-                  <kbd aria-hidden="true">{keyLabels.selectAll}</kbd>
-                )}
+                <kbd aria-hidden="true">{keyLabels.selectAll}</kbd>
               </button>
               {/* Always name the target: with nothing checked, actions fall
                   back to the focused card, which the ring alone does not say. */}
@@ -2078,12 +2072,10 @@ export function DataQualityPage({
                   "space select",
                   `enter ${entityType === "tag" ? "open" : "preview"}`,
                   "action keys apply",
-                  keyLabels.find && `${keyLabels.find} find action`,
-                  keyLabels.selectAll && `${keyLabels.selectAll} toggle shown`,
+                  `${keyLabels.find} find action`,
+                  `${keyLabels.selectAll} toggle shown`,
                   "Esc clear",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+                ].join(" · ")}
               </p>
             </aside>
           </div>
@@ -2162,12 +2154,17 @@ export function DataQualityPage({
     const priorFocus = focusedRef.current;
     const priorIndex = Math.max(0, itemIds.indexOf(priorFocus ?? -1));
     try {
-      const result = await fetchQueue(
+      const loading = fetchQueue(
         target,
         nextFilter,
         startFromEnd,
         target.view.selectAllOnLoad === true,
       );
+      // fetchQueue takes its load generation at once. A newer load (the next
+      // letters of a search) supersedes this one: leave selection and focus to it.
+      const generation = loadGeneration.current;
+      const result = await loading;
+      if (generation !== loadGeneration.current) return;
       const ids = result.items.map((item) => item.id);
       setSelectedIds(
         (current) => new Set([...current].filter((id) => ids.includes(id))),
@@ -2183,7 +2180,7 @@ export function DataQualityPage({
   function applyQueueToolbarFilter(nextFilter: Record<string, unknown>) {
     const toolbarObjectFilter = pendingToolbarObjectFilter.current;
     pendingToolbarObjectFilter.current = null;
-    if (pending || queueLoading || !review || !savedReview) return;
+    if (toolbarLocked || !review || !savedReview) return;
     const requestedObjectFilter =
       toolbarObjectFilter ?? review.view.objectFilter;
     const objectFilter = objectFiltersEqual(
@@ -2867,8 +2864,8 @@ function ReviewPreview({
         )}
         <p className="dq-editor-note">
           Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m
-          previous/next · action keys apply
-          {keyLabels.find ? ` · ${keyLabels.find} find action` : ""} · Enter/Esc close
+          previous/next · action keys apply · {keyLabels.find} find action ·
+          Enter/Esc close
         </p>
         <footer data-review-player-controls>
           {/* First, so it stays in view when many actions wrap past the bottom edge. */}

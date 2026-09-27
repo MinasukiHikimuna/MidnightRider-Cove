@@ -7,6 +7,7 @@ import {
   reviewMediaKind,
   supportsMultipleReviewMode,
   getReviewActionTargets,
+  isEditableTarget,
   isReviewGridArrowTarget,
   isReviewEscapeTarget,
   reviewGridArrowDelta,
@@ -285,6 +286,33 @@ describe("review grid Escape", () => {
     expect(isReviewEscapeTarget(element('<div role="dialog"><button data-target>Apply filters</button></div>'))).toBe(false);
     expect(isReviewEscapeTarget(null)).toBe(false);
   });
+});
+
+it("treats fields that take typed keys as editable, where focus stays put", () => {
+  const element = (html: string) => {
+    document.body.innerHTML = html;
+    return document.body.querySelector<HTMLElement>("[data-target]")!;
+  };
+  for (const html of [
+    '<input aria-label="Search list" data-target />',
+    '<input type="number" data-target />',
+    "<textarea data-target></textarea>",
+    "<select data-target></select>",
+    '<div contenteditable="true"><span data-target>Text</span></div>',
+  ])
+    expect(isEditableTarget(element(html)), html).toBe(true);
+  for (const html of [
+    "<button data-target>Filters</button>",
+    "<article tabindex='0' data-target>Card</article>",
+    '<div contenteditable="false" data-target></div>',
+  ])
+    expect(isEditableTarget(element(html)), html).toBe(false);
+  expect(isEditableTarget(document.body)).toBe(false);
+  expect(isEditableTarget(null)).toBe(false);
+  // A field already removed from the page holds nothing.
+  const detached = document.createElement("input");
+  expect(isEditableTarget(detached)).toBe(false);
+  document.body.innerHTML = "";
 });
 
 it("keeps Escape away from host-owned controls inside the page", () => {

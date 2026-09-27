@@ -272,7 +272,7 @@ export function FindAction({
   );
 }
 
-/** The button that opens Find action with the mouse; its key (- by default) does the same. */
+/** The button that opens Find action with the mouse; its key (-) does the same. */
 export function FindActionButton({
   onClick,
   disabled,
@@ -287,13 +287,13 @@ export function FindActionButton({
     <button
       type="button"
       className={`${className} dq-find-button`}
-      aria-keyshortcuts={key || undefined}
+      aria-keyshortcuts={key}
       disabled={disabled}
       onClick={onClick}
     >
       <Search aria-hidden="true" />
       Find action
-      {key && <kbd aria-hidden="true">{key}</kbd>}
+      <kbd aria-hidden="true">{key}</kbd>
     </button>
   );
 }

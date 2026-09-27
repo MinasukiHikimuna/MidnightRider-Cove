@@ -6,14 +6,15 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DataQualityPage, objectFiltersEqual } from "../index";
 import { presentedVideo } from "../TagPresentation";
 import { testVideoControls } from "@cove/runtime/components";
 import {
-  activeTestKeyboardActions,
+  activeTestKeys,
   testFilterControls,
-  testKeyboardBindings,
+  testKeyboardConflicts,
 } from "./runtime-components";
 
 const { api, review } = vi.hoisted(() => ({
@@ -1464,7 +1465,7 @@ it("toggles every card with Ctrl+A or ⌘A while a applies action 12", async () 
   openGrid();
   const first = await screen.findByRole("article", { name: "Video 1" });
   await waitFor(() => expect(first).toHaveFocus());
-  expect(activeTestKeyboardActions()).toContain("local:select-all");
+  expect(activeTestKeys()).toContain("local:Ctrl+a");
   fireEvent.keyDown(first, { key: "a", ctrlKey: true });
   expect(screen.getByRole("article", { name: "Video 1, selected" })).toBeInTheDocument();
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
@@ -1517,11 +1518,12 @@ it("runs action keys and Find action in the preview, also after clicking its act
   await waitFor(() => expect(first).toHaveFocus());
   fireEvent.keyDown(first, { key: "Enter" });
   const preview = await screen.findByRole("dialog", { name: "Review preview: Video 1" });
-  const active = activeTestKeyboardActions();
-  expect(active).toContain("overlay:action-01");
-  expect(active).toContain("overlay:find-action");
-  expect(active).not.toContain("local:action-01");
-  expect(active).not.toContain("local:select-all");
+  const active = activeTestKeys();
+  expect(active).toContain("overlay:q");
+  expect(active).toContain("overlay:Shift+q");
+  expect(active).toContain("overlay:-");
+  expect(active).not.toContain("local:q");
+  expect(active).not.toContain("local:Ctrl+a");
   fireEvent.keyDown(preview, { key: "w" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
   expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 2");
@@ -1558,32 +1560,149 @@ it("runs action keys and Find action in the preview, also after clicking its act
   expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
 });
 
-it("shows the keys of the user's keyboard preset", async () => {
-  testKeyboardBindings["action-02"] = ["Alt+w"];
+it("applies a held grid key once, and Shift with a key like the key alone", async () => {
   openGrid(numberedActions(3));
   const first = await screen.findByRole("article", { name: "Video 1" });
   await waitFor(() => expect(first).toHaveFocus());
-  expect(screen.getByRole("button", { name: /Action 2/ }).querySelector("kbd")).toHaveTextContent("Alt+w");
-  fireEvent.keyDown(first, { key: "w" });
-  await act(async () => {});
-  expect(api.runReviewAction).not.toHaveBeenCalled();
-  fireEvent.keyDown(first, { key: "w", altKey: true });
+  // Buttons show the fixed keys.
+  expect(screen.getByRole("button", { name: /Action 2/ }).querySelector("kbd")).toHaveTextContent("w");
+  expect(screen.getByRole("button", { name: /Find action/ }).querySelector("kbd")).toHaveTextContent("-");
+  expect(screen.getByRole("button", { name: "Select all on page" }).querySelector("kbd")).toHaveTextContent(
+    "Ctrl/⌘A",
+  );
+  // Keys go where focus is: the card acted on leaves the grid and focus moves to the next one.
+  const press = (init: KeyboardEventInit) =>
+    fireEvent.keyDown(document.activeElement ?? document.body, init);
+  press({ key: "w" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
   expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 2");
-  expect(screen.queryByText(/has no keys for Data Quality actions/)).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: /Action 3/ })).toBeEnabled());
+  // Held past the refresh: Cove passes the repeats on, and the page drops them while claiming
+  // them, so the browser and Cove do nothing with them either.
+  expect(press({ key: "w", repeat: true })).toBe(false);
+  press({ key: "w", repeat: true });
+  await act(async () => {});
+  expect(api.runReviewAction).toHaveBeenCalledTimes(1);
+  // The grid always moves on, so Shift with a key applies the action like the key alone.
+  press({ key: "E", shiftKey: true });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
+  expect(api.runReviewAction.mock.calls[1][1].label).toBe("Action 3");
 });
 
-it("says so when the keyboard preset leaves every action key unbound", async () => {
-  for (const id of Object.keys(testKeyboardBindings)) testKeyboardBindings[id] = [];
-  openGrid(numberedActions(3));
+it("gives f to action 15 over Cove's Filters while the review has one", async () => {
+  openGrid(numberedActions(15));
   const first = await screen.findByRole("article", { name: "Video 1" });
   await waitFor(() => expect(first).toHaveFocus());
-  expect(screen.getByText(/has no keys for Data Quality actions/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Action 1/ }).querySelector("kbd")).toBeNull();
-  expect(screen.getByRole("button", { name: /Find action/ }).querySelector("kbd")).toBeNull();
-  expect(screen.getByRole("button", { name: "Select all on page" }).querySelector("kbd")).toBeNull();
-  fireEvent.keyDown(first, { key: "q" });
+  fireEvent.keyDown(first, { key: "f" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 15");
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
+  expect(testKeyboardConflicts).toEqual([]);
+});
+
+it("keeps the grid's search focused and every letter in it while the queue reloads", async () => {
+  openGrid(numberedActions(27));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  // Each letter reloads the queue; the loads stay open until released.
+  const loads: Array<() => void> = [];
+  api.findMedia.mockImplementation(
+    () =>
+      new Promise((resolve) =>
+        loads.push(() => resolve({ items: [video(3), video(4)], totalCount: 2 })),
+      ),
+  );
+  const user = userEvent.setup();
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  await user.click(search);
+  await user.keyboard("qwf");
+  expect(loads.length).toBeGreaterThan(0);
+  expect(search.closest("[inert], [aria-disabled='true']")).toBeNull();
+  expect(search).toHaveFocus();
+  loads.forEach((release) => release());
+  // The reload shows its cards, but focus stays in the search.
+  await screen.findByRole("article", { name: "Video 3" });
   await act(async () => {});
+  expect(search).toHaveFocus();
+  // Still typing after the reload: the letters keep going into the search.
+  await user.keyboard("gå");
+  loads.forEach((release) => release());
+  await screen.findByRole("article", { name: "Video 3" });
+  await act(async () => {});
+  expect(search).toHaveFocus();
+  expect(search).toHaveValue("qwfgå");
+  expect(api.runReviewAction).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
+  // The card the keys act on moved to the new queue, ready for when focus leaves the search.
+  expect(screen.getByRole("article", { name: "Video 3" })).toHaveAttribute("aria-current", "true");
+});
+
+it("lets only the newest search load set the grid's selection and focus", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [
+      {
+        ...review,
+        actions: numberedActions(3),
+        view: { ...review.view, reviewMode: "multiple", selectAllOnLoad: true },
+      },
+    ],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1, selected" });
+  const loads: Array<(ids: number[]) => void> = [];
+  api.findMedia.mockImplementation(
+    () =>
+      new Promise((resolve) =>
+        loads.push((ids) =>
+          resolve({ items: ids.map((id) => video(id)), totalCount: ids.length }),
+        ),
+      ),
+  );
+  const user = userEvent.setup();
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  await user.click(search);
+  await user.keyboard("ab");
+  expect(loads).toHaveLength(2);
+  // The newest load answers first; the one it superseded answers late, and changes nothing.
+  loads[1]([3, 4]);
+  await screen.findByRole("article", { name: "Video 3, selected" });
+  loads[0]([5, 6]);
+  await act(async () => {});
+  expect(screen.getByRole("article", { name: "Video 3, selected" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  expect(screen.getByRole("article", { name: "Video 4, selected" })).toBeInTheDocument();
+  expect(search).toHaveFocus();
+});
+
+it("registers the keys once in the single-item workspace, where the grid's stay released", async () => {
+  openGrid(numberedActions(2));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(activeTestKeys()).toContain("local:Ctrl+a");
+  // Back in the single-item workspace, only the workspace's keys are registered, each once.
+  await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
+  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
+  const active = activeTestKeys();
+  expect(active.filter((key) => key === "local:q")).toHaveLength(1);
+  expect(active.filter((key) => key === "local:Shift+q")).toHaveLength(1);
+  expect(active.filter((key) => key === "local:-")).toHaveLength(1);
+  expect(active).not.toContain("local:Ctrl+a");
+});
+
+it("leaves f to Cove's Filters while action 15 does not exist", async () => {
+  openGrid(numberedActions(14));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(activeTestKeys()).toContain("local:d");
+  expect(activeTestKeys()).not.toContain("local:f");
+  fireEvent.keyDown(first, { key: "f" });
+  expect(await screen.findByRole("dialog", { name: "Video filters" })).toBeInTheDocument();
   expect(api.runReviewAction).not.toHaveBeenCalled();
 });
 
@@ -1591,7 +1710,7 @@ it("leaves the grid keys to Cove while the queue is empty", async () => {
   api.findMedia.mockResolvedValue({ items: [], totalCount: 0 });
   openGrid(numberedActions(16));
   await screen.findByText("No videos match this review.");
-  expect(activeTestKeyboardActions().filter((action) => action.startsWith("local:"))).toEqual([]);
+  expect(activeTestKeys().filter((key) => key.startsWith("local:"))).toEqual([]);
 });
 
 it("closes Find action with Esc when focus has left its search field", async () => {
@@ -1614,17 +1733,20 @@ it("closes Find action with Esc when focus has left its search field", async () 
 });
 
 it("fits the single-item workspace to the window, with the page's notices under its header", async () => {
-  for (const id of Object.keys(testKeyboardBindings)) testKeyboardBindings[id] = [];
+  api.loadReviews.mockResolvedValue({
+    reviews: [review],
+    storageKey: "reviews",
+    canWrite: true,
+    storageNotice: "Reviews and progress are saved only in this browser.",
+  });
   const { container } = render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
   const page = container.querySelector(".data-quality-page")!;
   expect(page).toHaveClass("dq-page-fit");
   expect(page.getAttribute("style")).toMatch(/--dq-fit-top: \d+px; --dq-fit-bottom: \d+px/);
   const header = screen.getByRole("heading", { name: review.name }).closest("header")!;
-  const notice = screen.getByText(/has no keys for Data Quality actions/);
+  const notice = screen.getByText("Reviews and progress are saved only in this browser.");
   expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // Unbound keys leave the tiles without key caps.
-  expect(screen.getByRole("button", { name: "Apply" }).querySelector("kbd")).toBeNull();
   // The card grid keeps the page's normal flow.
   const grid = screen.getByRole("button", { name: "Grid" });
   await waitFor(() => expect(grid).toBeEnabled());
