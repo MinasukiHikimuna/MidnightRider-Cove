@@ -1,0 +1,22 @@
+{
+  "id": "com.midnightrider.blast-from-the-past",
+  "name": "Blast From The Past",
+  "version": "0.1.0",
+  "description": "A home dashboard widget that replays the moments in your viewing sessions that ended in a like.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "categories": ["ui", "widget"],
+  "minCoveVersion": "1.3.2-dev.36",
+  "entryDll": "BlastFromThePast.dll",
+  "dependencies": {},
+  "externalDependencies": [],
+  "settings": [],
+  "tutorialTopics": [],
+  "jsBundle": "assets/ui.mjs",
+  "cssBundle": "assets/ui.css",
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

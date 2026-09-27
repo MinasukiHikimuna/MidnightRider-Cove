@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.blast-from-the-past",
+  "name": "BlastFromThePast",
+  "tagPrefix": "com.midnightrider.blast-from-the-past/",
+  "solution": "BlastFromThePast.slnx",
+  "project": "src/BlastFromThePast/BlastFromThePast.csproj",
+  "manifest": "src/BlastFromThePast/extension.json",
+  "readme": "README.md",
+  "ui": "src/BlastFromThePast/assets",
+  "uiPackagePath": "assets",
+  "uiTest": "tests/blast-from-the-past-model.test.mjs"
+}
