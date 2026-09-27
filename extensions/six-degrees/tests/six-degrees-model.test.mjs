@@ -14,22 +14,24 @@ for (const [statement, stub] of runtimeImports) {
   testable = testable.replace(statement, stub);
 }
 const {
+  PRESETS,
+  badgeText,
   clampSelection,
   connectionQuery,
   countLabel,
   degreeLabel,
   emptyCopy,
+  endpointLabels,
   footerText,
-  formatVideoDate,
+  isoDate,
   initialRequest,
   pairRequest,
   pathPerformers,
   performerSummary,
-  personMeta,
+  presetFor,
   railGeometry,
   randomSeed,
   readSettings,
-  videoYear,
 } = await import(`data:text/javascript,${encodeURIComponent(testable)}`);
 
 const chain = {
@@ -42,26 +44,47 @@ const chain = {
   isRandom: true,
 };
 
-test("settings fall back to a random pair within six degrees", () => {
-  assert.deepEqual(readSettings(undefined), { mode: "random", startPerformerId: null, endPerformerId: null, maxDegrees: 6 });
-  assert.deepEqual(readSettings({ mode: "selected", startPerformerId: "4", endPerformerId: 9, maxDegrees: 12 }),
-    { mode: "selected", startPerformerId: 4, endPerformerId: 9, maxDegrees: 6 });
-  assert.deepEqual(readSettings({ mode: "other", startPerformerId: -1, endPerformerId: 1.5, maxDegrees: 0 }),
-    { mode: "random", startPerformerId: null, endPerformerId: null, maxDegrees: 1 });
+test("settings fall back to a random pair within six degrees with group videos allowed", () => {
+  assert.deepEqual(readSettings(undefined), { mode: "random", startPerformerId: null, endPerformerId: null, maxDegrees: 6, duosOnly: false });
+  assert.deepEqual(readSettings({ mode: "selected", startPerformerId: "4", endPerformerId: 9, maxDegrees: 12, duosOnly: true }),
+    { mode: "selected", startPerformerId: 4, endPerformerId: 9, maxDegrees: 6, duosOnly: true });
+  assert.deepEqual(readSettings({ mode: "other", startPerformerId: -1, endPerformerId: 1.5, maxDegrees: 0, duosOnly: "yes" }),
+    { mode: "random", startPerformerId: null, endPerformerId: null, maxDegrees: 1, duosOnly: false });
+  for (const { key } of PRESETS) assert.equal(readSettings({ mode: key }).mode, key);
+});
+
+test("every preset has a title, a short label, and a description", () => {
+  assert.deepEqual(PRESETS.map((preset) => preset.key), ["random", "longest", "years", "hub"]);
+  for (const preset of PRESETS) assert.ok(preset.title && preset.short && preset.description);
+  assert.equal(presetFor("hub").title, "Your Johnny Sins");
+  assert.equal(presetFor("unknown").key, "random");
 });
 
 test("only two different performers start a search", () => {
   assert.deepEqual(pairRequest(1, 2), { kind: "pair", startId: 1, endId: 2 });
   assert.deepEqual(pairRequest(1, 1), { kind: "idle", startId: 1, endId: 1 });
   assert.deepEqual(pairRequest(null, 2), { kind: "idle", startId: null, endId: 2 });
-  assert.deepEqual(initialRequest(readSettings({})), { kind: "random" });
+  assert.deepEqual(initialRequest(readSettings({})), { kind: "preset", preset: "random" });
+  assert.deepEqual(initialRequest(readSettings({ mode: "years" })), { kind: "preset", preset: "years" });
   assert.deepEqual(initialRequest(readSettings({ mode: "selected", startPerformerId: 5 })), { kind: "idle", startId: 5, endId: null });
 });
 
-test("connection queries send a pair or a seed, never both", () => {
+test("connection queries send a pair or a preset with its seed, never both", () => {
   const endpoint = "/api/plugins/com.midnightrider.six-degrees/performer-connections";
   assert.equal(connectionQuery({ kind: "pair", startId: 3, endId: 8 }, 4, 99), `${endpoint}?maxDegrees=4&startPerformerId=3&endPerformerId=8`);
-  assert.equal(connectionQuery({ kind: "random" }, 6, 99), `${endpoint}?maxDegrees=6&seed=99`);
+  assert.equal(connectionQuery({ kind: "preset", preset: "longest" }, 6, 99), `${endpoint}?maxDegrees=6&preset=longest&seed=99`);
+  assert.equal(connectionQuery({ kind: "pair", startId: 3, endId: 8 }, 4, 99, true), `${endpoint}?maxDegrees=4&startPerformerId=3&endPerformerId=8&duosOnly=true`);
+});
+
+test("each preset labels its chain in the badge and on the endpoints", () => {
+  const base = { chain, maxDegrees: 6, performerCount: 1, videoCount: 1 };
+  assert.equal(badgeText({ ...base, preset: "random" }), "2 degrees");
+  assert.equal(badgeText({ ...base, preset: "longest" }), "2 degrees · longest");
+  assert.equal(badgeText({ ...base, preset: "years", startFirstYear: 1981, endLastYear: 2025 }), "1981 → 2025");
+  assert.equal(badgeText({ ...base, preset: null, duosOnly: true }), "2 degrees · duos");
+  assert.deepEqual(endpointLabels({ preset: "years", startFirstYear: 1981, endLastYear: 2025 }), { start: "From", end: "To" });
+  assert.deepEqual(endpointLabels({ preset: "hub" }), { start: "From", end: "Your Johnny Sins" });
+  assert.deepEqual(endpointLabels(null), { start: "From", end: "To" });
 });
 
 test("random seeds are fresh positive 31-bit values", () => {
@@ -75,9 +98,6 @@ test("random seeds are fresh positive 31-bit values", () => {
 test("a path lists every performer once, start first", () => {
   assert.deepEqual(pathPerformers(chain).map((performer) => performer.id), [1, 2, 3]);
   assert.deepEqual(pathPerformers(null), []);
-  assert.equal(personMeta(0, 2, chain.start), "Start · 4 videos");
-  assert.equal(personMeta(1, 2, chain.steps[0].to), "31 videos");
-  assert.equal(personMeta(2, 2, chain.end), "Finish · 1 video");
 });
 
 test("the highlighted rail segment joins the two performers of the selected link", () => {
@@ -96,10 +116,10 @@ test("labels read naturally", () => {
   assert.equal(degreeLabel(4), "4 degrees");
   assert.equal(countLabel(1), "1 video");
   assert.equal(countLabel(undefined), "0 videos");
-  assert.equal(videoYear("1994-01-01"), "1994");
-  assert.equal(videoYear(null), "");
-  assert.equal(formatVideoDate("not a date"), "");
-  assert.ok(formatVideoDate("1994-01-01").includes("1994"));
+  assert.equal(isoDate("1994-01-01"), "1994-01-01");
+  assert.equal(isoDate(null), "");
+  assert.equal(isoDate("1994"), "");
+  assert.equal(isoDate("not a date"), "");
 });
 
 test("empty states explain why there is no path", () => {
@@ -108,6 +128,9 @@ test("empty states explain why there is no path", () => {
   assert.equal(emptyCopy("performerUnavailable", 6).title, "Performer Unavailable");
   assert.equal(emptyCopy("notEnoughConnections", 6).title, "No Connections Yet");
   assert.equal(emptyCopy(undefined, 6).title, "Choose Two Performers");
+  assert.equal(emptyCopy("noPath", 6, "Alpha", "Charlie", true).title, "No Duos-Only Chain Within 6 Degrees");
+  assert.equal(emptyCopy("notEnoughConnections", 6, null, null, true).title, "No Duos-Only Connections");
+  assert.equal(emptyCopy("noYearSpan", 6).title, "No Chain Across the Years");
 });
 
 test("performer search results keep only what the widget shows", () => {
@@ -117,7 +140,10 @@ test("performer search results keep only what the widget shows", () => {
 
 test("the footer says how the pair was chosen and what was searched", () => {
   assert.equal(
-    footerText({ chain, maxDegrees: 6, performerCount: 5790, videoCount: 21005 }),
+    footerText({ chain, preset: "random", maxDegrees: 6, performerCount: 5790, videoCount: 21005 }),
     `Random pair · shortest path within 6 degrees · searched ${(5790).toLocaleString()} performers and ${(21005).toLocaleString()} shared videos`);
-  assert.match(footerText({ chain: { ...chain, isRandom: false }, maxDegrees: 3, performerCount: 1, videoCount: 1 }), /^Chosen pair/);
+  assert.match(footerText({ chain, preset: null, maxDegrees: 3, performerCount: 1, videoCount: 1 }), /^Chosen pair · /);
+  assert.match(footerText({ chain, preset: "years", startFirstYear: 1981, endLastYear: 2025, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Across the years · 1981 to 2025 · /);
+  assert.match(footerText({ chain, preset: "hub", hubAverageDegrees: 3.1, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /closest to everyone else, 3.1 degrees away on average/);
+  assert.match(footerText({ chain, preset: "longest", duosOnly: true, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Longest chain · shortest path within 6 degrees · duos only · /);
 });

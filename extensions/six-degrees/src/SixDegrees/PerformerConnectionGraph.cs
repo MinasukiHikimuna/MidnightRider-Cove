@@ -25,16 +25,38 @@ public sealed record PerformerConnectionSearchResponse(
     string? EmptyReason,
     int MaxDegrees,
     int PerformerCount,
-    int VideoCount);
+    int VideoCount)
+{
+    /// <summary>The preset that chose the pair, or null for a pair the viewer chose.</summary>
+    public string? Preset { get; init; }
+    public bool DuosOnly { get; init; }
+    /// <summary>Across the years: the year of the start performer's first video.</summary>
+    public int? StartFirstYear { get; init; }
+    /// <summary>Across the years: the year of the end performer's latest video.</summary>
+    public int? EndLastYear { get; init; }
+    /// <summary>Your Johnny Sins: the hub's average distance to every performer it reaches.</summary>
+    public double? HubAverageDegrees { get; init; }
+}
+
+public sealed record YearSpanPath(PerformerConnectionPath Path, int StartFirstYear, int EndLastYear);
+
+public sealed record ConnectionHub(int PerformerId, double AverageDegrees);
 
 public sealed class PerformerConnectionGraph
 {
     private readonly Dictionary<int, PerformerConnectionPerson> _performers = [];
     private readonly Dictionary<int, PerformerConnectionVideo> _videos = [];
+    private const int HubCandidateCount = 25;
+    private const int YearSpanStartAttempts = 64;
     private readonly Dictionary<int, int[]> _videoIdsByPerformer;
     private readonly Dictionary<int, int[]> _performerIdsByVideo;
+    private readonly Dictionary<int, string> _firstVideoDates = [];
+    private readonly Dictionary<int, string> _lastVideoDates = [];
 
-    public PerformerConnectionGraph(IEnumerable<PerformerConnectionAppearance> appearances)
+    /// <param name="appearances">Every visible performer appearance.</param>
+    /// <param name="duosOnly">Link performers only through videos with exactly two performers, so a
+    /// large cast cannot shortcut a chain. Performers keep their full visible video counts and dates.</param>
+    public PerformerConnectionGraph(IEnumerable<PerformerConnectionAppearance> appearances, bool duosOnly = false)
     {
         var videoIdsByPerformer = new Dictionary<int, HashSet<int>>();
         var performerIdsByVideo = new Dictionary<int, HashSet<int>>();
@@ -48,6 +70,18 @@ public sealed class PerformerConnectionGraph
             _videos.TryAdd(appearance.Video.Id, appearance.Video);
             GetOrAdd(videoIdsByPerformer, appearance.Performer.Id).Add(appearance.Video.Id);
             GetOrAdd(performerIdsByVideo, appearance.Video.Id).Add(appearance.Performer.Id);
+            RecordDate(appearance.Performer.Id, appearance.Video.Date);
+        }
+
+        var visibleVideoCounts = videoIdsByPerformer.ToDictionary(pair => pair.Key, pair => pair.Value.Count);
+        if (duosOnly)
+        {
+            foreach (var (videoId, performerIds) in performerIdsByVideo.Where(pair => pair.Value.Count != 2).ToArray())
+            {
+                performerIdsByVideo.Remove(videoId);
+                foreach (var performerId in performerIds)
+                    videoIdsByPerformer[performerId].Remove(videoId);
+            }
         }
 
         _videoIdsByPerformer = videoIdsByPerformer.ToDictionary(
@@ -59,8 +93,7 @@ public sealed class PerformerConnectionGraph
 
         foreach (var performerId in _performers.Keys.ToArray())
         {
-            var visibleVideoCount = _videoIdsByPerformer.GetValueOrDefault(performerId)?.Length ?? 0;
-            _performers[performerId] = _performers[performerId] with { VideoCount = visibleVideoCount };
+            _performers[performerId] = _performers[performerId] with { VideoCount = visibleVideoCounts.GetValueOrDefault(performerId) };
         }
     }
 
@@ -90,17 +123,12 @@ public sealed class PerformerConnectionGraph
         if (maxDegrees < 1)
             return null;
 
-        var connectedPerformers = _performers.Keys
-            .Where(HasNeighbor)
-            .Order()
-            .ToArray();
+        var connectedPerformers = ConnectedPerformers();
         if (connectedPerformers.Length == 0)
             return null;
 
         var startPerformerId = connectedPerformers[SeededIndex(seed, connectedPerformers.Length, 0x9e3779b9u)];
         var traversal = Traverse(startPerformerId, maxDegrees, targetPerformerId: null);
-        if (traversal.Depths.Count <= 1)
-            return null;
 
         // Any performer the start can reach is an equally likely partner, so the pair's distance
         // follows the library's own shape instead of always stretching to the degree limit.
@@ -110,6 +138,162 @@ public sealed class PerformerConnectionGraph
             .ToArray();
         var endPerformerId = targets[SeededIndex(seed, targets.Length, 0x85ebca6bu)];
         return BuildPath(startPerformerId, endPerformerId, traversal.Predecessors, isRandom: true);
+    }
+
+    /// <summary>
+    /// Approximates the longest chain by searching twice: from a random start to one of the performers
+    /// furthest from it, then from there to one of the performers furthest from that. Each seed starts
+    /// somewhere else, so repeated shuffles visit different far-apart pairs.
+    /// </summary>
+    public PerformerConnectionPath? FindLongestPath(int seed, int maxDegrees)
+    {
+        if (maxDegrees < 1)
+            return null;
+
+        var connectedPerformers = ConnectedPerformers();
+        if (connectedPerformers.Length == 0)
+            return null;
+
+        var firstId = connectedPerformers[SeededIndex(seed, connectedPerformers.Length, 0x9e3779b9u)];
+        var startId = PickDeepest(Traverse(firstId, maxDegrees, targetPerformerId: null), seed, 0xc2b2ae35u);
+        var traversal = Traverse(startId, maxDegrees, targetPerformerId: null);
+        var endId = PickDeepest(traversal, seed, 0x27d4eb2fu);
+        return endId == startId ? null : BuildPath(startId, endId, traversal.Predecessors, isRandom: true);
+    }
+
+    /// <summary>
+    /// Connects a performer from the oldest tenth of the library, by first video, to one from the newest
+    /// tenth, by latest video, trying seeded starts until one reaches the newest tenth within the limit.
+    /// </summary>
+    public YearSpanPath? FindPathAcrossYears(int seed, int maxDegrees)
+    {
+        if (maxDegrees < 1)
+            return null;
+
+        var dated = ConnectedPerformers().Where(_firstVideoDates.ContainsKey).ToArray();
+        if (dated.Length < 2)
+            return null;
+
+        var tenth = Math.Max(1, (dated.Length + 9) / 10);
+        var oldest = dated
+            .OrderBy(id => _firstVideoDates[id], StringComparer.Ordinal)
+            .ThenBy(id => id)
+            .Take(tenth)
+            .ToArray();
+        var newest = dated
+            .OrderByDescending(id => _lastVideoDates[id], StringComparer.Ordinal)
+            .ThenBy(id => id)
+            .Take(tenth)
+            .ToHashSet();
+
+        foreach (var startId in SeededShuffle(oldest, seed).Take(YearSpanStartAttempts))
+        {
+            var traversal = Traverse(startId, maxDegrees, targetPerformerId: null);
+            var ends = traversal.Depths.Keys
+                .Where(id => id != startId && newest.Contains(id))
+                .Order()
+                .ToArray();
+            if (ends.Length == 0)
+                continue;
+
+            var endId = ends[SeededIndex(seed, ends.Length, 0x85ebca6bu)];
+            return new(
+                BuildPath(startId, endId, traversal.Predecessors, isRandom: true),
+                Year(_firstVideoDates[startId]),
+                Year(_lastVideoDates[endId]));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The library's own Johnny Sins: among the performers with the most co-appearances, the one that reaches
+    /// the most performers, closest on average.
+    /// </summary>
+    public ConnectionHub? FindHub()
+    {
+        var candidates = ConnectedPerformers()
+            .OrderByDescending(CoAppearanceCount)
+            .ThenBy(id => id)
+            .Take(HubCandidateCount)
+            .ToArray();
+
+        ConnectionHub? best = null;
+        var bestReach = 0;
+        foreach (var candidateId in candidates)
+        {
+            var depths = Traverse(candidateId, int.MaxValue, targetPerformerId: null).Depths;
+            var reach = depths.Count - 1;
+            var average = reach == 0 ? 0 : depths.Values.Sum() / (double)reach;
+            if (best is null || reach > bestReach || (reach == bestReach && average < best.AverageDegrees))
+            {
+                best = new(candidateId, Math.Round(average, 1));
+                bestReach = reach;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>A seeded random performer's shortest path to the hub, like the original game.</summary>
+    public PerformerConnectionPath? FindPathToHub(int seed, int maxDegrees, int hubPerformerId)
+    {
+        if (maxDegrees < 1 || !_performers.ContainsKey(hubPerformerId))
+            return null;
+
+        var starts = Traverse(hubPerformerId, maxDegrees, targetPerformerId: null).Depths.Keys
+            .Where(id => id != hubPerformerId)
+            .Order()
+            .ToArray();
+        if (starts.Length == 0)
+            return null;
+
+        var startId = starts[SeededIndex(seed, starts.Length, 0x9e3779b9u)];
+        return FindShortestPath(startId, hubPerformerId, maxDegrees) is { } path ? path with { IsRandom = true } : null;
+    }
+
+    private int[] ConnectedPerformers()
+        => _performers.Keys.Where(HasNeighbor).Order().ToArray();
+
+    private int PickDeepest(Traversal traversal, int seed, uint salt)
+    {
+        var deepest = traversal.Depths.Values.Max();
+        var candidates = traversal.Depths
+            .Where(pair => pair.Value == deepest)
+            .Select(pair => pair.Key)
+            .Order()
+            .ToArray();
+        return candidates[SeededIndex(seed, candidates.Length, salt)];
+    }
+
+    private int CoAppearanceCount(int performerId)
+        => _videoIdsByPerformer.TryGetValue(performerId, out var videoIds)
+            ? videoIds.Sum(videoId => _performerIdsByVideo.TryGetValue(videoId, out var cast) ? cast.Length - 1 : 0)
+            : 0;
+
+    private void RecordDate(int performerId, string? date)
+    {
+        if (date is not { Length: >= 4 } || !char.IsAsciiDigit(date[0]))
+            return;
+        if (!_firstVideoDates.TryGetValue(performerId, out var first) || string.CompareOrdinal(date, first) < 0)
+            _firstVideoDates[performerId] = date;
+        if (!_lastVideoDates.TryGetValue(performerId, out var last) || string.CompareOrdinal(date, last) > 0)
+            _lastVideoDates[performerId] = date;
+    }
+
+    private static int Year(string date) => int.Parse(date.AsSpan(0, 4));
+
+    private static IEnumerable<int> SeededShuffle(int[] items, int seed)
+    {
+        var shuffled = items.ToArray();
+        var state = unchecked((uint)seed) ^ 0x165667b1u;
+        for (var index = shuffled.Length - 1; index > 0; index--)
+        {
+            state = unchecked(state * 1664525u + 1013904223u);
+            var swap = (int)((state >> 8) % (uint)(index + 1));
+            (shuffled[index], shuffled[swap]) = (shuffled[swap], shuffled[index]);
+        }
+        return shuffled;
     }
 
     private Traversal Traverse(int startPerformerId, int maxDegrees, int? targetPerformerId)

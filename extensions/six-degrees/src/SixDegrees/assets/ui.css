@@ -1,5 +1,6 @@
 .sd,
 .sd-picker,
+.sd-menu,
 .sd-editor {
   --sd-fg: var(--color-foreground, #f5f5f7);
   --sd-muted: var(--color-muted, #8e8e93);
@@ -23,6 +24,7 @@
 
 .sd button,
 .sd-picker button,
+.sd-menu button,
 .sd-editor button {
   font: inherit;
   color: inherit;
@@ -160,6 +162,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+.sd-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-count svg {
+  flex-shrink: 0;
+}
+
 /* Header */
 
 .sd-header {
@@ -223,6 +236,15 @@
   background: var(--sd-fill-strong);
 }
 
+.sd-chip--highlight {
+  background: color-mix(in srgb, var(--sd-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sd-accent) 45%, transparent);
+}
+
+.sd-chip--highlight .sd-chip__label {
+  color: var(--sd-accent);
+}
+
 .sd-chip--empty {
   background: transparent;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sd-fg) 22%, transparent);
@@ -271,32 +293,58 @@
   color: var(--sd-muted);
 }
 
+/* Split button: Shuffle draws another chain of the current type, the chevron opens the chain type menu. */
 .sd-shuffle {
   display: inline-flex;
-  width: 44px;
   height: 44px;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
   grid-area: shuffle;
-  border: 0;
+  overflow: hidden;
   border-radius: 22px;
   background: var(--sd-fill-strong);
+}
+
+.sd-shuffle__run,
+.sd-shuffle__menu {
+  display: inline-flex;
+  height: 44px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
   cursor: pointer;
   font-size: 15px;
   font-weight: 600;
-  transition: background-color 160ms var(--sd-ease), transform 160ms var(--sd-ease);
+  transition: background-color 160ms var(--sd-ease);
 }
 
-.sd-shuffle:hover {
-  background: color-mix(in srgb, var(--sd-fg) 20%, transparent);
+.sd-shuffle__run {
+  padding: 0 10px 0 13px;
 }
 
-.sd-shuffle:active {
-  transform: scale(0.96);
+.sd-shuffle__menu {
+  padding: 0 12px 0 8px;
+  color: color-mix(in srgb, var(--sd-fg) 78%, transparent) !important;
+  font-size: 14px;
 }
 
-.sd-shuffle__label {
+.sd-shuffle__run:hover,
+.sd-shuffle__menu:hover {
+  background: var(--sd-fill);
+}
+
+.sd .sd-shuffle :is(.sd-shuffle__run, .sd-shuffle__menu):focus-visible {
+  outline-offset: -3px;
+}
+
+.sd-shuffle__divider {
+  width: 1px;
+  height: 24px;
+  background: var(--sd-fill-strong);
+}
+
+.sd-shuffle__label,
+.sd-shuffle__preset {
   display: none;
 }
 
@@ -974,12 +1022,12 @@
     font-size: 15px;
   }
 
-  .sd-shuffle {
-    width: auto;
-    padding: 0 18px;
+  .sd-shuffle__run {
+    padding: 0 14px 0 18px;
   }
 
-  .sd-shuffle__label {
+  .sd-shuffle__label,
+  .sd-shuffle__preset {
     display: inline;
   }
 
@@ -1024,7 +1072,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .sd *,
-  .sd-picker * {
+  .sd-picker *,
+  .sd-menu *,
+  .sd-editor * {
     animation: none !important;
     transition: none !important;
   }
@@ -1196,6 +1246,12 @@
   white-space: nowrap;
 }
 
+.sd-picker__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sd-picker__meta,
 .sd-picker__note {
   color: var(--sd-muted);
@@ -1222,6 +1278,224 @@
 
   .sd-picker__grabber {
     display: block;
+  }
+}
+
+/* Chain type menu: a panel under the split button, or a bottom sheet on phones */
+
+.sd-menu {
+  position: fixed;
+  inset: var(--sd-menu-top, 96px) var(--sd-menu-right, 16px) auto auto;
+  box-sizing: border-box;
+  width: min(24rem, calc(100vw - 16px));
+  max-width: none;
+  max-height: calc(100dvh - var(--sd-menu-top, 96px) - 16px);
+  margin: 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--sd-fg) 6%, var(--sd-surface));
+  padding: 0;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 50%), 0 0 0 1px var(--sd-hairline);
+}
+
+.sd-menu::backdrop {
+  background: transparent;
+}
+
+.sd-menu__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+}
+
+.sd-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 12px;
+}
+
+.sd-menu__header h3 {
+  margin: 0;
+  color: var(--sd-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sd-menu__options,
+.sd-editor__options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sd-menu__divider {
+  height: 1px;
+  margin: 6px 12px;
+  background: var(--sd-hairline);
+}
+
+.sd-option,
+.sd-toggle {
+  position: relative;
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 160ms var(--sd-ease);
+}
+
+.sd-option {
+  grid-template-columns: 40px minmax(0, 1fr) 20px;
+  min-height: 64px;
+  padding: 8px 12px 8px 8px;
+}
+
+.sd-option--compact {
+  grid-template-columns: minmax(0, 1fr) 20px;
+  min-height: 52px;
+  padding: 8px 12px;
+}
+
+.sd-option:hover,
+.sd-toggle:hover {
+  background: var(--sd-fill-subtle);
+}
+
+.sd-option:has(input:checked) {
+  background: var(--sd-fill);
+}
+
+.sd-option input,
+.sd-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.sd-option:has(input:focus-visible),
+.sd-toggle:has(input:focus-visible) .sd-toggle__track {
+  outline: 2px solid var(--sd-accent);
+  outline-offset: 2px;
+}
+
+.sd-option__icon {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sd-accent) 14%, transparent);
+  color: var(--sd-accent);
+}
+
+.sd-option__text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sd-option__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sd-option__description {
+  color: var(--sd-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.sd-option__check {
+  color: var(--sd-accent);
+  font-size: 16px;
+  font-weight: 700;
+  opacity: 0;
+}
+
+.sd-option:has(input:checked) .sd-option__check {
+  opacity: 1;
+}
+
+.sd-toggle {
+  grid-template-columns: minmax(0, 1fr) 44px;
+  min-height: 60px;
+  padding: 8px 12px;
+}
+
+.sd-toggle__track {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--sd-fg) 18%, transparent);
+  transition: background-color 160ms var(--sd-ease);
+}
+
+.sd-toggle__track::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #ffffff;
+  content: "";
+  transition: transform 160ms var(--sd-ease);
+}
+
+.sd-toggle:has(input:checked) .sd-toggle__track {
+  background: var(--sd-accent);
+}
+
+.sd-toggle:has(input:checked) .sd-toggle__track::after {
+  transform: translateX(18px);
+}
+
+.sd-toggle--editor {
+  background: var(--sd-fill-subtle);
+  padding: 10px 16px;
+}
+
+.sd-editor__options {
+  border-radius: 12px;
+  background: var(--sd-fill-subtle);
+  padding: 4px;
+}
+
+@media (max-width: 600px) {
+  .sd-menu {
+    inset: auto 0 0;
+    width: 100%;
+    max-height: 86dvh;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .sd-menu::backdrop {
+    background: rgb(0 0 0 / 55%);
+  }
+
+  .sd-menu__body {
+    padding: 8px 16px 20px;
+  }
+
+  .sd-menu .sd-picker__grabber {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .sd-menu__header h3 {
+    color: var(--sd-fg);
+    font-size: 20px;
+    font-weight: 700;
   }
 }
 
@@ -1270,29 +1544,6 @@
   color: var(--sd-muted);
   font-size: 13px;
   line-height: 1.4;
-}
-
-.sd-segmented {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  border-radius: 12px;
-  background: var(--sd-fill);
-  padding: 4px;
-}
-
-.sd-segmented button {
-  min-height: 40px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.sd-segmented button[aria-pressed="true"] {
-  background: var(--sd-fill-strong);
 }
 
 .sd-editor__pair {

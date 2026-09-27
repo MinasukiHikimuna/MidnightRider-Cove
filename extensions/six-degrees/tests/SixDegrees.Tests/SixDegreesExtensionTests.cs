@@ -47,6 +47,7 @@ public sealed class SixDegreesExtensionTests
         Assert.Equal(6, configuration.GetProperty("maxDegrees").GetInt32());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, configuration.GetProperty("startPerformerId").ValueKind);
         Assert.Equal(System.Text.Json.JsonValueKind.Null, configuration.GetProperty("endPerformerId").ValueKind);
+        Assert.False(configuration.GetProperty("duosOnly").GetBoolean());
     }
 
     [Fact]
@@ -110,6 +111,16 @@ public sealed class SixDegreesExtensionTests
         var response = await app.GetTestClient().GetAsync($"{EndpointPath}?maxDegrees=7");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task EndpointRejectsAnUnknownPresetBeforeReadingTheLibrary()
+    {
+        await using var app = await StartEndpointAppAsync(principal: null, authEnabled: false);
+
+        var response = await app.GetTestClient().GetAsync($"{EndpointPath}?maxDegrees=6&preset=widest");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

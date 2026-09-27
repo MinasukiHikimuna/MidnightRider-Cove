@@ -17,6 +17,7 @@ public sealed class SixDegreesExtension : FullExtensionBase
     private const int MaximumGraphAppearances = 250_000;
     private static readonly string[] ConnectionGraphPermissions =
         [Permissions.PerformersRead, Permissions.VideosRead];
+    private static readonly string[] Presets = ["random", "longest", "years", "hub"];
 
     public override UIManifest GetUIManifest()
         => ManifestBuilder()
@@ -34,6 +35,7 @@ public sealed class SixDegreesExtension : FullExtensionBase
                     startPerformerId = (int?)null,
                     endPerformerId = (int?)null,
                     maxDegrees = 6,
+                    duosOnly = false,
                 }),
                 AllowMultiple: false,
                 Order: 90)
@@ -56,6 +58,8 @@ public sealed class SixDegreesExtension : FullExtensionBase
         int? endPerformerId,
         int? maxDegrees,
         int? seed,
+        string? preset,
+        bool? duosOnly,
         CoveConfiguration configuration,
         ICurrentPrincipalAccessor principalAccessor,
         IAuditService audit,
@@ -106,6 +110,9 @@ public sealed class SixDegreesExtension : FullExtensionBase
             return Results.BadRequest(new { detail = "Choose both performers or neither performer." });
         if (startPerformerId is <= 0 || endPerformerId is <= 0)
             return Results.BadRequest(new { detail = "Performer identifiers must be positive." });
+        var presetName = preset ?? "random";
+        if (!Presets.Contains(presetName))
+            return Results.BadRequest(new { detail = $"Preset must be one of {string.Join(", ", Presets)}." });
 
         var rows = await (
             from appearance in db.Set<VideoPerformer>().AsNoTracking()
@@ -144,31 +151,50 @@ public sealed class SixDegreesExtension : FullExtensionBase
                 row.VideoId,
                 string.IsNullOrWhiteSpace(row.VideoTitle) ? "Untitled video" : row.VideoTitle,
                 row.VideoDate?.ToString("yyyy-MM-dd"),
-                VersionedImageUrl("videos", row.VideoId, row.VideoUpdatedAt, 960)))));
+                VersionedImageUrl("videos", row.VideoId, row.VideoUpdatedAt, 960)))),
+            duosOnly ?? false);
 
-        PerformerConnectionPath? chain;
-        string? emptyReason;
-        if (startPerformerId.HasValue && endPerformerId.HasValue)
-        {
-            var startAvailable = graph.ContainsPerformer(startPerformerId.Value);
-            var endAvailable = graph.ContainsPerformer(endPerformerId.Value);
-            chain = startAvailable && endAvailable
-                ? graph.FindShortestPath(startPerformerId.Value, endPerformerId.Value, degreeLimit)
-                : null;
-            emptyReason = !startAvailable || !endAvailable ? "performerUnavailable" : chain is null ? "noPath" : null;
-        }
-        else
-        {
-            chain = graph.FindRandomPath(seed ?? 0, degreeLimit);
-            emptyReason = chain is null ? "notEnoughConnections" : null;
-        }
+        var response = startPerformerId.HasValue && endPerformerId.HasValue
+            ? SearchPair(graph, startPerformerId.Value, endPerformerId.Value, degreeLimit)
+            : SearchPreset(graph, presetName, seed ?? 0, degreeLimit);
+        return Results.Ok(response with { DuosOnly = duosOnly ?? false });
+    }
 
-        return Results.Ok(new PerformerConnectionSearchResponse(
-            chain,
-            emptyReason,
-            degreeLimit,
-            graph.PerformerCount,
-            graph.VideoCount));
+    private static PerformerConnectionSearchResponse SearchPair(
+        PerformerConnectionGraph graph,
+        int startPerformerId,
+        int endPerformerId,
+        int degreeLimit)
+    {
+        var available = graph.ContainsPerformer(startPerformerId) && graph.ContainsPerformer(endPerformerId);
+        var chain = available ? graph.FindShortestPath(startPerformerId, endPerformerId, degreeLimit) : null;
+        var emptyReason = !available ? "performerUnavailable" : chain is null ? "noPath" : null;
+        return new(chain, emptyReason, degreeLimit, graph.PerformerCount, graph.VideoCount);
+    }
+
+    private static PerformerConnectionSearchResponse SearchPreset(
+        PerformerConnectionGraph graph,
+        string preset,
+        int seed,
+        int degreeLimit)
+    {
+        PerformerConnectionSearchResponse Result(PerformerConnectionPath? chain, string emptyReason = "notEnoughConnections")
+            => new(chain, chain is null ? emptyReason : null, degreeLimit, graph.PerformerCount, graph.VideoCount) { Preset = preset };
+
+        switch (preset)
+        {
+            case "longest":
+                return Result(graph.FindLongestPath(seed, degreeLimit));
+            case "years":
+                var span = graph.FindPathAcrossYears(seed, degreeLimit);
+                return Result(span?.Path, "noYearSpan") with { StartFirstYear = span?.StartFirstYear, EndLastYear = span?.EndLastYear };
+            case "hub":
+                var hub = graph.FindHub();
+                var toHub = hub is null ? null : graph.FindPathToHub(seed, degreeLimit, hub.PerformerId);
+                return Result(toHub) with { HubAverageDegrees = hub?.AverageDegrees };
+            default:
+                return Result(graph.FindRandomPath(seed, degreeLimit));
+        }
     }
 
     private static string VersionedImageUrl(string entityType, int id, DateTime updatedAt, int max)
