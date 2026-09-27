@@ -16,14 +16,15 @@ for (const [statement, stub] of runtimeImports) {
 const {
   anniversaryYears,
   clamp,
+  countLabel,
   dailyKey,
   deterministicShuffle,
   formatDuration,
   isoDate,
+  mosaicCells,
   readSettings,
   selectMemories,
   stableSeed,
-  yearRail,
   yearsAgoLabel,
 } = await import(`data:text/javascript,${encodeURIComponent(testable)}`);
 
@@ -65,15 +66,23 @@ test("selected memories are listed newest first with the sample's first pick fea
   assert.deepEqual(selectMemories([], 3, seed), { memories: [], featuredYear: null });
 });
 
-test("the year rail covers every searched year oldest first and marks the selection", () => {
-  const rail = yearRail(new Date(2026, 8, 27), 5, [{ year: 2025 }, { year: 2023 }], 2023);
-  assert.deepEqual(rail, [
-    { year: 2021, state: "empty" },
-    { year: 2022, state: "empty" },
-    { year: 2023, state: "selected" },
-    { year: 2024, state: "empty" },
-    { year: 2025, state: "shown" },
-  ]);
+test("counts read naturally", () => {
+  assert.equal(countLabel(1), "1 video");
+  assert.equal(countLabel(7), "7 videos");
+  assert.equal(countLabel(1200), `${(1200).toLocaleString()} videos`);
+});
+
+test("year thumbnails tile up to four stills without leaving a cell empty", () => {
+  const covered = (cells) => cells.reduce((sum, cell) => {
+    const span = (value) => { const [start, end] = value.split(" / ").map(Number); return end - start; };
+    return sum + span(cell.column) * span(cell.row);
+  }, 0);
+  for (const count of [1, 2, 3, 4, 8]) {
+    const cells = mosaicCells(count);
+    assert.equal(cells.length, Math.min(4, count));
+    assert.equal(covered(cells), 4, `${count} stills should cover the 2×2 grid`);
+  }
+  assert.equal(mosaicCells(0).length, 1);
 });
 
 test("durations use clock notation", () => {
