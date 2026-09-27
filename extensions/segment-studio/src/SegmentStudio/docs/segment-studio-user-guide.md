@@ -327,6 +327,25 @@ review workflow. When an AI model emits a label that is not yet a Cove tag,
 Segment Studio creates that source tag so the result is not silently discarded.
 Basic mode does not expose Full Scan or this review workflow.
 
+### Run AI
+
+The **Run AI** dialog that the AI Core extension adds to a video's page offers
+Segment Studio's AI tagging capability, **AI Tagging (Segment Studio review)**.
+It adds the run's tag predictions to the Full review workflow as unreviewed
+drafts; no segment is published until a review is completed. When an AI model
+emits a label that is not yet a Cove tag, Segment Studio creates that tag so the
+result is not silently discarded.
+
+Segment Studio requires AI Core. It uses the AI contract that AI Core ships, so
+Cove does not load Segment Studio unless AI Core is installed.
+
+Segment Studio writes these drafts after the run's analysis finishes, as part of
+the AI run rather than on behalf of a signed-in user. Starting a run needs only
+AI Core's permission to run AI (`cove.community.ai.core.runs.run`): Segment
+Studio's own segment, job and tag permissions, and the user's Basic or Full
+mode, are not checked, so anyone who can run AI on a video can add drafts and
+create new tags for it. Basic mode keeps those drafts but does not show them.
+
 ### Create and edit a draft
 
 Press **A** to create a segment of up to 20 seconds at the playhead, then set its

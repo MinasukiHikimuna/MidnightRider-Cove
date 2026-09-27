@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AI.Extensions.Abstractions;
 using Cove.Plugins;
 using Cove.Sdk;
 using Cove.Core.Auth;
@@ -51,6 +52,13 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         services.AddScoped<ISegmentLineageDeletionService, SegmentLineageDeletionService>();
         services.AddScoped<ILineageIntegrityService, LineageIntegrityService>();
         services.AddScoped<INativeAiProvenanceIngestionService, NativeAiProvenanceIngestionService>();
+        services.AddScoped<IAiTaggingProjectionService, AiTaggingProjectionService>();
+        // Surfaces AI tagging in AI Core's Run AI dialog. Exactly one contributor
+        // per extension: AI Core dispatches a run's claims to one contributor per
+        // extension id, so a second registration here would be silently ignored along
+        // with every claim it owns. Singleton because AI Core resolves contributors
+        // once from the exchange; it opens its own scope per dispatch.
+        services.AddSingleton<IAiCapabilityContributor, SegmentStudioAiContributor>();
         services.AddScoped<INativeSegmentImportService, NativeSegmentImportService>();
     }
 
@@ -97,6 +105,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
     public override Task InitializeAsync(IServiceProvider services, CancellationToken ct = default)
     {
+        PublishContributions<IAiCapabilityContributor>(services);
         _cleanupCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _cleanupTask = services.GetRequiredService<SegmentStudioBlobCleanupWorker>()
             .RunAsync(_cleanupCancellation.Token);

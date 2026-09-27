@@ -11,5 +11,9 @@
   "uiBuildDirectory": "src/SegmentStudio/ui",
   "uiTest": "tests/SegmentStudio.Tests/SegmentStudioUi.test.mjs",
   "pythonTests": "tests/SegmentStudio.Tests/SegmentStudioMarkerMigration.test.py tests/SegmentStudio.Tests/SegmentStudioMarkerReplacement.test.py tests/SegmentStudio.Tests/SegmentStudioLineageMigration.test.py",
-  "docs": "src/SegmentStudio/docs"
+  "docs": "src/SegmentStudio/docs",
+  "aiExtensionsAbstractions": {
+    "url": "https://github.com/skier233/AI.Extensions/releases/download/ai-core/v0.6.0/cove.community.ai.core-0.6.0.zip",
+    "sha256": "6950acdd33b37584d6ff762e44214675d86ece11da054209a37ee52ad6f0d8a9"
+  }
 }

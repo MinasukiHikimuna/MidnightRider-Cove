@@ -11,7 +11,12 @@
   ],
   "minCoveVersion": "1.4.0-rc.1",
   "entryDll": "SegmentStudio.dll",
+  "sharedAssemblies": [
+    "AI.Extensions.Abstractions"
+  ],
   "jsBundle": "dist/ui.mjs",
   "cssBundle": "dist/ui.css",
-  "dependencies": {}
+  "dependencies": {
+    "cove.community.ai.core": ">=0.6.0"
+  }
 }

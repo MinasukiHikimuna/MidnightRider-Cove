@@ -8,6 +8,20 @@
     <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
     <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>
+    <!--
+      AI.Extensions.Abstractions carries the IAiCapabilityContributor contract shared with
+      AI Core. The host does not provide it and Segment Studio does not ship it: AI Core
+      ships it (the other AI extensions bundle copies too, and all of them require AI Core),
+      and extension.json's sharedAssemblies makes the host load one shared copy for every
+      extension that declares it. Segment Studio compiles against a copy taken from an AI
+      Core release, resolved in this order:
+        1. an explicit AiExtensionsAbstractionsPath, from -p: or the environment (CI
+           downloads the AI Core release pinned in release.json and sets it);
+        2. the copy installed in the app instance of the codebay Cove checkout named by
+           CoveSourceRoot or COVE_SOURCE_ROOT.
+      When neither exists the build stops with an error (Directory.Build.targets).
+    -->
+    <AiExtensionsAbstractionsPath Condition="'$(AiExtensionsAbstractionsPath)' == '' and '$(CoveSourceRoot)' != ''">$(CoveSourceRoot)\gitignored\dev\instances\app\state\config\extensions\cove.community.ai.core\AI.Extensions.Abstractions.dll</AiExtensionsAbstractionsPath>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\..\cove\src\Cove.Sdk\Cove.Sdk.csproj')">$(MSBuildThisFileDirectory)..\..\..\cove</CoveSourceRoot>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == '' and Exists('$(CoveSourceRoot)\src\Cove.Sdk\Cove.Sdk.csproj')">true</UseLocalCoveSource>
     <UseLocalCoveSource Condition="'$(UseLocalCoveSource)' == ''">false</UseLocalCoveSource>

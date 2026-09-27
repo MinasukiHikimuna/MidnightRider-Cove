@@ -22,6 +22,13 @@ const forbiddenAssemblyNames = new Set([
   "Pgvector.dll",
   "Pgvector.EntityFrameworkCore.dll",
 ]);
+// Assemblies another extension provides, with the extension that provides them.
+// AI Core ships the shared AI contract (the other AI extensions bundle copies too,
+// and all of them require AI Core), and the host loads one shared copy for every
+// extension that declares it. It is also licensed separately (CC BY-NC).
+const extensionProvidedAssemblies = new Map([
+  ["AI.Extensions.Abstractions.dll", "AI Core"],
+]);
 const errors = [];
 
 function isSafePackagePath(relativePath) {
@@ -79,6 +86,8 @@ for (const requiredFile of required) {
 for (const filePath of walkFiles(packageRoot)) {
   const fileName = path.basename(filePath);
   if (forbiddenAssemblyNames.has(fileName)) errors.push(`host-provided assembly must not be packaged: ${fileName}`);
+  const provider = extensionProvidedAssemblies.get(fileName);
+  if (provider) errors.push(`${fileName} must not be packaged: the ${provider} extension provides it`);
 }
 
 const manifestPath = path.join(packageRoot, "extension.json");

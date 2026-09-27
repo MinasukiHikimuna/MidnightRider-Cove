@@ -8,7 +8,10 @@ extension-owned drafts and derived segments.
 Its extension ID is `com.midnightrider.segment-studio`. The shorter
 `segment-studio` name remains in user-facing routes and internal data namespaces.
 
-Version 0.1.8 requires Cove 1.4.0-rc.1 or later.
+Version 0.1.8 requires Cove 1.4.0-rc.1 or later and the AI Core extension
+(`cove.community.ai.core`) 0.6.0 or later, which itself requires Cove 1.5.0.
+Segment Studio compiles against the AI contract that AI Core ships and does
+not load without it.
 
 The extension includes video discovery, a timeline-first editor, review and
 recycling-bin workflows, segment groups, provenance inspection, integrity
@@ -25,8 +28,19 @@ npm ci
 npm test
 npm run build
 cd ../../..
-dotnet test SegmentStudio.slnx --configuration Release
+dotnet test SegmentStudio.slnx --configuration Release \
+  -p:AiExtensionsAbstractionsPath=/path/to/AI.Extensions.Abstractions.dll
 ```
+
+Segment Studio compiles against `AI.Extensions.Abstractions.dll`, the AI
+contract that AI Core ships. Take it from the AI Core release pinned under
+`aiExtensionsAbstractions` in `release.json`: download that archive, check its
+SHA-256, and extract the DLL. Pass its path as above, or set the
+`AiExtensionsAbstractionsPath` environment variable. In a codebay, setting
+`COVE_SOURCE_ROOT` to the Cove checkout uses the copy installed in its app
+instance instead. Without either, the build stops with an error naming the
+property. Never package or commit the DLL: AI Core ships it under its own
+licence.
 
 The private migration operators under `scripts/` are not installed with the
 extension. Their PostgreSQL integration tests require

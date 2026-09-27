@@ -3,6 +3,7 @@ namespace SegmentStudio.Tests;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using AI.Extensions.Abstractions;
 using Cove.Core.Auth;
 using Cove.Core.Entities;
 using Cove.Core.Interfaces;
@@ -239,6 +240,42 @@ public sealed class SegmentOwnershipTransitionServiceTests
             .ToListAsync());
         Assert.Equal("unreviewed", (await fixture.Context
             .Set<SegmentStudioItem>().SingleAsync()).ReviewState);
+    }
+
+    [Fact]
+    public async Task AiTaggingDraftCanBeCollectedAsIncorrectExample()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var projection = new AiTaggingProjectionService(
+            new AiTaggingProjectionServiceTests.TestTagRepository(fixture.Context),
+            new SegmentSourceRegistry(),
+            new ProvenanceActivityService(),
+            new LineageNodeService(),
+            new SegmentProvenanceService());
+        await projection.ProjectAsync(
+            fixture.Context,
+            new AiTaggingProjectionRequest(
+                fixture.VideoId, 5, Guid.NewGuid(), "sha256:source",
+                [new AiTaggingCandidate("k1", "tag", "Activity", "Activity", 1, 3, 0.9, "actions", 2)])
+            {
+                AiRunId = "ai-run-1",
+                Models = [new AiModelDescriptor("actions_30", "actions_30", Categories: ["actions"], Version: "3.0")],
+            },
+            CancellationToken.None);
+        fixture.Context.ChangeTracker.Clear();
+        var draft = await fixture.Context.Set<SegmentStudioItem>()
+            .SingleAsync(item => item.SourceKey == AiTaggingProjectionService.SourceKey);
+
+        var collected = await IncorrectExampleService.CollectAsync(
+            fixture.Context, fixture.VideoId,
+            new(Guid.NewGuid(), null, draft.Id, null, draft.Revision),
+            CovePrincipal.System(), fixture.Authorization, fixture.Blobs,
+            CancellationToken.None);
+
+        Assert.Equal(SegmentTransitionStatus.Updated, collected.Status);
+        Assert.True(collected.Collected);
+        Assert.Equal(draft.Id, Assert.Single(
+            await IncorrectExampleService.ListAsync(fixture.Context, fixture.VideoId, CancellationToken.None)).ItemId);
     }
 
     [Fact]
@@ -3496,7 +3533,7 @@ public sealed class SegmentOwnershipTransitionServiceTests
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Ignore<Group>();
-            modelBuilder.Entity<Video>(builder => { builder.ToTable("videos"); builder.HasKey(video => video.Id); builder.Ignore(video => video.Studio); builder.Ignore(video => video.ParentVideo); builder.Ignore(video => video.ChildVideos); builder.Ignore(video => video.Urls); builder.Ignore(video => video.Files); builder.Ignore(video => video.VideoTags); builder.Ignore(video => video.VideoPerformers); builder.Ignore(video => video.VideoGalleries); builder.Ignore(video => video.GroupItems); builder.Ignore(video => video.RemoteIds); builder.Ignore(video => video.PlayHistory); });
+            modelBuilder.Entity<Video>(builder => { builder.ToTable("videos"); builder.HasKey(video => video.Id); builder.Ignore(video => video.PrimaryFile); builder.Ignore(video => video.Studio); builder.Ignore(video => video.ParentVideo); builder.Ignore(video => video.ChildVideos); builder.Ignore(video => video.Urls); builder.Ignore(video => video.Files); builder.Ignore(video => video.VideoTags); builder.Ignore(video => video.VideoPerformers); builder.Ignore(video => video.VideoGalleries); builder.Ignore(video => video.GroupItems); builder.Ignore(video => video.RemoteIds); builder.Ignore(video => video.PlayHistory); });
             modelBuilder.Entity<Tag>(builder => { builder.ToTable("tags"); builder.HasKey(tag => tag.Id); builder.Ignore(tag => tag.TagGroup); builder.Ignore(tag => tag.Aliases); builder.Ignore(tag => tag.ParentRelations); builder.Ignore(tag => tag.ChildRelations); builder.Ignore(tag => tag.RemoteIds); builder.Ignore(tag => tag.VideoTags); builder.Ignore(tag => tag.PerformerTags); builder.Ignore(tag => tag.ImageTags); builder.Ignore(tag => tag.GalleryTags); builder.Ignore(tag => tag.StudioTags); builder.Ignore(tag => tag.GroupTags); });
             modelBuilder.Entity<Segment>(builder => { builder.ToTable("segments"); builder.HasKey(segment => segment.Id); builder.Ignore(segment => segment.Tag); builder.Property(segment => segment.Payload).HasConversion(document => document == null ? null : document.RootElement.GetRawText(), json => json == null ? null : JsonDocument.Parse(json)); });
             modelBuilder.Entity<AiRun>(builder =>

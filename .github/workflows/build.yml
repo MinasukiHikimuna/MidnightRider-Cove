@@ -57,6 +57,12 @@ jobs:
             } else if (!fs.existsSync(path.join(entry.path, entry.ui))) {
               throw new Error(`${entry.path}/release.json references a missing ui: ${entry.ui}`);
             }
+            if (entry.aiExtensionsAbstractions) {
+              const { url, sha256 } = entry.aiExtensionsAbstractions;
+              if (!/^https:\/\//.test(url ?? '') || !/^[0-9a-f]{64}$/.test(sha256 ?? '')) {
+                throw new Error(`${entry.path}/release.json aiExtensionsAbstractions needs an https url and a lowercase sha256`);
+              }
+            }
           }
 
           if (entries.length === 0) throw new Error('No extension release descriptors found.');
@@ -121,6 +127,21 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: Fetch the AI Core contract assembly
+        # AI.Extensions.Abstractions is compiled against, never packaged: AI Core ships the
+        # copy the host loads. Take it from the pinned AI Core release and check its hash.
+        if: matrix.extension.aiExtensionsAbstractions
+        shell: bash
+        env:
+          ARCHIVE_URL: ${{ matrix.extension.aiExtensionsAbstractions.url }}
+          ARCHIVE_SHA256: ${{ matrix.extension.aiExtensionsAbstractions.sha256 }}
+        run: |
+          directory="$RUNNER_TEMP/ai-extensions-abstractions"
+          mkdir -p "$directory"
+          curl --fail --location --silent --show-error --retry 3 --retry-all-errors --output "$directory/ai-core.zip" "$ARCHIVE_URL"
+          echo "$ARCHIVE_SHA256  $directory/ai-core.zip" | sha256sum --check --strict
+          unzip -q -o "$directory/ai-core.zip" AI.Extensions.Abstractions.dll -d "$directory"
+          echo "AiExtensionsAbstractionsPath=$directory/AI.Extensions.Abstractions.dll" >> "$GITHUB_ENV"
       - name: Resolve version
         id: version
         shell: bash

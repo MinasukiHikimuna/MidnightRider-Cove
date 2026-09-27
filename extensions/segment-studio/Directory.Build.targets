@@ -60,4 +60,18 @@
     </ItemGroup>
   </Target>
 
+  <!--
+    AI.Extensions.Abstractions is referenced by path (see Directory.Build.props). Stop with an
+    actionable message when that path is missing, instead of a wall of unresolved AI types.
+  -->
+  <Target Name="SegmentStudioRequireAiExtensionsAbstractions" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_SegmentStudioAiExtensionsAbstractionsReference Include="@(Reference)"
+        Condition="'%(Identity)' == 'AI.Extensions.Abstractions'" />
+    </ItemGroup>
+    <Error
+      Condition="'@(_SegmentStudioAiExtensionsAbstractionsReference)' != '' and ('$(AiExtensionsAbstractionsPath)' == '' or !Exists('$(AiExtensionsAbstractionsPath)'))"
+      Text="AI.Extensions.Abstractions.dll was not found at '$(AiExtensionsAbstractionsPath)'. Pass -p:AiExtensionsAbstractionsPath=&lt;path&gt; with the DLL from an AI Core release, or set COVE_SOURCE_ROOT to a codebay Cove checkout whose app instance has AI Core installed." />
+  </Target>
+
 </Project>

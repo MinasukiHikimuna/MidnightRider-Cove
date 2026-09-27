@@ -6,6 +6,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- Shared AI contract, from the AI Core release SegmentStudio compiles against
+         (see Directory.Build.props); copied locally so the tests can load it. -->
+    <Reference Include="AI.Extensions.Abstractions">
+      <HintPath>$(AiExtensionsAbstractionsPath)</HintPath>
+      <Private>true</Private>
+    </Reference>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
