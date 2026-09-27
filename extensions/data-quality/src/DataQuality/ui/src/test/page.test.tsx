@@ -834,6 +834,90 @@ it("duplicates and reorders actions with fixed positional shortcuts", async () =
   expect(saved.actions[0].id).not.toBe("apply");
   expect(saved.actions[0].steps).toEqual(review.actions[0].steps);
 });
+function mockRoomTags() {
+  api.request.mockImplementation(async (path: string) => {
+    if (path === "/api/tags/find")
+      return {
+        items: [
+          { id: 41, name: "Kitchen", videoCount: 5 },
+          { id: 42, name: "Bedroom", videoCount: 9 },
+        ],
+        totalCount: 2,
+      };
+    if (path === "/api/tags/40") return { id: 40, name: "Rooms" };
+    return { available: true };
+  });
+}
+it("clears the added-actions confirmation once the actions change again", async () => {
+  mockRoomTags();
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add actions from parent tags…" }));
+  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), {
+    target: { value: "40" },
+  });
+  await screen.findByRole("group", { name: "Rooms" });
+  fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
+  expect(screen.getByText("Added 2 actions at the end.")).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: "Remove action" })[2]);
+  expect(screen.queryByText("Added 2 actions at the end.")).not.toBeInTheDocument();
+});
+it("clears the confirmation when the generator opens again and points the toggle at it", async () => {
+  mockRoomTags();
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+  const toggle = screen.getByRole("button", { name: "Add actions from parent tags…" });
+  expect(toggle).not.toHaveAttribute("aria-controls");
+  fireEvent.click(toggle);
+  const panel = screen.getByRole("group", { name: "Add actions from parent tags" });
+  expect(toggle).toHaveAttribute("aria-controls", panel.id);
+  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), {
+    target: { value: "40" },
+  });
+  await screen.findByRole("group", { name: "Rooms" });
+  fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
+  expect(screen.getByText("Added 2 actions at the end.")).toBeInTheDocument();
+  fireEvent.click(toggle);
+  expect(screen.queryByText("Added 2 actions at the end.")).not.toBeInTheDocument();
+});
+it("adds actions generated from a parent tag's children after the existing ones", async () => {
+  mockRoomTags();
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+  const open = screen.getByRole("button", { name: "Add actions from parent tags…" });
+  expect(open).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(open);
+  expect(open).toHaveAttribute("aria-expanded", "true");
+  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), {
+    target: { value: "40" },
+  });
+  const rooms = await screen.findByRole("group", { name: "Rooms" });
+  fireEvent.click(
+    within(rooms).getByRole("checkbox", { name: /Only one per video/ }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
+  expect(screen.getByText("Added 2 actions at the end.")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("group", { name: "Add actions from parent tags" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
+  const onlyOne = (id: number) => [
+    { mode: "ADD", tagIds: [id] },
+    { mode: "REMOVE_TREE", tagIds: [40] },
+  ];
+  expect(api.saveReviews.mock.calls[0][1][0].actions).toEqual([
+    review.actions[0],
+    { id: expect.any(String), label: "Bedroom", steps: onlyOne(42) },
+    { id: expect.any(String), label: "Kitchen", steps: onlyOne(41) },
+  ]);
+});
 it("saves explicitly reordered tag operations", async () => {
   api.loadReviews.mockResolvedValue({
     reviews: [

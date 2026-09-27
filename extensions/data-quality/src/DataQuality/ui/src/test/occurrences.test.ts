@@ -118,6 +118,41 @@ it("runs ordered actions only on the active occurrence without touching partner 
   });
 });
 
+it("keeps an answer the action adds when it removes the answer's tree", async () => {
+  const apps = [application(1, 11, 21), application(2, 11, 22), application(3, 11, 99)];
+  fetchMock.mockImplementation((path, options) => {
+    const route = String(path).split("?")[0];
+    if (route === "/api/videos/1") return response(video);
+    if (route === "/api/tags/20") return response({ id: 20, name: "Hair" });
+    if (route === "/api/tags/find")
+      return response({ items: [{ id: 21 }, { id: 22 }], totalCount: 2 });
+    if (options?.method === "DELETE") {
+      const id = Number(route.split("/").pop());
+      apps.splice(apps.findIndex((app) => app.id === id), 1);
+      return response({});
+    }
+    return response(apps);
+  });
+  await runOccurrenceAction(occurrenceReview, occurrence, {
+    id: "only-one",
+    label: "Pigtails",
+    steps: [
+      { mode: "ADD", tagIds: [22] },
+      { mode: "REMOVE_TREE", tagIds: [20] },
+    ],
+  });
+  const writes = fetchMock.mock.calls
+    .filter(
+      ([path, options]) =>
+        String(path).startsWith("/api/tagapplications") &&
+        ["POST", "DELETE"].includes(options?.method ?? ""),
+    )
+    .map(([path, options]) => `${options?.method} ${String(path)}`);
+  // Tag 22 was already there: it is neither deleted nor added again, only its sibling goes.
+  expect(writes).toEqual(["DELETE /api/tagapplications/1"]);
+  expect(apps.map((app) => app.tag.id)).toEqual([22, 99]);
+});
+
 it("stops ordered occurrence actions at the first failed step", async () => {
   fetchMock.mockImplementation((path, options) =>
     options?.method === "DELETE"

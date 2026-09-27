@@ -266,6 +266,52 @@ it("resolves removal trees once and computes ordered net changes without false c
   expect(noConflict.entries[0].status).toBe("unchanged");
 });
 
+it("keeps each answer's own tags out of its tree removal, whatever the step order", async () => {
+  fixtures(2);
+  add(1, 11, 23);
+  add(2, 11, 21);
+  trees[20] = [21, 22, 23];
+  const onlyOne = (id: string, tag: number): MediaReviewAction => ({
+    id,
+    label: `Only ${tag}`,
+    steps: [
+      { mode: "ADD", tagIds: [tag] },
+      { mode: "REMOVE_TREE", tagIds: [20] },
+    ],
+  });
+  const batch = await preview(rule, onlyOne("21", 21));
+  expect(batch.action.steps).toEqual([
+    { mode: "ADD", tagIds: [21] },
+    { mode: "REMOVE", tagIds: [20, 22, 23] },
+  ]);
+  expect(batch.entries.map((entry) => [entry.conflict, entry.status])).toEqual([
+    [true, "pending"],
+    [false, "unchanged"],
+  ]);
+  const reversed = await preview(rule, {
+    ...onlyOne("21", 21),
+    steps: [
+      { mode: "REMOVE_TREE", tagIds: [20] },
+      { mode: "ADD", tagIds: [21] },
+    ],
+  });
+  expect(reversed.action.steps).toEqual([
+    { mode: "REMOVE", tagIds: [20, 22, 23] },
+    { mode: "ADD", tagIds: [21] },
+  ]);
+  expect(
+    reversed.entries.map((entry) => planTags(entry.before.ids, reversed.action, [], true).desired),
+  ).toEqual([[21], [21]]);
+  await run(batch, true);
+  expect(ids(1)).toEqual([21]);
+  expect(ids(2)).toEqual([21]);
+  // Every answer spares only its own tags, so the later of two answers from one tree wins.
+  const both = await preview(rule, [onlyOne("21", 21), onlyOne("22", 22)]);
+  expect(
+    planTags([21], both.action, both.categories, true).desired,
+  ).toEqual([22]);
+});
+
 it("skips affected concurrent edits and detects replaced application identities", async () => {
   add(1, 11, 22);
   const batch = await preview();

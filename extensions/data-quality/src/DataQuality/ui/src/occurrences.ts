@@ -7,6 +7,7 @@ import {
   normalizeCriteria,
   request,
   readMedia,
+  resolveRemovalTrees,
   resolveTagTree,
   type MediaItem,
   type Tag,
@@ -50,15 +51,7 @@ export async function runOccurrenceAction(
   const absenceFieldKey = action.steps.some((step) => isAssessmentMode(step.mode))
     ? await requireOccurrenceAbsenceField(kind)
     : "";
-  const steps = await Promise.all(
-    action.steps.map(async (step) => ({
-      ...step,
-      tagIds:
-        step.mode === "REMOVE_TREE"
-          ? await resolveTagTree(step.tagIds)
-          : step.tagIds,
-    })),
-  );
+  const steps = await resolveRemovalTrees(action);
   let applications = occurrence.applications;
   // Plain steps run before assessments, matching the order video reviews use.
   for (const step of [

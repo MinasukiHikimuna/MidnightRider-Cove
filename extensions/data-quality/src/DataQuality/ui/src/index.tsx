@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -97,6 +98,7 @@ import {
   type ReviewEntityType,
 } from "./model";
 import { OccurrenceSettings, PerformerFlagSettings } from "./OccurrenceReview";
+import { ActionsFromTags } from "./ActionsFromTags";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
@@ -3308,6 +3310,15 @@ function VideoActionsEditor({
   rememberStepKey: (next: ReviewStep, previous: ReviewStep) => void;
   setDraft: (review: Review) => void;
 }) {
+  const [fromTags, setFromTags] = useState(false);
+  // The confirmation lasts until the actions change again.
+  const [added, setAdded] = useState<{ actions: MediaReviewAction[]; count: number } | null>(null);
+  const fromTagsButton = useRef<HTMLButtonElement>(null);
+  const fromTagsPanel = useId();
+  const closeFromTags = () => {
+    setFromTags(false);
+    requestAnimationFrame(() => fromTagsButton.current?.focus());
+  };
   const updateAction = (index: number, action: MediaReviewAction) =>
     setDraft({
       ...draft,
@@ -3321,7 +3332,8 @@ function VideoActionsEditor({
       {isOccurrenceReview(draft) && <p>Actions apply only to the active performer in this {mediaLabel(reviewMediaKind(draft)).one}. Set performer matching in the review filters below. Save review keeps those criteria with this rule.</p>}
       <p>
         Steps run in order. No steps means Skip. Earlier steps may remain
-        applied if a later step fails.
+        applied if a later step fails. Removing tags and descendants never
+        removes a tag the same action adds.
       </p>
       <p className="dq-editor-note">
         Drag the handles to reorder. With a handle focused, use Alt + ↑ or ↓.
@@ -3438,21 +3450,56 @@ function VideoActionsEditor({
           </fieldset>
         )}
       />
-      <button
-        className="dq-button"
-        type="button"
-        onClick={() =>
-          setDraft({
-            ...draft,
-            actions: [
-              ...draft.actions,
-              { id: crypto.randomUUID(), label: "", steps: [] },
-            ],
-          })
-        }
-      >
-        Add action
-      </button>
+      <div className="dq-row dq-add-actions">
+        <button
+          className="dq-button"
+          type="button"
+          onClick={() =>
+            setDraft({
+              ...draft,
+              actions: [
+                ...draft.actions,
+                { id: crypto.randomUUID(), label: "", steps: [] },
+              ],
+            })
+          }
+        >
+          Add action
+        </button>
+        <button
+          ref={fromTagsButton}
+          className="dq-button"
+          type="button"
+          aria-expanded={fromTags}
+          aria-controls={fromTags ? fromTagsPanel : undefined}
+          disabled={saving}
+          onClick={() => {
+            setAdded(null);
+            setFromTags(!fromTags);
+          }}
+        >
+          Add actions from parent tags…
+        </button>
+        <span role="status" className="dq-editor-note">
+          {added?.actions === draft.actions
+            ? `Added ${added.count} action${added.count === 1 ? "" : "s"} at the end.`
+            : ""}
+        </span>
+      </div>
+      {fromTags && (
+        <ActionsFromTags
+          id={fromTagsPanel}
+          review={draft}
+          disabled={saving}
+          onAdd={(actions) => {
+            const next = [...draft.actions, ...actions];
+            setDraft({ ...draft, actions: next });
+            setAdded({ actions: next, count: actions.length });
+            closeFromTags();
+          }}
+          onCancel={closeFromTags}
+        />
+      )}
     </>
   );
 }

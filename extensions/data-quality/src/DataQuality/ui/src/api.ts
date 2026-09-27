@@ -3,6 +3,7 @@ import type {
   MediaKind,
   MediaReview,
   ReviewAction,
+  ReviewStep,
   TagReview,
   TagReviewAction,
   MediaReviewAction,
@@ -10,6 +11,7 @@ import type {
 import {
   hasAssessmentSteps,
   isAssessmentMode,
+  tagsAddedBy,
   validAction,
   boundedFilter,
   reviewMediaKind,
@@ -399,6 +401,32 @@ export async function resolveTagTree(parentIds: number[], signal?: AbortSignal):
   return [...ids];
 }
 
+/**
+ * An action's steps with every tree removal resolved to plain removals. A tree removal never
+ * removes a tag the same action adds, so "add X, remove the tree X belongs to" leaves X as that
+ * tree's only tag in either step order, without deleting and re-adding X when it is already
+ * there. A removal left with no tags is dropped.
+ */
+export async function resolveRemovalTrees(
+  action: MediaReviewAction,
+  signal?: AbortSignal,
+): Promise<ReviewStep[]> {
+  const added = tagsAddedBy(action);
+  const steps = await Promise.all(
+    action.steps.map(async (step): Promise<ReviewStep> =>
+      step.mode === "REMOVE_TREE"
+        ? {
+            mode: "REMOVE",
+            tagIds: (await resolveTagTree(step.tagIds, signal)).filter(
+              (id) => !added.has(id),
+            ),
+          }
+        : step,
+    ),
+  );
+  return steps.filter((step) => step.tagIds.length > 0);
+}
+
 function definitionProblem(
   field: AbsenceField,
   definition: CustomFieldDefinition,
@@ -626,15 +654,10 @@ export async function runReviewAction(
     absentFieldKey = status.definition.key;
   }
   const targets = uniqueIds(ids);
-  const steps = await Promise.all(
-    action.steps.map(async (step) => ({
-      mode: step.mode,
-      tagIds:
-        step.mode === "REMOVE_TREE"
-          ? await resolveTagTree(step.tagIds)
-          : uniqueIds(step.tagIds),
-    })),
-  );
+  const steps = (await resolveRemovalTrees(action)).map((step) => ({
+    mode: step.mode,
+    tagIds: uniqueIds(step.tagIds),
+  }));
   // Legacy ADD/REMOVE steps run before assessment steps, as the per-video path always did,
   // so a saved action that mixes both keeps its final outcome.
   const orderedSteps = [

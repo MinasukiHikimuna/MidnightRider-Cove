@@ -330,6 +330,15 @@ export function isAssessmentMode(mode: ReviewStep["mode"]): boolean {
   return ["MARK_PRESENT", "MARK_ABSENT", "CLEAR_ABSENCE"].includes(mode);
 }
 
+/** The tags an action adds, including the ones it marks present. */
+export function tagsAddedBy(action: MediaReviewAction): Set<number> {
+  return new Set(
+    action.steps
+      .filter((step) => step.mode === "ADD" || step.mode === "MARK_PRESENT")
+      .flatMap((step) => step.tagIds),
+  );
+}
+
 export function hasAssessmentSteps(action: ReviewAction): boolean {
   if (!("steps" in action)) return false;
   return action.steps.some((step) => isAssessmentMode(step.mode));

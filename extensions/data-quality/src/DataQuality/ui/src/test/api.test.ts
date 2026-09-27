@@ -379,6 +379,100 @@ describe("Data Quality API adapter", () => {
     });
   });
 
+  it("keeps the tags an action adds out of its tree removals in either step order", async () => {
+    const add = { mode: "ADD" as const, tagIds: [11] };
+    const removeTree = { mode: "REMOVE_TREE" as const, tagIds: [10] };
+    for (const steps of [
+      [add, removeTree],
+      [removeTree, add],
+    ]) {
+      fetchMock
+        .mockReset()
+        .mockImplementationOnce(() => response({ id: 10 }))
+        .mockImplementationOnce(() =>
+          response({ items: [{ id: 11 }, { id: 12 }], totalCount: 2 }),
+        )
+        .mockImplementation(() => response({ updated: 1 }));
+      await runReviewAction("video", { id: "a", label: "Only one", steps }, [4]);
+      const writes = fetchMock.mock.calls
+        .filter(([path]) => path === "/api/videos/bulk")
+        .map(([, init]) => JSON.parse(String(init?.body)));
+      const addWrite = { ids: [4], tagIds: [11], tagMode: "ADD" };
+      const removeWrite = { ids: [4], tagIds: [10, 12], tagMode: "REMOVE" };
+      expect(writes).toEqual(
+        steps[0] === add ? [addWrite, removeWrite] : [removeWrite, addWrite],
+      );
+    }
+  });
+
+  it("keeps a tag the action marks present out of its tree removal", async () => {
+    fetchMock
+      .mockImplementationOnce(() =>
+        response([
+          {
+            key: "confirmed_absent_tags",
+            type: "tag",
+            entityTypes: ["video"],
+            filterable: true,
+            isMultiValue: true,
+          },
+        ]),
+      )
+      .mockImplementationOnce(() => response({ id: 10 }))
+      .mockImplementationOnce(() =>
+        response({ items: [{ id: 11 }, { id: 12 }], totalCount: 2 }),
+      )
+      .mockImplementation(() => response({ updated: 1 }));
+    await runReviewAction(
+      "video",
+      {
+        id: "a",
+        label: "Present",
+        steps: [
+          { mode: "MARK_PRESENT", tagIds: [11] },
+          { mode: "REMOVE_TREE", tagIds: [10] },
+        ],
+      },
+      [4],
+    );
+    const writes = fetchMock.mock.calls
+      .filter(([path]) => path === "/api/videos/bulk")
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(writes).toEqual([
+      { ids: [4], tagIds: [10, 12], tagMode: "REMOVE" },
+      {
+        ids: [4],
+        tagIds: [11],
+        tagMode: "ADD",
+        customFields: { confirmed_absent_tags: [11] },
+        customFieldMode: "REMOVE",
+      },
+    ]);
+  });
+
+  it("skips a tree removal that only holds tags the action adds", async () => {
+    fetchMock
+      .mockImplementationOnce(() => response({ id: 10 }))
+      .mockImplementationOnce(() => response({ items: [{ id: 11 }], totalCount: 1 }))
+      .mockImplementation(() => response({ updated: 1 }));
+    await runReviewAction(
+      "video",
+      {
+        id: "a",
+        label: "Parent and child",
+        steps: [
+          { mode: "ADD", tagIds: [10, 11] },
+          { mode: "REMOVE_TREE", tagIds: [10] },
+        ],
+      },
+      [4],
+    );
+    const writes = fetchMock.mock.calls.filter(([path]) => path === "/api/videos/bulk");
+    expect(writes.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+      { ids: [4], tagIds: [10, 11], tagMode: "ADD" },
+    ]);
+  });
+
   it("blocks assessment writes when the definition is missing or cannot be inspected", async () => {
     fetchMock.mockImplementationOnce(() => response([]));
     await expect(

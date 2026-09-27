@@ -1,4 +1,4 @@
-import { request, resolveTagTree } from "./api";
+import { request, resolveRemovalTrees } from "./api";
 import {
   conditionSeeksMissingTags,
   reviewMediaKind,
@@ -176,13 +176,14 @@ export async function previewOccurrenceBatch(
       ? await resolveConditionGroups(review.occurrence, signal)
       : [];
   await requireOneAnswerPerCategory(review, actions, categories, signal);
-  const action = structuredClone(combineActions(actions));
-  for (const step of action.steps) {
-    if (step.mode === "REMOVE_TREE") {
-      step.tagIds = await resolveTagTree(step.tagIds, signal);
-      step.mode = "REMOVE";
-    }
-  }
+  // Each answer's tree removals spare that answer's own tags, as when it is applied on its own.
+  const resolved = await Promise.all(
+    actions.map(async (answer) => ({
+      ...answer,
+      steps: await resolveRemovalTrees(answer, signal),
+    })),
+  );
+  const action = structuredClone(combineActions(resolved));
   signal.throwIfAborted();
   // Category members are affected too: a changed existing answer changes the plan.
   const touched = [
