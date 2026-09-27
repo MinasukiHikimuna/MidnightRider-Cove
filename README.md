@@ -17,6 +17,7 @@ descriptor under `extensions/<extension-id>/`.
 | On This Day | `extensions/on-this-day` | `com.midnightrider.on-this-day/v<version>` |
 | Six Degrees of Johnny Sins | `extensions/six-degrees` | `com.midnightrider.six-degrees/v<version>` |
 | Blast From The Past | `extensions/blast-from-the-past` | `com.midnightrider.blast-from-the-past/v<version>` |
+| Tag of the Day | `extensions/tag-of-the-day` | `com.midnightrider.tag-of-the-day/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing

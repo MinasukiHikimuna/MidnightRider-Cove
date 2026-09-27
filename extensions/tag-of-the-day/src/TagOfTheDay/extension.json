@@ -1,0 +1,22 @@
+{
+  "id": "com.midnightrider.tag-of-the-day",
+  "name": "Tag of the Day",
+  "version": "0.1.0",
+  "description": "A home dashboard widget that features one of your tags each day with its media, description, and tagged moments.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "categories": ["ui", "widget"],
+  "minCoveVersion": "1.3.2-dev.36",
+  "entryDll": "TagOfTheDay.dll",
+  "dependencies": {},
+  "externalDependencies": [],
+  "settings": [],
+  "tutorialTopics": [],
+  "jsBundle": "assets/ui.mjs",
+  "cssBundle": "assets/ui.css",
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

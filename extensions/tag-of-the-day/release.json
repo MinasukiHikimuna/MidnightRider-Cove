@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.tag-of-the-day",
+  "name": "TagOfTheDay",
+  "tagPrefix": "com.midnightrider.tag-of-the-day/",
+  "solution": "TagOfTheDay.slnx",
+  "project": "src/TagOfTheDay/TagOfTheDay.csproj",
+  "manifest": "src/TagOfTheDay/extension.json",
+  "readme": "README.md",
+  "ui": "src/TagOfTheDay/assets",
+  "uiPackagePath": "assets",
+  "uiTest": "tests/tag-of-the-day-model.test.mjs"
+}

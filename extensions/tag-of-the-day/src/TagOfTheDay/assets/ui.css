@@ -1,0 +1,832 @@
+.totd {
+  --totd-fg: var(--color-foreground, #f5f5f7);
+  --totd-muted: var(--color-muted, #8e8e93);
+  --totd-secondary: color-mix(in srgb, var(--totd-fg) 82%, transparent);
+  --totd-accent: var(--color-accent, #e0b84e);
+  --totd-surface: var(--color-surface, #111317);
+  --totd-fill: color-mix(in srgb, var(--totd-fg) 8%, transparent);
+  --totd-fill-soft: color-mix(in srgb, var(--totd-fg) 5%, transparent);
+  --totd-fill-strong: color-mix(in srgb, var(--totd-fg) 12%, transparent);
+  --totd-hairline: color-mix(in srgb, var(--totd-fg) 7%, transparent);
+  --totd-placeholder: color-mix(in srgb, var(--totd-fg) 6%, var(--totd-surface));
+  --totd-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --totd-media-height: 240px;
+  container-type: inline-size;
+  color: var(--totd-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.totd button {
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.totd button:focus-visible,
+.totd-editor button:focus-visible,
+.totd-editor input:focus-visible {
+  outline: 2px solid var(--totd-accent, var(--color-accent, #e0b84e));
+  outline-offset: 2px;
+}
+
+.totd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-sizing: border-box;
+  border: 1px solid var(--totd-hairline);
+  border-radius: 20px;
+  background: var(--totd-surface);
+  padding: 22px 20px;
+}
+
+/* Header */
+
+.totd-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.totd-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.totd-eyebrow {
+  color: var(--totd-accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.totd-heading h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+}
+
+.totd-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.totd-shuffle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--totd-fill);
+  cursor: pointer;
+  transition: background-color 160ms var(--totd-ease), transform 160ms var(--totd-ease);
+}
+
+.totd-shuffle:hover:not([aria-disabled="true"]) {
+  background: var(--totd-fill-strong);
+}
+
+.totd-shuffle:active:not([aria-disabled="true"]) {
+  transform: scale(0.94);
+}
+
+.totd-shuffle[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.5;
+}
+
+.totd-open {
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  padding: 0 14px;
+  color: var(--totd-accent) !important;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.totd-open:hover {
+  background: var(--totd-fill);
+}
+
+/* Body */
+
+.totd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transition: opacity 200ms var(--totd-ease);
+}
+
+.totd-body[aria-busy="true"] {
+  opacity: 0.55;
+}
+
+.totd-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The frame keeps the media's shape at every width: never wider than the column, and never taller than the
+   media height, which narrows it instead of cropping it. */
+.totd-media {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  box-sizing: border-box;
+  width: min(100%, calc(var(--totd-media-height) * var(--totd-ratio-value, 1.7778)));
+  aspect-ratio: var(--totd-ratio, 16 / 9);
+  overflow: hidden;
+  border: 0;
+  border-radius: 14px;
+  background: var(--totd-placeholder);
+  padding: 0;
+  cursor: pointer;
+}
+
+.totd-media > *,
+.totd-media__content,
+.totd-media__image {
+  width: 100%;
+  height: 100%;
+}
+
+.totd-media img,
+.totd-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.totd-media .totd-fit-cover,
+.totd-media img.totd-fit-cover {
+  object-fit: cover;
+}
+
+.totd-media .totd-fit-contain,
+.totd-media img.totd-fit-contain {
+  object-fit: contain;
+}
+
+.totd-media__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--totd-muted);
+}
+
+.totd-media::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--totd-hairline);
+  content: "";
+  pointer-events: none;
+}
+
+.totd-media:hover img,
+.totd-media:hover video {
+  filter: brightness(1.06);
+}
+
+.totd-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.totd-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.totd-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  border-radius: 12px;
+  background: var(--totd-fill);
+  padding: 0 10px;
+  color: var(--totd-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.totd-group__dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--totd-hairline);
+}
+
+.totd-aliases {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--totd-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.totd-description {
+  max-height: calc(1.45em * 3);
+  overflow: hidden;
+  color: var(--totd-secondary);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.totd-description.is-clipped {
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+
+.totd-description p,
+.totd-description ul,
+.totd-description ol {
+  margin: 0 0 0.5em;
+}
+
+.totd-description--empty {
+  margin: 0;
+  color: var(--totd-muted);
+}
+
+.totd-facts {
+  display: flex;
+  gap: 8px;
+}
+
+.totd-fact {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--totd-fill-soft);
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 160ms var(--totd-ease);
+}
+
+.totd-fact:hover {
+  background: var(--totd-fill);
+}
+
+.totd-fact__value {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.totd-fact__label {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--totd-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tagged moments: video stills stay 16:9 like Cove's video and segment cards. */
+
+.totd-moments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.totd-moments__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--totd-muted);
+  font-size: 13px;
+}
+
+.totd-moments__title {
+  font-weight: 600;
+}
+
+.totd-moments__total {
+  font-variant-numeric: tabular-nums;
+}
+
+.totd-moments__items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -8px;
+}
+
+.totd-moment {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 160ms var(--totd-ease);
+}
+
+.totd-moment:hover {
+  background: var(--totd-fill-soft);
+}
+
+.totd-moment__media {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--totd-placeholder);
+}
+
+.totd-moment__media img,
+.totd-moment__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.totd-moment__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.totd-moment__title,
+.totd-moment__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.totd-moment__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.totd-moment__subtitle {
+  color: var(--totd-muted);
+  font-size: 13px;
+}
+
+.totd-badge {
+  position: absolute;
+  bottom: 5px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 62%);
+  padding: 1px 5px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.totd-badge--start {
+  left: 5px;
+}
+
+.totd-badge--length {
+  right: 5px;
+  color: rgb(255 255 255 / 82%);
+}
+
+.totd-inline-empty {
+  margin: 0;
+  color: var(--totd-muted);
+  font-size: 14px;
+}
+
+.totd-pill {
+  min-height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--totd-fill);
+  padding: 0 18px;
+  color: var(--totd-accent) !important;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.totd-pill:hover {
+  background: var(--totd-fill-strong);
+}
+
+/* States */
+
+.totd-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.totd-skeleton span {
+  display: block;
+}
+
+.totd-skeleton__media,
+.totd-skeleton__line {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--totd-fill) 0%, var(--totd-fill-strong) 50%, var(--totd-fill) 100%);
+  background-size: 200% 100%;
+  animation: totd-shimmer 1.4s ease-in-out infinite;
+}
+
+.totd-skeleton__media {
+  width: min(100%, calc(var(--totd-media-height) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 14px !important;
+}
+
+.totd-skeleton__lines {
+  display: flex !important;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.totd-skeleton__line {
+  width: 86%;
+  height: 14px;
+}
+
+.totd-skeleton__line--short {
+  width: 52%;
+}
+
+@keyframes totd-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.totd-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.totd-message__icon {
+  display: inline-flex;
+  margin-bottom: 4px;
+  color: var(--totd-muted);
+}
+
+.totd-message--error .totd-message__icon {
+  color: #ff9f0a;
+}
+
+.totd-message strong {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.totd-message p {
+  max-width: 34em;
+  margin: 0;
+  color: var(--totd-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.totd-message .totd-pill {
+  margin-top: 8px;
+}
+
+/* Medium dashboards: media beside the tag's details, moments in a row of stills. */
+
+@container (min-width: 620px) {
+  .totd-card {
+    gap: 22px;
+    padding: 28px 30px 26px;
+  }
+
+  .totd-heading h2 {
+    font-size: 30px;
+  }
+
+  .totd-open {
+    display: inline-flex;
+  }
+
+  .totd-open-bottom {
+    display: none;
+  }
+
+  .totd-hero,
+  .totd-skeleton {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 24px;
+  }
+
+  .totd-media,
+  .totd-skeleton__media {
+    align-self: flex-start;
+    max-width: 58%;
+  }
+
+  .totd-skeleton__media {
+    flex: none;
+  }
+
+  .totd-info {
+    flex: 1;
+    padding-top: 2px;
+  }
+
+  .totd-description {
+    max-height: calc(1.5em * 4);
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  .totd-facts {
+    margin-top: auto;
+  }
+
+  .totd-moments__items {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin: 0;
+  }
+
+  .totd-moment {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .totd-moment:hover {
+    background: transparent;
+  }
+
+  .totd-moment__media {
+    border-radius: 12px;
+  }
+
+  .totd-moment:hover .totd-moment__media {
+    box-shadow: 0 0 0 2px var(--totd-fill-strong);
+  }
+
+  .totd-badge {
+    bottom: 8px;
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 12px;
+  }
+
+  .totd-badge--start {
+    left: 8px;
+  }
+
+  .totd-badge--length {
+    right: 8px;
+  }
+}
+
+@container (min-width: 1000px) {
+  .totd {
+    --totd-media-height: 300px;
+  }
+
+  .totd-card {
+    padding: 32px 36px 28px;
+  }
+
+  .totd-heading h2 {
+    font-size: 34px;
+    line-height: 1.1;
+  }
+
+  .totd-hero {
+    gap: 28px;
+  }
+
+  .totd-description {
+    max-height: calc(1.5em * 5);
+  }
+
+  .totd-fact {
+    min-height: 64px;
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  .totd-fact__value {
+    font-size: 22px;
+  }
+
+  .totd-fact__label {
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .totd *,
+  .totd *::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Settings editor */
+
+.totd-editor {
+  --totd-accent: var(--color-accent, #e0b84e);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: var(--color-foreground, #f5f5f7);
+}
+
+/* The host dialog already titles the editor, so the legend is for assistive technology only. */
+.totd-editor legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.totd-editor__lead,
+.totd-editor__note {
+  margin: 0;
+  color: var(--color-muted, #8e8e93);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.totd-editor__note {
+  font-size: 13px;
+}
+
+.totd-editor__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-foreground, #f5f5f7) 5%, transparent);
+  padding-bottom: 14px;
+}
+
+.totd-editor__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 0 16px;
+  font-size: 15px;
+}
+
+.totd-editor__group input[type="range"] {
+  width: auto;
+  height: 28px;
+  margin: 0 16px;
+  accent-color: var(--totd-accent);
+}
+
+.totd-editor__hint {
+  padding: 0 16px;
+  color: var(--color-muted, #8e8e93);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.totd-stepper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.totd-stepper button {
+  width: 44px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-foreground, #f5f5f7) 10%, transparent);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+}
+
+.totd-stepper button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.totd-stepper output {
+  min-width: 32px;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.totd-editor__choices {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-foreground, #f5f5f7) 5%, transparent);
+  padding: 6px 0;
+}
+
+.totd-editor__choices-label {
+  padding: 10px 16px 6px;
+  font-size: 15px;
+}
+
+.totd-editor__choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.totd-editor__choice + .totd-editor__choice {
+  border-top: 1px solid color-mix(in srgb, var(--color-foreground, #f5f5f7) 7%, transparent);
+}
+
+.totd-editor__toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.totd-editor__toggle-text .totd-editor__hint {
+  padding: 0;
+}
+
+.totd-editor__choice input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--totd-accent);
+}
