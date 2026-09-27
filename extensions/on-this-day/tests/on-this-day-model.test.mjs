@@ -22,9 +22,12 @@ const {
   formatDuration,
   isoDate,
   mosaicCells,
+  randomRevision,
   readSettings,
   selectMemories,
+  shuffleStorageKey,
   stableSeed,
+  storedRevision,
   yearsAgoLabel,
 } = await import(`data:text/javascript,${encodeURIComponent(testable)}`);
 
@@ -89,4 +92,22 @@ test("durations use clock notation", () => {
   assert.equal(formatDuration(65), "1:05");
   assert.equal(formatDuration(3725), "1:02:05");
   assert.equal(formatDuration(undefined), "0:00");
+});
+
+test("a shuffle is remembered for its widget and day only", () => {
+  const day = "2026-09-27";
+  assert.equal(storedRevision(JSON.stringify({ day, revision: 123456 }), day), 123456);
+  assert.equal(storedRevision(JSON.stringify({ day: "2026-09-26", revision: 123456 }), day), 0, "a new day starts from its own pick");
+  for (const raw of [null, "", "not json", "{}", JSON.stringify({ day, revision: 0 }), JSON.stringify({ day, revision: 1.5 }), JSON.stringify({ day, revision: "7" })]) {
+    assert.equal(storedRevision(raw, day), 0, `${raw} is not a stored shuffle`);
+  }
+  assert.notEqual(shuffleStorageKey("first"), shuffleStorageKey("second"));
+});
+
+test("shuffles draw a random, never-zero revision", () => {
+  assert.equal(randomRevision(0), 1);
+  assert.equal(randomRevision(1 - Number.EPSILON), 0x7ffffffe);
+  const seen = new Set(Array.from({ length: 50 }, () => randomRevision()));
+  assert.ok(seen.size > 45, "consecutive shuffles do not repeat a fixed sequence");
+  assert.ok([...seen].every((revision) => Number.isSafeInteger(revision) && revision > 0));
 });

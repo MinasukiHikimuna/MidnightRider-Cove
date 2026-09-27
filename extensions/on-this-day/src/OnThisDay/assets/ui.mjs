@@ -102,7 +102,59 @@ export function formatDuration(seconds) {
     : `${minutes}:${String(remaining).padStart(2, "0")}`;
 }
 
+// A shuffle draws a fresh random revision instead of counting up, so it does not replay the same sequence after
+// every reload. The revision is remembered for the widget and day, so a reload keeps the shuffled memories and
+// midnight starts again from the day's own pick (revision 0).
+export function shuffleStorageKey(instanceId) {
+  return `com.midnightrider.on-this-day:shuffle:${instanceId}`;
+}
+
+export function storedRevision(raw, day) {
+  try {
+    const stored = JSON.parse(raw);
+    return stored?.day === day && Number.isSafeInteger(stored.revision) && stored.revision > 0 ? stored.revision : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function randomRevision(randomValue = Math.random()) {
+  return 1 + Math.floor(randomValue * 0x7ffffffe);
+}
+
 // Widget runtime.
+
+function readStorage(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {}
+}
+
+function useShuffleRevision(day, instanceId) {
+  const key = shuffleStorageKey(instanceId);
+  const [shuffled, setShuffled] = React.useState(() => ({ key, day, revision: storedRevision(readStorage(key), day) }));
+  let current = shuffled;
+  // A new day or widget reads its stored shuffle once, during render, instead of on every later render.
+  if (shuffled.key !== key || shuffled.day !== day) {
+    current = { key, day, revision: storedRevision(readStorage(key), day) };
+    setShuffled(current);
+  }
+  // Dated by the clock rather than the rendered day, so a click just after midnight is not saved under yesterday.
+  const shuffle = () => {
+    const next = { key, day: dailyKey(), revision: randomRevision() };
+    writeStorage(key, JSON.stringify({ day: next.day, revision: next.revision }));
+    setShuffled(next);
+  };
+  return [current.revision, shuffle];
+}
 
 function useDailyKey() {
   const [key, setKey] = React.useState(() => dailyKey());
@@ -353,7 +405,7 @@ function OnThisDayWidget({ configuration, instanceId, onNavigate }) {
   const { count, historyYears } = readSettings(configuration);
   const day = useDailyKey();
   const today = dateFromKey(day);
-  const [revision, setRevision] = React.useState(0);
+  const [revision, shuffle] = useShuffleRevision(day, instanceId);
   const state = useMemories({ day, instanceId, count, historyYears, revision });
   const [selection, setSelection] = React.useState({ year: null, videoId: null });
   React.useEffect(() => setSelection({ year: state.value?.featuredYear ?? null, videoId: null }), [state.value]);
@@ -403,8 +455,8 @@ function OnThisDayWidget({ configuration, instanceId, onNavigate }) {
         h("button", {
           type: "button",
           className: "otd-shuffle",
-          onClick: () => setRevision((value) => value + 1),
-          disabled: state.loading,
+          onClick: () => { if (!state.loading) shuffle(); },
+          "aria-disabled": state.loading,
           "aria-label": "Shuffle memories",
           title: "Shuffle memories",
         }, h(ShuffleIcon))),
