@@ -33,6 +33,7 @@
 
 .sd button:focus-visible,
 .sd-picker button:focus-visible,
+.sd-menu button:focus-visible,
 .sd-editor button:focus-visible {
   outline: 2px solid var(--sd-accent);
   outline-offset: 2px;
@@ -322,9 +323,11 @@
   padding: 0 10px 0 13px;
 }
 
-.sd-shuffle__menu {
+.sd-shuffle .sd-shuffle__menu {
+  min-width: 44px;
+  justify-content: center;
   padding: 0 12px 0 8px;
-  color: color-mix(in srgb, var(--sd-fg) 78%, transparent) !important;
+  color: color-mix(in srgb, var(--sd-fg) 78%, transparent);
   font-size: 14px;
 }
 
@@ -969,10 +972,8 @@
   }
 
   .sd-header {
-    grid-template-areas: "heading pair shuffle";
-    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: 24px;
+    gap: 16px 24px;
   }
 
   .sd-heading {
@@ -1067,6 +1068,21 @@
   .sd-detail__cast {
     font-size: 14px;
     line-height: 1.8;
+  }
+}
+
+/* The title, the endpoints, and the split button share one row once there is room for long names in all three.
+   Below that the header takes two rows, so the rail portraits give some of their height back. */
+@container (min-width: 860px) and (max-width: 1319.98px) {
+  .sd-line {
+    --sd-portrait-width: clamp(64px, min(8.5cqi, 11dvh), 136px);
+  }
+}
+
+@container (min-width: 1320px) {
+  .sd-header {
+    grid-template-areas: "heading pair shuffle";
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 }
 
@@ -1285,11 +1301,11 @@
 
 .sd-menu {
   position: fixed;
-  inset: var(--sd-menu-top, 96px) var(--sd-menu-right, 16px) auto auto;
+  inset: var(--sd-menu-top, 96px) var(--sd-menu-right, 16px) var(--sd-menu-bottom, auto) auto;
   box-sizing: border-box;
   width: min(24rem, calc(100vw - 16px));
   max-width: none;
-  max-height: calc(100dvh - var(--sd-menu-top, 96px) - 16px);
+  max-height: var(--sd-menu-max-height, calc(100dvh - 112px));
   margin: 0;
   overflow-y: auto;
   border: 0;
@@ -1350,8 +1366,12 @@
 
 .sd-option {
   grid-template-columns: 40px minmax(0, 1fr) 20px;
+  width: 100%;
   min-height: 64px;
+  border: 0;
+  background: transparent;
   padding: 8px 12px 8px 8px;
+  text-align: left;
 }
 
 .sd-option--compact {
@@ -1365,7 +1385,8 @@
   background: var(--sd-fill-subtle);
 }
 
-.sd-option:has(input:checked) {
+.sd-option:has(input:checked),
+.sd-option[aria-pressed="true"] {
   background: var(--sd-fill);
 }
 
@@ -1420,7 +1441,8 @@
   opacity: 0;
 }
 
-.sd-option:has(input:checked) .sd-option__check {
+.sd-option:has(input:checked) .sd-option__check,
+.sd-option[aria-pressed="true"] .sd-option__check {
   opacity: 1;
 }
 

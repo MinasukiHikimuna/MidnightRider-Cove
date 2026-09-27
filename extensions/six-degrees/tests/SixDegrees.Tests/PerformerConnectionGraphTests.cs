@@ -95,7 +95,6 @@ public sealed class PerformerConnectionGraphTests
         Assert.All(paths, path =>
         {
             Assert.NotNull(path);
-            Assert.True(path.IsRandom);
             Assert.NotEqual(path.Start.Id, path.End.Id);
             Assert.Equal(Math.Abs(path.End.Id - path.Start.Id), path.Degrees);
         });
@@ -206,7 +205,6 @@ public sealed class PerformerConnectionGraphTests
         Assert.All(Enumerable.Range(0, 50), seed =>
         {
             var path = graph.FindLongestPath(seed, maxDegrees: 6)!;
-            Assert.True(path.IsRandom);
             Assert.Equal(5, path.Degrees);
             Assert.Equal([1, 6], new[] { path.Start.Id, path.End.Id }.Order());
         });
@@ -264,10 +262,110 @@ public sealed class PerformerConnectionGraphTests
         {
             Assert.Equal(1, path.End.Id);
             Assert.NotEqual(1, path.Start.Id);
-            Assert.True(path.IsRandom);
         });
         Assert.True(starts.Select(path => path.Start.Id).Distinct().Count() > 4);
         Assert.All(Enumerable.Range(0, 50), seed =>
             Assert.InRange(graph.FindPathToHub(seed, maxDegrees: 2, hub.PerformerId)!.Degrees, 1, 2));
+    }
+
+    [Fact]
+    public void LongestChainsStartInTheLargestGroupEvenAmongManyIsolatedDuos()
+    {
+        var appearances = new List<PerformerConnectionAppearance>();
+        for (var id = 1; id < 6; id++)
+        {
+            var video = new PerformerConnectionVideo(100 + id, "Line", null, null);
+            appearances.Add(new(Person(id), video));
+            appearances.Add(new(Person(id + 1), video));
+        }
+        for (var pair = 0; pair < 200; pair++)
+        {
+            var video = new PerformerConnectionVideo(1000 + pair, "Duo", null, null);
+            appearances.Add(new(Person(1000 + pair * 2), video));
+            appearances.Add(new(Person(1001 + pair * 2), video));
+        }
+        var graph = new PerformerConnectionGraph(appearances);
+
+        Assert.All(Enumerable.Range(0, 100), seed =>
+            Assert.Equal(5, graph.FindLongestPath(seed, maxDegrees: 6)!.Degrees));
+    }
+
+    [Fact]
+    public void TheHubComesFromTheLargestGroupRatherThanTheBusiestVideo()
+    {
+        // A 30-performer ensemble gives its cast the most co-appearances, but a 40-performer line is the larger group.
+        var appearances = new List<PerformerConnectionAppearance>();
+        var ensemble = new PerformerConnectionVideo(1, "Ensemble", null, null);
+        for (var id = 1; id <= 30; id++)
+            appearances.Add(new(Person(id), ensemble));
+        for (var id = 101; id < 140; id++)
+        {
+            var video = new PerformerConnectionVideo(id, "Line", null, null);
+            appearances.Add(new(Person(id), video));
+            appearances.Add(new(Person(id + 1), video));
+        }
+        var graph = new PerformerConnectionGraph(appearances);
+
+        var hub = graph.FindHub();
+
+        Assert.NotNull(hub);
+        Assert.InRange(hub.PerformerId, 119, 121);
+    }
+
+    [Fact]
+    public void ChainsAcrossTheYearsFindTheOnlyOldPerformerWhoReachesTheNewest()
+    {
+        // The oldest tenth holds 161 performers: the first two of a line that reaches the newest performers, and 159 of
+        // 800 old performers in isolated duos who reach no one new. Sampling a subset of starts would often miss the line.
+        var appearances = new List<PerformerConnectionAppearance>();
+        for (var pair = 0; pair < 400; pair++)
+        {
+            var video = new PerformerConnectionVideo(1000 + pair, "Old duo", "1980-01-01", null);
+            appearances.Add(new(Person(1000 + pair * 2), video));
+            appearances.Add(new(Person(1001 + pair * 2), video));
+        }
+        var years = new[] { "1970-01-01", "1995-01-01", "2010-01-01", "2030-01-01" };
+        for (var step = 0; step < years.Length; step++)
+        {
+            var video = new PerformerConnectionVideo(100 + step, "Line", years[step], null);
+            appearances.Add(new(Person(1 + step), video));
+            appearances.Add(new(Person(2 + step), video));
+        }
+        for (var pair = 0; pair < 400; pair++)
+        {
+            var video = new PerformerConnectionVideo(5000 + pair, "Middle duo", "2000-01-01", null);
+            appearances.Add(new(Person(5000 + pair * 2), video));
+            appearances.Add(new(Person(5001 + pair * 2), video));
+        }
+        var graph = new PerformerConnectionGraph(appearances);
+
+        Assert.All(Enumerable.Range(0, 20), seed =>
+        {
+            var span = graph.FindPathAcrossYears(seed, maxDegrees: 6);
+            Assert.NotNull(span);
+            Assert.Contains(span.Path.Start.Id, new[] { 1, 2 });
+            Assert.Contains(span.Path.End.Id, new[] { 3, 4, 5 });
+            Assert.Equal(1970, span.StartFirstYear);
+        });
+    }
+
+    [Fact]
+    public void ChainsAcrossTheYearsNeedDatedPerformers()
+    {
+        var undated = new PerformerConnectionVideo(1, "Undated", null, null);
+        var graph = new PerformerConnectionGraph([new(Person(1), undated), new(Person(2), undated)]);
+
+        Assert.Null(graph.FindPathAcrossYears(seed: 1, maxDegrees: 6));
+    }
+
+    [Fact]
+    public void SignaturesMatchForTheSameLinkedLibraryWhateverTheRowOrder()
+    {
+        var first = new PerformerConnectionVideo(1, "First", null, null);
+        var second = new PerformerConnectionVideo(2, "Second", null, null);
+        PerformerConnectionAppearance[] rows = [new(Person(1), first), new(Person(2), first), new(Person(2), second), new(Person(3), second)];
+
+        Assert.Equal(new PerformerConnectionGraph(rows).Signature, new PerformerConnectionGraph(rows.Reverse()).Signature);
+        Assert.NotEqual(new PerformerConnectionGraph(rows).Signature, new PerformerConnectionGraph(rows.Take(3)).Signature);
     }
 }

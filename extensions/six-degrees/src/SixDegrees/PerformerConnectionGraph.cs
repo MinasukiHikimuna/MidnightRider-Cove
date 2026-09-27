@@ -14,8 +14,7 @@ public sealed record PerformerConnectionStep(
 public sealed record PerformerConnectionPath(
     PerformerConnectionPerson Start,
     PerformerConnectionPerson End,
-    IReadOnlyList<PerformerConnectionStep> Steps,
-    bool IsRandom)
+    IReadOnlyList<PerformerConnectionStep> Steps)
 {
     public int Degrees => Steps.Count;
 }
@@ -47,8 +46,9 @@ public sealed class PerformerConnectionGraph
     private readonly Dictionary<int, PerformerConnectionPerson> _performers = [];
     private readonly Dictionary<int, PerformerConnectionVideo> _videos = [];
     private const int HubCandidateCount = 25;
-    private const int YearSpanStartAttempts = 64;
     private readonly Dictionary<int, int[]> _videoIdsByPerformer;
+    private readonly Dictionary<int, int> _componentByPerformer = [];
+    private readonly int[] _largestComponent;
     private readonly Dictionary<int, int[]> _performerIdsByVideo;
     private readonly Dictionary<int, string> _firstVideoDates = [];
     private readonly Dictionary<int, string> _lastVideoDates = [];
@@ -95,7 +95,16 @@ public sealed class PerformerConnectionGraph
         {
             _performers[performerId] = _performers[performerId] with { VideoCount = visibleVideoCounts.GetValueOrDefault(performerId) };
         }
+
+        _largestComponent = LabelComponents();
+        Signature = ComputeSignature();
     }
+
+    /// <summary>
+    /// Identifies the linked graph: equal for two graphs with the same performers joined by the same videos,
+    /// so a value derived only from the graph, such as its hub, can be reused for it.
+    /// </summary>
+    public long Signature { get; }
 
     public int PerformerCount => _performers.Count;
     public int VideoCount => _performerIdsByVideo.Count(pair => pair.Value.Length > 1);
@@ -109,12 +118,12 @@ public sealed class PerformerConnectionGraph
         if (startPerformerId == endPerformerId)
         {
             var performer = _performers[startPerformerId];
-            return new(performer, performer, [], IsRandom: false);
+            return new(performer, performer, []);
         }
 
         var traversal = Traverse(startPerformerId, maxDegrees, endPerformerId);
         return traversal.Predecessors.ContainsKey(endPerformerId)
-            ? BuildPath(startPerformerId, endPerformerId, traversal.Predecessors, isRandom: false)
+            ? BuildPath(startPerformerId, endPerformerId, traversal.Predecessors)
             : null;
     }
 
@@ -137,7 +146,7 @@ public sealed class PerformerConnectionGraph
             .Order()
             .ToArray();
         var endPerformerId = targets[SeededIndex(seed, targets.Length, 0x85ebca6bu)];
-        return BuildPath(startPerformerId, endPerformerId, traversal.Predecessors, isRandom: true);
+        return BuildPath(startPerformerId, endPerformerId, traversal.Predecessors);
     }
 
     /// <summary>
@@ -150,22 +159,23 @@ public sealed class PerformerConnectionGraph
         if (maxDegrees < 1)
             return null;
 
-        var connectedPerformers = ConnectedPerformers();
-        if (connectedPerformers.Length == 0)
+        // The largest group of linked performers holds the long chains; small isolated groups would give one-link results.
+        if (_largestComponent.Length < 2)
             return null;
 
-        var firstId = connectedPerformers[SeededIndex(seed, connectedPerformers.Length, 0x9e3779b9u)];
+        var firstId = _largestComponent[SeededIndex(seed, _largestComponent.Length, 0x9e3779b9u)];
         var startId = PickDeepest(Traverse(firstId, maxDegrees, targetPerformerId: null), seed, 0xc2b2ae35u);
         var traversal = Traverse(startId, maxDegrees, targetPerformerId: null);
         var endId = PickDeepest(traversal, seed, 0x27d4eb2fu);
-        return endId == startId ? null : BuildPath(startId, endId, traversal.Predecessors, isRandom: true);
+        return endId == startId ? null : BuildPath(startId, endId, traversal.Predecessors);
     }
 
     /// <summary>
-    /// Connects a performer from the oldest tenth of the library, by first video, to one from the newest
-    /// tenth, by latest video, trying seeded starts until one reaches the newest tenth within the limit.
+    /// Connects a performer from the oldest tenth of the linked, dated performers, by first video, to one from the
+    /// newest tenth, by latest video. One search outward from the whole newest tenth finds which of the oldest can
+    /// reach it within the limit, so a chain is found whenever one exists.
     /// </summary>
-    public YearSpanPath? FindPathAcrossYears(int seed, int maxDegrees)
+    public YearSpanPath? FindPathAcrossYears(int seed, int maxDegrees, CancellationToken cancellationToken = default)
     {
         if (maxDegrees < 1)
             return null;
@@ -186,8 +196,13 @@ public sealed class PerformerConnectionGraph
             .Take(tenth)
             .ToHashSet();
 
-        foreach (var startId in SeededShuffle(oldest, seed).Take(YearSpanStartAttempts))
+        var reachesNewest = Traverse(newest, maxDegrees, targetPerformerId: null).Depths;
+        // A start that is itself among the newest needs another newest performer, so try those last.
+        var starts = SeededShuffle(oldest.Where(reachesNewest.ContainsKey).ToArray(), seed)
+            .OrderBy(newest.Contains);
+        foreach (var startId in starts)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var traversal = Traverse(startId, maxDegrees, targetPerformerId: null);
             var ends = traversal.Depths.Keys
                 .Where(id => id != startId && newest.Contains(id))
@@ -198,7 +213,7 @@ public sealed class PerformerConnectionGraph
 
             var endId = ends[SeededIndex(seed, ends.Length, 0x85ebca6bu)];
             return new(
-                BuildPath(startId, endId, traversal.Predecessors, isRandom: true),
+                BuildPath(startId, endId, traversal.Predecessors),
                 Year(_firstVideoDates[startId]),
                 Year(_lastVideoDates[endId]));
         }
@@ -207,32 +222,35 @@ public sealed class PerformerConnectionGraph
     }
 
     /// <summary>
-    /// The library's own Johnny Sins: among the performers with the most co-appearances, the one that reaches
-    /// the most performers, closest on average.
+    /// The library's own Johnny Sins: of the performers in the largest linked group with the most co-appearances,
+    /// the one with the shortest average distance to everyone else in that group.
     /// </summary>
-    public ConnectionHub? FindHub()
+    public ConnectionHub? FindHub(CancellationToken cancellationToken = default)
     {
-        var candidates = ConnectedPerformers()
+        if (_largestComponent.Length < 2)
+            return null;
+
+        var candidates = _largestComponent
             .OrderByDescending(CoAppearanceCount)
             .ThenBy(id => id)
             .Take(HubCandidateCount)
             .ToArray();
 
-        ConnectionHub? best = null;
-        var bestReach = 0;
+        var bestId = 0;
+        var bestAverage = double.MaxValue;
         foreach (var candidateId in candidates)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var depths = Traverse(candidateId, int.MaxValue, targetPerformerId: null).Depths;
-            var reach = depths.Count - 1;
-            var average = reach == 0 ? 0 : depths.Values.Sum() / (double)reach;
-            if (best is null || reach > bestReach || (reach == bestReach && average < best.AverageDegrees))
+            var average = depths.Values.Sum() / (double)(depths.Count - 1);
+            if (average < bestAverage)
             {
-                best = new(candidateId, Math.Round(average, 1));
-                bestReach = reach;
+                bestId = candidateId;
+                bestAverage = average;
             }
         }
 
-        return best;
+        return new(bestId, Math.Round(bestAverage, 1, MidpointRounding.AwayFromZero));
     }
 
     /// <summary>A seeded random performer's shortest path to the hub, like the original game.</summary>
@@ -249,11 +267,52 @@ public sealed class PerformerConnectionGraph
             return null;
 
         var startId = starts[SeededIndex(seed, starts.Length, 0x9e3779b9u)];
-        return FindShortestPath(startId, hubPerformerId, maxDegrees) is { } path ? path with { IsRandom = true } : null;
+        return FindShortestPath(startId, hubPerformerId, maxDegrees);
     }
 
     private int[] ConnectedPerformers()
         => _performers.Keys.Where(HasNeighbor).Order().ToArray();
+
+    // Labels each linked performer with its group and returns the largest group's members, smallest ids first on ties.
+    private int[] LabelComponents()
+    {
+        var component = 0;
+        foreach (var performerId in ConnectedPerformers())
+        {
+            if (_componentByPerformer.ContainsKey(performerId))
+                continue;
+            foreach (var member in Traverse(performerId, int.MaxValue, targetPerformerId: null).Depths.Keys)
+                _componentByPerformer[member] = component;
+            component++;
+        }
+
+        return _componentByPerformer
+            .GroupBy(pair => pair.Value)
+            .Select(group => group.Select(pair => pair.Key).Order().ToArray())
+            .OrderByDescending(members => members.Length)
+            .ThenBy(members => members[0])
+            .FirstOrDefault() ?? [];
+    }
+
+    private long ComputeSignature()
+    {
+        unchecked
+        {
+            var signature = (long)_performerIdsByVideo.Count * 1_000_003;
+            foreach (var (videoId, performerIds) in _performerIdsByVideo)
+            {
+                foreach (var performerId in performerIds)
+                {
+                    var edge = ((ulong)(uint)videoId << 32) | (uint)performerId;
+                    edge ^= edge >> 33;
+                    edge *= 0xff51afd7ed558ccdUL;
+                    edge ^= edge >> 33;
+                    signature += (long)edge;
+                }
+            }
+            return signature;
+        }
+    }
 
     private int PickDeepest(Traversal traversal, int seed, uint salt)
     {
@@ -297,12 +356,19 @@ public sealed class PerformerConnectionGraph
     }
 
     private Traversal Traverse(int startPerformerId, int maxDegrees, int? targetPerformerId)
+        => Traverse([startPerformerId], maxDegrees, targetPerformerId);
+
+    private Traversal Traverse(IEnumerable<int> startPerformerIds, int maxDegrees, int? targetPerformerId)
     {
         var queue = new Queue<int>();
-        var depths = new Dictionary<int, int> { [startPerformerId] = 0 };
+        var depths = new Dictionary<int, int>();
         var predecessors = new Dictionary<int, Predecessor>();
         var expandedVideoIds = new HashSet<int>();
-        queue.Enqueue(startPerformerId);
+        foreach (var startPerformerId in startPerformerIds)
+        {
+            if (depths.TryAdd(startPerformerId, 0))
+                queue.Enqueue(startPerformerId);
+        }
 
         while (queue.TryDequeue(out var performerId))
         {
@@ -336,8 +402,7 @@ public sealed class PerformerConnectionGraph
     private PerformerConnectionPath BuildPath(
         int startPerformerId,
         int endPerformerId,
-        IReadOnlyDictionary<int, Predecessor> predecessors,
-        bool isRandom)
+        IReadOnlyDictionary<int, Predecessor> predecessors)
     {
         var steps = new List<PerformerConnectionStep>();
         var currentId = endPerformerId;
@@ -352,7 +417,7 @@ public sealed class PerformerConnectionGraph
         }
 
         steps.Reverse();
-        return new(_performers[startPerformerId], _performers[endPerformerId], steps, isRandom);
+        return new(_performers[startPerformerId], _performers[endPerformerId], steps);
     }
 
     private bool HasNeighbor(int performerId)

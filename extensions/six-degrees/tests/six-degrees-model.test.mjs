@@ -144,6 +144,6 @@ test("the footer says how the pair was chosen and what was searched", () => {
     `Random pair · shortest path within 6 degrees · searched ${(5790).toLocaleString()} performers and ${(21005).toLocaleString()} shared videos`);
   assert.match(footerText({ chain, preset: null, maxDegrees: 3, performerCount: 1, videoCount: 1 }), /^Chosen pair · /);
   assert.match(footerText({ chain, preset: "years", startFirstYear: 1981, endLastYear: 2025, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Across the years · 1981 to 2025 · /);
-  assert.match(footerText({ chain, preset: "hub", hubAverageDegrees: 3.1, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /closest to everyone else, 3.1 degrees away on average/);
-  assert.match(footerText({ chain, preset: "longest", duosOnly: true, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Longest chain · shortest path within 6 degrees · duos only · /);
+  assert.match(footerText({ chain, preset: "hub", hubAverageDegrees: 3.1, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Your Johnny Sins · 3.1 degrees from the rest of the library on average · shortest path within 6 degrees · /);
+  assert.match(footerText({ chain, preset: "longest", duosOnly: true, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Longest chain · furthest pair found within 6 degrees · duos only · /);
 });

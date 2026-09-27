@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using Cove.Core.Auth;
 using Cove.Core.Entities;
@@ -18,6 +20,10 @@ public sealed class SixDegreesExtension : FullExtensionBase
     private static readonly string[] ConnectionGraphPermissions =
         [Permissions.PerformersRead, Permissions.VideosRead];
     private static readonly string[] Presets = ["random", "longest", "years", "hub"];
+    private const int HubCacheCapacity = 32;
+
+    // Hubs depend only on the linked graph, so a shuffle over the same visible library reuses the one already found.
+    private static readonly ConcurrentDictionary<long, ConnectionHub> HubCache = new();
 
     public override UIManifest GetUIManifest()
         => ManifestBuilder()
@@ -150,13 +156,13 @@ public sealed class SixDegreesExtension : FullExtensionBase
             new(
                 row.VideoId,
                 string.IsNullOrWhiteSpace(row.VideoTitle) ? "Untitled video" : row.VideoTitle,
-                row.VideoDate?.ToString("yyyy-MM-dd"),
+                row.VideoDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 VersionedImageUrl("videos", row.VideoId, row.VideoUpdatedAt, 960)))),
             duosOnly ?? false);
 
         var response = startPerformerId.HasValue && endPerformerId.HasValue
             ? SearchPair(graph, startPerformerId.Value, endPerformerId.Value, degreeLimit)
-            : SearchPreset(graph, presetName, seed ?? 0, degreeLimit);
+            : SearchPreset(graph, presetName, seed ?? 0, degreeLimit, ct);
         return Results.Ok(response with { DuosOnly = duosOnly ?? false });
     }
 
@@ -176,7 +182,8 @@ public sealed class SixDegreesExtension : FullExtensionBase
         PerformerConnectionGraph graph,
         string preset,
         int seed,
-        int degreeLimit)
+        int degreeLimit,
+        CancellationToken ct)
     {
         PerformerConnectionSearchResponse Result(PerformerConnectionPath? chain, string emptyReason = "notEnoughConnections")
             => new(chain, chain is null ? emptyReason : null, degreeLimit, graph.PerformerCount, graph.VideoCount) { Preset = preset };
@@ -186,15 +193,29 @@ public sealed class SixDegreesExtension : FullExtensionBase
             case "longest":
                 return Result(graph.FindLongestPath(seed, degreeLimit));
             case "years":
-                var span = graph.FindPathAcrossYears(seed, degreeLimit);
+                var span = graph.FindPathAcrossYears(seed, degreeLimit, ct);
                 return Result(span?.Path, "noYearSpan") with { StartFirstYear = span?.StartFirstYear, EndLastYear = span?.EndLastYear };
             case "hub":
-                var hub = graph.FindHub();
+                var hub = FindHub(graph, ct);
                 var toHub = hub is null ? null : graph.FindPathToHub(seed, degreeLimit, hub.PerformerId);
                 return Result(toHub) with { HubAverageDegrees = hub?.AverageDegrees };
             default:
                 return Result(graph.FindRandomPath(seed, degreeLimit));
         }
+    }
+
+    private static ConnectionHub? FindHub(PerformerConnectionGraph graph, CancellationToken ct)
+    {
+        if (HubCache.TryGetValue(graph.Signature, out var cached))
+            return cached;
+
+        var hub = graph.FindHub(ct);
+        if (hub is null)
+            return null;
+        if (HubCache.Count >= HubCacheCapacity)
+            HubCache.Clear();
+        HubCache[graph.Signature] = hub;
+        return hub;
     }
 
     private static string VersionedImageUrl(string entityType, int id, DateTime updatedAt, int max)

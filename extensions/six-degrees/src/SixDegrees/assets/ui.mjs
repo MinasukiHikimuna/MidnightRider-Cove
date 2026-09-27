@@ -24,7 +24,7 @@ export const PRESETS = [
   { key: "random", title: "Random pair", short: "Random", description: "Any two performers who connect within the degree limit." },
   { key: "longest", title: "Longest chain", short: "Longest", description: "A pair about as far apart as your library allows." },
   { key: "years", title: "Across the years", short: "Across the years", description: "From a performer in your oldest videos to one in your newest." },
-  { key: "hub", title: "Your Johnny Sins", short: "Your Johnny Sins", description: "A random performer’s path to the most connected performer in your library." },
+  { key: "hub", title: "Your Johnny Sins", short: "Your Johnny Sins", description: "A random performer’s path to your library’s best-connected performer." },
 ];
 
 export function presetFor(key) {
@@ -148,7 +148,7 @@ export function emptyCopy(reason, maxDegrees, startName, endName, duosOnly = fal
     case "noYearSpan":
       return {
         title: "No Chain Across the Years",
-        body: `No performer from your oldest videos connects to one from your newest within ${degreeLabel(maxDegrees)}.`,
+        body: `No performer from your oldest videos was found connecting to one from your newest within ${degreeLabel(maxDegrees)}.`,
       };
     default:
       return {
@@ -176,10 +176,10 @@ export function endpointLabels(value) {
 export function footerText(value) {
   let pair = value.preset ? presetFor(value.preset).title : "Chosen pair";
   if (value.preset === "years" && value.startFirstYear && value.endLastYear) pair = `Across the years · ${value.startFirstYear} to ${value.endLastYear}`;
-  if (value.preset === "hub" && value.hubAverageDegrees != null) pair = `Your Johnny Sins · closest to everyone else, ${value.hubAverageDegrees} degrees away on average`;
+  if (value.preset === "hub" && value.hubAverageDegrees != null) pair = `Your Johnny Sins · ${value.hubAverageDegrees} degrees from the rest of the library on average`;
   return [
     pair,
-    `shortest path within ${degreeLabel(value.maxDegrees)}`,
+    value.preset === "longest" ? `furthest pair found within ${degreeLabel(value.maxDegrees)}` : `shortest path within ${degreeLabel(value.maxDegrees)}`,
     value.duosOnly ? "duos only" : null,
     `searched ${Number(value.performerCount).toLocaleString()} performers and ${Number(value.videoCount).toLocaleString()} shared videos`,
   ].filter(Boolean).join(" · ");
@@ -626,7 +626,7 @@ function PerformerPicker({ open, title, excludeId, onPick, onClose }) {
   return h("dialog", {
     ref: dialogRef,
     className: "sd-picker",
-    "aria-modal": "true",
+    "aria-modal": open ? "true" : undefined,
     "aria-labelledby": titleId,
     onCancel: (event) => {
       event.preventDefault();
@@ -674,17 +674,26 @@ function ChainTypeMenu({ open, anchorRef, preset, duosOnly, onPick, onToggleDuos
   const dialogRef = React.useRef(null);
   const pressedOutside = React.useRef(false);
   const titleId = React.useId();
-  const name = React.useId();
-  const [position, setPosition] = React.useState({ top: 0, right: 0 });
+  const descriptionId = React.useId();
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       const anchor = anchorRef.current?.getBoundingClientRect();
-      if (anchor) setPosition({ top: anchor.bottom + 8, right: Math.max(8, window.innerWidth - anchor.right) });
+      if (anchor) {
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = document.documentElement.clientHeight;
+        const below = viewportHeight - anchor.bottom - 16;
+        const above = anchor.top - 16;
+        const openUp = below < 320 && above > below;
+        dialog.style.setProperty("--sd-menu-right", `${Math.max(8, viewportWidth - anchor.right)}px`);
+        dialog.style.setProperty("--sd-menu-top", openUp ? "auto" : `${anchor.bottom + 8}px`);
+        dialog.style.setProperty("--sd-menu-bottom", openUp ? `${viewportHeight - anchor.top + 8}px` : "auto");
+        dialog.style.setProperty("--sd-menu-max-height", `${Math.max(openUp ? above : below, 200)}px`);
+      }
       dialog.showModal();
-      dialog.querySelector("input:checked")?.focus();
+      dialog.querySelector('.sd-option[aria-pressed="true"]')?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -700,9 +709,8 @@ function ChainTypeMenu({ open, anchorRef, preset, duosOnly, onPick, onToggleDuos
   return h("dialog", {
     ref: dialogRef,
     className: "sd-menu",
-    "aria-modal": "true",
+    "aria-modal": open ? "true" : undefined,
     "aria-labelledby": titleId,
-    style: { "--sd-menu-top": `${position.top}px`, "--sd-menu-right": `${position.right}px` },
     onCancel: (event) => {
       event.preventDefault();
       onClose();
@@ -725,30 +733,47 @@ function ChainTypeMenu({ open, anchorRef, preset, duosOnly, onPick, onToggleDuos
     h("div", { className: "sd-menu__header" },
       h("h3", { id: titleId }, "Chain Type"),
       h("button", { type: "button", className: "sd-picker__cancel", onClick: onClose }, "Done")),
-    h("div", { className: "sd-menu__options", role: "radiogroup", "aria-labelledby": titleId },
-      PRESETS.map((option) => h("label", { key: option.key, className: "sd-option" },
-        h("input", {
-          type: "radio",
-          name,
-          value: option.key,
-          checked: option.key === preset,
-          onChange: () => onPick(option.key),
-          onClick: () => {
-            if (option.key === preset) onPick(option.key);
-          },
-        }),
-        h("span", { className: "sd-option__icon", "aria-hidden": true }, h(PRESET_ICONS[option.key])),
-        h("span", { className: "sd-option__text" },
-          h("span", { className: "sd-option__title" }, option.title),
-          h("span", { className: "sd-option__description" }, option.description)),
-        h("span", { className: "sd-option__check", "aria-hidden": true }, "✓")))),
-    h("span", { className: "sd-menu__divider", "aria-hidden": true }),
-    h("label", { className: "sd-toggle" },
+    // Buttons rather than radios: arrow keys on a radio group would apply a chain type, and close the menu,
+    // before the viewer has read the options.
+    h("div", { className: "sd-menu__options", role: "group", "aria-labelledby": titleId },
+      PRESETS.map((option) => h("button", {
+        key: option.key,
+        type: "button",
+        className: "sd-option",
+        "aria-pressed": option.key === preset,
+        "aria-label": option.title,
+        "aria-describedby": `${descriptionId}-${option.key}`,
+        onClick: () => onPick(option.key),
+      },
+      h("span", { className: "sd-option__icon", "aria-hidden": true }, h(PRESET_ICONS[option.key])),
       h("span", { className: "sd-option__text" },
-        h("span", { className: "sd-option__title" }, "Duos only"),
-        h("span", { className: "sd-option__description" }, "Link only through videos with exactly two performers, so group scenes can’t shortcut the chain.")),
-      h("input", { type: "checkbox", role: "switch", checked: duosOnly, onChange: (event) => onToggleDuos(event.target.checked) }),
-      h("span", { className: "sd-toggle__track", "aria-hidden": true }))) : null);
+        h("span", { className: "sd-option__title" }, option.title),
+        h("span", { id: `${descriptionId}-${option.key}`, className: "sd-option__description" }, option.description)),
+      h("span", { className: "sd-option__check", "aria-hidden": true }, "✓")))),
+    h("span", { className: "sd-menu__divider", "aria-hidden": true }),
+    h(DuosToggle, {
+      checked: duosOnly,
+      description: "Link only through videos with exactly two performers, so group scenes can’t shortcut the chain.",
+      onChange: onToggleDuos,
+    })) : null);
+}
+
+function DuosToggle({ checked, description, className = "", onChange }) {
+  const titleId = React.useId();
+  const descriptionId = React.useId();
+  return h("label", { className: `sd-toggle ${className}` },
+    h("span", { className: "sd-option__text" },
+      h("span", { id: titleId, className: "sd-option__title" }, "Duos only"),
+      h("span", { id: descriptionId, className: "sd-option__description" }, description)),
+    h("input", {
+      type: "checkbox",
+      role: "switch",
+      checked,
+      "aria-labelledby": titleId,
+      "aria-describedby": descriptionId,
+      onChange: (event) => onChange(event.target.checked),
+    }),
+    h("span", { className: "sd-toggle__track", "aria-hidden": true }));
 }
 
 function SixDegreesWidget({ configuration, onNavigate }) {
@@ -816,7 +841,9 @@ function SixDegreesWidget({ configuration, onNavigate }) {
   const shuffleButton = h("button", { type: "button", className: "sd-pill-button", onClick: shuffle }, h(ShuffleIcon), "Shuffle");
   const allowGroupsButton = h("button", { type: "button", className: "sd-pill-button", onClick: () => setDuosOnly(false) }, "Allow Group Videos");
 
-  const labels = chain ? endpointLabels(value) : endpointLabels(null);
+  // A chosen pair that is still loading keeps plain labels, rather than the previous preset's.
+  const presetValue = chain && request.kind === "preset" && value?.preset === request.preset ? value : null;
+  const labels = endpointLabels(presetValue);
 
   let body;
   if (state.error) {
@@ -838,12 +865,14 @@ function SixDegreesWidget({ configuration, onNavigate }) {
     body = h(Skeleton);
   } else if (!chain || degrees === 0) {
     const copy = emptyCopy(value.emptyReason, value.maxDegrees ?? maxDegrees, start?.name, end?.name, value.duosOnly);
+    const reason = value.emptyReason;
     const actions = [
-      value.duosOnly ? h(React.Fragment, { key: "groups" }, allowGroupsButton) : null,
-      request.kind === "pair" && value.emptyReason === "noPath" && !value.duosOnly
+      value.duosOnly && reason !== "performerUnavailable" ? h(React.Fragment, { key: "groups" }, allowGroupsButton) : null,
+      request.kind === "pair" && reason === "noPath"
         ? h("button", { key: "change", type: "button", className: "sd-pill-button", onClick: () => setPicking("end") }, "Change Finish")
         : null,
-      value.emptyReason !== "performerUnavailable" ? h(React.Fragment, { key: "shuffle" }, shuffleButton) : null,
+      // Every shuffle of a library without links gives the same empty result.
+      reason === "notEnoughConnections" && !value.duosOnly ? null : h(React.Fragment, { key: "shuffle" }, shuffleButton),
     ].filter(Boolean);
     body = h("div", { className: "sd-body", "aria-busy": state.loading },
       h(Message, {
@@ -868,7 +897,7 @@ function SixDegreesWidget({ configuration, onNavigate }) {
         h("div", { className: "sd-pair" },
           h(EndpointChip, { label: labels.start, id: startId, performer: start, onClick: () => setPicking("start") }),
           h("span", { className: "sd-degrees" }, chain && !state.loading ? badgeText(value) : ""),
-          h(EndpointChip, { label: labels.end, id: endId, performer: end, highlight: !!chain && value.preset === "hub", onClick: () => setPicking("end") })),
+          h(EndpointChip, { label: labels.end, id: endId, performer: end, highlight: presetValue?.preset === "hub", onClick: () => setPicking("end") })),
         h("div", { className: "sd-shuffle", ref: menuAnchor },
           h("button", {
             type: "button",
@@ -951,12 +980,12 @@ function SixDegreesEditor({ configuration, onChange, onValidityChange }) {
           h("output", { "aria-live": "polite" }, degreeLabel(maxDegrees)),
           h("button", { type: "button", onClick: () => update({ maxDegrees: maxDegrees + 1 }), disabled: maxDegrees >= 6, "aria-label": "More degrees" }, "+"))),
       h("p", { className: "sd-editor__note" }, "Pairs further apart than this show No Connection. Presets only choose pairs linked within this many degrees.")),
-    h("label", { className: "sd-toggle sd-toggle--editor" },
-      h("span", { className: "sd-option__text" },
-        h("span", { className: "sd-option__title" }, "Duos only"),
-        h("span", { className: "sd-option__description" }, "Start with chains linked only through two-performer videos. Viewers can switch it in the chain type menu.")),
-      h("input", { type: "checkbox", role: "switch", checked: duosOnly, onChange: (event) => update({ duosOnly: event.target.checked }) }),
-      h("span", { className: "sd-toggle__track", "aria-hidden": true })),
+    h(DuosToggle, {
+      checked: duosOnly,
+      className: "sd-toggle--editor",
+      description: "Start with chains linked only through two-performer videos. Viewers can switch it in the chain type menu.",
+      onChange: (value) => update({ duosOnly: value }),
+    }),
     h(PerformerPicker, {
       open: picking !== null,
       title: picking === "end" ? "Choose Finish" : "Choose Start",
