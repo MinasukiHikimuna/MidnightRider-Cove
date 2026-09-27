@@ -41,7 +41,6 @@ const chain = {
     { from: { id: 1, name: "Alpha" }, video: { id: 10, title: "First", date: "1994-01-01" }, to: { id: 2, name: "Bravo", videoCount: 31 } },
     { from: { id: 2, name: "Bravo" }, video: { id: 11, title: "Second", date: null }, to: { id: 3, name: "Charlie", videoCount: 1 } },
   ],
-  isRandom: true,
 };
 
 test("settings fall back to a random pair within six degrees with group videos allowed", () => {
@@ -131,6 +130,7 @@ test("empty states explain why there is no path", () => {
   assert.equal(emptyCopy("noPath", 6, "Alpha", "Charlie", true).title, "No Duos-Only Chain Within 6 Degrees");
   assert.equal(emptyCopy("notEnoughConnections", 6, null, null, true).title, "No Duos-Only Connections");
   assert.equal(emptyCopy("noYearSpan", 6).title, "No Chain Across the Years");
+  assert.equal(emptyCopy("noYearSpan", 3).body, "No performer from your oldest videos connects to one from your newest within 3 degrees.");
 });
 
 test("performer search results keep only what the widget shows", () => {
@@ -144,6 +144,6 @@ test("the footer says how the pair was chosen and what was searched", () => {
     `Random pair · shortest path within 6 degrees · searched ${(5790).toLocaleString()} performers and ${(21005).toLocaleString()} shared videos`);
   assert.match(footerText({ chain, preset: null, maxDegrees: 3, performerCount: 1, videoCount: 1 }), /^Chosen pair · /);
   assert.match(footerText({ chain, preset: "years", startFirstYear: 1981, endLastYear: 2025, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Across the years · 1981 to 2025 · /);
-  assert.match(footerText({ chain, preset: "hub", hubAverageDegrees: 3.1, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Your Johnny Sins · 3.1 degrees from the rest of the library on average · shortest path within 6 degrees · /);
+  assert.match(footerText({ chain, preset: "hub", hubAverageDegrees: 3.1, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Your Johnny Sins · 3.1 degrees from everyone linked to them on average · shortest path within 6 degrees · /);
   assert.match(footerText({ chain, preset: "longest", duosOnly: true, maxDegrees: 6, performerCount: 1, videoCount: 1 }), /^Longest chain · furthest pair found within 6 degrees · duos only · /);
 });

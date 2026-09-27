@@ -206,7 +206,8 @@ public sealed class SixDegreesExtension : FullExtensionBase
 
     private static ConnectionHub? FindHub(PerformerConnectionGraph graph, CancellationToken ct)
     {
-        if (HubCache.TryGetValue(graph.Signature, out var cached))
+        // A signature match is all but certain to be the same library; checking the hub still belongs to it costs nothing.
+        if (HubCache.TryGetValue(graph.Signature, out var cached) && graph.IsInLargestGroup(cached.PerformerId))
             return cached;
 
         var hub = graph.FindHub(ct);

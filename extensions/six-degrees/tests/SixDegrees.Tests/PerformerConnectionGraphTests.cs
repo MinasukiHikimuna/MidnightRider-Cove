@@ -310,6 +310,9 @@ public sealed class PerformerConnectionGraphTests
 
         Assert.NotNull(hub);
         Assert.InRange(hub.PerformerId, 119, 121);
+        Assert.True(graph.IsInLargestGroup(hub.PerformerId));
+        Assert.False(graph.IsInLargestGroup(1));
+        Assert.False(graph.IsInLargestGroup(9999));
     }
 
     [Fact]

@@ -148,7 +148,7 @@ export function emptyCopy(reason, maxDegrees, startName, endName, duosOnly = fal
     case "noYearSpan":
       return {
         title: "No Chain Across the Years",
-        body: `No performer from your oldest videos was found connecting to one from your newest within ${degreeLabel(maxDegrees)}.`,
+        body: `No performer from your oldest videos connects to one from your newest within ${degreeLabel(maxDegrees)}.`,
       };
     default:
       return {
@@ -176,7 +176,7 @@ export function endpointLabels(value) {
 export function footerText(value) {
   let pair = value.preset ? presetFor(value.preset).title : "Chosen pair";
   if (value.preset === "years" && value.startFirstYear && value.endLastYear) pair = `Across the years · ${value.startFirstYear} to ${value.endLastYear}`;
-  if (value.preset === "hub" && value.hubAverageDegrees != null) pair = `Your Johnny Sins · ${value.hubAverageDegrees} degrees from the rest of the library on average`;
+  if (value.preset === "hub" && value.hubAverageDegrees != null) pair = `Your Johnny Sins · ${value.hubAverageDegrees} degrees from everyone linked to them on average`;
   return [
     pair,
     value.preset === "longest" ? `furthest pair found within ${degreeLabel(value.maxDegrees)}` : `shortest path within ${degreeLabel(value.maxDegrees)}`,
@@ -871,8 +871,8 @@ function SixDegreesWidget({ configuration, onNavigate }) {
       request.kind === "pair" && reason === "noPath"
         ? h("button", { key: "change", type: "button", className: "sd-pill-button", onClick: () => setPicking("end") }, "Change Finish")
         : null,
-      // Every shuffle of a library without links gives the same empty result.
-      reason === "notEnoughConnections" && !value.duosOnly ? null : h(React.Fragment, { key: "shuffle" }, shuffleButton),
+      // These searches are exhaustive, so shuffling would only repeat the same empty result.
+      reason === "notEnoughConnections" || reason === "noYearSpan" ? null : h(React.Fragment, { key: "shuffle" }, shuffleButton),
     ].filter(Boolean);
     body = h("div", { className: "sd-body", "aria-busy": state.loading },
       h(Message, {

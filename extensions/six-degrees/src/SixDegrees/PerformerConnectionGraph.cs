@@ -106,6 +106,9 @@ public sealed class PerformerConnectionGraph
     /// </summary>
     public long Signature { get; }
 
+    /// <summary>Whether a performer belongs to the largest group of linked performers, where hubs come from.</summary>
+    public bool IsInLargestGroup(int performerId) => Array.BinarySearch(_largestComponent, performerId) >= 0;
+
     public int PerformerCount => _performers.Count;
     public int VideoCount => _performerIdsByVideo.Count(pair => pair.Value.Length > 1);
     public bool ContainsPerformer(int performerId) => _performers.ContainsKey(performerId);
