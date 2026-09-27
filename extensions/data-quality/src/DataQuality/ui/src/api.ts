@@ -86,6 +86,24 @@ export interface MediaFile {
   audioCodec?: string;
 }
 
+/**
+ * A tag as Cove describes it on an item (its tag DTO), with what the review needs to show it
+ * like Cove does: the colours of its badge and the keys of its display order. Fields a Cove
+ * version or endpoint does not send are simply missing.
+ */
+export interface TagInfo {
+  id: number;
+  name: string;
+  sortName?: string | null;
+  color?: string | null;
+  tagGroupId?: number | null;
+  tagGroupName?: string | null;
+  tagGroupColor?: string | null;
+  tagGroupSortOrder?: number | null;
+  imagePath?: string | null;
+  hasImage?: boolean;
+}
+
 export interface MediaItem {
   id: number;
   title?: string;
@@ -93,12 +111,12 @@ export interface MediaItem {
   date?: string;
   studioId?: number;
   studioName?: string;
-  tags?: Array<{
-    id: number;
-    name: string;
-    isDerived?: boolean;
-    canRemove?: boolean;
-  }>;
+  tags?: Array<
+    TagInfo & {
+      isDerived?: boolean;
+      canRemove?: boolean;
+    }
+  >;
   customFields?: Record<string, unknown> | null;
   performers: Array<{
     id: number;

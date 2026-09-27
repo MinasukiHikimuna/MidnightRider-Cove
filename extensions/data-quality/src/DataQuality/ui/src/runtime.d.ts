@@ -108,6 +108,24 @@ declare module "@cove/runtime/components" {
     /** Shown after the range text ("1–40 of 172"); present since before the extension's floor. */
     metadataByline?: ReactNode;
   }>;
+  /**
+   * Cove's tag badge, as its video page shows tags: coloured by the tag's colour or else its
+   * group's, with the group's dot. Static without onClick. Exported to extensions from the start.
+   */
+  export const TagBadge: ComponentType<{
+    name: string;
+    tag?: {
+      id?: number;
+      name?: string;
+      color?: string | null;
+      tagGroupColor?: string | null;
+      imagePath?: string | null;
+      hasImage?: boolean;
+    };
+    color?: string | null;
+    groupColor?: string | null;
+    onClick?(): void;
+  }>;
   export const EntityDetailTabs: ComponentType<{
     tabs: Array<{
       key: string;

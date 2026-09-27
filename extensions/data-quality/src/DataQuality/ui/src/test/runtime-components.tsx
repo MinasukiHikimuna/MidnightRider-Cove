@@ -389,6 +389,24 @@ export function VideoCard({
   );
 }
 
+/** Cove's tag badge: its colours and group dot as data, for assertions. */
+export function TagBadge({
+  name,
+  tag,
+  onClick,
+}: React.ComponentProps<typeof import("@cove/runtime/components").TagBadge>) {
+  return (
+    <span
+      className="tag-badge"
+      data-color={tag?.color ?? undefined}
+      data-group-color={tag?.tagGroupColor ?? undefined}
+      data-clickable={onClick ? "true" : undefined}
+    >
+      {name}
+    </span>
+  );
+}
+
 export function TagTile({
   tag,
   onClick,

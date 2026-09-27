@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { mediaLabel } from "./api";
 import { reviewMediaKind, type OccurrenceReview } from "./model";
 import { loadPerformerAnswers, type AnswerSummary } from "./performerAnswers";
+import { ReviewTagBadge } from "./TagDisplay";
 
 export function ExistingAnswers({
   review,
@@ -73,10 +74,10 @@ export function ExistingAnswers({
                 )}
               </div>
               {group.tags.length ? (
-                <ul className="dq-chips" aria-label={group.name}>
+                <ul className="dq-tags" aria-label={group.name}>
                   {group.tags.map((tag) => (
-                    <li className="dq-chip" key={tag.id}>
-                      {tag.name}
+                    <li className="dq-tag" key={tag.id}>
+                      <ReviewTagBadge tag={tag} />
                       <span className="dq-chip-count" aria-hidden="true">
                         {tag.count.toLocaleString()}
                       </span>

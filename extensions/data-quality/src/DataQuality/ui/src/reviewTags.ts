@@ -6,7 +6,9 @@ import {
   readMedia,
   runReviewAction,
   type MediaItem,
+  type TagInfo,
 } from "./api";
+import { rememberTags } from "./tagNames";
 import {
   runOccurrenceAction,
   saveOccurrenceTags,
@@ -29,6 +31,9 @@ export interface TagState {
   ids: number[];
   names: string[];
   absent: number[];
+  /** A media item's tags with their display data, in the order of ids. */
+  tags?: TagInfo[];
+  /** An occurrence's applications; their tags carry the display data. */
   applications?: OccurrenceApplication[];
 }
 export interface TagChange {
@@ -73,6 +78,7 @@ export async function readTags(
         a.contextType === "performer" &&
         a.contextId === item.occurrence!.performer.id,
     );
+    rememberTags(applications.map((a) => a.tag));
     return {
       ids: [...new Set(applications.map((a) => a.tag.id))],
       names: [...new Set(applications.map((a) => a.tag.name))],
@@ -84,6 +90,7 @@ export async function readTags(
   const tags = (media.tags ?? []).filter(
     (t) => t.canRemove !== false || t.isDerived !== true,
   );
+  rememberTags(tags);
   const absentKey =
     Object.keys(media.customFields ?? {}).find(
       (key) => key.toLowerCase() === CONFIRMED_ABSENT_TAGS_KEY,
@@ -93,7 +100,12 @@ export async function readTags(
     throw new Error(
       `Confirmed absent tags are invalid. Inspect the ${kind} before editing.`,
     );
-  return { ids: tags.map((t) => t.id), names: tags.map((t) => t.name), absent };
+  return {
+    ids: tags.map((t) => t.id),
+    names: tags.map((t) => t.name),
+    absent,
+    tags,
+  };
 }
 export async function editTags(
   review: MediaReview,

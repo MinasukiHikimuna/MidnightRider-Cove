@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { resolveTagTree } from "./api";
+import { resolveTagTree, type TagInfo } from "./api";
 import {
   isAssessmentMode,
   tagsAddedBy,
@@ -8,6 +8,7 @@ import {
   type ReviewStep,
 } from "./model";
 import type { TagState } from "./reviewTags";
+import { sortTagsForDisplay } from "./tagOrder";
 
 /** Each tree removal's parent tag, mapped to that parent and all of its descendants. */
 export type TagTrees = ReadonlyMap<number, readonly number[]>;
@@ -109,20 +110,24 @@ export function previewActionEffect(
 }
 
 /**
- * The item's current tags with their names. An occurrence reads them from its applications:
- * TagState keeps its ids and names as separate de-duplicated lists, so two tags sharing a name
- * would misalign them. Media tags come from one list, so theirs line up.
+ * The item's current tags, with their display data where Cove sent it, in Cove's display order.
+ * An occurrence reads them from its applications: TagState keeps its ids and names as separate
+ * de-duplicated lists, so two tags sharing a name would misalign them. A media item keeps its
+ * tags as read; ids and names line up for media, which covers states built without them.
  */
 export function currentTags(
-  tags: Pick<TagState, "ids" | "names" | "applications">,
-): Array<{ id: number; name: string }> {
+  tags: Pick<TagState, "ids" | "names" | "tags" | "applications">,
+): TagInfo[] {
+  let list: TagInfo[];
   if (tags.applications) {
-    const seen = new Map<number, string>();
+    const seen = new Map<number, TagInfo>();
     for (const application of tags.applications)
-      if (!seen.has(application.tag.id)) seen.set(application.tag.id, application.tag.name);
-    return [...seen].map(([id, name]) => ({ id, name }));
-  }
-  return tags.ids.map((id, index) => ({ id, name: tags.names[index] ?? "" }));
+      if (!seen.has(application.tag.id)) seen.set(application.tag.id, application.tag);
+    list = [...seen.values()];
+  } else
+    list =
+      tags.tags ?? tags.ids.map((id, index) => ({ id, name: tags.names[index] ?? "" }));
+  return sortTagsForDisplay(list);
 }
 
 /**

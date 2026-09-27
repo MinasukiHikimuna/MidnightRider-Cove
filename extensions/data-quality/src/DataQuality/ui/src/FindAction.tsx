@@ -75,7 +75,8 @@ export function actionEffectParts(
   );
 }
 
-function actionTagIds(actions: readonly ReviewAction[]): number[] {
+/** Every tag the actions' steps name, to look their names up once. */
+export function actionTagIds(actions: readonly ReviewAction[]): number[] {
   return actions.flatMap((action) =>
     "steps" in action ? action.steps.flatMap((step) => step.tagIds) : [],
   );
@@ -269,31 +270,5 @@ export function FindAction({
         </p>
       </div>
     </>
-  );
-}
-
-/** The button that opens Find action with the mouse; its key (-) does the same. */
-export function FindActionButton({
-  onClick,
-  disabled,
-  className = "dq-button",
-}: {
-  onClick(): void;
-  disabled?: boolean;
-  className?: string;
-}) {
-  const key = useReviewKeyLabels().find;
-  return (
-    <button
-      type="button"
-      className={`${className} dq-find-button`}
-      aria-keyshortcuts={key}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <Search aria-hidden="true" />
-      Find action
-      <kbd aria-hidden="true">{key}</kbd>
-    </button>
   );
 }

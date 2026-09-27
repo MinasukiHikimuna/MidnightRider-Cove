@@ -32,6 +32,7 @@ import {
   mediaStreamUrl,
   request,
   type MediaItem,
+  type TagInfo,
 } from "./api";
 import {
   ActionPad,
@@ -73,7 +74,9 @@ import {
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
 import { objectFiltersEqual } from "./objectFiltersEqual";
 import { useReviewKeys } from "./reviewKeys";
-import { useTagNames } from "./tagNames";
+import { useTags } from "./tagNames";
+import { ReviewTagBadge } from "./TagDisplay";
+import { sortTagsForDisplay } from "./tagOrder";
 import {
   defaultQuery,
   effectiveReview,
@@ -166,9 +169,10 @@ function QueueThumbnail({ media, kind }: { media: MediaItem; kind: MediaKind }) 
 }
 
 /**
- * The item's current tags, with the previewed action's effect drawn over them: ghost chips for
- * tags it adds, struck-through chips for tags it removes, and an "absent" mark for tags it
- * records as confirmed absent. Only this part re-renders while the pointer moves along the pad.
+ * The item's current tags as Cove's badges, in Cove's display order, with the previewed action's
+ * effect drawn over them: "+" and a dashed outline for tags it adds, "−" and a strike-through for
+ * tags it removes, and an "absent" mark for tags it records as confirmed absent. Only this part
+ * re-renders while the pointer moves along the pad.
  */
 function CurrentTags({
   tags,
@@ -189,11 +193,13 @@ function CurrentTags({
   const previewed = useActionPreview(preview);
   const action = showPreview ? previewed : null;
   const absentIds = tags?.absent;
-  const names = useTagNames(
+  const known = useTags(
     useMemo(() => [...actionTagIds, ...(absentIds ?? [])], [actionTagIds, absentIds]),
   );
-  const name = (id: number) =>
-    names[id] === undefined ? "…" : (names[id] ?? "Unavailable tag");
+  // Tags the item does not carry come from the shared tag cache, with Cove's badge data.
+  const tagOf = (id: number): TagInfo =>
+    known[id] ?? { id, name: known[id] === undefined ? "…" : "Unavailable tag" };
+  const inOrder = (ids: readonly number[]) => sortTagsForDisplay(ids.map(tagOf));
   const effect = action && tags ? previewActionEffect(action, tags, trees) : null;
   const chips = tags ? currentTags(tags) : [];
   const has = new Set(chips.map((chip) => chip.id));
@@ -206,6 +212,8 @@ function CurrentTags({
       absent
     </span>
   );
+  const added = inOrder(effect?.added ?? []);
+  const newlyAbsent = inOrder((effect?.markedAbsent ?? []).filter((id) => !has.has(id)));
   return (
     <section className="dq-panel-section" aria-label={label}>
       <h3 className="dq-eyebrow">Current tags</h3>
@@ -213,33 +221,37 @@ function CurrentTags({
         <p className="dq-muted">Loading…</p>
       ) : (
         <>
-          {chips.length || effect?.added.length || effect?.markedAbsent.length ? (
-            <ul className="dq-chips" aria-label="Current tags">
-              {chips.map((chip) =>
-                removed.has(chip.id) ? (
-                  <li key={chip.id} className="dq-chip dq-chip-removed">
-                    <del>{chip.name}</del>
-                    {markedAbsent.has(chip.id) && absentMark}
+          {chips.length || added.length || newlyAbsent.length ? (
+            <ul className="dq-tags" aria-label="Current tags">
+              {chips.map((tag) =>
+                removed.has(tag.id) ? (
+                  <li key={tag.id} className="dq-tag dq-tag-removed">
+                    <del>
+                      − <ReviewTagBadge tag={tag} />
+                    </del>
+                    {markedAbsent.has(tag.id) && absentMark}
                   </li>
                 ) : (
-                  <li key={chip.id} className="dq-chip">
-                    {chip.name}
+                  <li key={tag.id} className="dq-tag">
+                    <ReviewTagBadge tag={tag} />
                   </li>
                 ),
               )}
-              {effect?.added.map((id) => (
-                <li key={`added-${id}`} className="dq-chip dq-chip-added">
-                  <ins>+ {name(id)}</ins>
+              {added.map((tag) => (
+                <li key={`added-${tag.id}`} className="dq-tag dq-tag-added">
+                  <ins>
+                    + <ReviewTagBadge tag={tag} />
+                  </ins>
                 </li>
               ))}
-              {effect?.markedAbsent
-                .filter((id) => !has.has(id))
-                .map((id) => (
-                  <li key={`absent-${id}`} className="dq-chip dq-chip-absent-new">
-                    <ins>{name(id)}</ins>
-                    {absentMark}
-                  </li>
-                ))}
+              {newlyAbsent.map((tag) => (
+                <li key={`absent-${tag.id}`} className="dq-tag dq-tag-absent-new">
+                  <ins>
+                    <ReviewTagBadge tag={tag} />
+                  </ins>
+                  {absentMark}
+                </li>
+              ))}
             </ul>
           ) : (
             <p className="dq-muted">None</p>
@@ -247,14 +259,20 @@ function CurrentTags({
           {tags.absent.length > 0 && (
             <>
               <h4 className="dq-subheading">Confirmed absent</h4>
-              <ul className="dq-chips" aria-label="Confirmed absent tags">
-                {tags.absent.map((id) => (
+              <ul className="dq-tags" aria-label="Confirmed absent tags">
+                {inOrder(tags.absent).map((tag) => (
                   <li
-                    key={id}
-                    className={`dq-chip dq-chip-absent${cleared.has(id) ? " dq-chip-removed" : ""}`}
+                    key={tag.id}
+                    className={`dq-tag dq-tag-absent${cleared.has(tag.id) ? " dq-tag-removed" : ""}`}
                   >
                     <Ban aria-hidden="true" />
-                    {cleared.has(id) ? <del>{name(id)}</del> : name(id)}
+                    {cleared.has(tag.id) ? (
+                      <del>
+                        − <ReviewTagBadge tag={tag} />
+                      </del>
+                    ) : (
+                      <ReviewTagBadge tag={tag} />
+                    )}
                   </li>
                 ))}
               </ul>

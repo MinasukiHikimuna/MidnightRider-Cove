@@ -200,12 +200,22 @@ beforeEach(() => {
   );
 });
 
-/** In the single-item workspace, review management sits in the header's More menu. */
+/** In an open review (single-item workspace or grid), review management sits in the header's More menu. */
 async function openManagerFromWorkspace() {
   const more = screen.getByRole("button", { name: "More review options" });
   await waitFor(() => expect(more).toBeEnabled());
   fireEvent.click(more);
   fireEvent.click(screen.getByRole("menuitem", { name: "Manage reviews" }));
+}
+
+/** The header's Single | Grid switch, for this visit. */
+async function switchLayout(mode: "Single" | "Grid") {
+  const button = within(screen.getByRole("group", { name: "Review layout" })).getByRole(
+    "button",
+    { name: mode },
+  );
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
 }
 
 describe("Data Quality extension page", () => {
@@ -305,11 +315,17 @@ describe("Data Quality extension page", () => {
       expect.objectContaining({ page: 1, perPage: 40 }),
       expect.any(AbortSignal),
     );
-    expect(screen.getByRole("button", { name: /Classify/ })).toHaveTextContent(
-      "Assign Classification",
+    // The action bar names the target and says what each action does.
+    const bar = screen.getByRole("region", { name: "Actions" });
+    expect(within(bar).getByText("Applies to the focused tag")).toBeInTheDocument();
+    expect(within(bar).getByText("Arrows move · Space selects · Enter opens")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "q Classify" })).toHaveAccessibleDescription(
+        "Assign Classification",
+      ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Classify/ }));
+    fireEvent.click(screen.getByRole("button", { name: "q Classify" }));
     await waitFor(() =>
       expect(api.runTagReviewAction).toHaveBeenCalledWith(
         tagReview.actions[0],
@@ -564,10 +580,12 @@ describe("Data Quality extension page", () => {
     });
 
     render(<DataQualityPage onNavigate={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Edit review" }));
+    const edit = await screen.findByRole("button", { name: "Edit review" });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
     expect(screen.getByLabelText("Entity type")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    fireEvent.click(screen.getByRole("button", { name: "Manage reviews" }));
+    await openManagerFromWorkspace();
     const manager = screen.getByRole("dialog", {
       name: "Manage Data Quality reviews",
     });
@@ -1056,8 +1074,9 @@ it("restores multi-video cards, selection actions, and the single-video layout s
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
   expect(api.runReviewAction.mock.calls[0][2]).toEqual([1, 2]);
-  await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
-  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
+  // The grid's header switches this visit to the single-item workspace.
+  expect(screen.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
+  await switchLayout("Single");
   await screen.findByRole("heading", { name: "Reviewing this video" });
   // The workspace header switches this visit back to the grid.
   const grid = screen.getByRole("button", { name: "Grid" });
@@ -1111,7 +1130,7 @@ it("preserves temporary queue criteria when switching video layouts", async () =
   fireEvent.click(grid);
   await screen.findByRole("article", { name: "Video 1" });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
-  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
+  await switchLayout("Single");
   await screen.findByRole("heading", { name: "Reviewing this video" });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
 });
@@ -1169,14 +1188,14 @@ it("restores the saved multiple layout after editing from a temporary single lay
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
+  await switchLayout("Single");
   await screen.findByRole("heading", { name: "Reviewing this video" });
   await waitFor(() => expect(screen.getByRole("button", { name: "Edit review" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Updated description" } });
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await screen.findByRole("article", { name: "Video 1" });
-  expect(screen.getByLabelText("Review layout")).toHaveValue("multiple");
+  expect(screen.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
 });
 
 it("reloads the multi-video queue when browser navigation changes the same review query", async () => {
@@ -1229,7 +1248,7 @@ it("defers browser query changes until a pending multi-video write settles", asy
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   expect(api.findMedia).toHaveBeenCalledTimes(before);
-  expect(screen.getByLabelText("Review layout")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Single" })).toBeDisabled();
   await act(async () => finish());
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true }));
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
@@ -1271,20 +1290,37 @@ it("resets an invalid URL to the last page when the saved review starts at the e
   );
 });
 
-it("selects and clears every shown video from the actions sidebar", async () => {
+it("selects and clears every shown video from the action bar", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
   expect(screen.queryByRole("article", { name: "Video 1, selected" })).not.toBeInTheDocument();
-  const toggle = await screen.findByRole("button", { name: /Select all on page/ });
-  await waitFor(() => expect(toggle).toBeEnabled());
-  fireEvent.click(toggle);
+  const bar = within(screen.getByRole("region", { name: "Actions" }));
+  expect(bar.getByText("Applies to the focused video")).toBeInTheDocument();
+  expect(bar.getByText("Arrows move · Space selects · Enter previews")).toBeInTheDocument();
+  const selectAll = bar.getByRole("button", { name: "Select all" });
+  const clear = bar.getByRole("button", { name: "Clear" });
+  expect(clear).toBeDisabled();
+  expect(clear).toHaveAttribute("aria-keyshortcuts", "Escape");
+  await waitFor(() => expect(selectAll).toBeEnabled());
+  fireEvent.click(selectAll);
   expect(screen.getByRole("article", { name: "Video 1, selected" })).toBeInTheDocument();
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
-  expect(screen.getByText("2 selected videos")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /Clear selection/ }));
+  expect(bar.getByText("2 selected")).toBeInTheDocument();
+  // Everything on the page is selected already.
+  expect(selectAll).toBeDisabled();
+  fireEvent.click(clear);
   expect(screen.queryByRole("article", { name: "Video 1, selected" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Select all on page/ })).toBeInTheDocument();
+  expect(bar.getByText("Applies to the focused video")).toBeInTheDocument();
+  expect(selectAll).toBeEnabled();
+  // A card selected by hand is added to, not toggled off, by Select all.
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
+  fireEvent.click(selectAll);
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  expect(bar.getByText("2 selected")).toBeInTheDocument();
+  // Esc clears the selection from the bar's own controls too.
+  fireEvent.keyDown(clear, { key: "Escape" });
+  expect(bar.getByText("Applies to the focused video")).toBeInTheDocument();
 });
 
 it("selects every video on each page load when the review asks for it", async () => {
@@ -1297,9 +1333,12 @@ it("selects every video on each page load when the review asks for it", async ()
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1, selected" });
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
-  expect(screen.getByText("2 selected videos")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Clear selection/ })).toBeInTheDocument();
-  const [nextPage] = await screen.findAllByRole("button", { name: "Next page" });
+  expect(screen.getByText("2 selected")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Clear" })).toBeEnabled();
+  // One pager, in the header's toolbar.
+  const nextPage = await screen.findByRole("button", { name: "Next page" });
+  expect(screen.getByRole("toolbar", { name: "Video list controls" })).toContainElement(nextPage);
+  expect(screen.getByRole("button", { name: "Page 1 of 2. Go to page" })).toHaveTextContent("1 / 2");
   await waitFor(() => expect(nextPage).toBeEnabled());
   fireEvent.click(nextPage);
   await screen.findByRole("article", { name: "Video 3, selected" });
@@ -1343,15 +1382,15 @@ it("keeps a hand-trimmed selection trimmed after an action, but reselects after 
   expect(screen.queryByRole("article", { name: "Video 2, selected" })).not.toBeInTheDocument();
   expect(screen.queryByRole("article", { name: "Video 3, selected" })).not.toBeInTheDocument();
   // Apply to the whole page: the next page arrives selected like a fresh load.
-  await waitFor(() => expect(screen.getByRole("button", { name: "Select all on page" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Select all on page" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Select all" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Select all" }));
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
   expect(api.runReviewAction.mock.calls[1][2]).toEqual([2, 3]);
   await screen.findByRole("article", { name: "Video 4, selected" });
 });
 
-it("applies action letters from the page body and from sidebar buttons", async () => {
+it("applies action letters from the page body and from the action bar", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   const first = await screen.findByRole("article", { name: "Video 1, selected" });
@@ -1363,13 +1402,13 @@ it("applies action letters from the page body and from sidebar buttons", async (
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
   expect(api.runReviewAction.mock.calls[0][2]).toEqual([1, 2]);
   await screen.findByRole("article", { name: "Video 1, selected" });
-  // The sidebar toggle keeps focus after a click; letters still reach the review.
-  const toggle = screen.getByRole("button", { name: "Clear selection" });
-  toggle.focus();
-  fireEvent.keyDown(toggle, { key: "q" });
+  // The bar's Clear keeps focus after a click; letters still reach the review.
+  const clear = screen.getByRole("button", { name: "Clear" });
+  clear.focus();
+  fireEvent.keyDown(clear, { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
-  // Clicking a sidebar action leaves focus on it; the next letter still applies.
-  const action = screen.getByRole("button", { name: /Apply/ });
+  // Clicking an action tile leaves focus on it; the next letter still applies.
+  const action = screen.getByRole("button", { name: "q Apply" });
   await waitFor(() => expect(action).toBeEnabled());
   action.focus();
   fireEvent.keyDown(action, { key: "q" });
@@ -1401,7 +1440,7 @@ it("selects every tag on load for tag reviews that ask for it", async () => {
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Tag 11, selected" });
   expect(screen.getByRole("article", { name: "Tag 12, selected" })).toBeInTheDocument();
-  expect(screen.getByText("2 selected tags")).toBeInTheDocument();
+  expect(screen.getByText("2 selected")).toBeInTheDocument();
 });
 
 it("keeps walking towards the first page when an earlier page refills from the tail", async () => {
@@ -1430,7 +1469,7 @@ it("keeps walking towards the first page when an earlier page refills from the t
   await waitFor(() => expect(screen.queryByRole("article", { name: "Video 5" })).not.toBeInTheDocument());
   expect(screen.getByRole("article", { name: "Video 6" })).toBeInTheDocument();
   // Step a page towards the head by hand, then answer that whole page.
-  const [previousPage] = await screen.findAllByRole("button", { name: "Previous page" });
+  const previousPage = await screen.findByRole("button", { name: "Previous page" });
   await waitFor(() => expect(previousPage).toBeEnabled());
   fireEvent.click(previousPage);
   await screen.findByRole("article", { name: "Video 3, selected" });
@@ -1469,7 +1508,7 @@ it("toggles every card with Ctrl+A or ⌘A while a applies action 12", async () 
   fireEvent.keyDown(first, { key: "a", ctrlKey: true });
   expect(screen.getByRole("article", { name: "Video 1, selected" })).toBeInTheDocument();
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Clear selection" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "Select all" })).toHaveAttribute(
     "aria-keyshortcuts",
     "Control+A Meta+A",
   );
@@ -1567,7 +1606,7 @@ it("applies a held grid key once, and Shift with a key like the key alone", asyn
   // Buttons show the fixed keys.
   expect(screen.getByRole("button", { name: /Action 2/ }).querySelector("kbd")).toHaveTextContent("w");
   expect(screen.getByRole("button", { name: /Find action/ }).querySelector("kbd")).toHaveTextContent("-");
-  expect(screen.getByRole("button", { name: "Select all on page" }).querySelector("kbd")).toHaveTextContent(
+  expect(screen.getByRole("button", { name: "Select all" }).querySelector("kbd")).toHaveTextContent(
     "Ctrl/⌘A",
   );
   // Keys go where focus is: the card acted on leaves the grid and focus moves to the next one.
@@ -1684,8 +1723,7 @@ it("registers the keys once in the single-item workspace, where the grid's stay 
   await waitFor(() => expect(first).toHaveFocus());
   expect(activeTestKeys()).toContain("local:Ctrl+a");
   // Back in the single-item workspace, only the workspace's keys are registered, each once.
-  await waitFor(() => expect(screen.getByLabelText("Review layout")).toBeEnabled());
-  fireEvent.change(screen.getByLabelText("Review layout"), { target: { value: "single" } });
+  await switchLayout("Single");
   await screen.findByRole("heading", { name: "Reviewing this video" });
   await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
   const active = activeTestKeys();
@@ -1747,10 +1785,198 @@ it("fits the single-item workspace to the window, with the page's notices under 
   const header = screen.getByRole("heading", { name: review.name }).closest("header")!;
   const notice = screen.getByText("Reviews and progress are saved only in this browser.");
   expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // The card grid keeps the page's normal flow.
-  const grid = screen.getByRole("button", { name: "Grid" });
-  await waitFor(() => expect(grid).toBeEnabled());
-  fireEvent.click(grid);
+  // The card grid fits the window too: the header and notices on top, then the cards, which
+  // scroll on their own, with the action bar docked under them.
+  await switchLayout("Grid");
+  const card = await screen.findByRole("article", { name: "Video 1" });
+  expect(page).toHaveClass("dq-page-fit");
+  const grid = container.querySelector(".dq-grid-review")!;
+  const gridHeader = within(grid as HTMLElement).getByRole("heading", { name: review.name }).closest("header")!;
+  const gridNotice = screen.getByText("Reviews and progress are saved only in this browser.");
+  expect(gridHeader.compareDocumentPosition(gridNotice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const stage = container.querySelector(".dq-grid-stage")!;
+  expect(stage).toContainElement(card);
+  expect(stage.lastElementChild).toHaveClass("dq-bar-dock");
+  expect(stage.lastElementChild).toContainElement(screen.getByRole("region", { name: "Actions" }));
+  // No separate pagination rows or resizable sidebar remain.
+  expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: /pagination/i })).not.toBeInTheDocument();
+});
+
+async function openPreview(actions = numberedActions(2)) {
+  openGrid(actions);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "Enter" });
+  return screen.findByRole("dialog", { name: "Review preview: Video 1" });
+}
+
+it("shows the preview's steps, selection, hints and action bar", async () => {
+  const preview = await openPreview();
+  const previous = within(preview).getByRole("button", { name: "Previous video" });
+  const next = within(preview).getByRole("button", { name: "Next video" });
+  expect(previous).toHaveAttribute("aria-keyshortcuts", "n");
+  expect(next).toHaveAttribute("aria-keyshortcuts", "m");
+  expect(previous).toBeDisabled();
+  expect(next).toBeEnabled();
+  expect(within(preview).getByText("Actions apply to this video")).toBeInTheDocument();
+  expect(preview).toHaveTextContent("N M previous / next");
+  expect(preview).toHaveTextContent("Enter or Esc closes");
+  const bar = within(within(preview).getByRole("region", { name: "Actions" }));
+  expect(bar.getByText("This video")).toBeInTheDocument();
+  expect(bar.getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
+  expect(bar.getByRole("button", { name: "Find action" })).toBeInTheDocument();
+  // Selecting from the preview retargets the actions.
+  const selected = within(preview).getByRole("button", { name: "Selected" });
+  expect(selected).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(selected);
+  expect(selected).toHaveAttribute("aria-pressed", "true");
+  expect(within(preview).getByText("Actions apply to the 1 selected video")).toBeInTheDocument();
+  expect(bar.getByText("1 selected")).toBeInTheDocument();
+  // m and n step through the page; the header follows.
+  fireEvent.keyDown(preview, { key: "m" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  expect(within(preview).getByRole("button", { name: "Selected" })).toHaveAttribute("aria-pressed", "false");
+  fireEvent.keyDown(preview, { key: "n" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 1" });
+  // Esc closes and hands focus back to the card.
+  fireEvent.keyDown(preview, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: /Review preview/ })).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("article", { name: "Video 1, selected" })).toHaveFocus());
+});
+
+it("keeps focus in the preview after its buttons are clicked, so its own keys keep working", async () => {
+  const preview = await openPreview();
+  const user = userEvent.setup();
+  // A step button: focus returns to the preview, where Space plays and pauses.
+  await user.click(within(preview).getByRole("button", { name: "Next video" }));
+  await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  expect(preview).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: " " });
+  expect(testVideoControls.toggle).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(60);
+  // An action tile, which the running action disables: focus still stays in the preview.
+  await user.click(within(preview).getByRole("button", { name: "q Action 1" }));
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 1");
+  expect(preview).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: "n" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 1" });
+  // The Selected toggle too.
+  await user.click(within(preview).getByRole("button", { name: "Selected" }));
+  expect(preview).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: " " });
+  expect(testVideoControls.toggle).toHaveBeenCalledTimes(2);
+});
+
+it("toggles queue tag bins from the header's chip row", async () => {
+  const binned = {
+    ...review,
+    view: { ...review.view, reviewMode: "multiple" },
+    presentation: { binParents: [100] },
+  };
+  api.loadReviews.mockResolvedValueOnce({ reviews: [binned], storageKey: "reviews", canWrite: true });
+  api.resolveTagTree.mockResolvedValue([100, 30, 31]);
+  api.findMedia.mockResolvedValue({
+    items: [
+      { ...video(1), tags: [{ id: 30, name: "Bin A" }, { id: 31, name: "Bin B" }] },
+      { ...video(2), tags: [{ id: 30, name: "Bin A" }] },
+    ],
+    totalCount: 2,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("article", { name: "Video 1" });
-  expect(page).not.toHaveClass("dq-page-fit");
+  const bins = await screen.findByRole("group", { name: "Tag bins on this page" });
+  expect(bins).toHaveTextContent("On this page");
+  expect(bins.closest("header")).toBeInTheDocument();
+  const binA = within(bins).getByRole("button", { name: "Bin A 2" });
+  expect(within(bins).getByRole("button", { name: "Bin B 1" })).toHaveAttribute("aria-pressed", "false");
+  await waitFor(() => expect(binA).toBeEnabled());
+  fireEvent.click(binA);
+  await waitFor(() =>
+    expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({
+      _filterExpression: {
+        operator: "AND",
+        children: [{ filter: { tagsCriterion: { value: [30], modifier: "INCLUDES", depth: 0 } } }],
+      },
+    }),
+  );
+  expect(api.findMedia.mock.calls.at(-1)?.[1].page).toBe(1);
+  await waitFor(() =>
+    expect(within(bins).getByRole("button", { name: "Bin A 2" })).toHaveAttribute("aria-pressed", "true"),
+  );
+  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  // Pressed again, the bin lifts its narrowing and the queue is the saved one again.
+  await waitFor(() => expect(within(bins).getByRole("button", { name: "Bin A 2" })).toBeEnabled());
+  fireEvent.click(within(bins).getByRole("button", { name: "Bin A 2" }));
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({}));
+  await waitFor(() =>
+    expect(within(bins).getByRole("button", { name: "Bin A 2" })).toHaveAttribute("aria-pressed", "false"),
+  );
+  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+});
+
+it("switches between Cards and Wall and keeps the host's view buttons out of the toolbar", async () => {
+  openGrid();
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  const view = screen.getByRole("group", { name: "Card view" });
+  const cards = within(view).getByRole("button", { name: "Cards" });
+  const wall = within(view).getByRole("button", { name: "Wall" });
+  expect(cards).toHaveAttribute("aria-pressed", "true");
+  expect(first).toHaveClass("grid");
+  fireEvent.click(wall);
+  expect(wall).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("article", { name: "Video 1" })).toHaveClass("wall");
+  // Cove's own Grid/Wall buttons would repeat the header's switch.
+  expect(screen.queryByRole("group", { name: "Review view" })).not.toBeInTheDocument();
+  // The card size control stays.
+  expect(screen.getByRole("slider", { name: /Card size/ })).toBeInTheDocument();
+});
+
+it("says in the bar why an action key cannot run", async () => {
+  api.getConfirmedAbsentTagsFieldStatus.mockResolvedValue({ kind: "missing", definition: {}, message: "Not set up" });
+  const assessing = { ...review, view: { ...review.view, reviewMode: "multiple" }, actions: [{ id: "absent", label: "Mark absent", steps: [{ mode: "MARK_ABSENT" as const, tagIds: [3] }] }] };
+  api.loadReviews.mockResolvedValueOnce({ reviews: [assessing], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "q" });
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Set up tag assessments before applying Mark absent.");
+  expect(screen.getByRole("region", { name: "Actions" })).toContainElement(alert);
+  expect(screen.getByRole("button", { name: "q Mark absent" })).toBeDisabled();
+});
+
+it("leaves focus on a preview button pressed from the keyboard, and recovers it when a control drops it", async () => {
+  const preview = await openPreview();
+  const user = userEvent.setup();
+  const selected = within(preview).getByRole("button", { name: "Selected" });
+  selected.focus();
+  await user.keyboard("{Enter}");
+  expect(selected).toHaveAttribute("aria-pressed", "true");
+  expect(selected).toHaveFocus();
+  // Enter again toggles it back rather than closing the preview.
+  await user.keyboard("{Enter}");
+  expect(selected).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
+  // An action tile pressed from the keyboard is disabled while the action runs, and the browser
+  // drops focus to the page; once the action is done, the preview has focus again.
+  let finish!: () => void;
+  api.runReviewAction.mockImplementationOnce(
+    () => new Promise<void>((resolve) => (finish = resolve)),
+  );
+  const tile = within(preview).getByRole("button", { name: "q Action 1" });
+  tile.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(tile).toBeDisabled();
+  // jsdom neither drops focus from a disabled control nor lets one be blurred; stand in for the
+  // browser with an element that takes focus and goes, leaving it on the page.
+  const stand = document.body.appendChild(document.createElement("button"));
+  stand.focus();
+  stand.remove();
+  expect(document.body).toHaveFocus();
+  await act(async () => finish());
+  await waitFor(() => expect(preview).toHaveFocus());
 });

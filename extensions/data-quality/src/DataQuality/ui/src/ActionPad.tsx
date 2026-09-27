@@ -18,22 +18,22 @@ import type { TagState } from "./reviewTags";
 import { useTagNames } from "./tagNames";
 
 /**
- * The action being previewed: the pad tile under the pointer or with focus. It lives outside
- * React state so hovering along the pad re-renders only the effect line and the tag chips, not
- * the whole workspace and its player.
+ * The action being previewed: the pad or bar tile under the pointer or with focus. It lives
+ * outside React state so hovering along the tiles re-renders only the effect line (and, in the
+ * single-item workspace, the tag chips), not the whole view and its player.
  */
-export interface ActionPreviewStore {
-  get(): MediaReviewAction | null;
-  set(action: MediaReviewAction | null): void;
+export interface ActionPreviewStore<A = MediaReviewAction> {
+  get(): A | null;
+  set(action: A | null): void;
   /** Clears the preview only while it still shows this action. */
-  clear(action: MediaReviewAction): void;
+  clear(action: A): void;
   subscribe(listener: () => void): () => void;
 }
 
-export function createActionPreviewStore(): ActionPreviewStore {
-  let current: MediaReviewAction | null = null;
+export function createActionPreviewStore<A = MediaReviewAction>(): ActionPreviewStore<A> {
+  let current: A | null = null;
   const listeners = new Set<() => void>();
-  const set = (action: MediaReviewAction | null) => {
+  const set = (action: A | null) => {
     if (action === current) return;
     current = action;
     listeners.forEach((listener) => listener());
@@ -51,7 +51,7 @@ export function createActionPreviewStore(): ActionPreviewStore {
   };
 }
 
-export function useActionPreview(store: ActionPreviewStore): MediaReviewAction | null {
+export function useActionPreview<A>(store: ActionPreviewStore<A>): A | null {
   return useSyncExternalStore(store.subscribe, store.get, store.get);
 }
 
@@ -80,10 +80,16 @@ function coveKeyLabel(key: string, mediaKind: MediaKind): string {
   return "";
 }
 
-/** One key cap; single characters show in upper case, as printed on a keyboard. */
-function KeyCap({ binding }: { binding: string }) {
+/**
+ * One key cap; single characters show in upper case, as printed on a keyboard. Hidden from
+ * assistive technology where the control names its key through aria-keyshortcuts instead.
+ */
+export function KeyCap({ binding, hidden }: { binding: string; hidden?: boolean }) {
   return (
-    <kbd className={Array.from(binding).length === 1 ? "dq-key dq-key-letter" : "dq-key"}>
+    <kbd
+      className={Array.from(binding).length === 1 ? "dq-key dq-key-letter" : "dq-key"}
+      aria-hidden={hidden || undefined}
+    >
       {binding}
     </kbd>
   );

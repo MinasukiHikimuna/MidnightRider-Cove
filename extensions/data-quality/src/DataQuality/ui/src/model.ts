@@ -583,10 +583,10 @@ export function isReviewShortcutTarget(target: EventTarget | null): boolean {
 
 /**
  * Escape clears the grid selection after focus drifts to the page body or to
- * the extension's own controls: cards, the actions sidebar, the pagination
- * rows and the review preview. Host-owned widgets inside the page (the list
- * toolbar, filter chips, dialogs) and text entry keep their Escape, so an
- * allowlist of extension surfaces is used rather than a guess at host markup.
+ * the extension's own controls: cards, the action bar, the header's pager and
+ * the review preview. Host-owned widgets inside the page (the list toolbar,
+ * filter chips, dialogs) and text entry keep their Escape, so an allowlist of
+ * extension surfaces is used rather than a guess at host markup.
  */
 export function isReviewEscapeTarget(
   target: EventTarget | null,
@@ -596,7 +596,7 @@ export function isReviewEscapeTarget(
     return true;
   if (
     !target.closest(
-      ".dq-review-card, .dq-grid, .dq-tag-list, .dq-actions, .dq-pagination-row, .dq-preview",
+      ".dq-review-card, .dq-grid, .dq-tag-list, .dq-action-bar, .dq-pager, .dq-preview",
     )
   )
     return false;

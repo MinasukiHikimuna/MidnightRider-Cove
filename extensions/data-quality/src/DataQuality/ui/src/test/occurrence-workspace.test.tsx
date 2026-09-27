@@ -1925,18 +1925,69 @@ it("previews the hovered action on the current tags", async () => {
   });
   await ready();
   const tags = () => screen.getByRole("list", { name: "Current tags" });
-  expect(tags()).toHaveTextContent("KeptDropped");
+  // Cove's display order: without groups, by name.
+  expect(tags()).toHaveTextContent("DroppedKept");
   const tile = screen.getByRole("button", { name: "q Change absent" });
   fireEvent.mouseEnter(tile.parentElement!);
   await waitFor(() => expect(tags().querySelector("ins")).toHaveTextContent("+ Tag 40"));
-  expect(tags().querySelector("del")).toHaveTextContent("Dropped");
+  expect(tags().querySelector("del")).toHaveTextContent("− Dropped");
   expect(within(tags()).getByText("Tag 50").closest("li")).toHaveTextContent("Tag 50absent");
   expect(
     screen.getByRole("list", { name: "Confirmed absent tags" }).querySelector("del"),
   ).toHaveTextContent("Tag 60");
+  // Every tag, previewed or not, is Cove's badge.
+  expect(within(tags()).getByText("Tag 40")).toHaveClass("tag-badge");
+  expect(within(tags()).getByText("Dropped")).toHaveClass("tag-badge");
   fireEvent.mouseLeave(tile.parentElement!);
   expect(tags().querySelector("ins, del")).toBeNull();
-  expect(tags()).toHaveTextContent("KeptDropped");
+  expect(tags()).toHaveTextContent("DroppedKept");
+});
+
+it("shows the current tags as Cove's badges in Cove's display order", async () => {
+  const tag = (id: number, name: string, group?: { id: number; name: string; order?: number }) => ({
+    id,
+    name,
+    color: group ? null : `#00000${id}`,
+    tagGroupId: group?.id ?? null,
+    tagGroupName: group?.name ?? null,
+    tagGroupColor: group ? `#1111${String(group.id).padStart(2, "0")}` : null,
+    tagGroupSortOrder: group?.order ?? null,
+  });
+  const first = { id: 1, name: "B group", order: 1 };
+  const unordered = { id: 2, name: "A group" };
+  const applications = [
+    tag(5, "Loose 10"),
+    tag(6, "Loose 9"),
+    tag(7, "Zeta", first),
+    tag(8, "Alpha", unordered),
+    tag(9, "Beta", first),
+  ].map((item, index) => ({
+    id: 200 + index,
+    hostType: "video",
+    hostId: 1,
+    contextType: "performer",
+    contextId: 11,
+    tag: item,
+  }));
+  state = { ids: [5, 6, 7, 8, 9], names: [], absent: [], applications };
+  open();
+  await ready();
+  const badges = within(screen.getByRole("list", { name: "Current tags" })).getAllByText(
+    /./,
+    { selector: ".tag-badge" },
+  );
+  // Grouped first, by the group's sort order (none last), then by natural name order.
+  expect(badges.map((badge) => badge.textContent)).toEqual([
+    "Beta",
+    "Zeta",
+    "Alpha",
+    "Loose 9",
+    "Loose 10",
+  ]);
+  expect(badges[0]).toHaveAttribute("data-group-color", "#111101");
+  expect(badges[3]).toHaveAttribute("data-color", "#000006");
+  // A review never navigates away from a tag.
+  expect(badges.some((badge) => badge.hasAttribute("data-clickable"))).toBe(false);
 });
 
 it("summarises the scope on its button and keeps its controls in a popover", async () => {

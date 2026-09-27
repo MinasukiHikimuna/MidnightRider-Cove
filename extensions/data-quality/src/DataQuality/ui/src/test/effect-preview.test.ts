@@ -158,17 +158,36 @@ describe("currentTags", () => {
         ],
       }),
     ).toEqual([
+      { id: 3, name: "Other" },
       { id: 1, name: "Same" },
       { id: 2, name: "Same" },
-      { id: 3, name: "Other" },
     ]);
   });
 
   it("pairs media tag ids with their names", () => {
     expect(currentTags({ ids: [4, 5], names: ["Four", "Five"] })).toEqual([
-      { id: 4, name: "Four" },
       { id: 5, name: "Five" },
+      { id: 4, name: "Four" },
     ]);
+  });
+
+  it("keeps a media item's tags with their display data, in Cove's display order", () => {
+    const grouped = {
+      id: 7,
+      name: "Grouped",
+      color: "#336699",
+      tagGroupId: 2,
+      tagGroupName: "Group",
+      tagGroupColor: "#993366",
+      tagGroupSortOrder: 1,
+    };
+    expect(
+      currentTags({
+        ids: [6, 7],
+        names: ["Plain", "Grouped"],
+        tags: [{ id: 6, name: "Plain" }, grouped],
+      }),
+    ).toEqual([grouped, { id: 6, name: "Plain" }]);
   });
 });
 

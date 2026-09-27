@@ -1,15 +1,18 @@
-import { request } from "./api";
+import { request, type TagInfo } from "./api";
 import { reviewMediaKind, type OccurrenceReview } from "./model";
 import {
   resolveConditionGroups,
   type OccurrenceApplication,
 } from "./occurrences";
+import { rememberTags } from "./tagNames";
+import { compareTagsForDisplay } from "./tagOrder";
 
 export interface AnswerGroup {
   /** The condition tag the answers belong to; null for review tags outside every category. */
   id: number | null;
   name: string;
-  tags: Array<{ id: number; name: string; count: number }>;
+  /** Most frequent first; equally frequent answers in Cove's display order. */
+  tags: Array<TagInfo & { count: number }>;
 }
 export interface AnswerSummary {
   /** Items where the performer holds at least one of these answers. */
@@ -42,6 +45,8 @@ export async function loadPerformerAnswers(
       application.contextType === "performer" &&
       application.contextId === performerId,
   );
+  // These carry Cove's display data; previews of the same answers show them alike.
+  rememberTags(own.map((application) => application.tag));
   const names = await Promise.all(
     categories.map(async (_, index) => {
       const id = settings.conditionTagIds[index];
@@ -60,19 +65,19 @@ export async function loadPerformerAnswers(
     ].filter((id) => !categorized.has(id)),
   );
   const group = (members: Set<number>) => {
-    const hosts = new Map<number, { name: string; hosts: Set<number> }>();
+    const hosts = new Map<number, { tag: TagInfo; hosts: Set<number> }>();
     for (const application of own) {
       if (!members.has(application.tag.id)) continue;
-      const tag = hosts.get(application.tag.id) ?? {
-        name: application.tag.name,
+      const entry = hosts.get(application.tag.id) ?? {
+        tag: application.tag,
         hosts: new Set<number>(),
       };
-      tag.hosts.add(application.hostId);
-      hosts.set(application.tag.id, tag);
+      entry.hosts.add(application.hostId);
+      hosts.set(application.tag.id, entry);
     }
-    return [...hosts]
-      .map(([id, tag]) => ({ id, name: tag.name, count: tag.hosts.size }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return [...hosts.values()]
+      .map((entry) => ({ ...entry.tag, count: entry.hosts.size }))
+      .sort((a, b) => b.count - a.count || compareTagsForDisplay(a, b));
   };
   const groups: AnswerGroup[] = categories.map((members, index) => ({
     id: settings.conditionTagIds[index],

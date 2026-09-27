@@ -131,3 +131,39 @@ it("counts a legacy review's tag choices as the answers to summarize", async () 
     ],
   });
 });
+
+it("keeps each answer's badge data and orders equally frequent answers like Cove", async () => {
+  const withGroup = (hostId: number, tag: number, name: string, order: number | null) => ({
+    ...application(hostId, 11, tag),
+    tag: {
+      id: tag,
+      name,
+      color: "#224466",
+      tagGroupId: order == null ? null : 7,
+      tagGroupName: order == null ? null : "Group",
+      tagGroupColor: order == null ? null : "#664422",
+      tagGroupSortOrder: order,
+    },
+  });
+  fetchMock.mockImplementation((path, init) => {
+    const url = new URL(String(path), "http://test");
+    if (url.pathname === "/api/tagapplications")
+      return response([
+        // Tag 41 is alphabetically first but ungrouped, so the grouped tag 42 comes first.
+        withGroup(1, 41, "Alpha", null),
+        withGroup(2, 42, "Beta", 1),
+      ]);
+    if (url.pathname === "/api/tags/find") {
+      const root = JSON.parse(String(init!.body)).objectFilter.parentsCriterion.value[0];
+      const tree = root === 30 ? [31, 32] : [41, 42];
+      return response({ items: tree.map((id) => ({ id })), totalCount: tree.length });
+    }
+    const id = Number(url.pathname.split("/").pop());
+    return response({ id, name: id === 30 ? "Size" : "Augmentation" });
+  });
+  const summary = await loadPerformerAnswers(review, 11, new AbortController().signal);
+  expect(summary.groups[1].tags).toEqual([
+    expect.objectContaining({ id: 42, name: "Beta", tagGroupColor: "#664422", count: 1 }),
+    expect.objectContaining({ id: 41, name: "Alpha", color: "#224466", count: 1 }),
+  ]);
+});

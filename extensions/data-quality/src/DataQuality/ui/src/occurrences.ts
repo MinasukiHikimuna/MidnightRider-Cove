@@ -10,7 +10,7 @@ import {
   resolveRemovalTrees,
   resolveTagTree,
   type MediaItem,
-  type Tag,
+  type TagInfo,
 } from "./api";
 import {
   conditionSeeksMissingTags,
@@ -29,7 +29,8 @@ export interface OccurrenceApplication {
   hostId: number;
   contextType?: string | null;
   contextId?: number | null;
-  tag: Pick<Tag, "id" | "name">;
+  /** The tag with the display data Cove sends for it (badge colours, display order). */
+  tag: TagInfo;
 }
 export interface Occurrence {
   key: string;

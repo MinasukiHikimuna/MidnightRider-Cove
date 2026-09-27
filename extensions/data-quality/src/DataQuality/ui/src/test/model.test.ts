@@ -269,11 +269,11 @@ describe("review grid Escape", () => {
     document.body.innerHTML = html;
     return document.body.querySelector<HTMLElement>("[data-target]")!;
   }
-  it("accept the body, cards, the actions sidebar, pagination and the review preview", () => {
+  it("accept the body, cards, the action bar, the pager and the review preview", () => {
     expect(isReviewEscapeTarget(document.body)).toBe(true);
     expect(isReviewEscapeTarget(element("<article class='dq-review-card' tabindex='0' data-target>Card</article>"))).toBe(true);
-    expect(isReviewEscapeTarget(element('<aside class="dq-actions"><button data-target>Select all</button></aside>'))).toBe(true);
-    expect(isReviewEscapeTarget(element('<fieldset class="dq-pagination-row"><button data-target>Next page</button></fieldset>'))).toBe(true);
+    expect(isReviewEscapeTarget(element('<section class="dq-action-bar"><button data-target>Select all</button></section>'))).toBe(true);
+    expect(isReviewEscapeTarget(element('<span class="dq-pager"><button data-target>Next page</button></span>'))).toBe(true);
     expect(isReviewEscapeTarget(element('<article class="dq-review-card"><a href="/x" data-target>Link</a></article>'))).toBe(true);
     expect(isReviewEscapeTarget(element('<div role="dialog" class="dq-preview"><button data-target>Apply</button></div>'))).toBe(true);
   });
@@ -316,9 +316,9 @@ it("treats fields that take typed keys as editable, where focus stays put", () =
 });
 
 it("keeps Escape away from host-owned controls inside the page", () => {
-  document.body.innerHTML = '<section class="dq-queue-toolbar"><button data-target>Sort</button></section>';
+  document.body.innerHTML = '<fieldset class="dq-review-toolbar"><button data-target>Sort</button></fieldset>';
   expect(isReviewEscapeTarget(document.body.querySelector("[data-target]"))).toBe(false);
-  document.body.innerHTML = '<header class="data-quality-header"><button data-target>Edit review</button></header>';
+  document.body.innerHTML = '<header class="dq-review-header"><button data-target>Edit review</button></header>';
   expect(isReviewEscapeTarget(document.body.querySelector("[data-target]"))).toBe(false);
   document.body.innerHTML = "";
 });

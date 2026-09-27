@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ReviewWorkspace } from "../ReviewWorkspace";
@@ -246,3 +247,23 @@ it.each([
   expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
   // Each write waits out Cove's one-second read cache before the queue moves on.
 }, 20_000);
+
+it("shows an audio's tags as Cove's badges in Cove's display order", async () => {
+  state = {
+    ids: [3, 4],
+    names: ["Loose", "Grouped"],
+    absent: [],
+    tags: [
+      { id: 3, name: "Loose", color: "#101010" },
+      { id: 4, name: "Grouped", tagGroupId: 1, tagGroupName: "Group", tagGroupColor: "#202020", tagGroupSortOrder: 0 },
+    ],
+  };
+  open();
+  await ready();
+  const badges = within(screen.getByRole("list", { name: "Current tags" })).getAllByText(/./, {
+    selector: ".tag-badge",
+  });
+  expect(badges.map((badge) => badge.textContent)).toEqual(["Grouped", "Loose"]);
+  expect(badges[0]).toHaveAttribute("data-group-color", "#202020");
+  expect(badges[1]).toHaveAttribute("data-color", "#101010");
+});

@@ -33,6 +33,7 @@ export function ReviewHeader({
   toolbar,
   trailing,
   chipsStart,
+  chipsAfter,
   chipsEnd,
 }: {
   name: string;
@@ -44,10 +45,12 @@ export function ReviewHeader({
   editDisabled?: boolean;
   /** The host list toolbar, wrapped in .dq-review-toolbar. */
   toolbar: ReactNode;
-  /** Controls after the toolbar: Scope, Batch…, Single/Grid, More. */
+  /** Controls after the toolbar: Scope, Batch…, Single/Grid, Cards/Wall, More. */
   trailing: ReactNode;
   /** Chip row, before the host's filter chips. */
   chipsStart?: ReactNode;
+  /** Chip row, right after the host's filter chips (the grid's tag bins). */
+  chipsAfter?: ReactNode;
   /** Chip row, right-aligned. */
   chipsEnd?: ReactNode;
 }) {
@@ -89,6 +92,7 @@ export function ReviewHeader({
       <div className="dq-review-header-trail">{trailing}</div>
       <div className="dq-review-header-break" aria-hidden="true" />
       {chipsStart}
+      {chipsAfter && <div className="dq-review-chips-after">{chipsAfter}</div>}
       {chipsEnd && <div className="dq-review-chips-end">{chipsEnd}</div>}
     </header>
   );
@@ -218,6 +222,40 @@ export function LayoutSwitch({
         <LayoutGrid aria-hidden="true" />
         Grid
       </button>
+    </div>
+  );
+}
+
+/**
+ * How the card grid shows its items: Cards or Wall (autoplaying previews) for videos, Cards or
+ * List for tags. Icon buttons, named for assistive technology and on hover.
+ */
+export function CardViewSwitch<T extends string>({
+  options,
+  value,
+  disabled,
+  onChange,
+}: {
+  options: ReadonlyArray<{ value: T; label: string; icon: ReactNode }>;
+  value: T;
+  disabled?: boolean;
+  onChange(value: T): void;
+}) {
+  return (
+    <div className="dq-segmented dq-segmented-icons" role="group" aria-label="Card view">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-label={option.label}
+          title={option.label}
+          aria-pressed={value === option.value}
+          disabled={disabled}
+          onClick={() => value !== option.value && onChange(option.value)}
+        >
+          {option.icon}
+        </button>
+      ))}
     </div>
   );
 }

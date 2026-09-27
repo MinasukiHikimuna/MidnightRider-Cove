@@ -6,13 +6,14 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   EntityReferenceMultiSelector,
   EntityDetailTabs,
-  DetailListPagination,
   DetailListToolbar,
   SortableList,
   TAG_CRITERIA,
@@ -26,11 +27,15 @@ import {
 } from "@cove/runtime/components";
 import {
   AlertTriangle,
+  Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
   Film,
+  Grid3X3,
   GripVertical,
+  LayoutGrid,
+  List,
   Loader2,
   Pencil,
   Plus,
@@ -97,11 +102,20 @@ import {
 } from "./model";
 import { OccurrenceSettings, PerformerFlagSettings } from "./OccurrenceReview";
 import { ActionsFromTags } from "./ActionsFromTags";
-import { FindAction, FindActionButton } from "./FindAction";
+import { ActionBar } from "./ActionBar";
+import { KeyCap } from "./ActionPad";
+import { FindAction } from "./FindAction";
+import { useTagTrees, type TagTrees } from "./effectPreview";
+import {
+  CardViewSwitch,
+  LayoutSwitch,
+  MoreMenu,
+  ReviewHeader,
+  ReviewPager,
+} from "./ReviewHeader";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { ReviewEntityIcon } from "./ReviewEntityIcon";
 import { useReviewKeyLabels, useReviewKeys } from "./reviewKeys";
-import { useTagNames } from "./tagNames";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
 import { objectFiltersEqual } from "./objectFiltersEqual";
@@ -111,7 +125,7 @@ import {
   usePresentationTags,
   presentedVideo,
   TagBins,
-  withTagBin,
+  toggleTagBin,
 } from "./TagPresentation";
 import { QueueEditor } from "./QueueEditor";
 import {
@@ -185,37 +199,27 @@ function consumeShortcut(
   else event.stopImmediatePropagation();
 }
 
-const WORKSPACE_LAYOUT_STORAGE_KEY = "data-quality.workspace-layout.v1";
-const DEFAULT_SIDEBAR_WIDTH = 240;
-const MIN_SIDEBAR_WIDTH = 192;
-const MAX_SIDEBAR_WIDTH = 560;
+/** The grid's card views: videos show cards or a wall of playing previews, tags cards or a list. */
+const VIDEO_CARD_VIEWS = [
+  { value: "grid", label: "Cards", icon: <LayoutGrid aria-hidden="true" /> },
+  { value: "wall", label: "Wall", icon: <Grid3X3 aria-hidden="true" /> },
+] as const;
+const TAG_CARD_VIEWS = [
+  { value: "grid", label: "Cards", icon: <LayoutGrid aria-hidden="true" /> },
+  { value: "list", label: "List", icon: <List aria-hidden="true" /> },
+] as const;
+const NO_ACTIONS: readonly ReviewAction[] = [];
 
-function clampSidebarWidth(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value))
-    : DEFAULT_SIDEBAR_WIDTH;
+/** From this width an open review fits the window (see .dq-page-fit in styles.css). */
+const FIT_WIDTH_QUERY = "(min-width: 900px)";
+function subscribeFitWidth(onChange: () => void) {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const query = window.matchMedia(FIT_WIDTH_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
 }
-
-function readSidebarWidth() {
-  try {
-    const value = JSON.parse(
-      localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "null",
-    );
-    return clampSidebarWidth(value?.sidebarWidth);
-  } catch {
-    return DEFAULT_SIDEBAR_WIDTH;
-  }
-}
-
-function writeSidebarWidth(sidebarWidth: number) {
-  try {
-    localStorage.setItem(
-      WORKSPACE_LAYOUT_STORAGE_KEY,
-      JSON.stringify({ sidebarWidth }),
-    );
-  } catch {
-    // Resizing remains available when browser storage is unavailable.
-  }
+function fitWidthNow() {
+  return typeof window.matchMedia === "function" && window.matchMedia(FIT_WIDTH_QUERY).matches;
 }
 
 function reviewStepTone(mode: ReviewStep["mode"]) {
@@ -232,29 +236,6 @@ function reviewStepTone(mode: ReviewStep["mode"]) {
     case "CLEAR_ABSENCE":
       return "neutral";
   }
-}
-
-function reviewStepTagLabel(step: ReviewStep, tagName: string) {
-  switch (step.mode) {
-    case "ADD":
-      return `Add ${tagName}`;
-    case "REMOVE":
-      return tagName;
-    case "REMOVE_TREE":
-      return `${tagName} tree`;
-    case "MARK_PRESENT":
-      return `Mark ${tagName} present`;
-    case "MARK_ABSENT":
-      return `Mark ${tagName} absent`;
-    case "CLEAR_ABSENCE":
-      return `Clear ${tagName} absence`;
-  }
-}
-
-function reviewStepAccessibleTagLabel(step: ReviewStep, tagName: string) {
-  if (step.mode === "REMOVE") return `Remove ${tagName}`;
-  if (step.mode === "REMOVE_TREE") return `Remove ${tagName} tree`;
-  return reviewStepTagLabel(step, tagName);
 }
 
 export function DataQualityPage({
@@ -334,6 +315,8 @@ export function DataQualityPage({
         deferredNavigation.current = true;
         return;
       }
+      // A URL write still pending from the last render must not overwrite the URL navigated to.
+      readyQueryRevision.current = -1;
       setActiveId(selectedReviewId());
       if (!usesWorkspace) setQueryRevision(value => value + 1);
     };
@@ -398,7 +381,6 @@ export function DataQualityPage({
   const [findOpen, setFindOpen] = useState(false);
   const [displayMode, setDisplayMode] = useState<ReviewDisplayMode>("grid");
   const [cardSize, setCardSize] = useState(defaultCardSize);
-  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [pendingTargetLabel, setPendingTargetLabel] = useState("");
@@ -414,10 +396,13 @@ export function DataQualityPage({
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
-  // The single-item workspace fills the window below Cove's navbar, so only its queue and
-  // side column scroll. The page's top offset (navbar plus the host's main padding) and the
-  // main padding under it are measured rather than assumed.
-  const fitsWindow = !!review && usesWorkspace;
+  // An open review fills the window below Cove's navbar: in the single-item workspace only its
+  // queue and side column scroll, in the grid only the cards. The page's top offset (navbar plus
+  // the host's main padding) and the main padding under it are measured rather than assumed.
+  const fitsWindow = !!review;
+  // The grid's cards scroll on their own only where the page fits the window.
+  const cardsScroll =
+    useSyncExternalStore(subscribeFitWidth, fitWidthNow, () => false) && fitsWindow;
   const [fitOffsets, setFitOffsets] = useState({ top: 0, bottom: 0 });
   useLayoutEffect(() => {
     if (!fitsWindow) return;
@@ -442,11 +427,19 @@ export function DataQualityPage({
       window.removeEventListener("resize", measure);
     };
   }, [fitsWindow]);
-  const sidebarResizeRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startWidth: number;
-  } | null>(null);
+  // The action bar floats over the bottom of the grid; a card brought into view must clear it.
+  const [dockHeight, setDockHeight] = useState(0);
+  const dockObserver = useRef<ResizeObserver | null>(null);
+  const dockRef = useCallback((node: HTMLDivElement | null) => {
+    dockObserver.current?.disconnect();
+    dockObserver.current = null;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() =>
+      setDockHeight(Math.round(node.getBoundingClientRect().height)),
+    );
+    observer.observe(node);
+    dockObserver.current = observer;
+  }, []);
   const loadGeneration = useRef(0);
   const actionGeneration = useRef(0);
   const queueAbort = useRef<AbortController | null>(null);
@@ -454,36 +447,8 @@ export function DataQualityPage({
   // appear later are refills, and in reverse traversal they arrive from the
   // pages already passed, so they must not hold the cursor here.
   const pageCursor = useRef<{ page: number; ids: Set<number> } | null>(null);
-  const actionTagNames = useTagNames(
-    useMemo(
-      () =>
-        videoReview?.actions.flatMap((action) =>
-          action.steps.flatMap((step) => step.tagIds),
-        ) ?? [],
-      [videoReview?.actions],
-    ),
-  );
-
-  function updateSidebarWidth(value: number) {
-    const next = clampSidebarWidth(value);
-    setSidebarWidth(next);
-    writeSidebarWidth(next);
-  }
-
-  function handleSidebarSeparatorKeyDown(
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) {
-    const step = event.shiftKey ? 40 : 16;
-    let nextWidth: number | null = null;
-    if (event.key === "ArrowLeft") nextWidth = sidebarWidth + step;
-    if (event.key === "ArrowRight") nextWidth = sidebarWidth - step;
-    if (event.key === "Home") nextWidth = MIN_SIDEBAR_WIDTH;
-    if (event.key === "End") nextWidth = MAX_SIDEBAR_WIDTH;
-    if (nextWidth === null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    updateSidebarWidth(nextWidth);
-  }
+  // The grid's action wording ("− rest of <tree>"); the single-item workspace resolves its own.
+  const trees = useTagTrees(review && !usesWorkspace ? review.actions : NO_ACTIONS);
 
   useEffect(() => {
     if (!message) return;
@@ -924,12 +889,6 @@ export function DataQualityPage({
   const targets = getReviewActionTargets(selectedIds, focusedId);
   const allShownSelected =
     itemIds.length > 0 && itemIds.every((id) => selectedIds.has(id));
-  const targetLabel =
-    selectedIds.size > 0
-      ? `${selectedIds.size} selected ${entityType}${selectedIds.size === 1 ? "" : "s"}`
-      : focusedId == null
-        ? `no ${entityType}`
-        : `focused ${entityType}`;
 
   const focusCard = useCallback((id: number | null, scroll = true) => {
     if (id == null) return;
@@ -1318,10 +1277,11 @@ export function DataQualityPage({
     return () => document.removeEventListener("keydown", listener);
   }, []);
 
-  // The queue toolbar waits out an action and the review's first load. It stays
-  // live while its own changes reload the queue: a search being typed keeps its
-  // focus (inert, it would drop focus to the page, where the next letters are
-  // action keys), and a newer query supersedes the load in flight.
+  // The queue toolbar (with its pager) waits out an action and the review's
+  // first load. It stays live while its own changes reload the queue: a search
+  // being typed keeps its focus (disabled, it would drop focus to the page,
+  // where the next letters are action keys), and a newer query supersedes the
+  // load in flight.
   const toolbarLocked = pending || (queueLoading && !progressReady);
 
   // The grid's action keys, Find action and select all, while the grid itself
@@ -1354,8 +1314,8 @@ export function DataQualityPage({
   // opening or closing the preview, closes it.
   useEffect(() => setFindOpen(false), [usesWorkspace, previewOpen, review?.id]);
 
-  // Mirrors the sidebar's action buttons, so Find action offers exactly what a
-  // click could apply.
+  // Disables the action bar's tiles, and Find action's rows alike, so both offer
+  // exactly what a click could apply.
   function gridActionBlocked(action: ReviewAction) {
     const changesData =
       "steps" in action ? action.steps.length > 0 : action.effect.mode !== "SKIP";
@@ -1561,7 +1521,7 @@ export function DataQualityPage({
           : undefined
       }
     >
-      {fitsWindow && review ? (
+      {review && usesWorkspace ? (
         <ReviewWorkspace
           key={review.id}
           review={review as MediaReview}
@@ -1584,517 +1544,167 @@ export function DataQualityPage({
             notices: pageNotices,
           }}
         />
+      ) : review ? (
+        renderGridReview(review)
       ) : (
-      <>
-      <header className="data-quality-header">
-        {review && (
-          <button
-            className="dq-header-action"
-            type="button"
-            aria-label="All reviews"
-            title="All reviews"
-            disabled={pending}
-            onClick={showAllReviews}
-          >
-            <ChevronLeft />
-          </button>
-        )}
-        <div className="dq-header-copy">
-          <h1>{review?.name ?? "Data Quality"}</h1>
-          {review?.description && (
-            <p className="dq-header-description">{review.description}</p>
-          )}
-        </div>
-        {review && savedReview && (
-          <button
-            type="button"
-            className="dq-header-action"
-            aria-label="Edit review"
-            title="Edit review"
-            disabled={pending || queueLoading || !canConfigure}
-            onClick={() => {
-              setEditCurrent(true);
-              setManagerOpen(true);
-            }}
-          >
-            <Pencil />
-          </button>
-        )}
-        <button
-          className="dq-header-action"
-          type="button"
-          aria-label="Manage reviews"
-          title="Manage reviews"
-          disabled={pending || queueLoading || !canConfigure}
-          onClick={() => {
-            setEditCurrent(false);
-            setManagerOpen(true);
-          }}
-        >
-          <Settings />
-        </button>
-      </header>
-
-      {pageNotices}
-      {videoReview && <label className="dq-layout-control">
-        Review layout
-        <select aria-label="Review layout" value={reviewMode} disabled={pending || queueLoading || managerOpen}
-          onChange={(event) => setLayoutOverride({ id: videoReview.id, mode: event.target.value as "single" | "multiple" })}>
-          <option value="single">Single video</option>
-          <option value="multiple">Multiple videos</option>
-        </select>
-      </label>}
-      {review && savedReview && (
-        <section className="dq-queue-toolbar" aria-label="Video queue toolbar">
-          <div
-            className={`dq-native-toolbar-host${
-              toolbarLocked ? " dq-native-toolbar-disabled" : ""
-            }`}
-            aria-disabled={toolbarLocked || undefined}
-            inert={toolbarLocked ? true : undefined}
-          >
-            <DetailListToolbar
-              filter={queueError ? loadedFilter : filter}
-              onFilterChange={applyQueueToolbarFilter}
-              totalCount={queue.totalCount}
-              sortOptions={entityType === "tag" ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS}
-              showSearch
-              showSort
-              displayMode={displayMode}
-              onDisplayModeChange={(mode) =>
-                setDisplayMode(supportedDisplayMode(mode, entityType))
-              }
-              availableDisplayModes={entityType === "tag" ? ["grid", "list"] : ["grid", "wall"]}
-              zoomLevel={(cardSize - 225) / 50}
-              onZoomChange={(level) =>
-                setCardSize(Math.round(225 + level * 50))
-              }
-              cardSizeEntityType={entityType === "tag" ? "tags" : "videos"}
-              criteriaDefinitions={entityType === "tag" ? TAG_CRITERIA : VIDEO_CRITERIA}
-              customFieldEntityType={entityType === "video" ? "video" : undefined}
-              objectFilter={toolbarObjectFilter}
-              onObjectFilterChange={(objectFilter) => {
-                if (!toolbarLocked)
-                  pendingToolbarObjectFilter.current =
-                    entityType === "video"
-                      ? stripCustomFieldPresentation(
-                          objectFilter,
-                          customFieldTagNames,
-                          review.view.objectFilter,
-                        )
-                      : objectFilter;
-              }}
-              showPagingControls={false}
-            />
-          </div>
-          {temporaryReview?.id === activeId && (
-            <div className="dq-review-defaults">
-              <button
-                type="button"
-                className="dq-button"
-                aria-label="Save changes to review filters"
-                title="Save changes to review filters"
-                disabled={pending || queueLoading || !canConfigure}
-                onClick={saveTemporaryQueue}
-              >
-                <Save />
-              </button>
-              <button
-                type="button"
-                className="dq-button"
-                aria-label="Reset to default review filters"
-                title="Reset to default review filters"
-                disabled={pending || queueLoading}
-                onClick={resetQueueToReviewDefaults}
-              >
-                <RotateCcw />
-              </button>
+        <>
+          <header className="data-quality-header">
+            <div className="dq-header-copy">
+              <h1>Data Quality</h1>
             </div>
-          )}
-        </section>
-      )}
-      {!review ? (
-        reviews.length ? (
-          <section
-            className="dq-review-browser"
-            aria-labelledby="dq-reviews-title"
-          >
-            <div className="dq-review-browser-heading">
-              <div>
-                <h2
-                  id="dq-reviews-title"
-                  ref={reviewBrowserHeadingRef}
-                  tabIndex={-1}
-                >
-                  Reviews
-                </h2>
-                <p>Choose a review to open its queue.</p>
-                <span className="dq-sr-only" role="status">
-                  {reviews.every(
-                    (item) => reviewCounts[item.id] !== undefined,
-                  )
-                    ? reviews.some((item) => reviewCounts[item.id] === null)
-                      ? "Review counts loaded; some counts are unavailable."
-                      : "Review counts loaded."
-                    : ""}
-                </span>
-              </div>
-              <div className="dq-review-browser-sort">
-                <label>
-                  <span className="dq-sr-only">Sort reviews by</span>
-                  <select
-                    aria-label="Sort reviews by"
-                    value={reviewBrowserSort}
-                    onChange={(event) =>
-                      setReviewBrowserSort(
-                        event.target.value as ReviewBrowserSort,
+            <button
+              className="dq-header-action"
+              type="button"
+              aria-label="Manage reviews"
+              title="Manage reviews"
+              disabled={!canConfigure}
+              onClick={() => {
+                setEditCurrent(false);
+                setManagerOpen(true);
+              }}
+            >
+              <Settings />
+            </button>
+          </header>
+          {pageNotices}
+          {reviews.length ? (
+            <section
+              className="dq-review-browser"
+              aria-labelledby="dq-reviews-title"
+            >
+              <div className="dq-review-browser-heading">
+                <div>
+                  <h2
+                    id="dq-reviews-title"
+                    ref={reviewBrowserHeadingRef}
+                    tabIndex={-1}
+                  >
+                    Reviews
+                  </h2>
+                  <p>Choose a review to open its queue.</p>
+                  <span className="dq-sr-only" role="status">
+                    {reviews.every(
+                      (item) => reviewCounts[item.id] !== undefined,
+                    )
+                      ? reviews.some((item) => reviewCounts[item.id] === null)
+                        ? "Review counts loaded; some counts are unavailable."
+                        : "Review counts loaded."
+                      : ""}
+                  </span>
+                </div>
+                <div className="dq-review-browser-sort">
+                  <label>
+                    <span className="dq-sr-only">Sort reviews by</span>
+                    <select
+                      aria-label="Sort reviews by"
+                      value={reviewBrowserSort}
+                      onChange={(event) =>
+                        setReviewBrowserSort(
+                          event.target.value as ReviewBrowserSort,
+                        )
+                      }
+                    >
+                      <option value="name">Name</option>
+                      <option value="count">Item count</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    aria-label={
+                      reviewBrowserDirection === "asc"
+                        ? "Ascending"
+                        : "Descending"
+                    }
+                    title={
+                      reviewBrowserDirection === "asc"
+                        ? "Ascending"
+                        : "Descending"
+                    }
+                    onClick={() =>
+                      setReviewBrowserDirection((current) =>
+                        current === "asc" ? "desc" : "asc",
                       )
                     }
                   >
-                    <option value="name">Name</option>
-                    <option value="count">Item count</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  aria-label={
-                    reviewBrowserDirection === "asc"
-                      ? "Ascending"
-                      : "Descending"
-                  }
-                  title={
-                    reviewBrowserDirection === "asc"
-                      ? "Ascending"
-                      : "Descending"
-                  }
-                  onClick={() =>
-                    setReviewBrowserDirection((current) =>
-                      current === "asc" ? "desc" : "asc",
-                    )
-                  }
-                >
-                  <ChevronRight
-                    className={
-                      reviewBrowserDirection === "asc"
-                        ? "dq-sort-ascending"
-                        : "dq-sort-descending"
-                    }
-                  />
-                </button>
-              </div>
-            </div>
-            <div className="dq-review-browser-list">
-              {sortedReviews.map((item) => {
-                const count = reviewCounts[item.id];
-                const itemType = reviewEntityType(item);
-                const singular =
-                  itemType === "tag"
-                    ? "tag"
-                    : isOccurrenceReview(item)
-                      ? mediaLabel(mediaKindOf(itemType)).queue
-                      : mediaLabel(mediaKindOf(itemType)).one;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled={pending}
-                    onClick={() => chooseReview(item.id)}
-                  >
-                    <span className="dq-review-browser-summary">
-                      <span className="dq-review-title">
-                        <ReviewEntityIcon entityType={itemType} />
-                        <strong>{item.name}</strong>
-                      </span>
-                      <span
-                        className="dq-review-count"
-                        aria-label={
-                          count === undefined
-                            ? `Counting matching ${singular}s`
-                            : count === null
-                              ? `Matching ${singular} count unavailable`
-                              : `${count.toLocaleString()} matching ${count === 1 ? singular : `${singular}s`}`
-                        }
-                      >
-                        {count === undefined
-                          ? "…"
-                          : count === null
-                            ? "—"
-                            : count.toLocaleString()}
-                      </span>
-                    </span>
-                    {item.description && (
-                      <span className="dq-review-rule-name">
-                        {item.description}
-                      </span>
-                    )}
+                    <ChevronRight
+                      className={
+                        reviewBrowserDirection === "asc"
+                          ? "dq-sort-ascending"
+                          : "dq-sort-descending"
+                      }
+                    />
                   </button>
-                );
-              })}
-            </div>
-          </section>
-        ) : (
-          <div className="dq-empty">
-            <Film />
-            <p>No saved reviews are available in this browser.</p>
-          </div>
-        )
-      ) : (
-        <>
-          {videoReview && presentationTags.error && (
-            <p role="alert">{presentationTags.error}</p>
-          )}
-          {videoReview && (
-            <TagBins
-              videos={queue.items as MediaItem[]}
-              review={videoReview}
-              trees={presentationTags.ids}
-              disabled={pending || queueLoading}
-              onChoose={(id) => {
-                const adjusted = withTagBin(videoReview, id);
-                setTemporaryReview(adjusted);
-                void resumeQueue(adjusted, { ...filter, page: 1 });
-              }}
-            />
-          )}
-          {actionError && !previewOpen && (
-            <div role="alert" className="dq-alert">
-              <AlertTriangle />
-              {actionError}
-            </div>
-          )}
-          {message && (
-            <p role="status" aria-live="polite" className="dq-status dq-toast">
-              {message}
-            </p>
-          )}
-          {renderPagination("top")}
-          <div
-            className="dq-workspace"
-            style={
-              {
-                "--dq-sidebar-width": `${sidebarWidth}px`,
-              } as React.CSSProperties
-            }
-          >
-            <main>
-              {queueLoading && !queue.items.length && (
-                <CenteredStatus label="Loading review queue…" />
-              )}
-              {queueError && !queueLoading && (
-                <ErrorState
-                  message={queueError}
-                  retryLabel={queueUrlError ? "Reset to review defaults" : "Retry"}
-                  onRetry={() => {
-                    if (queueUrlError && savedReview && reviewEntityType(savedReview) === "video") {
-                      const defaults = defaultQuery(savedReview as VideoReview);
-                      writeQuery(savedReview.id, { ...defaults, filter: { ...defaults.filter, page: undefined } });
-                      setQueryRevision(value => value + 1);
-                      return;
-                    }
-                    void fetchQueue(
-                      review,
-                      filter,
-                      queueRetryFromEnd,
-                      selectAllOnLoad,
-                    ).catch(() => undefined);
-                  }}
-                />
-              )}
-              {!pending &&
-                !queueLoading &&
-                !queueError &&
-                !queue.items.length && (
-                  <div className="dq-empty">
-                    <Film />
-                    <p>No {entityType}s match this review.</p>
-                  </div>
-                )}
-              {!!queue.items.length && (
-                <div ref={gridRef}>
-                  <div
-                    className={displayMode === "list" ? "dq-tag-list" : "dq-grid"}
-                    style={
-                      {
-                        "--dq-card-width": `${cardSize}px`,
-                      } as React.CSSProperties
-                    }
-                  >
-                    {queue.items.map(renderCard)}
-                  </div>
                 </div>
-              )}
-            </main>
-            <div
-              className="dq-workspace-separator"
-              role="separator"
-              tabIndex={0}
-              aria-label="Resize review sidebar"
-              aria-orientation="vertical"
-              aria-valuemin={MIN_SIDEBAR_WIDTH}
-              aria-valuemax={MAX_SIDEBAR_WIDTH}
-              aria-valuenow={sidebarWidth}
-              aria-valuetext={`${sidebarWidth} pixels wide`}
-              title="Drag or use Left/Right to resize · Shift for larger steps · double-click to reset"
-              onPointerDown={(event) => {
-                sidebarResizeRef.current = {
-                  pointerId: event.pointerId,
-                  startX: event.clientX,
-                  startWidth: sidebarWidth,
-                };
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                const resize = sidebarResizeRef.current;
-                if (
-                  resize?.pointerId === event.pointerId &&
-                  event.currentTarget.hasPointerCapture(event.pointerId)
-                )
-                  updateSidebarWidth(
-                    resize.startWidth + resize.startX - event.clientX,
-                  );
-              }}
-              onPointerUp={() => {
-                sidebarResizeRef.current = null;
-              }}
-              onPointerCancel={() => {
-                sidebarResizeRef.current = null;
-              }}
-              onKeyDown={handleSidebarSeparatorKeyDown}
-              onDoubleClick={() => updateSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
-            >
-              <span />
-            </div>
-            <aside className="dq-actions">
-              <button
-                type="button"
-                className="dq-selection-toggle"
-                aria-keyshortcuts="Control+A Meta+A"
-                disabled={!itemIds.length}
-                onClick={() =>
-                  updateSelection((current) =>
-                    toggleShownReviewSelection(current, itemIds),
-                  )
-                }
-              >
-                {allShownSelected ? "Clear selection" : "Select all on page"}
-                <kbd aria-hidden="true">{keyLabels.selectAll}</kbd>
-              </button>
-              {/* Always name the target: with nothing checked, actions fall
-                  back to the focused card, which the ring alone does not say. */}
-              <strong>
-                {selectedIds.size > 0
-                  ? targetLabel
-                  : focusedId == null
-                    ? "Nothing to apply to"
-                    : `Applies to the ${targetLabel}`}
-              </strong>
-              {review.actions.map((action, index) => {
-                const targetGroupId =
-                  "effect" in action &&
-                  action.effect.mode === "SET_TAG_GROUP"
-                    ? action.effect.tagGroupId
-                    : null;
-                const group =
-                  targetGroupId != null
-                    ? tagGroups.find((item) => item.id === targetGroupId)
-                    : undefined;
-                return <button
-                  key={action.id}
-                  type="button"
-                  disabled={gridActionBlocked(action)}
-                  onClick={() => void execute(action)}
-                >
-                  <span className="dq-action-copy">
-                    <span className="dq-action-label">{action.label}</span>
-                    {"effect" in action ? (
-                      <small>
-                        {action.effect.mode === "SKIP"
-                          ? "Skip"
-                          : action.effect.mode === "CLEAR_TAG_GROUP"
-                            ? "Set Ungrouped"
-                            : group
-                              ? `Assign ${group.name}`
-                              : "Unavailable tag group"}
-                      </small>
-                    ) : action.steps.length ? (
-                      <span className="dq-action-steps">
-                        {action.steps.flatMap((step, stepIndex) =>
-                          step.tagIds.map((tagId, tagIndex) => {
-                            const tagName =
-                              actionTagNames[tagId] === undefined
-                                ? "Tag"
-                                : actionTagNames[tagId] ?? "Unavailable tag";
-                            const label = reviewStepTagLabel(step, tagName);
-                            const accessibleLabel =
-                              reviewStepAccessibleTagLabel(step, tagName);
-                            return (
-                              <span
-                                key={`${stepIndex}-${tagId}-${tagIndex}`}
-                                className="dq-step-summary"
-                                data-step-tone={reviewStepTone(step.mode)}
-                                aria-label={accessibleLabel}
-                                title={`Step ${stepIndex + 1}: ${accessibleLabel}`}
-                              >
-                                {label}
-                              </span>
-                            );
-                          }),
-                        )}
+              </div>
+              <div className="dq-review-browser-list">
+                {sortedReviews.map((item) => {
+                  const count = reviewCounts[item.id];
+                  const itemType = reviewEntityType(item);
+                  const singular =
+                    itemType === "tag"
+                      ? "tag"
+                      : isOccurrenceReview(item)
+                        ? mediaLabel(mediaKindOf(itemType)).queue
+                        : mediaLabel(mediaKindOf(itemType)).one;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={pending}
+                      onClick={() => chooseReview(item.id)}
+                    >
+                      <span className="dq-review-browser-summary">
+                        <span className="dq-review-title">
+                          <ReviewEntityIcon entityType={itemType} />
+                          <strong>{item.name}</strong>
+                        </span>
+                        <span
+                          className="dq-review-count"
+                          aria-label={
+                            count === undefined
+                              ? `Counting matching ${singular}s`
+                              : count === null
+                                ? `Matching ${singular} count unavailable`
+                                : `${count.toLocaleString()} matching ${count === 1 ? singular : `${singular}s`}`
+                          }
+                        >
+                          {count === undefined
+                            ? "…"
+                            : count === null
+                              ? "—"
+                              : count.toLocaleString()}
+                        </span>
                       </span>
-                    ) : (
-                      <small>Skip</small>
-                    )}
-                  </span>
-                  {keyLabels.action(index) && (
-                    <kbd>{keyLabels.action(index)}</kbd>
-                  )}
-                </button>;
-              })}
-              {!review.actions.length && <p>This review has no actions.</p>}
-              {review.actions.length > 0 && (
-                <FindActionButton onClick={() => setFindOpen(true)} />
-              )}
-              {!canWriteCurrent && (
-                <p>{writeSubject} write permission is required to apply actions.</p>
-              )}
-              {entityType === "tag" && tagGroupsError && (
-                <p>Tag groups are unavailable. {tagGroupsError}</p>
-              )}
-              {pending && (
-                <p role="status">
-                  <Loader2 className="dq-spin" /> Applying action to{" "}
-                  {pendingTargetLabel}…
-                </p>
-              )}
-              <p className="dq-shortcuts">
-                {[
-                  "←→↑↓ move",
-                  "space select",
-                  `enter ${entityType === "tag" ? "open" : "preview"}`,
-                  "action keys apply",
-                  `${keyLabels.find} find action`,
-                  `${keyLabels.selectAll} toggle shown`,
-                  "Esc clear",
-                ].join(" · ")}
-              </p>
-            </aside>
-          </div>
-          {renderPagination("bottom")}
+                      {item.description && (
+                        <span className="dq-review-rule-name">
+                          {item.description}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : (
+            <div className="dq-empty">
+              <Film />
+              <p>No saved reviews are available in this browser.</p>
+            </div>
+          )}
         </>
-      )}
-      </>
       )}
 
       {previewOpen && previewVideo && videoReview && (
         <ReviewPreview
           video={previewVideo}
           review={videoReview}
-          targetLabel={targetLabel}
+          selectedCount={selectedIds.size}
           pending={pending}
           refreshing={queueLoading || !!queueError}
           error={actionError}
           canWrite={canWriteVideos}
           assessmentReady={absenceFieldStatus?.kind === "ready"}
+          trees={trees}
           selected={selectedIds.has(previewVideo.id)}
           hasPrevious={itemIds.indexOf(previewVideo.id) > 0}
           hasNext={
@@ -2119,6 +1729,7 @@ export function DataQualityPage({
         <FindAction
           actions={review.actions}
           tagGroups={tagGroups}
+          trees={trees}
           isDisabled={gridActionBlocked}
           canStay={false}
           onApply={(action) => {
@@ -2261,36 +1872,304 @@ export function DataQualityPage({
     setFocusedId(null);
   }
 
-  function renderPagination(position: "top" | "bottom") {
-    if (!review) return null;
+  function goToPage(next: number) {
+    if (!review || pending || next === Number(filter.page)) return;
+    setFilterAndLoad(
+      { ...filter, page: next },
+      review,
+      (target, nextFilter) => fetchQueue(target, nextFilter, false, selectAllOnLoad),
+      clearPageState,
+    );
+  }
+
+  /**
+   * A queue tag bin narrows the queue to its tag, from the first page; pressed again, it lifts
+   * the narrowing. Back at the saved queue, the queue starts where the review starts, as Reset does.
+   */
+  function toggleQueueTagBin(id: number) {
+    if (!videoReview || !savedReview || pending || queueLoading) return;
+    const adjusted = toggleTagBin(videoReview, id, savedReview.view.objectFilter);
+    const keepsTemporaryQueue =
+      queueSignature(adjusted) !== queueSignature(savedReview);
+    setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
+    if (keepsTemporaryQueue) void resumeQueue(adjusted, { ...filter, page: 1 });
+    else
+      void resumeQueue(
+        savedReview,
+        { ...filter, page: 1 },
+        savedReview.view.startFrom !== "beginning",
+      );
+  }
+
+  /**
+   * The card grid of video reviews in the Grid layout and of tag reviews: the review header (with
+   * the queue's one pager in the host toolbar's byline), the cards, which alone scroll, and the
+   * action bar floating over their bottom edge.
+   */
+  function renderGridReview(current: Review) {
+    const tagReview = entityType === "tag";
+    const noun = tagReview ? "tag" : "video";
+    const perPage = Math.max(1, Number(filter.perPage) || 40);
+    const pages = Math.max(1, Math.ceil(queue.totalCount / perPage));
+    const page = Math.min(Math.max(1, Number(filter.page) || 1), pages);
+    const notes = [
+      canWriteCurrent ? "" : `${writeSubject} write permission is required to apply actions.`,
+      tagReview && tagGroupsError ? `Tag groups are unavailable. ${tagGroupsError}` : "",
+    ].filter(Boolean);
+    const showsError = !!actionError && !previewOpen;
     return (
-      <fieldset
-        className="dq-pagination-row"
-        disabled={pending || queueLoading}
-        aria-label={`Review queue pagination ${position}`}
+      <section
+        className="dq-grid-review"
+        aria-label={tagReview ? "Tag review" : "Video review grid"}
       >
-        <DetailListPagination
-          filter={{
-            ...filter,
-            page: Number(filter.page) || 1,
-            perPage: Number(filter.perPage) || 40,
+        <ReviewHeader
+          name={current.name}
+          description={current.description}
+          entityType={entityType}
+          onBack={showAllReviews}
+          backDisabled={pending}
+          onEdit={() => {
+            setEditCurrent(true);
+            setManagerOpen(true);
           }}
-          totalCount={queue.totalCount}
-          className="dq-pagination"
-          ariaLabel={`Review queue pages ${position}`}
-          onFilterChange={(next) => {
-            if (pending || queueLoading || next.page === Number(filter.page))
-              return;
-            setFilterAndLoad(
-              { ...filter, page: next.page },
-              review,
-              (target, nextFilter) =>
-                fetchQueue(target, nextFilter, false, selectAllOnLoad),
-              clearPageState,
-            );
-          }}
+          editDisabled={pending || queueLoading || !canConfigure}
+          toolbar={
+            <fieldset className="dq-review-toolbar" disabled={toolbarLocked}>
+              <legend className="dq-sr-only">
+                {tagReview ? "Tag filters" : "Video filters"}
+              </legend>
+              <DetailListToolbar
+                filter={queueError ? loadedFilter : filter}
+                onFilterChange={applyQueueToolbarFilter}
+                totalCount={queue.totalCount}
+                sortOptions={tagReview ? TAG_SORT_OPTIONS : VIDEO_SORT_OPTIONS}
+                showSearch
+                showSort
+                // Without a change handler Cove shows no view buttons of its own (the header's
+                // Cards/Wall switch replaces them), only the card size control for this view.
+                displayMode={displayMode}
+                zoomLevel={(cardSize - 225) / 50}
+                onZoomChange={(level) => setCardSize(Math.round(225 + level * 50))}
+                cardSizeEntityType={tagReview ? "tags" : "videos"}
+                criteriaDefinitions={tagReview ? TAG_CRITERIA : VIDEO_CRITERIA}
+                customFieldEntityType={entityType === "video" ? "video" : undefined}
+                objectFilter={toolbarObjectFilter}
+                onObjectFilterChange={(objectFilter) => {
+                  if (!toolbarLocked)
+                    pendingToolbarObjectFilter.current =
+                      entityType === "video"
+                        ? stripCustomFieldPresentation(
+                            objectFilter,
+                            customFieldTagNames,
+                            current.view.objectFilter,
+                          )
+                        : objectFilter;
+                }}
+                showPagingControls={false}
+                metadataByline={
+                  <ReviewPager page={page} pages={pages} onPage={goToPage} />
+                }
+              />
+            </fieldset>
+          }
+          trailing={
+            <>
+              {videoReview && (
+                <LayoutSwitch
+                  mode="multiple"
+                  disabled={pending || queueLoading || managerOpen}
+                  onChange={() =>
+                    setLayoutOverride({ id: videoReview.id, mode: "single" })
+                  }
+                />
+              )}
+              <CardViewSwitch<ReviewDisplayMode>
+                options={tagReview ? TAG_CARD_VIEWS : VIDEO_CARD_VIEWS}
+                value={displayMode}
+                onChange={(mode) =>
+                  setDisplayMode(supportedDisplayMode(mode, entityType))
+                }
+              />
+              <MoreMenu
+                disabled={pending}
+                items={[
+                  {
+                    label: "Manage reviews",
+                    disabled: queueLoading || !canConfigure,
+                    onSelect: () => {
+                      setEditCurrent(false);
+                      setManagerOpen(true);
+                    },
+                  },
+                ]}
+              />
+            </>
+          }
+          chipsAfter={
+            videoReview?.presentation?.binParents?.length ? (
+              <TagBins
+                videos={queue.items as MediaItem[]}
+                review={videoReview}
+                savedObjectFilter={(savedReview ?? videoReview).view.objectFilter}
+                trees={presentationTags.ids}
+                disabled={pending || queueLoading}
+                onToggle={toggleQueueTagBin}
+              />
+            ) : undefined
+          }
+          chipsEnd={
+            temporaryReview?.id === activeId ? (
+              <>
+                <span className="dq-defaults-note">
+                  Queue differs from the saved review
+                </span>
+                <button
+                  type="button"
+                  className="dq-text-button"
+                  title="Save the current queue criteria to this review"
+                  disabled={pending || queueLoading || !canConfigure}
+                  onClick={saveTemporaryQueue}
+                >
+                  <Save aria-hidden="true" />
+                  Save to review
+                </button>
+                <button
+                  type="button"
+                  className="dq-text-button"
+                  title="Reset the queue to the review's saved criteria"
+                  disabled={pending || queueLoading}
+                  onClick={resetQueueToReviewDefaults}
+                >
+                  <RotateCcw aria-hidden="true" />
+                  Reset
+                </button>
+              </>
+            ) : undefined
+          }
         />
-      </fieldset>
+        {pageNotices}
+        {videoReview && presentationTags.error && (
+          <p role="alert" className="dq-alert">
+            {presentationTags.error}
+          </p>
+        )}
+        <div
+          className="dq-grid-stage"
+          style={{ "--dq-dock-height": `${dockHeight}px` } as React.CSSProperties}
+        >
+          <div className="dq-grid-content">
+            {queueLoading && !queue.items.length && (
+              <CenteredStatus label="Loading review queue…" />
+            )}
+            {queueError && !queueLoading && (
+              <ErrorState
+                message={queueError}
+                retryLabel={queueUrlError ? "Reset to review defaults" : "Retry"}
+                onRetry={() => {
+                  if (queueUrlError && savedReview && reviewEntityType(savedReview) === "video") {
+                    const defaults = defaultQuery(savedReview as VideoReview);
+                    writeQuery(savedReview.id, { ...defaults, filter: { ...defaults.filter, page: undefined } });
+                    setQueryRevision(value => value + 1);
+                    return;
+                  }
+                  void fetchQueue(
+                    current,
+                    filter,
+                    queueRetryFromEnd,
+                    selectAllOnLoad,
+                  ).catch(() => undefined);
+                }}
+              />
+            )}
+            {!pending && !queueLoading && !queueError && !queue.items.length && (
+              <div className="dq-empty">
+                <Film />
+                <p>No {noun}s match this review.</p>
+              </div>
+            )}
+            {!!queue.items.length && (
+              <div ref={gridRef}>
+                <div
+                  className={displayMode === "list" ? "dq-tag-list" : "dq-grid"}
+                  style={{ "--dq-card-width": `${cardSize}px` } as React.CSSProperties}
+                >
+                  {queue.items.map(renderCard)}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="dq-bar-dock" ref={dockRef}>
+            <ActionBar
+              actions={current.actions}
+              tagGroups={tagGroups}
+              trees={trees}
+              isDisabled={gridActionBlocked}
+              busy={pending || queueLoading}
+              onApply={(action) => void execute(action)}
+              onFind={() => setFindOpen(true)}
+              status={pending ? `Applying action to ${pendingTargetLabel}…` : ""}
+              summary={
+                <>
+                  {/* Always name the target: with nothing selected, actions fall back to the
+                      focused card, which its ring alone does not say. */}
+                  <p className="dq-bar-target">
+                    {selectedIds.size
+                      ? `${selectedIds.size} selected`
+                      : focusedId == null
+                        ? "Nothing to apply to"
+                        : `Applies to the focused ${noun}`}
+                  </p>
+                  <button
+                    type="button"
+                    className="dq-text-button"
+                    aria-keyshortcuts="Control+A Meta+A"
+                    title="Select every card on this page"
+                    disabled={!itemIds.length || allShownSelected}
+                    onClick={() =>
+                      updateSelection((selected) => new Set([...selected, ...itemIds]))
+                    }
+                  >
+                    Select all
+                    <KeyCap binding={keyLabels.selectAll} hidden />
+                  </button>
+                  <button
+                    type="button"
+                    className="dq-text-button"
+                    aria-keyshortcuts="Escape"
+                    disabled={!selectedIds.size}
+                    onClick={() => updateSelection(() => new Set())}
+                  >
+                    Clear
+                    <KeyCap binding="Esc" hidden />
+                  </button>
+                </>
+              }
+              hints={
+                notes.length
+                  ? notes.join(" ")
+                  : `Arrows move · Space selects · Enter ${tagReview ? "opens" : "previews"}`
+              }
+              notices={
+                showsError || message ? (
+                  <>
+                    {showsError && (
+                      <div role="alert" className="dq-alert">
+                        <AlertTriangle aria-hidden="true" />
+                        {actionError}
+                      </div>
+                    )}
+                    {message && (
+                      <p role="status" className="dq-status">
+                        {message}
+                      </p>
+                    )}
+                  </>
+                ) : undefined
+              }
+            />
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -2327,6 +2206,7 @@ export function DataQualityPage({
         video={presentedVideo(video, videoReview, presentationTags.ids)}
         showTagBins={videoReview?.presentation?.annotations?.includes("tags") && !!videoReview.presentation.annotationParents?.length}
         displayMode={displayMode}
+        cardsScroll={cardsScroll}
         focused={video.id === focusedId}
         selected={selectedIds.has(video.id)}
         setRef={(node) => {
@@ -2445,6 +2325,7 @@ function ReviewCard({
   video,
   showTagBins,
   displayMode,
+  cardsScroll,
   focused,
   selected,
   setRef,
@@ -2456,6 +2337,8 @@ function ReviewCard({
   video: MediaItem;
   showTagBins?: boolean;
   displayMode: ReviewDisplayMode;
+  /** Whether the cards scroll on their own (the page fits the window). */
+  cardsScroll: boolean;
   focused: boolean;
   selected: boolean;
   setRef: (node: HTMLElement | null) => void;
@@ -2540,12 +2423,12 @@ function ReviewCard({
         {video.tags?.map(tag => <span key={tag.id}>{tag.name}</span>)}
         {!video.tags?.length && <small>No matching tags</small>}
       </section>}
-      {displayMode === "wall" && <WallPreview video={video} />}
+      {displayMode === "wall" && <WallPreview video={video} cardsScroll={cardsScroll} />}
     </article>
   );
 }
 
-function WallPreview({ video }: { video: MediaItem }) {
+function WallPreview({ video, cardsScroll }: { video: MediaItem; cardsScroll: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const media = useRef<HTMLVideoElement>(null);
   const [load, setLoad] = useState(false);
@@ -2559,14 +2442,17 @@ function WallPreview({ video }: { video: MediaItem }) {
       setPlay(true);
       return;
     }
+    // Where the cards scroll on their own (the page fits the window), previews load as they near
+    // that area's edges rather than the window's.
+    const scrollRoot = cardsScroll ? element.closest<HTMLElement>(".dq-grid-stage") : null;
     const loadObserver = new IntersectionObserver(
       ([entry]) => setLoad(entry.isIntersecting),
-      { rootMargin: "320px 0px", threshold: 0 },
+      { root: scrollRoot, rootMargin: "320px 0px", threshold: 0 },
     );
     const playObserver = new IntersectionObserver(
       ([entry]) =>
         setPlay(entry.isIntersecting && entry.intersectionRatio >= 0.6),
-      { threshold: [0, 0.6, 1] },
+      { root: scrollRoot, threshold: [0, 0.6, 1] },
     );
     loadObserver.observe(element);
     playObserver.observe(element);
@@ -2574,7 +2460,7 @@ function WallPreview({ video }: { video: MediaItem }) {
       loadObserver.disconnect();
       playObserver.disconnect();
     };
-  }, [video.id, video.files.length]);
+  }, [video.id, video.files.length, cardsScroll]);
   useEffect(() => {
     if (!load) {
       setAvailable(false);
@@ -2618,12 +2504,13 @@ function WallPreview({ video }: { video: MediaItem }) {
 function ReviewPreview({
   video,
   review,
-  targetLabel,
+  selectedCount,
   pending,
   refreshing,
   error,
   canWrite,
   assessmentReady,
+  trees,
   selected,
   hasPrevious,
   hasNext,
@@ -2637,12 +2524,14 @@ function ReviewPreview({
 }: {
   video: MediaItem;
   review: VideoReview;
-  targetLabel: string;
+  /** How many cards are selected; actions apply to them, or else to this video. */
+  selectedCount: number;
   pending: boolean;
   refreshing: boolean;
   error: string;
   canWrite: boolean;
   assessmentReady: boolean;
+  trees: TagTrees;
   selected: boolean;
   hasPrevious: boolean;
   hasNext: boolean;
@@ -2662,7 +2551,6 @@ function ReviewPreview({
   } | null>(null);
   const file = video.files[0];
   const title = videoTitle(video);
-  const keyLabels = useReviewKeyLabels();
   const actionBlocked = (action: ReviewAction) =>
     pending ||
     refreshing ||
@@ -2670,7 +2558,7 @@ function ReviewPreview({
     (hasAssessmentSteps(action) && !assessmentReady);
   // The preview is a dialog, which holds Cove's page surfaces back, so its
   // action keys and Find action live on the overlay surface. Action keys keep
-  // working after a click on any preview control, including its action buttons.
+  // working after a click on any preview control, including its action tiles.
   useReviewKeys({
     surface: "overlay",
     enabled: !findOpen,
@@ -2762,6 +2650,49 @@ function ReviewPreview({
     else return;
     consumeShortcut(event);
   }
+  // The preview's own keys (Space, the arrows, n and m) need focus inside it, on the preview
+  // rather than on a button, which takes Space and Enter for itself. So a pointer click on one of
+  // the preview's own buttons or links hands focus back to the preview. A button pressed from the
+  // keyboard keeps focus, as keyboard users expect. The player's controls (portalled menus
+  // included) and Find action keep their focus.
+  function keepFocus(event: ReactMouseEvent<HTMLDivElement>) {
+    const root = dialog.current;
+    const control =
+      event.target instanceof Element ? event.target.closest("button, a[href]") : null;
+    if (
+      !root ||
+      !control ||
+      !root.contains(control) ||
+      control.closest(".dq-player, .dq-find-action") ||
+      event.detail === 0
+    )
+      return;
+    root.focus({ preventScroll: true });
+  }
+  // A focused control that a running action or the last video disables drops focus to the page,
+  // which would leave the preview's keys dead until a click back in. Once the browser has done so
+  // (it does at the next rendering update), focus returns to the preview.
+  useEffect(() => {
+    if (findOpen) return;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (
+          dialog.current?.isConnected &&
+          (!active || active === document.body || active === document.documentElement)
+        )
+          dialog.current.focus({ preventScroll: true });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [findOpen, pending, refreshing, hasNext, hasPrevious, video.id]);
+  const target = selectedCount
+    ? `the ${selectedCount} selected video${selectedCount === 1 ? "" : "s"}`
+    : "this video";
   return (
     <div
       ref={dialog}
@@ -2775,119 +2706,139 @@ function ReviewPreview({
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
+      onClick={keepFocus}
     >
       <div className="dq-preview-shell">
-        <header data-review-player-controls>
+        <header className="dq-preview-header">
           <button
             type="button"
-            aria-label="Previous review video"
+            className="dq-preview-button"
+            aria-label="Previous video"
+            aria-keyshortcuts="n"
+            title="Previous video"
             disabled={!hasPrevious || pending || refreshing}
             onClick={onPrevious}
           >
-            <ChevronLeft />
+            <ChevronLeft aria-hidden="true" />
+            <KeyCap binding="n" hidden />
           </button>
           <button
             type="button"
-            aria-label="Next review video"
+            className="dq-preview-button"
+            aria-label="Next video"
+            aria-keyshortcuts="m"
+            title="Next video"
             disabled={!hasNext || pending || refreshing}
             onClick={onNext}
           >
-            <ChevronRight />
+            <KeyCap binding="m" hidden />
+            <ChevronRight aria-hidden="true" />
           </button>
-          <div>
+          <div className="dq-preview-title">
             <h2>{title}</h2>
-            <p>Actions target {targetLabel}.</p>
+            <p>Actions apply to {target}</p>
           </div>
           <button
             type="button"
-            onClick={onToggleSelected}
+            className="dq-preview-button dq-preview-select"
+            aria-pressed={selected}
             disabled={refreshing}
+            onClick={onToggleSelected}
           >
-            {selected ? "Selected" : "Select"}
+            <span className="dq-preview-check" aria-hidden="true">
+              {selected && <Check />}
+            </span>
+            Selected
           </button>
           <a
             href={`/video/${video.id}`}
             target="_blank"
             rel="noreferrer"
-            className="dq-details-link"
-            aria-label={`Open ${title} details in new tab`}
-            title="Open video details in new tab"
+            className="dq-preview-button dq-preview-icon"
+            aria-label={`Open ${title} in a new tab`}
+            title="Open video in a new tab"
           >
-            <ExternalLink />
+            <ExternalLink aria-hidden="true" />
           </a>
           <button
             type="button"
+            className="dq-preview-button dq-preview-icon"
+            aria-label="Close preview"
+            aria-keyshortcuts="Escape"
+            title="Close preview"
             onClick={onClose}
-            aria-label="Close review preview"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
         </header>
         <div className="dq-player" data-review-player-controls tabIndex={0}>
-          {file ? (
-            <VideoPlayer
-              autostart
-              streamUrl={mediaStreamUrl("video", video.id)}
-              posterUrl={videoScreenshotUrl(video)}
-              format={file.format}
-              audioCodec={file.audioCodec}
-              duration={file.duration ?? 0}
-              videoId={video.id}
-              showAbLoop={false}
-              extensionSurface="quick-view"
-              onPlaybackControlRegister={(controls) => {
-                playerControls.current = controls;
-                return () => {
-                  if (playerControls.current === controls)
-                    playerControls.current = null;
-                };
-              }}
-              videoStyle={{ maxHeight: "calc(100dvh - 14rem)" }}
-              clip={
-                video.parentVideoId != null
-                  ? {
-                      start: video.clipStartSec ?? 0,
-                      end: video.clipEndSec,
-                      loop: false,
-                    }
-                  : undefined
-              }
-            />
-          ) : (
-            <img src={videoScreenshotUrl(video)} alt="" />
-          )}
+          <div className="dq-preview-video">
+            {file ? (
+              <VideoPlayer
+                autostart
+                streamUrl={mediaStreamUrl("video", video.id)}
+                posterUrl={videoScreenshotUrl(video)}
+                format={file.format}
+                audioCodec={file.audioCodec}
+                duration={file.duration ?? 0}
+                videoId={video.id}
+                showAbLoop={false}
+                extensionSurface="quick-view"
+                onPlaybackControlRegister={(controls) => {
+                  playerControls.current = controls;
+                  return () => {
+                    if (playerControls.current === controls)
+                      playerControls.current = null;
+                  };
+                }}
+                clip={
+                  video.parentVideoId != null
+                    ? {
+                        start: video.clipStartSec ?? 0,
+                        end: video.clipEndSec,
+                        loop: false,
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <img src={videoScreenshotUrl(video)} alt="" />
+            )}
+          </div>
         </div>
         {error && (
-          <p role="alert" className="dq-alert">
+          <p role="alert" className="dq-alert dq-preview-alert">
             {error}
           </p>
         )}
-        <p className="dq-editor-note">
-          Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m
-          previous/next · action keys apply · {keyLabels.find} find action ·
-          Enter/Esc close
+        <p className="dq-preview-hints">
+          <span>Space play / pause</span>
+          <span>← → ±60 s · Alt ±10 s · Shift ±5 s</span>
+          <span>, . ±10 %</span>
+          <span>↑ ↓ volume</span>
+          <span>N M previous / next</span>
+          <span>Enter or Esc closes</span>
         </p>
-        <footer data-review-player-controls>
-          {/* First, so it stays in view when many actions wrap past the bottom edge. */}
-          {review.actions.length > 0 && (
-            <FindActionButton onClick={() => setFindOpen(true)} />
-          )}
-          {review.actions.map((action, index) => (
-            <button
-              key={action.id}
-              type="button"
-              disabled={actionBlocked(action)}
-              onClick={() => void onAction(action)}
-            >
-              {keyLabels.action(index) && <kbd>{keyLabels.action(index)}</kbd>}
-              {action.label}
-            </button>
-          ))}
-        </footer>
+        <ActionBar
+          className="dq-action-bar-docked"
+          actions={review.actions}
+          trees={trees}
+          isDisabled={actionBlocked}
+          busy={pending || refreshing}
+          onApply={(action) => void onAction(action as MediaReviewAction)}
+          onFind={() => setFindOpen(true)}
+          status={pending ? `Applying action to ${target}…` : ""}
+          summary={
+            <p className="dq-bar-target">
+              {selectedCount ? `${selectedCount} selected` : "This video"}
+            </p>
+          }
+        />
       </div>
       {findOpen && (
         <FindAction
           actions={review.actions}
+          trees={trees}
           isDisabled={actionBlocked}
           canStay={false}
           onApply={(action) => {
