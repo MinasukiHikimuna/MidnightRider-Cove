@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.on-this-day",
+  "name": "OnThisDay",
+  "tagPrefix": "com.midnightrider.on-this-day/",
+  "solution": "OnThisDay.slnx",
+  "project": "src/OnThisDay/OnThisDay.csproj",
+  "manifest": "src/OnThisDay/extension.json",
+  "readme": "README.md",
+  "ui": "src/OnThisDay/assets",
+  "uiPackagePath": "assets",
+  "uiTest": "tests/on-this-day-model.test.mjs"
+}

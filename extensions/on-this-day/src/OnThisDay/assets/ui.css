@@ -1,0 +1,726 @@
+.otd {
+  --otd-fg: var(--color-foreground, #f5f5f7);
+  --otd-muted: var(--color-muted, #8e8e93);
+  --otd-accent: var(--color-accent, #e0b84e);
+  --otd-surface: var(--color-surface, #111317);
+  --otd-fill: color-mix(in srgb, var(--otd-fg) 8%, transparent);
+  --otd-fill-strong: color-mix(in srgb, var(--otd-fg) 12%, transparent);
+  --otd-hairline: color-mix(in srgb, var(--otd-fg) 7%, transparent);
+  --otd-placeholder: color-mix(in srgb, var(--otd-fg) 6%, var(--otd-surface));
+  --otd-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  container-type: inline-size;
+  color: var(--otd-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.otd button {
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.otd button:focus-visible,
+.otd-editor button:focus-visible,
+.otd-editor input:focus-visible {
+  outline: 2px solid var(--otd-accent, var(--color-accent, #e0b84e));
+  outline-offset: 2px;
+}
+
+.otd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-sizing: border-box;
+  border: 1px solid var(--otd-hairline);
+  border-radius: 20px;
+  background: var(--otd-surface);
+  padding: 22px 20px;
+}
+
+.otd-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.otd-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.otd-eyebrow {
+  color: var(--otd-accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.otd-heading h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+}
+
+.otd-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.otd-shuffle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--otd-fill);
+  cursor: pointer;
+  transition: background-color 160ms var(--otd-ease), transform 160ms var(--otd-ease);
+}
+
+.otd-shuffle:hover:not(:disabled) {
+  background: var(--otd-fill-strong);
+}
+
+.otd-shuffle:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.otd-shuffle:disabled {
+  cursor: progress;
+  opacity: 0.5;
+}
+
+.otd-see-all {
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--otd-accent) !important;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.otd-see-all:hover {
+  background: var(--otd-fill);
+}
+
+.otd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: opacity 200ms var(--otd-ease);
+}
+
+.otd-body[aria-busy="true"] {
+  opacity: 0.55;
+}
+
+.otd-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Featured memory */
+
+.otd-featured {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Video stills are 16:9, so the featured frame is too, at every width. */
+.otd-featured__media {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  background: var(--otd-placeholder);
+  isolation: isolate;
+}
+
+.otd-featured__still,
+.otd-row__still {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--otd-placeholder);
+}
+
+.otd-featured__still img,
+.otd-row__still img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.otd-featured__still img {
+  transition: transform 600ms var(--otd-ease);
+}
+
+.otd-featured:hover .otd-featured__still img {
+  transform: scale(1.03);
+}
+
+/* Narrow: the caption sits below the still. Wider layouts lay it over a scrim (see the container queries). */
+.otd-featured__scrim {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 60%;
+  background: linear-gradient(to top, rgb(0 0 0 / 78%), rgb(0 0 0 / 0%));
+}
+
+.otd-featured__caption {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 2px;
+}
+
+.otd-featured__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.otd-featured__when {
+  color: var(--otd-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.otd-featured__title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.otd-featured__meta {
+  overflow: hidden;
+  color: var(--otd-muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.otd-featured__play {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: rgb(255 255 255 / 18%);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  transition: transform 200ms var(--otd-ease), background-color 200ms var(--otd-ease);
+}
+
+.otd-featured:hover .otd-featured__play {
+  background: rgb(255 255 255 / 26%);
+  transform: scale(1.05);
+}
+
+/* Year chips (narrow) */
+
+.otd-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 -20px;
+  padding: 0 20px;
+  scrollbar-width: none;
+}
+
+.otd-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.otd-chip {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--otd-fill);
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 160ms var(--otd-ease), color 160ms var(--otd-ease);
+}
+
+.otd-chip[aria-pressed="true"] {
+  background: var(--otd-fg);
+  color: var(--otd-surface) !important;
+}
+
+/* Year rail (wide) */
+
+.otd-rail {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.otd-rail__track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--otd-ticks), minmax(0, 1fr));
+  align-items: center;
+  height: 28px;
+}
+
+.otd-rail__track::before {
+  position: absolute;
+  top: 13px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--otd-fill);
+  content: "";
+}
+
+.otd-rail__tick {
+  position: relative;
+  justify-self: center;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--otd-fg) 22%, transparent);
+  transition: all 240ms var(--otd-ease);
+}
+
+.otd-rail__tick--shown {
+  width: 8px;
+  height: 8px;
+  background: var(--otd-fg);
+}
+
+.otd-rail__tick--selected {
+  width: 12px;
+  height: 12px;
+  background: var(--otd-accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--otd-accent) 22%, transparent);
+}
+
+.otd-rail__legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--otd-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Memory list (wide) */
+
+.otd-list {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.otd-list__heading {
+  padding: 0 12px 8px;
+  color: var(--otd-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.otd-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 80px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  padding: 8px 12px 8px 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms var(--otd-ease);
+}
+
+.otd-row:hover {
+  background: color-mix(in srgb, var(--otd-fg) 5%, transparent);
+}
+
+.otd-row[aria-pressed="true"] {
+  background: var(--otd-fill);
+}
+
+.otd-row__thumb {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+  background: var(--otd-placeholder);
+}
+
+.otd-row__duration {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 62%);
+  padding: 1px 5px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.otd-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.otd-row__when {
+  color: var(--otd-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.otd-row[aria-pressed="true"] .otd-row__when {
+  color: var(--otd-accent);
+}
+
+.otd-row__title {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.otd-row__year {
+  color: var(--otd-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Loading, empty and error */
+
+.otd-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.otd-skeleton span {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--otd-fill) 0%, var(--otd-fill-strong) 50%, var(--otd-fill) 100%);
+  background-size: 200% 100%;
+  animation: otd-shimmer 1.4s ease-in-out infinite;
+}
+
+.otd-skeleton__hero {
+  aspect-ratio: 16 / 9;
+  border-radius: 16px !important;
+}
+
+.otd-skeleton__line {
+  width: 62%;
+  height: 14px;
+}
+
+.otd-skeleton__line--short {
+  width: 38%;
+}
+
+@keyframes otd-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.otd-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.otd-message__icon {
+  display: inline-flex;
+  margin-bottom: 4px;
+  color: var(--otd-muted);
+}
+
+.otd-message--error .otd-message__icon {
+  color: #ff9f0a;
+}
+
+.otd-message strong {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.otd-message p {
+  max-width: 34em;
+  margin: 0;
+  color: var(--otd-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.otd-pill {
+  min-height: 44px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--otd-fill);
+  padding: 0 18px;
+  color: var(--otd-accent) !important;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Medium and wide dashboards */
+
+@container (min-width: 520px) {
+  .otd-card {
+    padding: 28px 30px 26px;
+  }
+
+  .otd-see-all {
+    display: inline-flex;
+  }
+
+  .otd-chips {
+    margin: 0 -30px;
+    padding: 0 30px;
+  }
+
+  .otd-featured__scrim {
+    display: block;
+  }
+
+  .otd-featured__caption {
+    position: absolute;
+    right: 26px;
+    bottom: 24px;
+    left: 26px;
+    padding: 0;
+    color: #fff;
+  }
+
+  .otd-featured__when {
+    color: rgb(255 255 255 / 80%);
+  }
+
+  .otd-featured__meta {
+    color: rgb(255 255 255 / 74%);
+  }
+
+  .otd-featured__title {
+    font-size: 26px;
+  }
+
+  .otd-featured__play {
+    display: inline-flex;
+  }
+}
+
+@container (min-width: 860px) {
+  .otd-heading h2 {
+    font-size: 34px;
+  }
+
+  .otd-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .otd-chips {
+    display: none;
+  }
+
+  .otd-rail,
+  .otd-list {
+    display: flex;
+  }
+
+  .otd-featured__title {
+    font-size: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .otd *,
+  .otd *::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Settings editor */
+
+.otd-editor {
+  --otd-accent: var(--color-accent, #e0b84e);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: var(--color-foreground, #f5f5f7);
+}
+
+/* The host dialog already titles the editor, so the legend is for assistive technology only. */
+.otd-editor legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.otd-editor__lead,
+.otd-editor__note {
+  margin: 0;
+  color: var(--color-muted, #8e8e93);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.otd-editor__note {
+  font-size: 13px;
+}
+
+.otd-editor__group {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-foreground, #f5f5f7) 5%, transparent);
+}
+
+.otd-editor__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 0 16px;
+  font-size: 15px;
+}
+
+.otd-editor__row + .otd-editor__range {
+  border-top: 1px solid color-mix(in srgb, var(--color-foreground, #f5f5f7) 7%, transparent);
+}
+
+.otd-editor__row--flush {
+  min-height: 0;
+  padding: 0;
+}
+
+.otd-stepper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.otd-stepper button {
+  width: 44px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-foreground, #f5f5f7) 10%, transparent);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+}
+
+.otd-stepper button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.otd-stepper output {
+  min-width: 24px;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.otd-editor__range {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.otd-editor__range input {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  accent-color: var(--otd-accent);
+}
+
+.otd-editor__value {
+  color: var(--otd-accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.otd-editor__scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-muted, #8e8e93);
+  font-size: 12px;
+}
