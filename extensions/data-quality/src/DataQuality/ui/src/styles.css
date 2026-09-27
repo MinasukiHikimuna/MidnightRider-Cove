@@ -20,9 +20,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dq-review-description {
+.dq-header-description {
+  overflow: hidden;
   color: var(--color-secondary);
   font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .dq-header-action {
   display: inline-flex;
@@ -92,17 +95,6 @@
   background: var(--color-accent);
   color: white;
 }
-.dq-toolbar {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  background: var(--color-surface);
-}
 .dq-queue-toolbar {
   position: relative;
   min-width: 0;
@@ -164,11 +156,6 @@
     right: 0.75rem;
     margin: 0;
   }
-}
-.dq-review-description {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .dq-review-browser {
   overflow: hidden;
@@ -998,28 +985,6 @@
   justify-content: center;
   padding: 0.75rem 0;
 }
-.dq-occurrence-toolbar, .dq-occurrence-actions, .dq-occurrence-performers {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .75rem;
-}
-.dq-occurrence-toolbar { margin-block: 1rem; }
-.dq-occurrence-filter { flex-basis: 100%; max-width: 42rem; display: grid; gap: .5rem; }
-.dq-occurrence-toolbar p { flex-basis: 100%; }
-.dq-occurrence-content { border: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 1.25rem; }
-.dq-occurrence-media { min-width: 0; }
-.dq-occurrence-media > a { display: block; margin-bottom: .75rem; }
-.dq-occurrence-panel { padding: 1rem; background: var(--color-surface, #202127); border-radius: .5rem; }
-.dq-occurrence-performers img { width: 2rem; height: 2rem; object-fit: cover; border-radius: 50%; }
-.dq-occurrence-avatar { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; background: var(--color-surface, #34363d); }
-.dq-occurrence-performers [aria-pressed="true"] { outline: 2px solid currentColor; }
-.dq-occurrence-choices { display: grid; gap: .75rem; margin-block: 1rem; padding: .75rem; }
-.dq-occurrence-choices label { display: flex; align-items: center; gap: .5rem; }
-.dq-occurrence-list { grid-column: 1 / -1; }
-.dq-occurrence-list > button { display: flex; margin-block: .5rem; text-align: left; }
-@media (max-width: 800px) { .dq-occurrence-content { grid-template-columns: minmax(0, 1fr); } }
-
 /* Media reviews retain usable navigation independently of the player height. */
 .dq-review-workspace { display: grid; gap: .65rem; min-width: 0; }
 .dq-review-filters { display: grid; gap: .5rem; min-width: 0; border: 1px solid var(--color-border); border-radius: .4rem; padding: .5rem; }
@@ -1047,7 +1012,7 @@
   pointer-events: none;
 }
 /* The description sits under the player, not beside it, so the reading width matches the player. */
-.dq-review-description { display: grid; gap: .4rem; margin-top: .6rem; min-width: 0; }
+.dq-media-description { display: grid; gap: .4rem; margin-top: .6rem; min-width: 0; }
 .dq-description-toggle { justify-self: start; font-size: .8rem; }
 .dq-description-body {
   font-size: .875rem;
@@ -1193,3 +1158,171 @@
 .dq-batch-dialog .dq-batch-answers label { gap: .4rem; }
 .dq-batch-flag { padding: .4rem .6rem; border: 1px solid var(--color-accent); border-radius: .4rem; }
 .dq-batch-dialog a { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Add and remove colours for action effects, defined once. Mixing with the theme's foreground
+   keeps them readable on light and dark themes; the text also carries + or − (or says what it
+   does), so colour is never the only signal. */
+.data-quality-page {
+  --dq-add: color-mix(in srgb, #6ea8ff 60%, var(--color-foreground, currentColor));
+  --dq-remove: color-mix(in srgb, #f0a445 60%, var(--color-foreground, currentColor));
+}
+
+/* Find action: a small command popover over the page, the grid or the preview. */
+.dq-find-backdrop {
+  position: fixed;
+  z-index: 124;
+  inset: 0;
+}
+.dq-find-action {
+  position: fixed;
+  z-index: 125;
+  top: max(4rem, 12dvh);
+  left: 50%;
+  display: flex;
+  width: min(460px, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100dvh - 6rem));
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  border-radius: 0.625rem;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  box-shadow: 0 1.125rem 3rem rgb(0 0 0 / 45%);
+}
+.dq-find-search {
+  display: flex;
+  min-height: 2.875rem;
+  flex: none;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-secondary);
+}
+.dq-find-search svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+.dq-find-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+}
+.dq-find-list {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0.375rem;
+  overflow-y: auto;
+  list-style: none;
+}
+.dq-find-list button {
+  display: flex;
+  width: 100%;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.35rem 0.625rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  text-align: left;
+}
+.dq-find-list button:hover:not(:disabled) {
+  background: var(--color-card-hover);
+}
+.dq-find-list button[aria-selected="true"] {
+  background: var(--color-card);
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.dq-find-list button:disabled {
+  opacity: 0.45;
+}
+.dq-find-label {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.dq-find-list button[aria-selected="true"] .dq-find-label {
+  font-weight: 600;
+}
+.dq-find-effect {
+  display: flex;
+  max-width: 55%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.125rem 0.5rem;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.dq-find-effect [data-effect-tone="add"] {
+  color: var(--dq-add);
+}
+.dq-find-effect [data-effect-tone="remove"] {
+  color: var(--dq-remove);
+}
+.dq-find-no-key {
+  width: 1.375rem;
+  flex: none;
+  color: var(--color-muted);
+  text-align: center;
+}
+.dq-find-empty {
+  padding: 0.75rem;
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+}
+.dq-find-hints {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 0.375rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+.dq-find-hints span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.dq-find-action kbd,
+.dq-find-button kbd {
+  display: inline-block;
+  padding: 0.2rem 0.375rem 0.125rem;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--color-secondary);
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.dq-find-list kbd {
+  min-width: 1.375rem;
+  flex: none;
+  color: var(--color-foreground);
+  text-align: center;
+}
+.dq-find-button svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.dq-find-button kbd {
+  margin-left: auto;
+}

@@ -8,6 +8,10 @@ Configured actions run their ordered tag steps, including multiple observations 
 
 **Edit tags** creates a local draft using the shared Cove tag selector. Arbitrary additions and removals do not change the review definition. **Save** stays on the item; **Save & next** advances; **Cancel** discards the draft and returns focus to Edit tags. Duplicate submissions and competing navigation are disabled while saving. A partial failure retains the item and inputs, refreshes actual tag state, and does not report full success. A confirmed save followed by failed queue navigation is identified separately.
 
+## Keys
+
+Action keys, Find action and grid select-all are Cove keyboard actions declared in the extension manifest: `action-01` … `action-27` bound to the key and Shift plus the key, in the order q w e r t y u i o p å a s d f g h j k l ö ä z x c v b, `find-action` bound to `-`, and `select-all` bound to `Ctrl+a`. The page attaches their handlers while it is mounted. The single-item workspace and the grid register them on Cove's `local` surface, which outranks Cove's list, player and global shortcuts; the grid preview is a dialog and registers the action keys and Find action on the `overlay` surface instead. Slots beyond the review's actions are registered disabled, so those keys keep Cove's meaning. Shift plus a key applies and stays in the single-item workspace only; the grid and its preview move on as before, and their Find action offers no Shift+Enter. The workspace releases its keys while the tag editor, the rule editor, Find action or a filter dialog is open, and while no item is shown; the grid releases them while Find action, the preview or the manager is open, and while its queue is empty or failed. During a write or a load both keep them and ignore them, so a quick f, g or k never falls through to Cove between items. Buttons and Find action show the keys resolved from Cove's active keyboard preset; when the preset leaves every key of the review unbound, the page says so. Cove itself skips text fields and, while any dialog is in the page, every surface below its overlays. Escape, Space, Enter and the arrow keys of the grid, and the preview's own keys, stay with the extension's handlers.
+
 ## Query and navigation
 
 The URL carries the complete effective query using native `q`, `filters`, `sort`, `direction`, `sorts`, `perPage`, `page`, `seed`, and `searchMode` conventions. `performerScope` contains target mode, selected performers, performer profile criteria, and occurrence-tag conditions; these remain distinct from scene conditions in `filters`. `performer` narrows an occurrence queue and its batches to one performer chosen from the performer ranking; it is navigation state that saving never writes into the review, and changing the performer scope drops it. `startFrom` records traversal direction. Multi-column `sorts` uses the host's comma-separated `key:direction` format.
@@ -20,7 +24,7 @@ Each successful tag save refreshes the loaded scene page, removing occurrences t
 
 ## Tag-group reviews
 
-Tag-group reviews retain native Grid/List selection, focused-item keyboard navigation, group assignment or clearing, and account-scoped progress. Their existing workflow is separate from the filter-driven video and occurrence workspace. The review catalog and immutable review entity types are unchanged.
+Tag-group reviews retain native Grid/List selection, focused-item keyboard navigation, the same action keys, Find action and Ctrl+A (⌘A) select-all as video grids, group assignment or clearing, and account-scoped progress. Their existing workflow is separate from the filter-driven video and occurrence workspace. The review catalog and immutable review entity types are unchanged.
 
 ## Edit a media review
 

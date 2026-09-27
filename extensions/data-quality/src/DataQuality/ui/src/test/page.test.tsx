@@ -10,7 +10,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DataQualityPage, objectFiltersEqual } from "../index";
 import { presentedVideo } from "../TagPresentation";
 import { testVideoControls } from "@cove/runtime/components";
-import { testFilterControls } from "./runtime-components";
+import {
+  activeTestKeyboardActions,
+  testFilterControls,
+  testKeyboardBindings,
+} from "./runtime-components";
 
 const { api, review } = vi.hoisted(() => ({
   api: {
@@ -1243,7 +1247,10 @@ it("resets an invalid URL to the last page when the saved review starts at the e
   fireEvent.click(within(error).getByRole("button", { name: "Reset to review defaults" }));
   await screen.findByRole("article", { name: "Video 1" });
   expect(api.findMedia.mock.calls.at(-1)?.[1].page).toBe(2);
-  expect(new URLSearchParams(window.location.search).get("page")).toBe("2");
+  // The URL follows in an effect after the page renders.
+  await waitFor(() =>
+    expect(new URLSearchParams(window.location.search).get("page")).toBe("2"),
+  );
 });
 
 it("selects and clears every shown video from the actions sidebar", async () => {
@@ -1343,20 +1350,18 @@ it("applies action letters from the page body and from sidebar buttons", async (
   toggle.focus();
   fireEvent.keyDown(toggle, { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
-  // Host chrome outside the page keeps its keys.
-  const outside = document.createElement("button");
-  document.body.appendChild(outside);
-  outside.focus();
-  fireEvent.keyDown(outside, { key: "q" });
-  await act(async () => {});
-  expect(api.runReviewAction).toHaveBeenCalledTimes(2);
-  outside.remove();
+  // Clicking a sidebar action leaves focus on it; the next letter still applies.
+  const action = screen.getByRole("button", { name: /Apply/ });
+  await waitFor(() => expect(action).toBeEnabled());
+  action.focus();
+  fireEvent.keyDown(action, { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(3));
   // Text entry inside the page keeps letters for typing.
   const search = screen.getByRole("textbox", { name: "Search list" });
   search.focus();
   fireEvent.keyDown(search, { key: "q" });
   await act(async () => {});
-  expect(api.runReviewAction).toHaveBeenCalledTimes(2);
+  expect(api.runReviewAction).toHaveBeenCalledTimes(3);
 });
 
 it("explains why an action shortcut cannot run instead of ignoring it", async () => {
@@ -1418,4 +1423,175 @@ it("keeps walking towards the first page when an earlier page refills from the t
   await screen.findByRole("article", { name: "Video 1, selected" });
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^Video 6/ })).not.toBeInTheDocument();
+});
+
+function numberedActions(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `numbered-${index + 1}`,
+    label: `Action ${index + 1}`,
+    steps: [{ mode: "ADD" as const, tagIds: [100 + index] }],
+  }));
+}
+function openGrid(actions = numberedActions(12)) {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [{ ...review, actions, view: { ...review.view, reviewMode: "multiple" } }],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+}
+const findOptions = (within_: HTMLElement = document.body) =>
+  within(within_).queryAllByRole("option").filter((option) => option.closest(".dq-find-action"));
+
+it("toggles every card with Ctrl+A or ⌘A while a applies action 12", async () => {
+  openGrid();
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(activeTestKeyboardActions()).toContain("local:select-all");
+  fireEvent.keyDown(first, { key: "a", ctrlKey: true });
+  expect(screen.getByRole("article", { name: "Video 1, selected" })).toBeInTheDocument();
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Clear selection" })).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Control+A Meta+A",
+  );
+  fireEvent.keyDown(document.body, { key: "a", metaKey: true });
+  expect(screen.queryByRole("article", { name: /selected/ })).not.toBeInTheDocument();
+  // Text entry keeps Ctrl+A for its own text.
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  search.focus();
+  expect(fireEvent.keyDown(search, { key: "a", ctrlKey: true })).toBe(true);
+  expect(screen.queryByRole("article", { name: /selected/ })).not.toBeInTheDocument();
+  first.focus();
+  fireEvent.keyDown(first, { key: "a" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 12");
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1]);
+});
+
+it("finds an action in the grid with - and keeps the selection when Esc closes it", async () => {
+  openGrid();
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "a", ctrlKey: true });
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 1, selected" }), { key: "-" });
+  let search = await screen.findByRole("combobox", { name: "Find an action" });
+  expect(findOptions()).toHaveLength(12);
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(screen.queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
+  expect(screen.getByRole("article", { name: "Video 1, selected" })).toHaveFocus();
+  expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
+  // The sidebar button opens it too.
+  fireEvent.click(screen.getByRole("button", { name: /Find action/ }));
+  search = await screen.findByRole("combobox", { name: "Find an action" });
+  fireEvent.change(search, { target: { value: "action 7" } });
+  expect(findOptions()).toHaveLength(1);
+  expect(findOptions()[0]).toHaveTextContent("uAction 7");
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 7");
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1, 2]);
+  expect(screen.queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
+});
+
+it("runs action keys and Find action in the preview, also after clicking its actions", async () => {
+  openGrid(numberedActions(2));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "Enter" });
+  const preview = await screen.findByRole("dialog", { name: "Review preview: Video 1" });
+  const active = activeTestKeyboardActions();
+  expect(active).toContain("overlay:action-01");
+  expect(active).toContain("overlay:find-action");
+  expect(active).not.toContain("local:action-01");
+  expect(active).not.toContain("local:select-all");
+  fireEvent.keyDown(preview, { key: "w" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 2");
+  const button = within(preview).getByRole("button", { name: /Action 1/ });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(button).toBeEnabled());
+  button.focus();
+  fireEvent.keyDown(button, { key: "w" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(3));
+  expect(api.runReviewAction.mock.calls[2][1].label).toBe("Action 2");
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.keyDown(button, { key: "-" });
+  const search = within(preview).getByRole("combobox", { name: "Find an action" });
+  expect(findOptions(preview)).toHaveLength(2);
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
+  expect(button).toHaveFocus();
+  // Opened with nothing focused, Find action hands focus back to the preview, which needs it
+  // for its own playback keys.
+  button.blur();
+  fireEvent.keyDown(document.body, { key: "-" });
+  fireEvent.keyDown(within(preview).getByRole("combobox", { name: "Find an action" }), {
+    key: "Escape",
+  });
+  expect(preview).toHaveFocus();
+  fireEvent.keyDown(button, { key: "-" });
+  fireEvent.keyDown(within(preview).getByRole("combobox", { name: "Find an action" }), {
+    key: "Enter",
+  });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(4));
+  expect(api.runReviewAction.mock.calls[3][1].label).toBe("Action 1");
+  expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
+});
+
+it("shows the keys of the user's keyboard preset", async () => {
+  testKeyboardBindings["action-02"] = ["Alt+w"];
+  openGrid(numberedActions(3));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(screen.getByRole("button", { name: /Action 2/ }).querySelector("kbd")).toHaveTextContent("Alt+w");
+  fireEvent.keyDown(first, { key: "w" });
+  await act(async () => {});
+  expect(api.runReviewAction).not.toHaveBeenCalled();
+  fireEvent.keyDown(first, { key: "w", altKey: true });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 2");
+  expect(screen.queryByText(/has no keys for Data Quality actions/)).not.toBeInTheDocument();
+});
+
+it("says so when the keyboard preset leaves every action key unbound", async () => {
+  for (const id of Object.keys(testKeyboardBindings)) testKeyboardBindings[id] = [];
+  openGrid(numberedActions(3));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(screen.getByText(/has no keys for Data Quality actions/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Action 1/ }).querySelector("kbd")).toBeNull();
+  expect(screen.getByRole("button", { name: /Find action/ }).querySelector("kbd")).toBeNull();
+  expect(screen.getByRole("button", { name: "Select all on page" }).querySelector("kbd")).toBeNull();
+  fireEvent.keyDown(first, { key: "q" });
+  await act(async () => {});
+  expect(api.runReviewAction).not.toHaveBeenCalled();
+});
+
+it("leaves the grid keys to Cove while the queue is empty", async () => {
+  api.findMedia.mockResolvedValue({ items: [], totalCount: 0 });
+  openGrid(numberedActions(16));
+  await screen.findByText("No videos match this review.");
+  expect(activeTestKeyboardActions().filter((action) => action.startsWith("local:"))).toEqual([]);
+});
+
+it("closes Find action with Esc when focus has left its search field", async () => {
+  openGrid();
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "-" });
+  await screen.findByRole("combobox", { name: "Find an action" });
+  first.focus();
+  fireEvent.keyDown(first, { key: "Escape" });
+  expect(screen.queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
+  fireEvent.keyDown(first, { key: "Enter" });
+  const preview = await screen.findByRole("dialog", { name: /Review preview/ });
+  fireEvent.keyDown(preview, { key: "-" });
+  within(preview).getByRole("combobox", { name: "Find an action" });
+  preview.focus();
+  fireEvent.keyDown(preview, { key: "Escape" });
+  expect(within(preview).queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
 });

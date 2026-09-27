@@ -17,6 +17,7 @@ export const Play = Icon;
 export const Plus = Icon;
 export const RotateCcw = Icon;
 export const Save = Icon;
+export const Search = Icon;
 export const Settings = Icon;
 export const Tags = Icon;
 export const Trash2 = Icon;

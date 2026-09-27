@@ -34,7 +34,6 @@ import {
   GripVertical,
   Loader2,
   Pencil,
-  Play,
   Plus,
   RotateCcw,
   Save,
@@ -78,7 +77,7 @@ import {
   getReviewActionTargets,
   hasAssessmentSteps,
   isReviewShortcutTarget,
-  isReviewLetterShortcutTarget,
+  isReviewEscapeTarget,
   isReviewGridArrowTarget,
   reviewGridArrowDelta,
   mergeReviews,
@@ -99,7 +98,14 @@ import {
 } from "./model";
 import { OccurrenceSettings, PerformerFlagSettings } from "./OccurrenceReview";
 import { ActionsFromTags } from "./ActionsFromTags";
+import { FindAction, FindActionButton } from "./FindAction";
 import { ReviewWorkspace } from "./ReviewWorkspace";
+import {
+  SELECT_ALL_KEY_LABEL,
+  useReviewKeyLabels,
+  useReviewKeys,
+} from "./reviewKeys";
+import { useTagNames } from "./tagNames";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
 import { objectFiltersEqual } from "./objectFiltersEqual";
@@ -118,7 +124,6 @@ import {
   unresolvedCustomFieldTagIds,
 } from "./CustomFieldPresentation";
 import {
-  actionShortcut,
   reviewValidation,
   boundedFilter,
   resumeFocus,
@@ -412,6 +417,7 @@ export function DataQualityPage({
   const previewOpenRef = useRef(previewOpen);
   previewOpenRef.current = previewOpen;
   const previewVideoRef = useRef<MediaItem | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
   const [displayMode, setDisplayMode] = useState<ReviewDisplayMode>("grid");
   const [cardSize, setCardSize] = useState(defaultCardSize);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
@@ -426,9 +432,6 @@ export function DataQualityPage({
   const [absenceFieldPending, setAbsenceFieldPending] = useState(false);
   const [customFieldTagNames, setCustomFieldTagNames] = useState<
     Record<string, string>
-  >({});
-  const [actionTagNames, setActionTagNames] = useState<
-    Record<number, string | null>
   >({});
   const cardRefs = useRef(new Map<number, HTMLElement>());
   const gridRef = useRef<HTMLDivElement>(null);
@@ -445,13 +448,15 @@ export function DataQualityPage({
   // appear later are refills, and in reverse traversal they arrive from the
   // pages already passed, so they must not hold the cursor here.
   const pageCursor = useRef<{ page: number; ids: Set<number> } | null>(null);
-  const actionTagIds = JSON.stringify([
-    ...new Set(
-      videoReview?.actions.flatMap((action) =>
-        action.steps.flatMap((step) => step.tagIds),
-      ) ?? [],
+  const actionTagNames = useTagNames(
+    useMemo(
+      () =>
+        videoReview?.actions.flatMap((action) =>
+          action.steps.flatMap((step) => step.tagIds),
+        ) ?? [],
+      [videoReview?.actions],
     ),
-  ]);
+  );
 
   function updateSidebarWidth(value: number) {
     const next = clampSidebarWidth(value);
@@ -479,32 +484,6 @@ export function DataQualityPage({
     const timeout = window.setTimeout(() => setMessage(""), 4000);
     return () => window.clearTimeout(timeout);
   }, [message]);
-
-  useEffect(() => {
-    const ids = JSON.parse(actionTagIds) as number[];
-    setActionTagNames({});
-    if (!ids.length) return;
-    const controller = new AbortController();
-    let current = true;
-    void Promise.all(
-      ids.map(async (id) => {
-        try {
-          const tag = await request<{ name?: string }>(`/api/tags/${id}`, {
-            signal: controller.signal,
-          });
-          return [id, tag.name?.trim() || null] as const;
-        } catch {
-          return [id, null] as const;
-        }
-      }),
-    ).then((entries) => {
-      if (current) setActionTagNames(Object.fromEntries(entries));
-    });
-    return () => {
-      current = false;
-      controller.abort();
-    };
-  }, [actionTagIds]);
 
   useEffect(() => {
     const ids = videoReview
@@ -1220,10 +1199,11 @@ export function DataQualityPage({
     return Math.max(1, template.split(" ").filter(Boolean).length);
   }
 
-  // Like the arrow keys, the letter shortcuts run from a document listener so
-  // they keep working after focus drifts to the page body or a sidebar
-  // button; only keys pressed inside this page, or with nothing focused,
-  // belong to the review.
+  // Action letters, Find action (-) and select all (Ctrl/⌘A) are Cove keyboard
+  // actions, registered below. Escape, Space and Enter stay here, on a
+  // document listener like the arrow keys, so they keep working after focus
+  // drifts to the page body or a sidebar button; only keys pressed inside this
+  // page, or with nothing focused, belong to the review.
   const shortcutRef = useRef<(event: KeyboardEvent) => void>(() => {});
   shortcutRef.current = (event) => {
     if (usesWorkspace) return;
@@ -1242,39 +1222,32 @@ export function DataQualityPage({
     const unfocused =
       target === document.body || target === document.documentElement;
     if (!withinPage && !unfocused) return;
+    // Find action, in the grid or the preview, owns the keys while open; its
+    // search field handles them, and Escape closes it from anywhere else.
+    if (findOpen) {
+      if (event.key === "Escape") {
+        consumeShortcut(event);
+        setFindOpen(false);
+      }
+      return;
+    }
     if (previewOpen && event.key === "Escape") {
       consumeShortcut(event);
       setPreviewOpen(false);
       focusCard(focusedRef.current);
       return;
     }
-    if (!isReviewLetterShortcutTarget(target)) return;
+    if (!isReviewEscapeTarget(target)) return;
     const plainTarget = isReviewShortcutTarget(target);
     if (event.key === "Escape") {
       consumeShortcut(event);
       updateSelection(() => new Set());
       return;
     }
-    const actionIndex =
-      review?.actions.findIndex(
-        (action, index) => actionShortcut(action, index) === event.key.toLowerCase(),
-      ) ?? -1;
-    if (actionIndex >= 0 && review?.actions[actionIndex]) {
-      consumeShortcut(event);
-      if (!pending && !queueLoading) void execute(review.actions[actionIndex]);
-      return;
-    }
     if (!previewOpen && event.key === " " && plainTarget) {
       consumeShortcut(event);
       if (focusedId != null)
         updateSelection((current) => toggleOne(current, focusedId));
-      return;
-    }
-    if (!previewOpen && event.key.toLowerCase() === "a") {
-      consumeShortcut(event);
-      updateSelection((current) =>
-        toggleShownReviewSelection(current, itemIds),
-      );
       return;
     }
     if (pending || queueLoading) return;
@@ -1298,7 +1271,7 @@ export function DataQualityPage({
     () => {},
   );
   gridArrowNavigationRef.current = (event) => {
-    if (usesWorkspace || managerOpen || previewOpen) return;
+    if (usesWorkspace || managerOpen || previewOpen || findOpen) return;
     if (pending || queueLoading || !itemIds.length) return;
     if (
       event.defaultPrevented ||
@@ -1334,6 +1307,58 @@ export function DataQualityPage({
     document.addEventListener("keydown", listener);
     return () => document.removeEventListener("keydown", listener);
   }, []);
+
+  // The grid's action keys, Find action and select all, while the grid itself
+  // takes keys. The preview registers its own keys on the overlay surface.
+  // Like the letters before them, they stay claimed while an action runs;
+  // execute then names the reason or waits for the refresh.
+  const keyLabels = useReviewKeyLabels();
+  useReviewKeys({
+    surface: "local",
+    // With nothing to act on (an empty or failed queue) the keys stay Cove's, so f still opens
+    // Filters to fix the queue; while a load or an action runs they stay claimed.
+    enabled:
+      !!review &&
+      !usesWorkspace &&
+      !managerOpen &&
+      !previewOpen &&
+      !findOpen &&
+      !queueError &&
+      (queue.items.length > 0 || queueLoading || pending),
+    actionCount: review?.actions.length ?? 0,
+    onAction: (index) => {
+      const action = review?.actions[index];
+      if (action) void execute(action);
+    },
+    onFind: () => setFindOpen(true),
+    onSelectAll: () =>
+      updateSelection((current) => toggleShownReviewSelection(current, itemIds)),
+  });
+  // Find action belongs to the view on screen; another review or layout, or
+  // opening or closing the preview, closes it.
+  useEffect(() => setFindOpen(false), [usesWorkspace, previewOpen, review?.id]);
+
+  // Mirrors the sidebar's action buttons, so Find action offers exactly what a
+  // click could apply.
+  function gridActionBlocked(action: ReviewAction) {
+    const changesData =
+      "steps" in action ? action.steps.length > 0 : action.effect.mode !== "SKIP";
+    const targetGroupId =
+      "effect" in action && action.effect.mode === "SET_TAG_GROUP"
+        ? action.effect.tagGroupId
+        : null;
+    const groupUnavailable =
+      targetGroupId != null && !tagGroups.some((item) => item.id === targetGroupId);
+    return (
+      pending ||
+      queueLoading ||
+      !!queueError ||
+      (changesData && !canWriteCurrent) ||
+      ("effect" in action && changesData && (!canReadTagGroups || groupUnavailable)) ||
+      (hasAssessmentSteps(action) && absenceFieldStatus?.kind !== "ready") ||
+      !targets.length
+    );
+  }
 
   function chooseReview(id: string) {
     setLayoutOverride(null);
@@ -1428,7 +1453,7 @@ export function DataQualityPage({
         <div className="dq-header-copy">
           <h1>{review?.name ?? "Data Quality"}</h1>
           {review?.description && (
-            <p className="dq-review-description">{review.description}</p>
+            <p className="dq-header-description">{review.description}</p>
           )}
         </div>
         {review && savedReview && (
@@ -1508,6 +1533,13 @@ export function DataQualityPage({
             {absenceFieldPending ? "Checking…" : "Check again"}
           </button>
         </div>
+      )}
+      {review && keyLabels.allUnbound(review.actions.length) && (
+        <p role="status" className="dq-status">
+          Your keyboard preset has no keys for Data Quality actions, so pressing a
+          letter does nothing. Assign them under Settings → Keyboard shortcuts →
+          Data Quality, or switch to the Cove Native preset.
+        </p>
       )}
       {unassignedLegacy && (
         <details>
@@ -1887,7 +1919,11 @@ export function DataQualityPage({
               <button
                 type="button"
                 className="dq-selection-toggle"
-                aria-keyshortcuts="a"
+                aria-keyshortcuts={
+                  keyLabels.selectAll === SELECT_ALL_KEY_LABEL
+                    ? "Control+A Meta+A"
+                    : keyLabels.selectAll || undefined
+                }
                 disabled={!itemIds.length}
                 onClick={() =>
                   updateSelection((current) =>
@@ -1896,7 +1932,9 @@ export function DataQualityPage({
                 }
               >
                 {allShownSelected ? "Clear selection" : "Select all on page"}
-                <kbd aria-hidden="true">A</kbd>
+                {keyLabels.selectAll && (
+                  <kbd aria-hidden="true">{keyLabels.selectAll}</kbd>
+                )}
               </button>
               {/* Always name the target: with nothing checked, actions fall
                   back to the focused card, which the ring alone does not say. */}
@@ -1908,10 +1946,6 @@ export function DataQualityPage({
                     : `Applies to the ${targetLabel}`}
               </strong>
               {review.actions.map((action, index) => {
-                const changesData =
-                  "steps" in action
-                    ? action.steps.length > 0
-                    : action.effect.mode !== "SKIP";
                 const targetGroupId =
                   "effect" in action &&
                   action.effect.mode === "SET_TAG_GROUP"
@@ -1921,23 +1955,10 @@ export function DataQualityPage({
                   targetGroupId != null
                     ? tagGroups.find((item) => item.id === targetGroupId)
                     : undefined;
-                const groupUnavailable =
-                  targetGroupId != null &&
-                  !group;
                 return <button
                   key={action.id}
                   type="button"
-                  disabled={
-                    pending ||
-                    queueLoading ||
-                    !!queueError ||
-                    (changesData && !canWriteCurrent) ||
-                    ("effect" in action && changesData &&
-                      (!canReadTagGroups || groupUnavailable)) ||
-                    (hasAssessmentSteps(action) &&
-                      absenceFieldStatus?.kind !== "ready") ||
-                    !targets.length
-                  }
+                  disabled={gridActionBlocked(action)}
                   onClick={() => void execute(action)}
                 >
                   <span className="dq-action-copy">
@@ -1981,12 +2002,15 @@ export function DataQualityPage({
                       <small>Skip</small>
                     )}
                   </span>
-                  {actionShortcut(action, index) && (
-                    <kbd>{actionShortcut(action, index)}</kbd>
+                  {keyLabels.action(index) && (
+                    <kbd>{keyLabels.action(index)}</kbd>
                   )}
                 </button>;
               })}
               {!review.actions.length && <p>This review has no actions.</p>}
+              {review.actions.length > 0 && (
+                <FindActionButton onClick={() => setFindOpen(true)} />
+              )}
               {!canWriteCurrent && (
                 <p>{writeSubject} write permission is required to apply actions.</p>
               )}
@@ -2000,8 +2024,17 @@ export function DataQualityPage({
                 </p>
               )}
               <p className="dq-shortcuts">
-                ←→↑↓ move · space select · enter {entityType === "tag" ? "open" : "preview"} · Q–P apply · A toggle
-                shown · Esc clear
+                {[
+                  "←→↑↓ move",
+                  "space select",
+                  `enter ${entityType === "tag" ? "open" : "preview"}`,
+                  "action keys apply",
+                  keyLabels.find && `${keyLabels.find} find action`,
+                  keyLabels.selectAll && `${keyLabels.selectAll} toggle shown`,
+                  "Esc clear",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </aside>
           </div>
@@ -2035,6 +2068,21 @@ export function DataQualityPage({
             focusCard(focusedRef.current);
           }}
           onAction={execute}
+          findOpen={findOpen}
+          onFindOpenChange={setFindOpen}
+        />
+      )}
+      {findOpen && review && !usesWorkspace && !previewOpen && (
+        <FindAction
+          actions={review.actions}
+          tagGroups={tagGroups}
+          isDisabled={gridActionBlocked}
+          canStay={false}
+          onApply={(action) => {
+            setFindOpen(false);
+            void execute(action);
+          }}
+          onClose={() => setFindOpen(false)}
         />
       )}
       {managerOpen && (
@@ -2536,6 +2584,8 @@ function ReviewPreview({
   onNext,
   onClose,
   onAction,
+  findOpen,
+  onFindOpenChange: setFindOpen,
 }: {
   video: MediaItem;
   review: VideoReview;
@@ -2553,6 +2603,9 @@ function ReviewPreview({
   onNext: () => void;
   onClose: () => void;
   onAction: (action: MediaReviewAction) => Promise<void>;
+  /** Find action inside the preview; the page owns the state so its keys pause too. */
+  findOpen: boolean;
+  onFindOpenChange(open: boolean): void;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
   const playerControls = useRef<{
@@ -2561,6 +2614,25 @@ function ReviewPreview({
   } | null>(null);
   const file = video.files[0];
   const title = videoTitle(video);
+  const keyLabels = useReviewKeyLabels();
+  const actionBlocked = (action: ReviewAction) =>
+    pending ||
+    refreshing ||
+    ("steps" in action && action.steps.length > 0 && !canWrite) ||
+    (hasAssessmentSteps(action) && !assessmentReady);
+  // The preview is a dialog, which holds Cove's page surfaces back, so its
+  // action keys and Find action live on the overlay surface. Action keys keep
+  // working after a click on any preview control, including its action buttons.
+  useReviewKeys({
+    surface: "overlay",
+    enabled: !findOpen,
+    actionCount: review.actions.length,
+    onAction: (index) => {
+      const action = review.actions[index];
+      if (action) void onAction(action);
+    },
+    onFind: () => setFindOpen(true),
+  });
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -2593,6 +2665,9 @@ function ReviewPreview({
     }
   }
   function handlePlayerKey(event: ReactKeyboardEvent<HTMLDivElement>) {
+    // Find action owns the keyboard while it is open, wherever focus is; the
+    // page closes it on Escape.
+    if (findOpen) return;
     if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
     if (
       (event.target as HTMLElement).closest(
@@ -2741,29 +2816,39 @@ function ReviewPreview({
         )}
         <p className="dq-editor-note">
           Space play/pause · ←/→ ±60s (Alt ±10s, Shift ±5s) · , / . ±10% · n/m
-          previous/next · Enter/Esc close
+          previous/next · action keys apply
+          {keyLabels.find ? ` · ${keyLabels.find} find action` : ""} · Enter/Esc close
         </p>
         <footer data-review-player-controls>
+          {/* First, so it stays in view when many actions wrap past the bottom edge. */}
+          {review.actions.length > 0 && (
+            <FindActionButton onClick={() => setFindOpen(true)} />
+          )}
           {review.actions.map((action, index) => (
             <button
               key={action.id}
               type="button"
-              disabled={
-                pending ||
-                refreshing ||
-                (action.steps.length > 0 && !canWrite) ||
-                (hasAssessmentSteps(action) && !assessmentReady)
-              }
+              disabled={actionBlocked(action)}
               onClick={() => void onAction(action)}
             >
-              {actionShortcut(action, index) && (
-                <kbd>{actionShortcut(action, index)}</kbd>
-              )}
+              {keyLabels.action(index) && <kbd>{keyLabels.action(index)}</kbd>}
               {action.label}
             </button>
           ))}
         </footer>
       </div>
+      {findOpen && (
+        <FindAction
+          actions={review.actions}
+          isDisabled={actionBlocked}
+          canStay={false}
+          onApply={(action) => {
+            setFindOpen(false);
+            void onAction(action as MediaReviewAction);
+          }}
+          onClose={() => setFindOpen(false)}
+        />
+      )}
     </div>
   );
 }

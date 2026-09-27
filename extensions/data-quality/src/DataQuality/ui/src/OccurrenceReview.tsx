@@ -7,7 +7,6 @@ import {
   reviewMediaKind,
   type OccurrenceReview,
 } from "./model";
-import { ReviewWorkspace } from "./ReviewWorkspace";
 
 export function OccurrenceSettings({
   review,
@@ -146,20 +145,5 @@ export function PerformerFlagSettings({
         allowCreate={false}
       />
     </fieldset>
-  );
-}
-
-export function OccurrenceWorkspace({
-  review,
-  canWrite,
-  onBusy,
-}: {
-  review: OccurrenceReview;
-  storageKey: string;
-  canWrite: boolean;
-  onBusy(value: boolean): void;
-}) {
-  return (
-    <ReviewWorkspace review={review} canWrite={canWrite} onBusy={onBusy} />
   );
 }

@@ -37,7 +37,7 @@ export function MediaDescription({
     });
   }, []);
   return (
-    <section className="dq-review-description" aria-label={`${label} description`}>
+    <section className="dq-media-description" aria-label={`${label} description`}>
       <button
         type="button"
         className="dq-button dq-description-toggle"

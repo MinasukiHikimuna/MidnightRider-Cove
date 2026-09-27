@@ -17,7 +17,7 @@ describe("review editing and resumption", () => {
     expect(steps[0].mode).toBe("ADD");
     expect(moveItem(steps, 0, -1)).toEqual(steps);
   });
-  it("assigns fixed Q–P shortcuts by action position", () => {
+  it("assigns the 27 letter keys by action position, never n or m", () => {
     const base = {
       id: "r",
       name: "Review",
@@ -31,9 +31,20 @@ describe("review editing and resumption", () => {
       actions: [],
     };
     const a = { id: "a", label: "Skip", steps: [] };
-    expect(actionShortcut(a, 0)).toBe("q");
-    expect(actionShortcut(a, 9)).toBe("p");
-    expect(actionShortcut(a, 10)).toBe("");
+    const keys = Array.from({ length: 28 }, (_, index) => actionShortcut(a, index));
+    expect(keys.join("")).toBe("qwertyuiopåasdfghjklöäzxcvb");
+    expect(keys[0]).toBe("q");
+    expect(keys[10]).toBe("å");
+    expect(keys[11]).toBe("a");
+    expect(keys[14]).toBe("f");
+    expect(keys[15]).toBe("g");
+    expect(keys[18]).toBe("k");
+    expect(keys[26]).toBe("b");
+    expect(keys[27]).toBe("");
+    expect(keys).not.toContain("n");
+    expect(keys).not.toContain("m");
+    // The saved shortcut field is kept for old exports but never decides the key.
+    expect(actionShortcut({ ...a, shortcut: "1" }, 1)).toBe("w");
     expect(reviewValidation({ ...base, actions: [{ ...a, shortcut: "1" }] })).toBe("");
   });
   it("resumes by identity then clamped index when results change", () => {

@@ -190,9 +190,21 @@ export function reviewEntityType(review: Review): ReviewEntityType {
   return review.entityType ?? "video";
 }
 
+/**
+ * Action keys in the order actions are assigned to them: the letter rows of a Finnish/Swedish
+ * keyboard, skipping n and m (previous/next in the grid preview). None needs AltGr. The
+ * extension manifest declares the same order as Cove keyboard actions.
+ */
+export const ACTION_KEYS = [
+  "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å",
+  "a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä",
+  "z", "x", "c", "v", "b",
+] as const;
+
+/** The key for an action's position; later actions have none and are reached with Find action. */
 export function actionShortcut(action: ReviewAction, index: number): string {
   void action;
-  return "qwertyuiop"[index] ?? "";
+  return ACTION_KEYS[index] ?? "";
 }
 
 export function moveItem<T>(items: T[], index: number, delta: number): T[] {
@@ -556,9 +568,10 @@ export function toggleShownReviewSelection(
   return next;
 }
 
-// Gates Space and Enter, which plain buttons and links need for themselves.
-// Letters and Escape use isReviewLetterShortcutTarget, arrows the narrower
-// isReviewGridArrowTarget.
+// Gates the grid's Space and Enter, which plain buttons and links need for
+// themselves. Escape uses isReviewEscapeTarget, arrows the narrower
+// isReviewGridArrowTarget. Action letters, Find action and select all are
+// Cove keyboard actions (see reviewKeys.ts) and are not gated here.
 export function isReviewShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return !target.closest(
@@ -567,14 +580,13 @@ export function isReviewShortcutTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * Action letters, A and Escape keep working after focus drifts to the page
- * body or to the extension's own controls: cards, the actions sidebar, the
- * pagination rows and the review preview. Host-owned widgets inside the page
- * (the list toolbar, filter chips, dialogs) and text entry keep their keys,
- * so an allowlist of extension surfaces is used rather than a guess at host
- * markup.
+ * Escape clears the grid selection after focus drifts to the page body or to
+ * the extension's own controls: cards, the actions sidebar, the pagination
+ * rows and the review preview. Host-owned widgets inside the page (the list
+ * toolbar, filter chips, dialogs) and text entry keep their Escape, so an
+ * allowlist of extension surfaces is used rather than a guess at host markup.
  */
-export function isReviewLetterShortcutTarget(
+export function isReviewEscapeTarget(
   target: EventTarget | null,
 ): boolean {
   if (!(target instanceof HTMLElement)) return false;

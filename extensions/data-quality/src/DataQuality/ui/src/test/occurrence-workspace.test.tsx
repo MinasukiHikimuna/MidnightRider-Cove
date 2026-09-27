@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { testFilterControls } from "./runtime-components";
+import { activeTestKeyboardActions, testFilterControls } from "./runtime-components";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
 import type { OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
@@ -674,18 +674,25 @@ it("blocks duplicate submissions and keeps Skip available without write permissi
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(api.applyTags).not.toHaveBeenCalled();
 });
-it("does not render a shortcut badge after the first ten actions", async () => {
+it("shows the 27 action keys in order and no badge after them", async () => {
   open({
     ...review,
-    actions: Array.from({ length: 11 }, (_, index) => ({
+    actions: Array.from({ length: 28 }, (_, index) => ({
       id: `action-${index}`,
       label: `Action ${index + 1}`,
       steps: [],
     })),
   });
   await ready();
-  expect(screen.getByRole("button", { name: "p Action 10" }).querySelector("kbd")).not.toBeNull();
-  expect(screen.getByRole("button", { name: "Action 11" }).querySelector("kbd")).toBeNull();
+  expect(screen.getByRole("button", { name: "p Action 10" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "å Action 11" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "a Action 12" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "f Action 15" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "g Action 16" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "k Action 19" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "ö Action 21" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "b Action 27" }).querySelector("kbd")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "Action 28" }).querySelector("kbd")).toBeNull();
 });
 it("preserves legacy choices and clip boundaries", async () => {
   api.loadOccurrencePage.mockResolvedValue({
@@ -1590,4 +1597,180 @@ it("autoplays after an action even after manually visiting another scene", async
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
   await screen.findByRole("link", { name: "Next scene" });
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
+});
+
+function numberedActions(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `numbered-${index + 1}`,
+    label: `Action ${index + 1}`,
+    steps: [{ mode: "ADD" as const, tagIds: [100 + index] }],
+  }));
+}
+const appliedLabel = (call = 0) => api.applyTags.mock.calls[call][2].label;
+const findOptions = () =>
+  within(screen.getByRole("dialog", { name: "Find an action" })).queryAllByRole("option");
+
+it.each([
+  ["q", 1],
+  ["å", 11],
+  ["a", 12],
+  ["f", 15],
+  ["g", 16],
+  ["k", 19],
+  ["ö", 21],
+])("applies the action on %s and advances", async (key, number) => {
+  open({ ...review, actions: numberedActions(27) });
+  await ready();
+  fireEvent.keyDown(document.body, { key });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe(`Action ${number}`);
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+});
+
+it.each([
+  ["Q", 1],
+  ["Å", 11],
+  ["A", 12],
+  ["F", 15],
+  ["G", 16],
+  ["K", 19],
+  ["Ö", 21],
+])("applies the action on Shift+%s and stays", async (key, number) => {
+  open({ ...review, actions: numberedActions(27) });
+  await ready();
+  fireEvent.keyDown(document.body, { key, shiftKey: true });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe(`Action ${number}`);
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
+});
+
+it("leaves f, g and k to Cove while their slots hold no action", async () => {
+  open({ ...review, actions: numberedActions(13) });
+  await ready();
+  const active = activeTestKeyboardActions();
+  expect(active).toContain("local:action-13");
+  expect(active).toContain("local:find-action");
+  for (const slot of ["action-14", "action-15", "action-16", "action-19", "action-27"])
+    expect(active).not.toContain(`local:${slot}`);
+  // With their slots disabled, Cove resolves f, g and k against its own shortcuts.
+  for (const key of ["f", "g", "k"]) fireEvent.keyDown(document.body, { key });
+  await act(async () => {});
+  expect(api.applyTags).not.toHaveBeenCalled();
+  // Nothing in the idle workspace counts as an open dialog, which would pause every key.
+  expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
+});
+
+it("keeps action keys working after clicking a queue item or an action button", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 3 });
+  open({ ...review, actions: numberedActions(3) });
+  await ready();
+  const partner = screen.getByRole("button", { name: "Second performer — First scene" });
+  fireEvent.click(partner);
+  partner.focus();
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  fireEvent.keyDown(partner, { key: "W", shiftKey: true });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel(0)).toBe("Action 2");
+  await ready();
+  const button = screen.getByRole("button", { name: "e Action 3" });
+  fireEvent.click(button, { shiftKey: true });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  await ready();
+  button.focus();
+  expect(button).toHaveFocus();
+  fireEvent.keyDown(button, { key: "q" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(3));
+  expect(appliedLabel(2)).toBe("Action 1");
+});
+
+it("never applies an action while typing in the search field", async () => {
+  open({ ...review, actions: numberedActions(3) });
+  await ready();
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  search.focus();
+  for (const key of ["q", "w", "-"]) fireEvent.keyDown(search, { key });
+  await act(async () => {});
+  expect(api.applyTags).not.toHaveBeenCalled();
+  expect(screen.queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
+});
+
+it("finds any action with -, including those past the 27 keys", async () => {
+  open({ ...review, actions: numberedActions(30) });
+  await ready();
+  const opener = screen.getByRole("button", { name: "Skip performer" });
+  opener.focus();
+  fireEvent.keyDown(opener, { key: "-" });
+  const search = await screen.findByRole("combobox", { name: "Find an action" });
+  expect(search).toHaveFocus();
+  expect(screen.getByRole("dialog", { name: "Find an action" })).toBeInTheDocument();
+  expect(findOptions()).toHaveLength(30);
+  // Rows show their key when they have one, and what they change.
+  await waitFor(() =>
+    expect(findOptions()[10]).toHaveTextContent("åAction 11+ Choice"),
+  );
+  expect(activeTestKeyboardActions()).not.toContain("local:action-01");
+  fireEvent.change(search, { target: { value: "action 29" } });
+  const [only] = findOptions();
+  expect(findOptions()).toHaveLength(1);
+  expect(only).toHaveTextContent("Action 29");
+  expect(only.querySelector("kbd")).toBeNull();
+  expect(only).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe("Action 29");
+  expect(screen.queryByRole("dialog", { name: "Find an action" })).not.toBeInTheDocument();
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+});
+
+it("chooses with the arrow keys, stays with Shift+Enter and closes with Esc", async () => {
+  open({ ...review, actions: numberedActions(4) });
+  await ready();
+  fireEvent.keyDown(document.body, { key: "-" });
+  let search = await screen.findByRole("combobox", { name: "Find an action" });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "ArrowUp" });
+  expect(findOptions()[1]).toHaveAttribute("aria-selected", "true");
+  expect(search).toHaveAttribute("aria-activedescendant", findOptions()[1].id);
+  fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe("Action 2");
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
+
+  const opener = screen.getByRole("button", { name: "Edit tags" });
+  opener.focus();
+  fireEvent.keyDown(opener, { key: "-" });
+  search = await screen.findByRole("combobox", { name: "Find an action" });
+  fireEvent.change(search, { target: { value: "nothing like this" } });
+  expect(findOptions()).toHaveLength(0);
+  expect(
+    within(screen.getByRole("dialog", { name: "Find an action" })).getByRole("status"),
+  ).toHaveTextContent("No action matches");
+  fireEvent.keyDown(search, { key: "Enter" });
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Find an action" })).not.toBeInTheDocument();
+  expect(opener).toHaveFocus();
+  expect(api.applyTags).toHaveBeenCalledTimes(1);
+  // Keys return to the workspace once Find action closes.
+  fireEvent.keyDown(opener, { key: "r" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  expect(appliedLabel(1)).toBe("Action 4");
+});
+
+it("pauses action keys while tags or the rule are edited", async () => {
+  const rendered = open({ ...review, actions: numberedActions(2) });
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+  expect(activeTestKeyboardActions()).not.toContain("local:action-01");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await ready();
+  expect(activeTestKeyboardActions()).toContain("local:action-01");
+  rendered.rerender(
+    <ReviewWorkspace review={{ ...review, actions: numberedActions(2) }} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />,
+  );
+  await screen.findByRole("region", { name: "Edit review rule" });
+  expect(activeTestKeyboardActions()).not.toContain("local:action-01");
+  expect(activeTestKeyboardActions()).not.toContain("local:find-action");
 });

@@ -2,6 +2,162 @@ import React from "react";
 
 export const useKeySequence = vi.fn();
 
+/*
+ * A stand-in for Cove's KeyboardShortcutProvider, enough to drive the extension's keyboard
+ * actions from ordinary keydown events: one window capture listener normalizes the stroke the
+ * way Cove does, skips text entry and key repeat, holds surfaces below "viewer" back while any
+ * dialog is in the document, lets the highest surface win, blocks peers bound to the same key
+ * (Cove shows a conflict instead), and claims the event before any extension listener sees it.
+ * Bindings mirror the defaults DataQualityExtension declares; a test may replace them to act as
+ * a user's keyboard preset, and resetTestKeyboardBindings() restores them. Registrations must
+ * use the extension id, action ids and surfaces the manifest declares, as Cove drops others.
+ * Not modelled: chord prefixes (with an empty "g" slot, Cove waits for a "g …" chord) and
+ * the delay before Cove sees a changed enablement.
+ */
+type KeyboardRegistration = {
+  id: string;
+  action: (context: { sequence: string; target: EventTarget | null; repeat: boolean }) => void;
+  enabled?: boolean;
+  surface?: string;
+};
+const TEST_ACTION_KEYS = "qwertyuiopåasdfghjklöäzxcvb";
+const TEST_EXTENSION_ID = "com.midnightrider.data-quality";
+function defaultTestKeyboardBindings(): Record<string, string[]> {
+  return {
+    ...Object.fromEntries(
+      Array.from(TEST_ACTION_KEYS, (key, index) => [
+        `action-${String(index + 1).padStart(2, "0")}`,
+        [key, `Shift+${key}`],
+      ]),
+    ),
+    "find-action": ["-"],
+    "select-all": ["Ctrl+a"],
+  };
+}
+const DECLARED_SURFACES: Record<string, string[]> = Object.fromEntries(
+  Object.keys(defaultTestKeyboardBindings()).map((id) => [
+    id,
+    id === "select-all" ? ["local"] : ["local", "overlay"],
+  ]),
+);
+export const testKeyboardBindings: Record<string, string[]> = defaultTestKeyboardBindings();
+export function resetTestKeyboardBindings() {
+  for (const key of Object.keys(testKeyboardBindings)) delete testKeyboardBindings[key];
+  Object.assign(testKeyboardBindings, defaultTestKeyboardBindings());
+}
+/** The last key two different actions claimed at once, as Cove's conflict notice reports it. */
+export const testKeyboardConflicts: string[] = [];
+const SURFACE_PRIORITY: Record<string, number> = {
+  global: 0,
+  page: 10,
+  detail: 20,
+  list: 30,
+  player: 30,
+  local: 40,
+  viewer: 50,
+  overlay: 60,
+};
+const mountedKeyboardRegistrations = new Set<{
+  extensionId: string;
+  current: React.MutableRefObject<KeyboardRegistration[]>;
+}>();
+
+/** Enabled registrations, as "surface:id", for assertions. */
+export function activeTestKeyboardActions(): string[] {
+  return [...mountedKeyboardRegistrations].flatMap((entry) =>
+    entry.current.current
+      .filter((registration) => registration.enabled !== false)
+      .map((registration) => `${registration.surface ?? "page"}:${registration.id}`),
+  );
+}
+
+function normalizeTestStroke(event: KeyboardEvent): string | null {
+  const raw = event.key === " " ? "Space" : event.key;
+  if (!raw || ["Control", "Shift", "Alt", "Meta"].includes(raw)) return null;
+  const letter = Array.from(raw).length === 1 && raw.toLowerCase() !== raw.toUpperCase();
+  const key = letter ? raw.toLowerCase() : raw;
+  const parts: string[] = [];
+  if (event.ctrlKey || event.metaKey) parts.push("Ctrl");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey && (key.length > 1 || letter)) parts.push("Shift");
+  parts.push(key);
+  return parts.join("+");
+}
+
+if (typeof window !== "undefined")
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      const stroke = normalizeTestStroke(event);
+      if (!stroke || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target?.getAttribute?.("contenteditable") === "true" ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "")
+      )
+        return;
+      const overlay =
+        document.querySelector("[role='dialog'], [aria-modal='true']") != null ||
+        (target instanceof Element && target.closest("[role='listbox'], [role='menu']") != null);
+      const matches: Array<{ registration: KeyboardRegistration; priority: number }> = [];
+      for (const entry of mountedKeyboardRegistrations)
+        for (const registration of entry.current.current) {
+          if (registration.enabled === false) continue;
+          const priority = SURFACE_PRIORITY[registration.surface ?? "page"] ?? 10;
+          if (overlay && priority < SURFACE_PRIORITY.viewer) continue;
+          if (!testKeyboardBindings[registration.id]?.includes(stroke)) continue;
+          matches.push({ registration, priority });
+        }
+      if (!matches.length) return;
+      const highest = Math.max(...matches.map((match) => match.priority));
+      const winners = matches.filter((match) => match.priority === highest);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (new Set(winners.map((match) => match.registration.id)).size > 1) {
+        testKeyboardConflicts.push(stroke);
+        return;
+      }
+      winners
+        .at(-1)!
+        .registration.action({ sequence: stroke, target: event.target, repeat: event.repeat });
+    },
+    { capture: true },
+  );
+
+export function useRegisterExtensionKeyboardActions(
+  extensionId: string,
+  registrations: KeyboardRegistration[],
+) {
+  if (extensionId !== TEST_EXTENSION_ID)
+    throw new Error(`Unexpected extension id '${extensionId}'.`);
+  const seen = new Set<string>();
+  for (const registration of registrations) {
+    if (seen.has(registration.id))
+      throw new Error(`Duplicate extension keyboard action id '${registration.id}'.`);
+    seen.add(registration.id);
+    if (!DECLARED_SURFACES[registration.id]?.includes(registration.surface ?? ""))
+      throw new Error(
+        `'${registration.id}' is not declared for the '${registration.surface}' surface.`,
+      );
+  }
+  const current = React.useRef(registrations);
+  current.current = registrations;
+  React.useEffect(() => {
+    const entry = { extensionId, current };
+    mountedKeyboardRegistrations.add(entry);
+    return () => {
+      mountedKeyboardRegistrations.delete(entry);
+    };
+  }, [extensionId]);
+}
+
+export function useExtensionKeyboardBindings(extensionId: string) {
+  if (extensionId !== TEST_EXTENSION_ID)
+    throw new Error(`Unexpected extension id '${extensionId}'.`);
+  return { ...testKeyboardBindings };
+}
+
 export const testVideoControls = {
   play: vi.fn().mockResolvedValue(undefined),
   pause: vi.fn(),

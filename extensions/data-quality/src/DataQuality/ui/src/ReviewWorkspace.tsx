@@ -23,6 +23,7 @@ import {
 } from "./api";
 import { MediaDescription } from "./MediaDescription";
 import { ExistingAnswers } from "./ExistingAnswers";
+import { FindAction, FindActionButton } from "./FindAction";
 import { PerformerAvatar } from "./PerformerAvatar";
 import { PerformerRankingList } from "./PerformerRankingList";
 import {
@@ -40,9 +41,7 @@ import {
   OCCURRENCE_CONDITIONS,
   reviewMediaKind,
   reviewValidation,
-  actionShortcut,
   boundedFilter,
-  isReviewShortcutTarget,
   queueSignature,
   type MediaKind,
   type OccurrenceReview,
@@ -50,6 +49,8 @@ import {
 } from "./model";
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
 import { objectFiltersEqual } from "./objectFiltersEqual";
+import { useReviewKeyLabels, useReviewKeys } from "./reviewKeys";
+import { useTagNames } from "./tagNames";
 import {
   defaultQuery,
   effectiveReview,
@@ -90,6 +91,7 @@ export function ReviewActionControls({
   canWrite,
   canAssess = true,
   onApply,
+  onFind,
 }: {
   actions: MediaReviewAction[];
   disabled: boolean;
@@ -97,34 +99,17 @@ export function ReviewActionControls({
   /** False while assessments cannot be recorded: the absence field or a permission is missing. */
   canAssess?: boolean;
   onApply(action: MediaReviewAction, stay: boolean): void;
+  onFind?(): void;
 }) {
-  const [names, setNames] = useState<Record<number, string>>({});
-  useEffect(() => {
-    let active = true;
-    void Promise.all(
-      [
-        ...new Set(
-          actions.flatMap((action) =>
-            action.steps.flatMap((step) => step.tagIds),
-          ),
-        ),
-      ].map(async (id) => {
-        try {
-          return [
-            id,
-            (await request<{ name: string }>(`/api/tags/${id}`)).name,
-          ] as const;
-        } catch {
-          return [id, "Unavailable tag"] as const;
-        }
-      }),
-    ).then((entries) => {
-      if (active) setNames(Object.fromEntries(entries));
-    });
-    return () => {
-      active = false;
-    };
-  }, [actions]);
+  const names = useTagNames(
+    useMemo(
+      () => actions.flatMap((action) => action.steps.flatMap((step) => step.tagIds)),
+      [actions],
+    ),
+  );
+  const tagName = (id: number) =>
+    names[id] === undefined ? "Loading tag…" : (names[id] ?? "Unavailable tag");
+  const keys = useReviewKeyLabels();
   const verbs = {
     ADD: "Add",
     REMOVE: "Remove",
@@ -136,9 +121,12 @@ export function ReviewActionControls({
   return (
     <div className="dq-review-actions">
       <p>
-        Actions apply and advance. Shift-click or Shift + shortcut applies and
+        Actions apply and advance. Shift-click or Shift + key applies and
         stays.
       </p>
+      {onFind && (
+        <FindActionButton disabled={!actions.length} onClick={onFind} />
+      )}
       {actions.map((action, index) => (
         <div className="dq-action-pair" key={action.id}>
           <button
@@ -152,7 +140,7 @@ export function ReviewActionControls({
             onClick={(event) => onApply(action, event.shiftKey)}
           >
             <span>
-              {actionShortcut(action, index) && <kbd>{actionShortcut(action, index)}</kbd>} {action.label}
+              {keys.action(index) && <kbd>{keys.action(index)}</kbd>} {action.label}
             </span>
           </button>
           {action.steps.length > 0 && (
@@ -174,7 +162,7 @@ export function ReviewActionControls({
               {action.steps
                 .map(
                   (step) =>
-                    `${verbs[step.mode]}: ${step.tagIds.map((id) => names[id] ?? "Loading tag…").join(", ")}`,
+                    `${verbs[step.mode]}: ${step.tagIds.map(tagName).join(", ")}`,
                 )
                 .join("; ")}
             </small>
@@ -297,6 +285,7 @@ export function ReviewWorkspace({
       editor.current?.querySelector<HTMLInputElement>("input")?.focus();
   }, [editing]);
   const [performerDialog, setPerformerDialog] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
   useEffect(() => {
     if (loading || performerDialog || !filterReturnFocus.current) return;
     const frame = requestAnimationFrame(() => {
@@ -851,35 +840,33 @@ export function ReviewWorkspace({
       endOperation();
     }
   }
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (
-        editing ||
-        ruleDraft ||
-        pending ||
-        loading ||
-        performerDialog ||
-        event.defaultPrevented ||
-        event.repeat ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.metaKey ||
-        !isReviewShortcutTarget(event.target) ||
-        document.querySelector('[role="dialog"], dialog[open]')
-      )
-        return;
-      const key = event.key.toLowerCase();
-      const action = saved.actions.find(
-        (action, index) => actionShortcut(action, index) === key,
-      );
-      if (!action) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void execute(action, event.shiftKey);
-    };
-    document.addEventListener("keydown", keydown);
-    return () => document.removeEventListener("keydown", keydown);
+  // Action keys belong to the workspace while an item is shown, or is about to be, and no tag
+  // editor, rule editor or dialog of its own is open. They stay claimed while a write or load
+  // runs, when execute ignores them, so a quick f, g or k never falls through to Cove's
+  // fullscreen, go-to chords or play/pause in between items.
+  const keysActive =
+    !editing &&
+    !ruleDraft &&
+    !performerDialog &&
+    !findOpen &&
+    (current != null || loading || pending);
+  useReviewKeys({
+    surface: "local",
+    enabled: keysActive,
+    actionCount: saved.actions.length,
+    onAction: (index, stay) => {
+      const action = saved.actions[index];
+      if (action) void execute(action, stay);
+    },
+    onFind: () => setFindOpen(true),
   });
+  const actionBlocked = (action: MediaReviewAction) =>
+    pending ||
+    loading ||
+    !tags ||
+    !!ruleDraft ||
+    (!canWrite && action.steps.length > 0) ||
+    (!canAssess && hasAssessmentSteps(action));
   function beginRuleEdit() {
     if (!onSaveDefaults || ruleDraft || lock.current || editing) return;
     ruleOpener.current = document.activeElement as HTMLElement;
@@ -1692,6 +1679,7 @@ export function ReviewWorkspace({
                       canAssess={canAssess}
                       disabled={pending || loading || !tags || !!ruleDraft}
                       onApply={(action, stay) => void execute(action, stay)}
+                      onFind={ruleDraft ? undefined : () => setFindOpen(true)}
                     />
                     {isOccurrenceReview(saved) &&
                       !saved.actions.length &&
@@ -1795,6 +1783,17 @@ export function ReviewWorkspace({
           )}
         </div>
       </div>
+      {findOpen && (
+        <FindAction
+          actions={saved.actions}
+          isDisabled={(action) => actionBlocked(action as MediaReviewAction)}
+          onApply={(action, stay) => {
+            setFindOpen(false);
+            void execute(action as MediaReviewAction, stay);
+          }}
+          onClose={() => setFindOpen(false)}
+        />
+      )}
     </section>
   );
 }

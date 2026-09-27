@@ -210,3 +210,39 @@ it("reviews performer occurrences on an audio with the description in view", asy
   );
   expect(api.applyTags.mock.calls[0][1].occurrence).toEqual(occurrence);
 });
+
+it.each([
+  ["audio", audioReview],
+  ["audio occurrence", occurrenceReview],
+])("applies %s actions with the action keys, Shift staying", async (_, rule) => {
+  window.history.replaceState(null, "", `/data-quality?review=${rule.id}`);
+  const actions = Array.from({ length: 27 }, (_, index) => ({
+    id: `numbered-${index + 1}`,
+    label: `Action ${index + 1}`,
+    steps: [{ mode: "ADD" as const, tagIds: [100 + index] }],
+  }));
+  api.findMedia.mockResolvedValue({ items: [audio, { ...audio, id: 8, title: "Second recording" }], totalCount: 2 });
+  api.loadOccurrencePage.mockResolvedValue({
+    items: [occurrence, { ...occurrence, key: "7:12", performer: audio.performers[1] }],
+    totalCount: 1,
+  });
+  open({ ...rule, actions } as AudioReview | OccurrenceReview);
+  await ready();
+  const expected: Array<[string, boolean, number]> = [
+    ["q", false, 1],
+    ["Å", true, 11],
+    ["a", false, 12],
+    ["F", true, 15],
+    ["g", false, 16],
+    ["K", true, 19],
+    ["ö", false, 21],
+  ];
+  for (const [call, [key, shiftKey, number]] of expected.entries()) {
+    fireEvent.keyDown(document.body, { key, shiftKey });
+    await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(call + 1));
+    expect(api.applyTags.mock.calls[call][2].label).toBe(`Action ${number}`);
+    await ready();
+  }
+  expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
+  // Each write waits out Cove's one-second read cache before the queue moves on.
+}, 20_000);

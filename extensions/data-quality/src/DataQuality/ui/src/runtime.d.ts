@@ -11,6 +11,41 @@ declare module "@cove/runtime/components" {
     action: () => void;
     surface?: "local";
   }>, enabled?: boolean): void;
+  /** Host-owned dispatch context supplied after Cove resolves and claims a shortcut. */
+  export interface KeyboardActionInvocation {
+    /** The normalized sequence that resolved the action, for example "q" or "Shift+q". */
+    sequence: string;
+    target: EventTarget | null;
+    repeat: boolean;
+  }
+  export interface ExtensionKeyboardActionRegistration {
+    /** The action id declared in the extension manifest, without Cove's namespace. */
+    id: string;
+    action: (context: KeyboardActionInvocation) => void;
+    enabled?: boolean;
+    /** A surface declared for this action in the extension manifest. */
+    surface?:
+      | "global"
+      | "page"
+      | "list"
+      | "detail"
+      | "player"
+      | "viewer"
+      | "overlay"
+      | "local";
+  }
+  /** Attach mounted handlers to manifest-declared keyboard actions of one extension. */
+  export function useRegisterExtensionKeyboardActions(
+    extensionId: string,
+    registrations: ExtensionKeyboardActionRegistration[],
+  ): void;
+  /**
+   * The extension's resolved bindings in Cove's active keyboard preset, keyed by the manifest
+   * action id; an unbound action has an empty list.
+   */
+  export function useExtensionKeyboardBindings(
+    extensionId: string,
+  ): Readonly<Record<string, readonly string[]>>;
   import type { ComponentType, CSSProperties, ReactNode } from "react";
   export type DragHandleProps = import("react").HTMLAttributes<HTMLElement>;
   export function SortableList<T>(props: {
@@ -264,6 +299,7 @@ declare module "@cove/runtime/lucide-react" {
   export const Plus: Icon;
   export const RotateCcw: Icon;
   export const Save: Icon;
+  export const Search: Icon;
   export const Settings: Icon;
   export const Tags: Icon;
   export const Trash2: Icon;
