@@ -15,7 +15,7 @@ public sealed class OnThisDayExtensionTests
         {
             Id = "com.midnightrider.on-this-day",
             Name = "On This Day",
-            Version = "0.1.0",
+            Version = "0.2.0",
         });
 
         var widget = Assert.Single(extension.GetUIManifest().DashboardWidgets);
