@@ -1,0 +1,12 @@
+{
+  "id": "com.midnightrider.six-degrees",
+  "name": "SixDegrees",
+  "tagPrefix": "com.midnightrider.six-degrees/",
+  "solution": "SixDegrees.slnx",
+  "project": "src/SixDegrees/SixDegrees.csproj",
+  "manifest": "src/SixDegrees/extension.json",
+  "readme": "README.md",
+  "ui": "src/SixDegrees/assets",
+  "uiPackagePath": "assets",
+  "uiTest": "tests/six-degrees-model.test.mjs"
+}

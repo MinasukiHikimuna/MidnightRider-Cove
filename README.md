@@ -15,6 +15,7 @@ descriptor under `extensions/<extension-id>/`.
 | Segment Studio | `extensions/segment-studio` | `com.midnightrider.segment-studio/v<version>` |
 | Sample Widgets | `extensions/discovery-widgets` | `com.midnightrider.discovery-widgets/v<version>` |
 | On This Day | `extensions/on-this-day` | `com.midnightrider.on-this-day/v<version>` |
+| Six Degrees of Johnny Sins | `extensions/six-degrees` | `com.midnightrider.six-degrees/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing

@@ -1,0 +1,22 @@
+{
+  "id": "com.midnightrider.six-degrees",
+  "name": "Six Degrees of Johnny Sins",
+  "version": "0.1.0",
+  "description": "A full-page dashboard widget that finds the shortest chain of shared videos between two performers.",
+  "author": "MidnightRider",
+  "kind": "extension",
+  "categories": ["ui", "widget"],
+  "minCoveVersion": "1.3.2-dev.36",
+  "entryDll": "SixDegrees.dll",
+  "dependencies": {},
+  "externalDependencies": [],
+  "settings": [],
+  "tutorialTopics": [],
+  "jsBundle": "assets/ui.mjs",
+  "cssBundle": "assets/ui.css",
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}
