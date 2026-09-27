@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
 import {
+  planTags,
   previewOccurrenceBatch,
   runOccurrenceBatch,
   undoOccurrenceBatch,
@@ -56,6 +57,8 @@ let failDelete: boolean;
 let failReads: boolean;
 let writes: string[];
 let queries: Record<string, any>[];
+let trees: Record<number, number[]>;
+let names: Record<number, string>;
 function add(video: number, performer: number, tag: number) {
   apps.push({
     id: nextId++,
@@ -93,6 +96,8 @@ beforeEach(() => {
   failReads = false;
   writes = [];
   queries = [];
+  trees = {};
+  names = {};
   fixtures(1);
   fetch.mockImplementation((path, init) => {
     const url = new URL(String(path), "http://test");
@@ -118,10 +123,16 @@ beforeEach(() => {
       return response(
         videos.find((v) => v.id === Number(url.pathname.split("/").pop())),
       );
-    if (url.pathname === "/api/tags/find")
-      return response({ items: [{ id: 22 }, { id: 23 }], totalCount: 2 });
-    if (url.pathname.startsWith("/api/tags/"))
-      return response({ id: 20, name: "Group" });
+    if (url.pathname === "/api/tags/find") {
+      const tree = trees[body.objectFilter?.parentsCriterion?.value?.[0]];
+      return tree
+        ? response({ items: tree.map((id) => ({ id })), totalCount: tree.length })
+        : response({ items: [{ id: 22 }, { id: 23 }], totalCount: 2 });
+    }
+    if (url.pathname.startsWith("/api/tags/")) {
+      const id = Number(url.pathname.split("/").pop());
+      return response({ id, name: names[id] ?? "Group" });
+    }
     if (url.pathname.startsWith("/api/tagapplications")) {
       if (init?.method === "POST") {
         writes.push(`add:${body.hostId}:${body.contextId}:${body.tagId}`);
@@ -149,8 +160,12 @@ beforeEach(() => {
     throw new Error(`Unexpected request ${path}`);
   });
 });
-const preview = (review = rule, selected = action) =>
-  previewOccurrenceBatch(review, selected, new AbortController().signal);
+const preview = (review = rule, selected: MediaReviewAction | MediaReviewAction[] = action) =>
+  previewOccurrenceBatch(
+    review,
+    Array.isArray(selected) ? selected : [selected],
+    new AbortController().signal,
+  );
 const run = (
   batch: Awaited<ReturnType<typeof preview>>,
   replace = false,
@@ -232,7 +247,9 @@ it("resolves removal trees once and computes ordered net changes without false c
     ],
   });
   expect(batch.entries[0].conflict).toBe(true);
-  expect(batch.entries[0].desired).toEqual([21]);
+  expect(
+    planTags(batch.entries[0].before.ids, batch.action, batch.categories, true).desired,
+  ).toEqual([21]);
   await run(batch, true);
   expect(ids(1)).toEqual([21]);
   expect(
@@ -331,7 +348,7 @@ it("handles empty matches and aborted previews without writes", async () => {
   const controller = new AbortController();
   controller.abort();
   await expect(
-    previewOccurrenceBatch(rule, action, controller.signal),
+    previewOccurrenceBatch(rule, [action], controller.signal),
   ).rejects.toThrow();
   expect(writes).toEqual([]);
 });
@@ -461,7 +478,7 @@ it("cancels removal-tree loading through the request abort signal", async () => 
   await expect(
     previewOccurrenceBatch(
       rule,
-      { ...action, steps: [{ mode: "REMOVE_TREE", tagIds: [20] }] },
+      [{ ...action, steps: [{ mode: "REMOVE_TREE", tagIds: [20] }] }],
       controller.signal,
     ),
   ).rejects.toThrow("Aborted");
@@ -479,4 +496,200 @@ it("deduplicates repeated video-performer pairs during enumeration", async () =>
   expect(batch.entries).toHaveLength(1);
   await run(batch);
   expect(writes).toHaveLength(1);
+});
+
+const small: MediaReviewAction = { id: "small", label: "Small", steps: [{ mode: "ADD", tagIds: [31] }] };
+const medium: MediaReviewAction = { id: "medium", label: "Medium", steps: [{ mode: "ADD", tagIds: [32] }] };
+const natural: MediaReviewAction = { id: "natural", label: "Natural", steps: [{ mode: "ADD", tagIds: [41] }] };
+const categorized: OccurrenceReview = {
+  ...rule,
+  actions: [small, medium, natural],
+  occurrence: {
+    ...rule.occurrence,
+    condition: "excludesAll",
+    conditionTagIds: [30, 40],
+    includeSubtags: true,
+  },
+};
+
+it("applies several answers in one pass and fills only the condition categories that are still empty", async () => {
+  trees = { 30: [31, 32], 40: [41, 42] };
+  fixtures(4);
+  add(2, 11, 41);
+  add(3, 11, 31);
+  add(4, 11, 42);
+  const batch = await preview(categorized, [medium, natural]);
+  expect(batch.actions.map((selected) => selected.id)).toEqual(["medium", "natural"]);
+  expect(batch.action.steps).toEqual([...medium.steps, ...natural.steps]);
+  expect(batch.categories).toEqual([
+    [30, 31, 32],
+    [40, 41, 42],
+  ]);
+  expect(batch.entries.map((entry) => entry.status)).toEqual([
+    "pending",
+    "pending",
+    "pending",
+    "pending",
+  ]);
+  await run(batch);
+  expect([ids(1), ids(2), ids(3), ids(4)]).toEqual([
+    [32, 41],
+    [32, 41],
+    [31, 41],
+    [32, 42],
+  ]);
+  expect(batch.entries.every((entry) => entry.status === "changed")).toBe(true);
+  await undoOccurrenceBatch(batch, () => false, () => {});
+  expect([ids(1), ids(2), ids(3), ids(4)]).toEqual([[], [41], [31], [42]]);
+});
+
+it("replaces a different existing category answer only when conflicts are replaced", async () => {
+  trees = { 30: [31, 32], 40: [41, 42] };
+  add(1, 11, 31);
+  await run(await preview(categorized, [medium, natural]), true);
+  expect(ids(1)).toEqual([32, 41]);
+});
+
+it("skips without writing when every category it would fill already has a different answer", async () => {
+  trees = { 30: [31, 32], 40: [41, 42], 50: [51] };
+  add(1, 11, 31);
+  add(1, 11, 42);
+  // Still missing the third category, so the occurrence is in the queue.
+  const batch = await preview(
+    { ...categorized, occurrence: { ...categorized.occurrence, conditionTagIds: [30, 40, 50] } },
+    [medium, natural],
+  );
+  expect(batch.entries[0].status).toBe("pending");
+  await run(batch);
+  expect(batch.entries[0].status).toBe("skipped");
+  expect(batch.entries[0].error).toContain("existing answer");
+  expect(writes).toEqual([]);
+  expect(ids(1)).toEqual([31, 42]);
+});
+
+it("refuses two answers for the same condition category before any write", async () => {
+  trees = { 30: [31, 32], 40: [41, 42] };
+  names = { 30: "Size" };
+  await expect(preview(categorized, [small, medium])).rejects.toThrow(
+    "Small and Medium answer the same condition tag, Size. Choose one of them.",
+  );
+  await expect(preview(categorized, [])).rejects.toThrow(
+    "Choose a configured occurrence tag action.",
+  );
+  expect(writes).toEqual([]);
+});
+
+it("plans category answers without changing explicit removals or unrelated tags", () => {
+  const categories = [[30, 31, 32]];
+  const answer: MediaReviewAction = { id: "a", label: "A", steps: [{ mode: "ADD", tagIds: [32, 50] }] };
+  expect(planTags([31], answer, categories, false)).toEqual({
+    desired: [31, 50],
+    conflict: false,
+    skipped: false,
+    kept: [{ tagIds: [32], existing: [31] }],
+    replaced: [],
+  });
+  expect(planTags([31], answer, categories, true)).toEqual({
+    desired: [32, 50],
+    conflict: false,
+    skipped: false,
+    kept: [],
+    replaced: [31],
+  });
+  expect(planTags([32], answer, categories, false).desired).toEqual([32, 50]);
+  expect(planTags([], answer, [], false).desired).toEqual([32, 50]);
+  const replaceTree: MediaReviewAction = {
+    id: "b",
+    label: "B",
+    steps: [
+      { mode: "REMOVE", tagIds: [30, 31, 32] },
+      { mode: "ADD", tagIds: [32] },
+    ],
+  };
+  expect(planTags([31], replaceTree, categories, false)).toEqual({
+    desired: [31],
+    conflict: true,
+    skipped: true,
+    kept: [],
+    replaced: [],
+  });
+  expect(planTags([31], replaceTree, categories, true)).toEqual({
+    desired: [32],
+    conflict: true,
+    skipped: false,
+    kept: [],
+    replaced: [],
+  });
+});
+
+it("completes a partly written category replacement on retry", async () => {
+  trees = { 30: [31, 32], 40: [41, 42] };
+  add(1, 11, 31);
+  const batch = await preview(categorized, [medium]);
+  failDelete = true;
+  await run(batch, true);
+  expect(ids(1)).toEqual([31, 32]);
+  expect(batch.entries[0].status).toBe("failed");
+  failDelete = false;
+  await run(batch, true, true);
+  expect(ids(1)).toEqual([32]);
+  expect(batch.entries[0].status).toBe("changed");
+  await undoOccurrenceBatch(batch, () => false, () => {});
+  expect(ids(1)).toEqual([31]);
+});
+
+it("never treats an answer's own tag as a different answer", () => {
+  const categories = [[30, 31, 32, 33]];
+  const pair: MediaReviewAction = { id: "a", label: "A", steps: [{ mode: "ADD", tagIds: [32, 33] }] };
+  expect(planTags([32], pair, categories, true).desired.sort()).toEqual([32, 33]);
+  expect(planTags([32], pair, categories, false)).toMatchObject({ desired: [32, 33], kept: [] });
+  const present: MediaReviewAction = { id: "b", label: "B", steps: [{ mode: "ADD", tagIds: [31] }] };
+  expect(planTags([31, 32], present, categories, true).desired.sort()).toEqual([31, 32]);
+});
+
+it("fills categories only for conditions that look for missing tags with subtags", async () => {
+  trees = { 30: [31, 32], 40: [41, 42] };
+  add(1, 11, 31);
+  const including = await preview(
+    { ...categorized, occurrence: { ...categorized.occurrence, condition: "includes" } },
+    [medium],
+  );
+  expect(including.categories).toEqual([]);
+  await run(including);
+  expect(ids(1)).toEqual([31, 32]);
+  const exact = await preview(
+    {
+      ...categorized,
+      occurrence: { ...categorized.occurrence, includeSubtags: false, conditionTagIds: [40] },
+    },
+    [medium],
+  );
+  expect(exact.categories).toEqual([]);
+});
+
+it("reports a retried occurrence as changed when the failed attempt had fully landed", async () => {
+  const batch = await preview();
+  const original = fetch.getMockImplementation()!;
+  let failConfirm = true;
+  fetch.mockImplementation((path, init) => {
+    const url = new URL(String(path), "http://test");
+    // The write lands, but the read confirming it inside the save fails once.
+    if (
+      failConfirm &&
+      url.pathname === "/api/tagapplications" &&
+      !init?.method &&
+      url.searchParams.has("contextId") &&
+      writes.length
+    ) {
+      failConfirm = false;
+      return response({ message: "Read failed" }, 500);
+    }
+    return original(path, init);
+  });
+  await run(batch);
+  expect(batch.entries[0].status).toBe("failed");
+  expect(batch.entries[0].operation?.tags.added).toEqual([21]);
+  await run(batch, false, true);
+  expect(ids(1)).toEqual([21]);
+  expect(batch.entries[0].status).toBe("changed");
 });

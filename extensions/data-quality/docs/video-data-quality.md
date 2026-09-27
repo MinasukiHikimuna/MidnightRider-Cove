@@ -12,6 +12,12 @@ Use **Edit tags** to add or remove any tags without changing configured actions.
 
 **Skip** changes only the cursor. It does not save tags, reviewed status, or an inconclusive answer. Skipped items and items that still match remain available in their sorted pages. The native toolbar shows the matching scene range and total, without completion percentages. Use pagination above the scene list to change pages.
 
+## Work performer by performer
+
+Occurrence reviews can rank performers by the work left for them. Set **Performers to review** to the performers that matter, for example **Matching performer criteria** with a gender, and set the occurrence condition to the categories to fill: **Missing at least one selected tag**, with one condition tag per category, finds appearances that still miss any of them. Switch the queue sidebar to **Performers** to list those performers with the most matching videos first, and choose one to review only that performer. **Existing answers** shows what the performer already has in each category. Check the earliest and latest videos, then use **Apply to all matching occurrences** with that performer's answers, ticking one answer per category. The batch fills only categories that are still empty, so an occurrence that already has a different answer keeps it. **New batch** discards the results and starts over; closing the dialog discards them too and recounts that performer, so the next one is on top when you switch back to **Performers**. **Show all performers** returns to the whole scope.
+
+Flag performers whose attributes change during their career with **Performer flags** in **Edit review → Review**. A flagged performer is marked in the ranking and, while chosen, in the batch dialog: review their videos by date, or narrow a batch with a date filter, instead of applying one answer to all of them.
+
 ## Audio reviews
 
 Choose **Audios** or **Audio performer occurrence tags** as a review's entity type to review audios. Everything above applies, with the audio list's own filter criteria, sort options, and custom fields, and with tags written to the audio or to one performer's appearance in it.

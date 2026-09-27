@@ -1,11 +1,16 @@
-import { resolveTagTree } from "./api";
+import { request, resolveTagTree } from "./api";
 import {
+  conditionSeeksMissingTags,
   reviewMediaKind,
   validAction,
   type OccurrenceReview,
   type MediaReviewAction,
 } from "./model";
-import { loadOccurrencePage, resolvePerformers } from "./occurrences";
+import {
+  loadOccurrencePage,
+  resolveConditionGroups,
+  resolvePerformers,
+} from "./occurrences";
 import {
   checkUndo,
   difference,
@@ -23,7 +28,7 @@ export interface BatchEntry {
   item: ReviewItem;
   before: TagState;
   expected: TagState;
-  desired: number[];
+  /** The answers remove existing tags; skipped unless conflicts are replaced. */
   conflict: boolean;
   status: BatchStatus;
   error?: string;
@@ -32,9 +37,27 @@ export interface BatchEntry {
 }
 export interface OccurrenceBatch {
   review: OccurrenceReview;
+  /** The chosen answers, in review order. */
+  actions: MediaReviewAction[];
+  /** The chosen answers as one ordered action, with removal trees resolved. */
   action: MediaReviewAction;
+  /** Each condition tag with its subtree: at most one answer per category is added. */
+  categories: number[][];
   touched: number[];
   entries: BatchEntry[];
+}
+/** Answers a category already holds, kept instead of the batch answer. */
+export interface KeptAnswer {
+  tagIds: number[];
+  existing: number[];
+}
+export interface TagPlan {
+  desired: number[];
+  conflict: boolean;
+  /** A conflict that is not being replaced leaves the occurrence untouched. */
+  skipped: boolean;
+  kept: KeptAnswer[];
+  replaced: number[];
 }
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
@@ -44,35 +67,116 @@ const same = (a: number[], b: number[]) =>
 const changed = (operation: UndoOperation) =>
   !!(operation.tags.added.length || operation.tags.removed.length);
 
-export function desiredTags(
+/**
+ * The tags an occurrence ends with. Removals in the answers are conflicts, as before. Beyond
+ * that, a batch fills a condition category only while it is empty: an answer added to a
+ * category that already holds a different one keeps the existing answer, or replaces it when
+ * conflicts are replaced. The answers' own tags are never a different answer. Tags outside
+ * every category are added as configured.
+ */
+export function planTags(
   ids: number[],
   action: MediaReviewAction,
-): number[] {
+  categories: number[][],
+  replace: boolean,
+): TagPlan {
+  const before = new Set(ids);
   const desired = new Set(ids);
   for (const step of action.steps)
     for (const id of step.tagIds) {
       if (step.mode === "ADD") desired.add(id);
       else desired.delete(id);
     }
-  return [...desired];
+  const conflict = ids.some((id) => !desired.has(id));
+  if (conflict && !replace)
+    return { desired: [...ids], conflict, skipped: true, kept: [], replaced: [] };
+  const answered = new Set(
+    action.steps.filter((step) => step.mode === "ADD").flatMap((step) => step.tagIds),
+  );
+  const kept: KeptAnswer[] = [];
+  const replaced: number[] = [];
+  for (const category of categories) {
+    const added = category.filter((id) => desired.has(id) && !before.has(id));
+    const existing = category.filter(
+      (id) => desired.has(id) && before.has(id) && !answered.has(id),
+    );
+    if (!added.length || !existing.length) continue;
+    if (replace) {
+      existing.forEach((id) => desired.delete(id));
+      replaced.push(...existing);
+    } else {
+      added.forEach((id) => desired.delete(id));
+      kept.push({ tagIds: added, existing });
+    }
+  }
+  return { desired: [...desired], conflict, skipped: false, kept, replaced };
+}
+
+export function combineActions(actions: MediaReviewAction[]): MediaReviewAction {
+  if (actions.length === 1) return actions[0];
+  return {
+    id: actions.map((action) => action.id).join("+"),
+    label: actions.map((action) => action.label).join(" + "),
+    steps: actions.flatMap((action) => action.steps),
+  };
+}
+
+async function requireOneAnswerPerCategory(
+  review: OccurrenceReview,
+  actions: MediaReviewAction[],
+  categories: number[][],
+  signal: AbortSignal,
+) {
+  for (const [index, category] of categories.entries()) {
+    const answering = actions.filter((action) =>
+      action.steps.some(
+        (step) =>
+          step.mode === "ADD" && step.tagIds.some((id) => category.includes(id)),
+      ),
+    );
+    if (answering.length < 2) continue;
+    const id = review.occurrence.conditionTagIds[index];
+    let name = `tag ${id}`;
+    try {
+      name = (await request<{ name: string }>(`/api/tags/${id}`, { signal })).name;
+    } catch {
+      signal.throwIfAborted();
+    }
+    throw new Error(
+      `${answering.map((action) => action.label).join(" and ")} answer the same condition tag, ${name}. Choose one of them.`,
+    );
+  }
 }
 
 export async function previewOccurrenceBatch(
   input: OccurrenceReview,
-  selected: MediaReviewAction,
+  selected: MediaReviewAction[],
   signal: AbortSignal,
   progress: (count: number) => void = () => {},
 ): Promise<OccurrenceBatch> {
   if (
-    !validAction(selected, input.entityType) ||
-    !selected.steps.length ||
-    selected.steps.some(
-      (step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
+    !selected.length ||
+    selected.some(
+      (answer) =>
+        !validAction(answer, input.entityType) ||
+        !answer.steps.length ||
+        answer.steps.some(
+          (step) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(step.mode),
+        ),
     )
   )
     throw new Error("Choose a configured occurrence tag action.");
   const review = structuredClone(input);
-  const action = structuredClone(selected);
+  const actions = structuredClone(selected);
+  // Only a condition looking for missing tags names categories to fill; "has any" or "has all"
+  // tags are present already, and without subtags a category would be a single tag.
+  const categories =
+    conditionSeeksMissingTags(review.occurrence.condition) &&
+    review.occurrence.includeSubtags !== false
+      ? await resolveConditionGroups(review.occurrence, signal)
+      : [];
+  await requireOneAnswerPerCategory(review, actions, categories, signal);
+  const action = structuredClone(combineActions(actions));
   for (const step of action.steps) {
     if (step.mode === "REMOVE_TREE") {
       step.tagIds = await resolveTagTree(step.tagIds, signal);
@@ -80,7 +184,13 @@ export async function previewOccurrenceBatch(
     }
   }
   signal.throwIfAborted();
-  const touched = [...new Set(action.steps.flatMap((step) => step.tagIds))];
+  // Category members are affected too: a changed existing answer changes the plan.
+  const touched = [
+    ...new Set([
+      ...action.steps.flatMap((step) => step.tagIds),
+      ...categories.flat(),
+    ]),
+  ];
   // Stable enumeration is independent of the visible page and random/multi-column sorting.
   review.view.filter = {
     ...review.view.filter,
@@ -102,14 +212,14 @@ export async function previewOccurrenceBatch(
         absent: [],
         applications: occurrence.applications,
       };
-      const desired = desiredTags(before.ids, action);
+      // Replacing is the widest plan: without a change there, nothing can change.
+      const plan = planTags(before.ids, action, categories, true);
       entries.set(occurrence.key, {
         item: { key: occurrence.key, media: occurrence.media, occurrence },
         before,
         expected: before,
-        desired,
-        conflict: difference(before.ids, desired).removed.length > 0,
-        status: same(before.ids, desired) ? "unchanged" : "pending",
+        conflict: plan.conflict,
+        status: same(before.ids, plan.desired) ? "unchanged" : "pending",
       });
     }
     progress(entries.size);
@@ -121,7 +231,14 @@ export async function previewOccurrenceBatch(
       );
   }
   signal.throwIfAborted();
-  return { review, action, touched, entries: [...entries.values()] };
+  return {
+    review,
+    actions,
+    action,
+    categories,
+    touched,
+    entries: [...entries.values()],
+  };
 }
 
 function sameAffected(a: TagState, b: TagState, touched: number[]) {
@@ -191,9 +308,28 @@ export async function runOccurrenceBatch(
         entry.error = message(error);
         return;
       }
-      // Apply the final action delta once, retaining tags outside the action.
-      const desired = desiredTags(before.ids, batch.action);
+      // Plan from the previewed state, so a retry completes a partly written plan instead of
+      // planning again from it; affected tags were just checked against what was expected.
+      const plan = planTags(
+        entry.before.ids,
+        batch.action,
+        batch.categories,
+        replaceConflicts,
+      );
+      const desired = [
+        ...before.ids.filter((id) => !batch.touched.includes(id)),
+        ...plan.desired.filter((id) => batch.touched.includes(id)),
+      ];
       const delta = difference(before.ids, desired);
+      if (!delta.added.length && !delta.removed.length) {
+        // A retry after a write that fully landed has nothing left to do; that change stands.
+        const kept = !entry.operation && plan.kept.length > 0;
+        entry.status = entry.operation ? "changed" : kept ? "skipped" : "unchanged";
+        entry.error = kept
+          ? "Kept the existing answer in each category it would fill."
+          : undefined;
+        return;
+      }
       let failure: unknown;
       try {
         await editTags(batch.review, entry.item, delta);

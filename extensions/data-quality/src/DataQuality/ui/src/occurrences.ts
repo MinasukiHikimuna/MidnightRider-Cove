@@ -12,6 +12,7 @@ import {
   type Tag,
 } from "./api";
 import {
+  conditionSeeksMissingTags,
   isAssessmentMode,
   reviewMediaKind,
   validAction,
@@ -129,7 +130,8 @@ export async function resolvePerformers(
 
 function hidesConfirmedAbsent(settings: OccurrenceReview["occurrence"]) {
   return (
-    settings.condition === "excludes" && settings.hideConfirmedAbsent !== false
+    conditionSeeksMissingTags(settings.condition) &&
+    settings.hideConfirmedAbsent !== false
   );
 }
 
@@ -159,8 +161,9 @@ export function occurrenceSceneReview(
         }),
   };
   // "No value equals" lets Cove drop answered scenes itself, keeping pages full. It is only
-  // exact for one performer and one tag: a scene with two targets, or a rule with two tags,
-  // may still hold an unanswered occurrence, so those cases are hidden per occurrence instead.
+  // exact for one performer and one tag, where missing that tag is the whole condition: a scene
+  // with two targets, or a rule with two tags, may still hold an unanswered occurrence, so those
+  // cases are hidden per occurrence instead.
   const answeredPair =
     hidesConfirmedAbsent(settings) &&
     performerIds?.length === 1 &&
@@ -203,6 +206,32 @@ export function occurrenceSceneReview(
   };
 }
 
+/**
+ * Each selected condition tag with its subtree when subtags are included; each group answers the
+ * condition on its own, so "all" and "missing at least one" count roots, not descendants.
+ */
+export async function resolveConditionGroups(
+  settings: OccurrenceReview["occurrence"],
+  signal?: AbortSignal,
+): Promise<number[][]> {
+  if (["any", "isNull"].includes(settings.condition)) return [];
+  return settings.includeSubtags === false
+    ? settings.conditionTagIds.map((id) => [id])
+    : Promise.all(
+        settings.conditionTagIds.map((id) => resolveTagTree([id], signal)),
+      );
+}
+
+/** "Has any" or "missing at least one" of no tags matches nothing, whatever Cove returns. */
+export function conditionCannotMatch(
+  settings: OccurrenceReview["occurrence"],
+): boolean {
+  return (
+    ["includes", "excludesAll"].includes(settings.condition) &&
+    !settings.conditionTagIds.length
+  );
+}
+
 export function occurrenceMatches(
   settings: OccurrenceReview["occurrence"],
   tagIds: number[],
@@ -221,21 +250,30 @@ export function occurrenceMatches(
       return conditionTagGroups.every(matchesGroup);
     case "excludes":
       return !conditionTagGroups.some(matchesGroup);
+    case "excludesAll":
+      return !conditionTagGroups.every(matchesGroup);
   }
 }
 
 /**
- * An occurrence already answered "absent" for every tag a "has none of" queue looks for has
- * nothing left to review. Cove cannot filter on a per-performer pair, so it is hidden here.
+ * An occurrence already answered "absent" for every condition tag it misses has nothing left to
+ * review. Cove cannot filter on a per-performer pair, so it is hidden here. For "has none of"
+ * that is every condition tag; for "missing at least one" only the tags it actually lacks.
  */
 function confirmedAbsent(
   settings: OccurrenceReview["occurrence"],
   media: MediaItem,
   performerId: number,
+  tagIds: number[],
+  conditionTagGroups: number[][],
 ): boolean {
   if (!hidesConfirmedAbsent(settings)) return false;
   const absent = occurrenceAbsentTagIds(media, performerId);
-  return settings.conditionTagIds.every((id) => absent.includes(id));
+  return settings.conditionTagIds.every(
+    (id, index) =>
+      absent.includes(id) ||
+      conditionTagGroups[index].some((tag) => tagIds.includes(tag)),
+  );
 }
 
 export async function loadOccurrencePage(
@@ -244,7 +282,8 @@ export async function loadOccurrencePage(
   page: number,
   signal?: AbortSignal,
 ) {
-  if (performerIds?.length === 0)
+  // Cove ignores an empty tag list, so without this every scene page would be read and emptied.
+  if (performerIds?.length === 0 || conditionCannotMatch(review.occurrence))
     return { items: [] as Occurrence[], totalCount: 0 };
   const kind = reviewMediaKind(review);
   const result = await findMedia(
@@ -253,14 +292,11 @@ export async function loadOccurrencePage(
     signal,
   );
   const allowed = performerIds === null ? null : new Set(performerIds);
-  // Keep each selected subtree separate: "all" requires a match for each root,
-  // not every descendant. Resolve once per host page, shared by all performers.
+  // Resolve once per host page, shared by all performers.
   const settings = review.occurrence;
-  const conditionTagGroups =
-    result.items.length && settings.includeSubtags !== false &&
-    !["any", "isNull"].includes(settings.condition)
-      ? await Promise.all(settings.conditionTagIds.map((id) => resolveTagTree([id], signal)))
-      : settings.conditionTagIds.map((id) => [id]);
+  const conditionTagGroups = result.items.length
+    ? await resolveConditionGroups(settings, signal)
+    : [];
   const items: Occurrence[][] = new Array(result.items.length);
   // Limit concurrent reads. Only the displayed host page needs occurrence data.
   let next = 0;
@@ -283,11 +319,9 @@ export async function loadOccurrencePage(
                 application.contextType === "performer" &&
                 application.contextId === performer.id,
             );
-            return occurrenceMatches(
-              review.occurrence,
-              own.map((item) => item.tag.id),
-              conditionTagGroups,
-            ) && !confirmedAbsent(settings, media, performer.id)
+            const tagIds = own.map((item) => item.tag.id);
+            return occurrenceMatches(review.occurrence, tagIds, conditionTagGroups) &&
+              !confirmedAbsent(settings, media, performer.id, tagIds, conditionTagGroups)
               ? [
                   {
                     key: `${media.id}:${performer.id}`,

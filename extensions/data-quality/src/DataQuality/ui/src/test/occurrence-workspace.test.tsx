@@ -12,6 +12,7 @@ import { testFilterControls } from "./runtime-components";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
 import type { OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
+import { rankingSignature, type PerformerRanking } from "../performerRanking";
 configure({ asyncUtilTimeout: 3000 });
 const api = vi.hoisted(() => ({
   findMedia: vi.fn(),
@@ -33,6 +34,20 @@ vi.mock("../occurrences", async (original) => ({
   ...(await original<typeof import("../occurrences")>()),
   resolvePerformers: api.resolvePerformers,
   loadOccurrencePage: api.loadOccurrencePage,
+}));
+const panels = vi.hoisted(() => ({
+  extendRanking: vi.fn(),
+  countPerformer: vi.fn(),
+  loadPerformerAnswers: vi.fn(),
+}));
+vi.mock("../performerRanking", async (original) => ({
+  ...(await original<typeof import("../performerRanking")>()),
+  extendRanking: panels.extendRanking,
+  countPerformer: panels.countPerformer,
+}));
+vi.mock("../performerAnswers", async (original) => ({
+  ...(await original<typeof import("../performerAnswers")>()),
+  loadPerformerAnswers: panels.loadPerformerAnswers,
 }));
 vi.mock("../reviewTags", async (original) => ({
   ...(await original<typeof import("../reviewTags")>()),
@@ -121,6 +136,7 @@ beforeEach(() => {
     totalCount: 2,
   });
   api.request.mockResolvedValue({ name: "Choice" });
+  panels.loadPerformerAnswers.mockResolvedValue({ answered: 0, groups: [] });
 });
 function open(
   rule: OccurrenceReview | VideoReview = review,
@@ -1005,11 +1021,11 @@ it("allows requested rule editing after an initial queue failure and preserves r
   await screen.findByRole("heading", {name: "Reviewing First performer"});
 });
 
-it("retains batch results when a review editor is opened and cancelled", async () => {
+it("drops batch results when the dialog closes and refreshes the queue", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
-  const save = vi.fn().mockResolvedValue(undefined);
-  const rendered = open(review, true, save); await ready();
+  open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
   fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
   await screen.findByText("Preview ready. No tags have been changed.");
   fireEvent.click(screen.getByRole("button", { name: "Apply batch" }));
@@ -1017,15 +1033,362 @@ it("retains batch results when a review editor is opened and cancelled", async (
   expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
   const loads = api.loadOccurrencePage.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Batch results / undo" })).toBeEnabled(), { timeout: 3000 });
-  expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads);
-  rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />);
-  await screen.findByRole("region", { name: "Edit review rule" });
+  await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads), { timeout: 3000 });
+  await ready();
   expect(screen.queryByRole("button", { name: "Batch results / undo" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Batch results / undo" }));
-  expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
-  expect(screen.queryByRole("button", { name: "Undo latest tag operation" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  expect(screen.queryByRole("button", { name: "Undo batch" })).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Observation" })).not.toBeChecked();
+});
+
+const ranked = (rule: OccurrenceReview, first = 12): PerformerRanking => ({
+  signature: rankingSignature(rule),
+  candidatesKey: "",
+  candidates: [
+    { id: 11, name: "First performer", total: 20, flags: [] },
+    { id: 12, name: "Second performer", total: 4, flags: ["Changed"] },
+  ],
+  cursor: 2,
+  ranked: [
+    { id: 11, name: "First performer", count: first, total: 20, flags: [] },
+    { id: 12, name: "Second performer", count: 3, total: 4, flags: ["Changed"] },
+  ],
+  limit: 50,
+  complete: true,
+});
+const focusedOn = (id: number) =>
+  expect.objectContaining({
+    occurrence: expect.objectContaining({ targetMode: "selected", performerIds: [id] }),
+  });
+
+it("ranks performers beside the queue and focuses the queue on one without saving the focus", async () => {
+  const scoped: OccurrenceReview = {
+    ...review,
+    occurrence: {
+      ...review.occurrence,
+      targetMode: "filter",
+      performerFilter: { gender: "FEMALE" },
+      condition: "excludesAll",
+      conditionTagIds: [30, 40],
+    },
+  };
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+  open(scoped); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  await queue.findByRole("button", { name: "First performer, 12 matching videos" });
+  expect(panels.extendRanking).toHaveBeenCalledWith(
+    expect.objectContaining({
+      occurrence: expect.objectContaining({ targetMode: "filter", condition: "excludesAll" }),
+    }),
+    null,
+    50,
+    expect.any(AbortSignal),
+    expect.anything(),
+  );
+  fireEvent.click(queue.getByRole("button", { name: "Second performer, 3 matching videos. Flagged: Changed" }));
+  await waitFor(() => expect(api.resolvePerformers).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      occurrence: expect.objectContaining({
+        targetMode: "selected",
+        performerIds: [12],
+        condition: "excludesAll",
+        performerFilter: { gender: "FEMALE" },
+      }),
+    }),
+    expect.anything(),
+  ));
+  await ready();
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("performer")).toBe("12");
+  expect(JSON.parse(params.get("performerScope")!).targetMode).toBe("filter");
+  expect(queue.getByRole("button", { name: "Scenes" })).toHaveAttribute("aria-pressed", "true");
+  expect(await screen.findByRole("group", { name: "Performer focus" })).toHaveTextContent("Only Choice");
+  expect(screen.queryByRole("button", { name: "Save changes to review filters" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Show all performers" }));
+  await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
+  await waitFor(() => expect(api.resolvePerformers).toHaveBeenLastCalledWith(
+    expect.objectContaining({ occurrence: expect.objectContaining({ targetMode: "filter" }) }),
+    expect.anything(),
+  ));
+});
+
+it("keeps a performer focus through condition changes and drops it with a new performer scope", async () => {
+  window.history.replaceState(null, "", "/data-quality?review=r&performer=12");
+  open(); await ready();
+  expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(12), expect.anything());
+  fireEvent.change(screen.getByRole("combobox", { name: "Occurrence tags" }), { target: { value: "isNull" } });
+  await waitFor(() => expect(api.resolvePerformers).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      occurrence: expect.objectContaining({ condition: "isNull", performerIds: [12] }),
+    }),
+    expect.anything(),
+  ));
+  await ready();
+  fireEvent.change(screen.getByRole("combobox", { name: "Performers to review" }), { target: { value: "selected" } });
+  await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
+  expect(screen.queryByRole("group", { name: "Performer focus" })).not.toBeInTheDocument();
+});
+
+it("shows the focused performer's existing answers and flags, and batches only that performer", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  panels.loadPerformerAnswers.mockResolvedValue({
+    answered: 2,
+    groups: [{ id: 30, name: "Size", tags: [{ id: 31, name: "Small", count: 1 }, { id: 32, name: "Medium", count: 1 }] }],
+  });
+  api.request.mockImplementation(async (path: string) =>
+    path === "/api/performers/11"
+      ? { name: "First performer", tags: [{ id: 7, name: "Changed" }, { id: 8, name: "Other" }] }
+      : { name: "Choice" },
+  );
+  window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+  open({ ...review, occurrence: { ...review.occurrence, flagPerformerTagIds: [7] } }); await ready();
+  const focus = await screen.findByRole("group", { name: "Performer focus" });
+  await waitFor(() => expect(focus).toHaveTextContent("Only First performer"));
+  expect(focus).toHaveTextContent("Flagged: Changed");
+  expect(await screen.findByText(/Size: Small ×1, Medium ×1/)).toBeInTheDocument();
+  expect(screen.getByText("Mixed answers")).toBeInTheDocument();
+  const answerLoads = panels.loadPerformerAnswers.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await waitFor(() => expect(panels.loadPerformerAnswers.mock.calls.length).toBeGreaterThan(answerLoads), { timeout: 3000 });
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+  expect(screen.getByText(/Flagged: Changed./)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
+  await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
+  expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(11), expect.any(AbortSignal));
+});
+
+it("recounts the saved performer in the ranking instead of ranking again", async () => {
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+  panels.countPerformer.mockResolvedValue(11);
+  open(); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  await queue.findByRole("button", { name: "First performer, 12 matching videos" });
+  fireEvent.click(queue.getByRole("button", { name: "Scenes" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalledWith(expect.anything(), 11), { timeout: 3000 });
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  expect(await queue.findByRole("button", { name: "First performer, 11 matching videos" })).toBeInTheDocument();
+  expect(panels.extendRanking).toHaveBeenCalledTimes(1);
+});
+
+it("restarts the performer ranking when a save interrupts its first run", async () => {
+  panels.extendRanking.mockImplementationOnce(
+    (_rule: OccurrenceReview, _base: unknown, _limit: number, signal: AbortSignal) =>
+      new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true })),
+  );
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+  open(); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  await queue.findByRole("status");
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  expect(await queue.findByRole("button", { name: "First performer, 12 matching videos" }, { timeout: 3000 })).toBeInTheDocument();
+  expect(panels.extendRanking).toHaveBeenCalledTimes(2);
+});
+
+it("counts again after an unfocused batch and recounts only the focused performer after a focused one", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+  panels.countPerformer.mockResolvedValue(2);
+  const batch = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Apply to all matching occurrences" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
+    await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "Apply batch" }));
+    await screen.findByText(/Batch finished/);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await ready();
+  };
+  const rendered = open(); await ready();
+  const queue = () => within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue().getByRole("button", { name: "Performers" }));
+  await queue().findByRole("button", { name: "First performer, 12 matching videos" });
+  fireEvent.click(queue().getByRole("button", { name: "Scenes" }));
+  await batch();
+  fireEvent.click(queue().getByRole("button", { name: "Performers" }));
+  await waitFor(() => expect(panels.extendRanking).toHaveBeenCalledTimes(2));
+  expect(panels.countPerformer).not.toHaveBeenCalled();
+  rendered.unmount();
+  panels.extendRanking.mockClear();
+  window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+  open(); await ready();
+  fireEvent.click(queue().getByRole("button", { name: "Performers" }));
+  await queue().findByRole("button", { name: "First performer, 12 matching videos" });
+  fireEvent.click(queue().getByRole("button", { name: "Scenes" }));
+  await batch();
+  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalledWith(expect.anything(), 11), { timeout: 3000 });
+  fireEvent.click(queue().getByRole("button", { name: "Performers" }));
+  expect(await queue().findByRole("button", { name: "First performer, 2 matching videos" })).toBeInTheDocument();
+  expect(panels.extendRanking).toHaveBeenCalledTimes(1);
+});
+
+it("shows more performers on request and retries a failed ranking with Refresh", async () => {
+  panels.extendRanking.mockRejectedValueOnce(new Error("Performers offline"));
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview, _base: unknown, limit: number) => ({
+    ...ranked(rule),
+    candidates: [...ranked(rule).candidates, { id: 13, name: "Third performer", total: 2, flags: [] }],
+    limit,
+  }));
+  open(); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  expect(await queue.findByRole("alert")).toHaveTextContent("Could not rank performers. Performers offline");
+  fireEvent.click(queue.getByRole("button", { name: "Refresh" }));
+  await queue.findByRole("button", { name: "First performer, 12 matching videos" });
+  fireEvent.click(queue.getByRole("button", { name: "Show more performers" }));
+  await waitFor(() => expect(panels.extendRanking).toHaveBeenLastCalledWith(
+    expect.anything(),
+    expect.objectContaining({ limit: 50 }),
+    100,
+    expect.any(AbortSignal),
+    expect.anything(),
+  ));
+});
+
+it("drops the focus when the selected performers change and never saves it with the criteria", async () => {
+  const save = vi.fn().mockResolvedValue(true);
+  const params = new URLSearchParams({
+    review: "r",
+    performer: "12",
+    performerScope: JSON.stringify({
+      targetMode: "selected",
+      performerIds: [11, 12],
+      performerFilter: {},
+      condition: "any",
+      conditionTagIds: [],
+      includeSubtags: true,
+      hideConfirmedAbsent: true,
+    }),
+  });
+  window.history.replaceState(null, "", `/data-quality?${params}`);
+  open(review, true, save); await ready();
+  expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(12), expect.anything());
+  fireEvent.click(screen.getByRole("button", { name: "Save changes to review filters" }));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  const saved = save.mock.calls[0][0] as OccurrenceReview;
+  expect(saved.occurrence).toMatchObject({ targetMode: "selected", performerIds: [11, 12] });
+  expect(JSON.stringify(saved)).not.toContain("performerFocus");
+  await ready();
+  fireEvent.change(screen.getByPlaceholderText("Select performers to review..."), { target: { value: "11" } });
+  await waitFor(() => expect(new URLSearchParams(window.location.search).has("performer")).toBe(false));
+  expect(api.resolvePerformers).toHaveBeenLastCalledWith(
+    expect.objectContaining({ occurrence: expect.objectContaining({ performerIds: [11] }) }),
+    expect.anything(),
+  );
+});
+
+it("never shows the previous performer while the next focused one loads", async () => {
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+  api.request.mockImplementation((path: string) =>
+    path === "/api/performers/12" ? new Promise(() => {}) : Promise.resolve({ name: "First performer" }),
+  );
+  window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+  open(); await ready();
+  const focus = await screen.findByRole("group", { name: "Performer focus" });
+  await waitFor(() => expect(focus).toHaveTextContent("Only First performer"));
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  fireEvent.click(await queue.findByRole("button", { name: "Second performer, 3 matching videos. Flagged: Changed" }));
+  await waitFor(() => expect(screen.getByRole("group", { name: "Performer focus" })).toHaveTextContent("Only Second performer"));
+  expect(screen.getByRole("group", { name: "Performer focus" })).toHaveTextContent("Flagged: Changed");
+});
+
+it("stops counting for criteria no longer shown and lends the loaded performers to the new count", async () => {
+  let firstSignal!: AbortSignal;
+  panels.extendRanking.mockImplementationOnce(
+    (_rule: OccurrenceReview, _base: unknown, _limit: number, signal: AbortSignal) => {
+      firstSignal = signal;
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    },
+  );
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+  open(); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  await waitFor(() => expect(firstSignal).toBeDefined());
+  fireEvent.click(queue.getByRole("button", { name: "Scenes" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Occurrence tags" }), { target: { value: "isNull" } });
+  await waitFor(() => expect(firstSignal.aborted).toBe(true));
+  await ready();
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  const previous = await queue.findByRole("button", { name: "First performer, 12 matching videos" });
+  expect(previous).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox", { name: "Occurrence tags" }), { target: { value: "any" } });
+  await waitFor(() => expect(panels.extendRanking).toHaveBeenCalledTimes(3));
+  // The ranking counted for the previous condition is handed over, so its performers are reused.
+  expect(panels.extendRanking.mock.calls[2][1]).toMatchObject({
+    signature: expect.stringContaining('"condition":"isNull"'),
+    candidates: expect.arrayContaining([expect.objectContaining({ id: 11 })]),
+  });
+});
+
+it("discards a recount when a count started meanwhile, then counts again", async () => {
+  panels.extendRanking.mockImplementationOnce(async (rule: OccurrenceReview) => ({
+    ...ranked(rule),
+    candidates: [...ranked(rule).candidates, { id: 13, name: "Third performer", total: 2, flags: [] }],
+  }));
+  let showMoreSignal!: AbortSignal;
+  panels.extendRanking.mockImplementationOnce(
+    (_rule: OccurrenceReview, _base: unknown, _limit: number, signal: AbortSignal) => {
+      showMoreSignal = signal;
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    },
+  );
+  panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule, 7));
+  let finishCount!: (count: number) => void;
+  panels.countPerformer.mockImplementation(() => new Promise<number>((resolve) => { finishCount = resolve; }));
+  open(); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  await queue.findByRole("button", { name: "First performer, 12 matching videos" });
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalled(), { timeout: 3000 });
+  fireEvent.click(await queue.findByRole("button", { name: "Show more performers" }));
+  await waitFor(() => expect(showMoreSignal).toBeDefined());
+  await act(async () => finishCount(5));
+  await waitFor(() => expect(showMoreSignal.aborted).toBe(true));
+  expect(await queue.findByRole("button", { name: "First performer, 7 matching videos" })).toBeInTheDocument();
+  expect(queue.queryByRole("button", { name: "First performer, 5 matching videos" })).not.toBeInTheDocument();
+  expect(panels.extendRanking).toHaveBeenCalledTimes(3);
+});
+
+it("counts once even when the run's last partial snapshot renders after the run ends", async () => {
+  panels.extendRanking.mockImplementation(
+    async (
+      rule: OccurrenceReview,
+      _base: unknown,
+      _limit: number,
+      _signal: AbortSignal,
+      options: { onProgress?(ranking: PerformerRanking): void },
+    ) => {
+      const done = ranked(rule);
+      for (let step = 0; step < 3; step++) {
+        options.onProgress?.({ ...done, partial: true, complete: false });
+        // Let a render with the partial snapshot commit before the next count arrives.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      options.onProgress?.({ ...done, partial: true, complete: false });
+      return done;
+    },
+  );
+  open(); await ready();
+  const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+  fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+  await queue.findByRole("button", { name: "First performer, 12 matching videos" });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(panels.extendRanking).toHaveBeenCalledTimes(1);
+});
+
+it("offers the missing-at-least-one condition and its absence hiding in the workspace", async () => {
+  open({ ...review, occurrence: { ...review.occurrence, condition: "excludesAll", conditionTagIds: [21, 22] } });
+  await ready();
+  expect(screen.getByRole("combobox", { name: "Occurrence tags" })).toHaveValue("excludesAll");
+  expect(screen.getByRole("checkbox", { name: "Hide occurrences confirmed absent" })).toBeChecked();
 });
 
 it("refreshes the queue after each save and removes a scene only after its last matching performer", async () => {

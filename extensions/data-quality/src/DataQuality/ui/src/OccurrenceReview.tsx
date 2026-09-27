@@ -1,6 +1,12 @@
 import { EntityReferenceMultiSelector } from "@cove/runtime/components";
 import { mediaLabel } from "./api";
-import { reviewMediaKind, type OccurrenceReview } from "./model";
+import {
+  conditionSeeksMissingTags,
+  OCCURRENCE_CONDITION_LABELS,
+  OCCURRENCE_CONDITIONS,
+  reviewMediaKind,
+  type OccurrenceReview,
+} from "./model";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 
 export function OccurrenceSettings({
@@ -65,11 +71,11 @@ export function OccurrenceSettings({
             })
           }
         >
-          <option value="any">Any occurrence tags</option>
-          <option value="includes">Has any selected tag</option>
-          <option value="includesAll">Has all selected tags</option>
-          <option value="excludes">Has none of the selected tags</option>
-          <option value="isNull">Has no occurrence tags</option>
+          {OCCURRENCE_CONDITIONS.map((condition) => (
+            <option value={condition} key={condition}>
+              {OCCURRENCE_CONDITION_LABELS[condition]}
+            </option>
+          ))}
         </select>
       </label>
       {!["any", "isNull"].includes(settings.condition) && (
@@ -89,7 +95,7 @@ export function OccurrenceSettings({
             />
             Include subtags
           </label>
-          {settings.condition === "excludes" && (
+          {conditionSeeksMissingTags(settings.condition) && (
             <label className="dq-checkbox">
               <input
                 type="checkbox"
@@ -105,6 +111,40 @@ export function OccurrenceSettings({
         Conditions check tags on the same performer’s occurrence,
         independently of {host} tags and the performer’s profile.
       </p>
+    </fieldset>
+  );
+}
+
+export function PerformerFlagSettings({
+  review,
+  onChange,
+}: {
+  review: OccurrenceReview;
+  onChange(review: OccurrenceReview): void;
+}) {
+  const host = mediaLabel(reviewMediaKind(review)).many;
+  return (
+    <fieldset className="dq-queue-fields">
+      <legend>Performer flags</legend>
+      <p>
+        Flag performers whose profile has any of these tags in the performer
+        list and batches, for example a tag noting that something changed during
+        their career. Check a flagged performer’s earliest and latest {host}{" "}
+        before applying one batch to all of them.
+      </p>
+      <EntityReferenceMultiSelector
+        entityType="tag"
+        values={review.occurrence.flagPerformerTagIds ?? []}
+        onChange={(ids) => {
+          const { flagPerformerTagIds: _previous, ...occurrence } = review.occurrence;
+          onChange({
+            ...review,
+            occurrence: ids.length ? { ...occurrence, flagPerformerTagIds: ids } : occurrence,
+          });
+        }}
+        placeholder="Search performer flag tags..."
+        allowCreate={false}
+      />
     </fieldset>
   );
 }

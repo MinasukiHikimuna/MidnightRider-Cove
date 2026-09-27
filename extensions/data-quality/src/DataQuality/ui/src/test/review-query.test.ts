@@ -4,6 +4,7 @@ import {
   readQuery,
   writeQuery,
   effectiveReview,
+  focusedReview,
 } from "../reviewQuery";
 import type { OccurrenceReview } from "../model";
 const review: OccurrenceReview = {
@@ -105,4 +106,64 @@ it("defaults hiding confirmed-absent occurrences on and keeps an explicit opt-ou
   const shown = { ...review, occurrence: { ...review.occurrence, hideConfirmedAbsent: false } };
   expect(defaultQuery(shown).performerScope?.hideConfirmedAbsent).toBe(false);
   expect(() => readQuery(review, new URLSearchParams('performerScope={"hideConfirmedAbsent":"false"}'))).toThrow();
+});
+
+it("round trips a missing-at-least-one condition and a performer focus that the review never saves", () => {
+  const query = defaultQuery(review);
+  query.performerScope = {
+    ...query.performerScope!,
+    condition: "excludesAll",
+    conditionTagIds: [2, 4],
+  };
+  query.performerFocus = 7;
+  writeQuery("r", query);
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("performer")).toBe("7");
+  expect(readQuery(review, params).query).toEqual(query);
+  const effective = effectiveReview(review, query) as OccurrenceReview;
+  expect(effective.occurrence).toMatchObject({
+    condition: "excludesAll",
+    conditionTagIds: [2, 4],
+    targetMode: "filter",
+    performerIds: [],
+  });
+  expect(focusedReview(effective, query.performerFocus).occurrence).toMatchObject({
+    targetMode: "selected",
+    performerIds: [7],
+    condition: "excludesAll",
+    performerFilter: { gender: "FEMALE" },
+  });
+  expect(focusedReview(effective, undefined)).toBe(effective);
+  expect(defaultQuery(review).performerFocus).toBeUndefined();
+  query.performerFocus = undefined;
+  writeQuery("r", query);
+  expect(new URLSearchParams(window.location.search).has("performer")).toBe(false);
+});
+
+it("rejects an invalid performer focus and keeps flag tags out of the URL scope", () => {
+  expect(() => readQuery(review, new URLSearchParams("performer=abc"))).toThrow(
+    "Invalid performer focus",
+  );
+  expect(() => readQuery(review, new URLSearchParams("performer=0"))).toThrow();
+  const flagged = {
+    ...review,
+    occurrence: { ...review.occurrence, flagPerformerTagIds: [9] },
+  };
+  const query = defaultQuery(flagged);
+  expect(query.performerScope).not.toHaveProperty("flagPerformerTagIds");
+  expect(
+    (effectiveReview(flagged, query) as OccurrenceReview).occurrence.flagPerformerTagIds,
+  ).toEqual([9]);
+});
+
+it("keeps the saved queue when a link carries only a performer focus", () => {
+  const saved = {
+    ...review,
+    view: { ...review.view, filter: { ...review.view.filter, sort: "title" }, startFrom: "beginning" as const },
+  };
+  const { query, startAtEnd } = readQuery(saved, new URLSearchParams("review=r&performer=12"));
+  expect(query).toEqual({ ...defaultQuery(saved), performerFocus: 12 });
+  expect(query.performerScope?.condition).toBe("excludes");
+  expect(query.objectFilter).toEqual({ organized: false });
+  expect(startAtEnd).toBe(false);
 });

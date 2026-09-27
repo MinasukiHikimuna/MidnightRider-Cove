@@ -2,7 +2,7 @@ import {
   presentCustomFieldCriteria,
   unresolvedCustomFieldTagIds,
 } from "./CustomFieldPresentation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DetailListToolbar,
   AUDIO_CRITERIA,
@@ -11,17 +11,22 @@ import {
 } from "@cove/runtime/components";
 import { mediaLabel, request } from "./api";
 import {
+  conditionSeeksMissingTags,
   hasAssessmentSteps,
+  OCCURRENCE_CONDITION_LABELS,
   reviewMediaKind,
   type OccurrenceReview,
 } from "./model";
 import { difference } from "./reviewTags";
 import {
+  planTags,
   previewOccurrenceBatch,
   runOccurrenceBatch,
   undoOccurrenceBatch,
+  type BatchEntry,
   type OccurrenceBatch,
 } from "./batchOccurrences";
+import { ExistingAnswers } from "./ExistingAnswers";
 
 // Bound label reads as well as occurrence work; cancellation aborts in-flight reads.
 async function loadLabels(
@@ -59,10 +64,28 @@ async function loadLabels(
   return labels;
 }
 
+// Cove caches an identical filtered query for about a second after a write.
+function settle(since: number, signal: AbortSignal) {
+  const wait = 1100 - (Date.now() - since);
+  if (wait <= 0) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(resolve, wait);
+    signal.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(timer);
+        reject(signal.reason);
+      },
+      { once: true },
+    );
+  });
+}
+
 export function BatchOccurrenceDialog({
   review,
   disabled,
   hidden = false,
+  performerFlags = [],
   onOpen,
   onClose,
   onWrite,
@@ -70,13 +93,15 @@ export function BatchOccurrenceDialog({
   review: OccurrenceReview;
   disabled: boolean;
   hidden?: boolean;
+  /** Flag tags on the one performer this batch targets. */
+  performerFlags?: string[];
   onOpen(): void;
   onClose(wrote: boolean): void;
   onWrite(): void;
 }) {
   const [open, setOpen] = useState(false);
   const [batch, setBatch] = useState<OccurrenceBatch | null>(null);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
   const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -86,17 +111,19 @@ export function BatchOccurrenceDialog({
   const [undoing, setUndoing] = useState(false);
   const displayReview = started && batch ? batch.review : review;
   const mediaKind = reviewMediaKind(displayReview);
-  const hostLabel = mediaLabel(mediaKind).queue;
+  const labels = mediaLabel(mediaKind);
+  const hostLabel = labels.queue;
   const fallbackTitle = mediaKind === "audio" ? "Audio" : "Scene";
-  const [freshRequested, setFreshRequested] = useState(false);
   const [performerNames, setPerformerNames] = useState<string[]>([]);
   const [inspecting, setInspecting] = useState(false);
   const [, refresh] = useState(0);
+  const [answersRevision, setAnswersRevision] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const cancel = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const wrote = useRef(false);
+  const lastWrite = useRef(0);
   const running = useRef(false);
   const latest = useRef({ onClose, onWrite });
   latest.current = { onClose, onWrite };
@@ -139,16 +166,33 @@ export function BatchOccurrenceDialog({
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
   }, [busy]);
+  // Results and undo last only while the dialog stays open on this batch.
+  function reset() {
+    setBatch(null);
+    setStarted(false);
+    setUndoing(false);
+    setReplace(false);
+    setSelected([]);
+    setNotice("");
+    setError("");
+    setInspecting(false);
+  }
   function close() {
     if (running.current) return;
     setOpen(false);
     latest.current.onClose(wrote.current);
     wrote.current = false;
+    reset();
     requestAnimationFrame(() => opener.current?.focus());
   }
+  const actions =
+    started && batch
+      ? batch.actions
+      : // Batches change tags only; assessments are answered one occurrence at a time.
+        review.actions.filter((a) => a.steps.length && !hasAssessmentSteps(a));
   async function preview() {
-    const action = review.actions.find((a) => a.id === selected);
-    if (!action || running.current) return;
+    const chosen = actions.filter((action) => selected.includes(action.id));
+    if (!chosen.length || running.current) return;
     running.current = true;
     setBusy(true);
     setError("");
@@ -159,26 +203,34 @@ export function BatchOccurrenceDialog({
     setInspecting(false);
     controller.current = new AbortController();
     try {
+      await settle(lastWrite.current, controller.current.signal);
       const result = await previewOccurrenceBatch(
         review,
-        action,
+        chosen,
         controller.current.signal,
         (count) =>
           setNotice(`Loaded ${count.toLocaleString()} matching occurrences…`),
       );
+      // Tags already on the occurrences carry their names; ask only for the rest.
+      const known = new Map<number, string>();
+      for (const entry of result.entries)
+        for (const application of entry.before.applications ?? [])
+          known.set(application.tag.id, application.tag.name);
       const labels = await loadLabels(
         [
           ...new Set([
-            ...result.touched,
+            ...result.actions.flatMap((action) =>
+              action.steps.flatMap((step) => step.tagIds),
+            ),
             ...result.review.occurrence.conditionTagIds,
             ...unresolvedCustomFieldTagIds(result.review.view.objectFilter),
           ]),
-        ],
+        ].filter((id) => !known.has(id)),
         "tags",
         controller.current.signal,
       );
       controller.current.signal.throwIfAborted();
-      setNames(Object.fromEntries(labels));
+      setNames({ ...Object.fromEntries(known), ...Object.fromEntries(labels) });
       setBatch(result);
       setNotice("Preview ready. No tags have been changed.");
     } catch (error) {
@@ -227,23 +279,83 @@ export function BatchOccurrenceDialog({
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
+      lastWrite.current = Date.now();
       running.current = false;
       setBusy(false);
+      setAnswersRevision((value) => value + 1);
       update();
     }
   }
   const entries = batch?.entries ?? [];
+  const plans = useMemo(
+    () =>
+      new Map(
+        (batch?.entries ?? []).map((entry) => [
+          entry.item.key,
+          planTags(entry.before.ids, batch!.action, batch!.categories, replace),
+        ]),
+      ),
+    [batch, replace],
+  );
+  const plan = (entry: BatchEntry) => plans.get(entry.item.key)!;
+  const change = (entry: BatchEntry) =>
+    difference(entry.before.ids, plan(entry).desired);
+  const changing = (entry: BatchEntry) => {
+    const delta = change(entry);
+    return (
+      entry.status === "pending" &&
+      (delta.added.length > 0 || delta.removed.length > 0)
+    );
+  };
+  const planText = (entry: BatchEntry) => {
+    const current = plan(entry);
+    // A skipped conflict shows what replacing it would do.
+    const shown = current.skipped
+      ? difference(
+          entry.before.ids,
+          planTags(entry.before.ids, batch!.action, batch!.categories, true)
+            .desired,
+        )
+      : change(entry);
+    return [
+      current.skipped ? "Skipped unless conflicting answers are replaced. " : "",
+      `Add: ${tagNames(shown.added)}; Remove: ${tagNames(shown.removed)}`,
+      ...current.kept.map(
+        (kept) =>
+          `; Keeps ${tagNames(kept.existing)} instead of ${tagNames(kept.tagIds)}`,
+      ),
+    ].join("");
+  };
   const conflicts = entries.filter((e) => e.conflict);
+  const differing = entries.filter(
+    (entry) => plan(entry).kept.length || plan(entry).replaced.length,
+  );
   const count = (status: string) =>
     entries.filter((e) => e.status === status).length;
-  const actions =
-    started && batch
-      ? [batch.action]
-      : // Batches change tags only; assessments are answered one occurrence at a time.
-        review.actions.filter((a) => a.steps.length && !hasAssessmentSteps(a));
   const hasUndo = entries.some((e) => e.operation);
   const tagNames = (ids: number[]) =>
     ids.map((id) => names[id] ?? `Tag ${id}`).join(", ") || "None";
+  const dated = entries
+    .filter((entry) => entry.item.media.date)
+    .sort((a, b) => a.item.media.date!.localeCompare(b.item.media.date!));
+  const dateLink = (entry: BatchEntry, which: string) => (
+    <a
+      href={`/${mediaKind}/${entry.item.media.id}`}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${which} ${labels.one}, ${entry.item.media.date}`}
+      title={entry.item.media.title || fallbackTitle}
+    >
+      {entry.item.media.date}
+    </a>
+  );
+  const singlePerformer =
+    displayReview.occurrence.targetMode === "selected" &&
+    displayReview.occurrence.performerIds.length === 1;
+  const categorized =
+    conditionSeeksMissingTags(displayReview.occurrence.condition) &&
+    displayReview.occurrence.includeSubtags !== false &&
+    displayReview.occurrence.conditionTagIds.length > 0;
   return (
     <>
       <button
@@ -253,21 +365,12 @@ export function BatchOccurrenceDialog({
         ref={opener}
         disabled={disabled || !actions.length}
         onClick={() => {
-          if (!started) {
-            setBatch(null);
-            setNotice("");
-            setError("");
-          }
+          reset();
           onOpen();
           setOpen(true);
-          setSelected(
-            actions.some((a) => a.id === selected)
-              ? selected
-              : (actions[0]?.id ?? ""),
-          );
         }}
       >
-        {started ? "Batch results / undo" : "Apply to all matching occurrences"}
+        Apply to all matching occurrences
       </button>
       {open && (
         <dialog
@@ -282,15 +385,15 @@ export function BatchOccurrenceDialog({
         >
           <h2 id="dq-batch-title">Batch occurrence approval</h2>
           <p>
-            Apply one answer across all matching pages. Only targeted performer
-            occurrences change.
+            Apply one or more answers across all matching pages. Only targeted
+            performer occurrences change.
           </p>
           <p>
             Keep this page open while running. Results and undo last until you
-            leave this workspace.
+            close this dialog or start a new batch.
           </p>
           <fieldset disabled={busy || started}>
-            <legend>Batch scope and action</legend>
+            <legend>Batch scope and answers</legend>
             <p>
               Uses your current filters. To include every existing appearance,
               remove filters that exclude already answered occurrences.
@@ -304,21 +407,21 @@ export function BatchOccurrenceDialog({
                     `${displayReview.occurrence.performerIds.length} selected performer(s)`
                   : "Matching performer criteria"}
               . Occurrence condition:{" "}
-              {displayReview.occurrence.condition === "any"
-                ? "Any occurrence tags"
-                : {
-                    includes: "Has any selected tag",
-                    includesAll: "Has all selected tags",
-                    excludes: "Has none of the selected tags",
-                    isNull: "Has no occurrence tags",
-                  }[displayReview.occurrence.condition]}
-              .
+              {OCCURRENCE_CONDITION_LABELS[displayReview.occurrence.condition]}.
             </p>
-            {displayReview.occurrence.condition === "excludes" &&
+            {performerFlags.length > 0 && (
+              <p className="dq-batch-flag">
+                <strong>Flagged: {performerFlags.join(", ")}.</strong> Check the
+                earliest and latest {labels.many} before applying, or narrow
+                the batch with a date filter.
+              </p>
+            )}
+            {conditionSeeksMissingTags(displayReview.occurrence.condition) &&
               displayReview.occurrence.hideConfirmedAbsent !== false && (
                 <p>
-                  Occurrences confirmed absent for every condition tag are
-                  hidden and left unchanged.
+                  {displayReview.occurrence.condition === "excludes"
+                    ? "Occurrences confirmed absent for every condition tag are hidden and left unchanged."
+                    : "Occurrences confirmed absent for every condition tag they miss are hidden and left unchanged."}
                 </p>
               )}
             {displayReview.occurrence.conditionTagIds.length > 0 && batch && (
@@ -378,34 +481,45 @@ export function BatchOccurrenceDialog({
                 />
               </fieldset>
             )}
+            {singlePerformer && (
+              <ExistingAnswers
+                review={displayReview}
+                performerId={displayReview.occurrence.performerIds[0]}
+                revision={answersRevision}
+              />
+            )}
             {!actions.length && (
               <p>
                 Configure an occurrence tag action in this review before
                 starting a batch.
               </p>
             )}
-            <label>
-              Answer{" "}
-              <select
-                aria-label="Batch answer"
-                value={selected}
-                onChange={(event) => {
-                  setSelected(event.target.value);
-                  setBatch(null);
-                  setNotice("");
-                }}
-              >
-                {actions.map((action) => (
-                  <option value={action.id} key={action.id}>
-                    {action.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="dq-batch-answers">
+              <legend>Answers</legend>
+              {actions.map((action) => (
+                <label key={action.id} className="dq-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={started || selected.includes(action.id)}
+                    onChange={(event) => {
+                      setSelected(
+                        event.target.checked
+                          ? [...selected, action.id]
+                          : selected.filter((id) => id !== action.id),
+                      );
+                      setBatch(null);
+                      setNotice("");
+                      setError("");
+                    }}
+                  />
+                  {action.label}
+                </label>
+              ))}
+            </fieldset>
             <button
               type="button"
               className="dq-button"
-              disabled={!actions.length}
+              disabled={!selected.length}
               onClick={() => void preview()}
             >
               Preview all matches
@@ -424,8 +538,10 @@ export function BatchOccurrenceDialog({
               </select>
             </label>
             <p>
-              Conflicts are existing tags this action removes. Configure
-              opposite answers as removals.
+              Conflicts are existing tags an answer removes. Configure opposite
+              answers as removals.
+              {categorized &&
+                " Each condition tag with its subtags is a category: an answer is added only where its category is still empty, and a different existing answer is kept unless conflicting answers are replaced."}
             </p>
           </fieldset>
           <div aria-live="polite">
@@ -444,21 +560,36 @@ export function BatchOccurrenceDialog({
                 </p>
                 {!started ? (
                   <p>
-                    {entries
-                      .filter(
-                        (e) =>
-                          e.status === "pending" && (replace || !e.conflict),
-                      )
-                      .length.toLocaleString()}{" "}
-                    to change; {count("unchanged").toLocaleString()} already
+                    {entries.filter(changing).length.toLocaleString()} to
+                    change; {count("unchanged").toLocaleString()} already
                     correct; {conflicts.length.toLocaleString()} conflicts (
                     {replace ? "will replace" : "will skip"}).
+                    {differing.length > 0 &&
+                      ` ${differing.length.toLocaleString()} already have a different answer in a category (${replace ? "will replace" : "kept"}).`}
                   </p>
                 ) : (
                   <p>
                     {count("changed")} changed; {count("unchanged")} unchanged;{" "}
                     {count("skipped")} skipped; {count("failed")} failed;{" "}
                     {count("pending")} remaining.
+                  </p>
+                )}
+                {entries.length > 0 && (
+                  <p>
+                    Dates:{" "}
+                    {dated.length ? (
+                      <>
+                        {dateLink(dated[0], "Earliest")}
+                        {dated.length > 1 && (
+                          <> to {dateLink(dated[dated.length - 1], "Latest")}</>
+                        )}
+                      </>
+                    ) : (
+                      "none"
+                    )}
+                    {dated.length < entries.length &&
+                      `; ${(entries.length - dated.length).toLocaleString()} without a date`}
+                    .
                   </p>
                 )}
               </>
@@ -470,23 +601,11 @@ export function BatchOccurrenceDialog({
                 <p>
                   Planned additions:{" "}
                   {tagNames([
-                    ...new Set(
-                      entries
-                        .filter((e) => replace || !e.conflict)
-                        .flatMap(
-                          (e) => difference(e.before.ids, e.desired).added,
-                        ),
-                    ),
+                    ...new Set(entries.flatMap((e) => change(e).added)),
                   ])}
                   . Planned removals:{" "}
                   {tagNames([
-                    ...new Set(
-                      entries
-                        .filter((e) => replace || !e.conflict)
-                        .flatMap(
-                          (e) => difference(e.before.ids, e.desired).removed,
-                        ),
-                    ),
+                    ...new Set(entries.flatMap((e) => change(e).removed)),
                   ])}
                   .
                 </p>
@@ -526,7 +645,7 @@ export function BatchOccurrenceDialog({
                             {entry.conflict && <strong>Conflict. </strong>}
                             {started
                               ? `${entry.status}. ${entry.error ?? ""}`
-                              : `Add: ${tagNames(difference(entry.before.ids, entry.desired).added)}; Remove: ${tagNames(difference(entry.before.ids, entry.desired).removed)}`}
+                              : planText(entry)}
                           </td>
                         </tr>
                       ))}
@@ -570,40 +689,6 @@ export function BatchOccurrenceDialog({
               </div>
             </>
           )}
-          {freshRequested && (
-            <div role="group" aria-label="Discard batch results">
-              <p>
-                Starting a new batch discards these results and their undo
-                history. Existing tag changes remain.
-              </p>
-              <button
-                type="button"
-                className="dq-button"
-                disabled={busy}
-                onClick={() => {
-                  setBatch(null);
-                  setStarted(false);
-                  setReplace(false);
-                  setSelected(
-                    review.actions.find((action) => action.steps.length)?.id ??
-                      "",
-                  );
-                  setUndoing(false);
-                  setNotice("");
-                  setFreshRequested(false);
-                }}
-              >
-                Discard results and start new batch
-              </button>
-              <button
-                type="button"
-                className="dq-button"
-                onClick={() => setFreshRequested(false)}
-              >
-                Keep results
-              </button>
-            </div>
-          )}
           <div className="dq-row">
             {busy && (
               <button
@@ -623,7 +708,7 @@ export function BatchOccurrenceDialog({
                 type="button"
                 className="dq-button"
                 disabled={busy}
-                onClick={() => setFreshRequested(true)}
+                onClick={reset}
               >
                 New batch
               </button>

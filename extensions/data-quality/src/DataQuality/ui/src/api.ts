@@ -197,14 +197,16 @@ export function normalizeCriteria(value: unknown): unknown {
   return value;
 }
 
-export async function request<T>(
+async function send<T>(
   path: string,
-  options: RequestInit = {},
-): Promise<T> {
+  options: RequestInit,
+  missing: "fail" | "null",
+): Promise<T | null> {
   const headers = new Headers(options.headers);
   if (!(options.body instanceof FormData) && !headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");
   const response = await extensionFetch(path, { ...options, headers });
+  if (response.status === 404 && missing === "null") return null;
   if (!response.ok) {
     let message = response.statusText || `Request failed (${response.status}).`;
     try {
@@ -222,6 +224,21 @@ export async function request<T>(
   if (response.status === 204 || response.status === 205) return undefined as T;
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  return (await send<T>(path, options, "fail")) as T;
+}
+
+/** Like request, but an entity that no longer exists resolves to null instead of failing. */
+export function requestIfFound<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T | null> {
+  return send<T>(path, options, "null");
 }
 
 export {
@@ -242,11 +259,7 @@ export function readMedia(kind: MediaKind, id: number): Promise<MediaItem> {
   );
 }
 
-export async function findMedia(
-  review: MediaReview,
-  filter: Record<string, unknown>,
-  signal?: AbortSignal,
-) {
+function mediaQuery(review: MediaReview, filter: Record<string, unknown>) {
   const objectFilter = { ...review.view.objectFilter };
   const filterExpression = objectFilter._filterExpression;
   delete objectFilter._filterExpression;
@@ -260,21 +273,41 @@ export async function findMedia(
       "Visual similarity review searches are not available to extensions yet.",
     );
   }
-  const kind = reviewMediaKind(review);
+  return JSON.stringify(
+    normalizeCriteria({
+      findFilter: boundedFilter(filter, reviewMediaKind(review)),
+      objectFilter,
+      filterExpression,
+    }),
+  );
+}
+
+export async function findMedia(
+  review: MediaReview,
+  filter: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
   return request<MediaPage>(
-    `/api/${mediaCollection(kind)}/find`,
+    `/api/${mediaCollection(reviewMediaKind(review))}/find`,
+    { method: "POST", signal, body: mediaQuery(review, filter) },
+  );
+}
+
+/** Counts what a media query matches through Cove's aggregate endpoint, without loading items. */
+export async function countMedia(
+  review: MediaReview,
+  filter: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await request<{ count: number }>(
+    `/api/${mediaCollection(reviewMediaKind(review))}/aggregate`,
     {
       method: "POST",
       signal,
-      body: JSON.stringify(
-        normalizeCriteria({
-          findFilter: boundedFilter(filter, kind),
-          objectFilter,
-          filterExpression,
-        }),
-      ),
+      body: mediaQuery(review, { ...filter, page: 1, perPage: 1 }),
     },
   );
+  return result.count;
 }
 
 export async function findTags(

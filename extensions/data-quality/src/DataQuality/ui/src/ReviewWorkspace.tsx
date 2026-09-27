@@ -22,9 +22,22 @@ import {
   request,
 } from "./api";
 import { MediaDescription } from "./MediaDescription";
+import { ExistingAnswers } from "./ExistingAnswers";
+import { PerformerAvatar } from "./PerformerAvatar";
+import { PerformerRankingList } from "./PerformerRankingList";
 import {
+  countPerformer,
+  extendRanking,
+  rankingSignature,
+  recountRanked,
+  type PerformerRanking,
+} from "./performerRanking";
+import {
+  conditionSeeksMissingTags,
   hasAssessmentSteps,
   isOccurrenceReview,
+  OCCURRENCE_CONDITION_LABELS,
+  OCCURRENCE_CONDITIONS,
   reviewMediaKind,
   reviewValidation,
   actionShortcut,
@@ -40,6 +53,7 @@ import { objectFiltersEqual } from "./objectFiltersEqual";
 import {
   defaultQuery,
   effectiveReview,
+  focusedReview,
   readQuery,
   writeQuery,
   type MediaReview,
@@ -53,35 +67,6 @@ import {
   type ReviewItem,
   type TagState,
 } from "./reviewTags";
-
-function PerformerAvatar({
-  performer,
-}: {
-  performer: { id: number; name: string };
-}) {
-  return (
-    <span className="dq-performer-avatar" aria-hidden="true">
-      <span>
-        {performer.name
-          .trim()
-          .split(/\s+/)
-          .slice(0, 2)
-          .map((part) => part[0])
-          .join("")
-          .toUpperCase() || "?"}
-      </span>
-      <img
-        key={performer.id}
-        src={`/api/performers/${performer.id}/image?max=64`}
-        alt=""
-        loading="lazy"
-        onError={(event) => {
-          event.currentTarget.style.display = "none";
-        }}
-      />
-    </span>
-  );
-}
 
 export function orderedItems(items: ReviewItem[], backwards: boolean) {
   if (!backwards) return items;
@@ -97,6 +82,7 @@ import {
 } from "./CustomFieldPresentation";
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
+const RANKING_PAGE = 50;
 
 export function ReviewActionControls({
   actions,
@@ -355,12 +341,111 @@ export function ReviewWorkspace({
   const savedRef = useRef(saved);
   savedRef.current = saved;
   const definition = ruleDraft ?? saved;
-  const review = useMemo(
+  // The review's own scope. A performer focus narrows only the queue and batches below it.
+  const scopedReview = useMemo(
     () => effectiveReview(definition, query),
     [definition, query],
   );
+  const review = useMemo(
+    () => focusedReview(scopedReview, query.performerFocus),
+    [scopedReview, query.performerFocus],
+  );
   const reviewRef = useRef(review);
   reviewRef.current = review;
+  const scopedRef = useRef(scopedReview);
+  scopedRef.current = scopedReview;
+  const [queueView, setQueueView] = useState<"items" | "performers">("items");
+  const [ranking, setRanking] = useState<PerformerRanking | null>(null);
+  // A finished run clears its marker at once, while a render committed just before it may still
+  // hold the run's last partial snapshot. Deciding from these refs, written in step with that
+  // marker, keeps such a render's effect from starting the same count again.
+  const rankingNow = useRef<PerformerRanking | null>(null);
+  const rankingFailedFor = useRef("");
+  function storeRanking(
+    update:
+      | PerformerRanking
+      | null
+      | ((current: PerformerRanking | null) => PerformerRanking | null),
+  ) {
+    const next = typeof update === "function" ? update(rankingNow.current) : update;
+    rankingNow.current = next;
+    setRanking(next);
+  }
+  const [rankingBusy, setRankingBusy] = useState(false);
+  const [rankingError, setRankingError] = useState<{
+    signature: string;
+    message: string;
+  } | null>(null);
+  const rankingRun = useRef<{
+    signature: string;
+    controller: AbortController;
+  } | null>(null);
+  const signature = isOccurrenceReview(scopedReview)
+    ? rankingSignature(scopedReview)
+    : "";
+  const [answersRevision, setAnswersRevision] = useState(0);
+  const [focusPerformer, setFocusPerformer] = useState<{
+    id: number;
+    name: string;
+    flags: string[];
+  } | null>(null);
+  useEffect(() => () => rankingRun.current?.controller.abort(), []);
+  // A run for criteria no longer shown would only overwrite the ranking; stop it.
+  useEffect(() => {
+    const active = rankingRun.current;
+    if (!active || active.signature === signature) return;
+    active.controller.abort();
+    rankingRun.current = null;
+    setRankingBusy(false);
+  }, [signature]);
+  // Rank when the performer list is shown, again after criteria change, and to refill it.
+  useEffect(() => {
+    const current = rankingNow.current;
+    if (
+      queueView !== "performers" ||
+      !signature ||
+      rankingRun.current?.signature === signature ||
+      rankingFailedFor.current === signature ||
+      (current?.signature === signature && current.complete)
+    )
+      return;
+    // Any previous ranking may lend its loaded performers; only a matching one continues.
+    const same = current?.signature === signature ? current : null;
+    void runRanking(current, same?.limit ?? RANKING_PAGE);
+    // A run stopped before its first count leaves the ranking empty; the busy flag restarts it.
+  }, [queueView, signature, ranking, rankingError, rankingBusy]);
+  const focusId = query.performerFocus;
+  const flagKey = JSON.stringify(
+    isOccurrenceReview(scopedReview)
+      ? (scopedReview.occurrence.flagPerformerTagIds ?? [])
+      : [],
+  );
+  useEffect(() => {
+    if (!focusId) {
+      setFocusPerformer(null);
+      return;
+    }
+    let active = true;
+    const flagIds = new Set<number>(JSON.parse(flagKey));
+    request<{ name: string; tags?: Array<{ id: number; name: string }> }>(
+      `/api/performers/${focusId}`,
+    )
+      .then((performer) => {
+        if (active)
+          setFocusPerformer({
+            id: focusId,
+            name: performer.name,
+            flags: (performer.tags ?? [])
+              .filter((tag) => flagIds.has(tag.id))
+              .map((tag) => tag.name),
+          });
+      })
+      // The ranking's details, when it has this performer, stand in for a failed read.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [focusId, flagKey]);
   const queueDefaultsChanged =
     query.startFrom !== (saved.view.startFrom ?? "end") ||
     !objectFiltersEqual(
@@ -491,7 +576,10 @@ export function ReviewWorkspace({
     setItems([]);
     setEditing(false);
     void (async () => {
-      const rule = effectiveReview(savedRef.current, queryRef.current);
+      const rule = focusedReview(
+        effectiveReview(savedRef.current, queryRef.current),
+        queryRef.current.performerFocus,
+      );
       targets.current =
         isOccurrenceReview(rule)
           ? await resolvePerformers(rule, controller.signal)
@@ -724,6 +812,10 @@ export function ReviewWorkspace({
         savedTags = true;
         setEditing(false);
         setNotice("Tags saved.");
+        if (current.occurrence) {
+          void recountAfterWrite(current.occurrence.performer.id);
+          setAnswersRevision((value) => value + 1);
+        }
       }
       if (!alive.current || deferredRestore.current) return;
       if (mutating) await advance(true, stay, autoplayNext);
@@ -890,12 +982,109 @@ export function ReviewWorkspace({
   const scope = query.performerScope;
   const updateScope = (
     change: Partial<NonNullable<ReviewQuery["performerScope"]>>,
-  ) =>
+  ) => {
+    const { performerFocus, ...rest } = queryRef.current;
+    // A focused performer belongs to the scope it was picked from; a new scope drops it.
+    const keepFocus =
+      performerFocus &&
+      !("targetMode" in change || "performerIds" in change || "performerFilter" in change);
     replaceQuery({
-      ...queryRef.current,
-      filter: { ...queryRef.current.filter, page: 1 },
+      ...rest,
+      ...(keepFocus ? { performerFocus } : {}),
+      filter: { ...rest.filter, page: 1 },
       performerScope: { ...scope!, ...change },
     });
+  };
+  async function runRanking(base: PerformerRanking | null, limit: number) {
+    const rule = scopedRef.current;
+    if (!isOccurrenceReview(rule)) return;
+    rankingRun.current?.controller.abort();
+    const run = {
+      signature: rankingSignature(rule),
+      controller: new AbortController(),
+    };
+    rankingRun.current = run;
+    rankingFailedFor.current = "";
+    setRankingBusy(true);
+    setRankingError(null);
+    try {
+      const next = await extendRanking(rule, base, limit, run.controller.signal, {
+        onProgress: (partial) => {
+          if (rankingRun.current === run) storeRanking(partial);
+        },
+      });
+      if (rankingRun.current === run) storeRanking(next);
+    } catch (error) {
+      if (rankingRun.current === run && !run.controller.signal.aborted) {
+        rankingFailedFor.current = run.signature;
+        setRankingError({ signature: run.signature, message: errorText(error) });
+      }
+    } finally {
+      if (rankingRun.current === run) {
+        rankingRun.current = null;
+        setRankingBusy(false);
+      }
+    }
+  }
+  // Counts are stale after the write; keep the loaded performers and count them again.
+  function invalidateRanking() {
+    rankingRun.current?.controller.abort();
+    rankingRun.current = null;
+    setRankingBusy(false);
+    storeRanking((ranked) => (ranked ? { ...ranked, partial: true, complete: false } : ranked));
+  }
+  // A single write changes one performer's count; recount just that one.
+  async function recountAfterWrite(performerId: number) {
+    const rule = scopedRef.current;
+    if (!isOccurrenceReview(rule)) return;
+    if (rankingRun.current) {
+      invalidateRanking();
+      return;
+    }
+    const key = rankingSignature(rule);
+    // A stale ranking is counted again anyway when shown.
+    if (rankingNow.current?.signature !== key || rankingNow.current.partial) return;
+    const wait = 1100 - (Date.now() - lastWriteAt.current);
+    if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    try {
+      const count = await countPerformer(rule, performerId);
+      // A run started meanwhile would overwrite this count with the one from before the write.
+      if (rankingRun.current) {
+        invalidateRanking();
+        return;
+      }
+      storeRanking((ranked) =>
+        ranked?.signature === key ? recountRanked(ranked, performerId, count) : ranked,
+      );
+    } catch {
+      storeRanking((ranked) =>
+        ranked?.signature === key ? { ...ranked, partial: true, complete: false } : ranked,
+      );
+    }
+  }
+  const rankedFocus = query.performerFocus
+    ? ranking?.candidates.find((item) => item.id === query.performerFocus)
+    : undefined;
+  // Never show the previously focused performer while the next one loads.
+  const focusInfo =
+    focusPerformer?.id === query.performerFocus ? focusPerformer : (rankedFocus ?? null);
+  function focusOn(performerId: number) {
+    if (lock.current) return;
+    const next = {
+      ...queryRef.current,
+      performerFocus: performerId,
+      filter: { ...queryRef.current.filter, page: 1 },
+    };
+    replaceQuery(next, next.startFrom === "end");
+    setQueueView("items");
+  }
+  function clearFocus() {
+    const { performerFocus: _focus, ...rest } = queryRef.current;
+    replaceQuery(
+      { ...rest, filter: { ...rest.filter, page: 1 } },
+      rest.startFrom === "end",
+    );
+  }
 
   return (
     <section
@@ -1099,6 +1288,31 @@ export function ReviewWorkspace({
                 </div>
               </>
             )}
+            {query.performerFocus && (
+              <div
+                className="dq-performer-focus"
+                role="group"
+                aria-label="Performer focus"
+              >
+                <PerformerAvatar
+                  performer={{
+                    id: query.performerFocus,
+                    name: focusInfo?.name ?? "",
+                  }}
+                />
+                <span>
+                  Only {focusInfo?.name ?? `performer ${query.performerFocus}`}
+                </span>
+                {focusInfo?.flags.length ? (
+                  <span className="dq-performer-flag">
+                    Flagged: {focusInfo.flags.join(", ")}
+                  </span>
+                ) : null}
+                <button type="button" className="dq-button" onClick={clearFocus}>
+                  Show all performers
+                </button>
+              </div>
+            )}
             <label>
               Occurrence tags{" "}
               <select
@@ -1109,11 +1323,11 @@ export function ReviewWorkspace({
                   })
                 }
               >
-                <option value="any">Any occurrence tags</option>
-                <option value="includes">Has any selected tag</option>
-                <option value="includesAll">Has all selected tags</option>
-                <option value="excludes">Has none of the selected tags</option>
-                <option value="isNull">Has no occurrence tags</option>
+                {OCCURRENCE_CONDITIONS.map((condition) => (
+                  <option value={condition} key={condition}>
+                    {OCCURRENCE_CONDITION_LABELS[condition]}
+                  </option>
+                ))}
               </select>
             </label>
             {!["any", "isNull"].includes(scope.condition) && (
@@ -1133,7 +1347,7 @@ export function ReviewWorkspace({
                   />
                   Include subtags
                 </label>
-                {scope.condition === "excludes" && (
+                {conditionSeeksMissingTags(scope.condition) && (
                   <label className="dq-checkbox">
                     <input
                       type="checkbox"
@@ -1146,6 +1360,13 @@ export function ReviewWorkspace({
               </>
             )}
           </div>
+        )}
+        {isOccurrenceReview(scopedReview) && query.performerFocus && (
+          <ExistingAnswers
+            review={scopedReview}
+            performerId={query.performerFocus}
+            revision={answersRevision}
+          />
         )}
       </fieldset>
       {scope && (
@@ -1167,11 +1388,16 @@ export function ReviewWorkspace({
           review={review}
           hidden={!!ruleDraft}
           disabled={blocked || !!ruleDraft}
+          performerFlags={query.performerFocus ? focusInfo?.flags : undefined}
           onOpen={() => { lock.current = true; setPending(true); }}
           onWrite={() => { lastWriteAt.current = Date.now(); }}
           onClose={(wrote) => {
             if (wrote) {
               lastWriteAt.current = Date.now();
+              const focused = queryRef.current.performerFocus;
+              if (focused) void recountAfterWrite(focused);
+              else invalidateRanking();
+              setAnswersRevision((value) => value + 1);
               void new Promise(resolve => window.setTimeout(resolve, 1100)).then(() => {
                 endOperation();
                 if (alive.current) setRevision(value => value + 1);
@@ -1203,40 +1429,84 @@ export function ReviewWorkspace({
       </div>
       <div className="dq-review-layout">
         <aside className="dq-review-queue" aria-label="Review queue">
-          <fieldset disabled={blocked}>
-            <DetailListPagination
-              filter={query.filter}
-              totalCount={total}
-              onFilterChange={(filter) =>
-                replaceQuery({ ...query, filter: boundedFilter(filter, mediaKind) })
-              }
-            />
-          </fieldset>
-          <div className="dq-review-queue-items">
-            {items.map((item) => (
+          {scope && (
+            <div className="dq-queue-view" role="group" aria-label="Queue view">
               <button
                 type="button"
                 className="dq-button"
-                key={item.key}
-                title={queueItemLabel(item)}
-                aria-label={queueItemLabel(item)}
-                disabled={blocked}
-                aria-pressed={current?.key === item.key}
-                onClick={() => {
-                  showItem(item);
-                  setError("");
-                  setNotice("");
-                }}
+                aria-pressed={queueView === "items"}
+                onClick={() => setQueueView("items")}
               >
-                {item.occurrence && (
-                  <PerformerAvatar performer={item.occurrence.performer} />
-                )}
-                <span className="dq-queue-scene-title">
-                  {mediaTitle(item.media)}
-                </span>
+                {mediaKind === "audio" ? "Audios" : "Scenes"}
               </button>
-            ))}
-          </div>
+              <button
+                type="button"
+                className="dq-button"
+                aria-pressed={queueView === "performers"}
+                onClick={() => setQueueView("performers")}
+              >
+                Performers
+              </button>
+            </div>
+          )}
+          {scope && queueView === "performers" ? (
+            <PerformerRankingList
+              ranking={ranking?.signature === signature ? ranking : null}
+              busy={rankingBusy}
+              error={
+                rankingError?.signature === signature ? rankingError.message : ""
+              }
+              focus={query.performerFocus}
+              disabled={blocked}
+              labels={labels}
+              onFocus={focusOn}
+              onMore={() => {
+                const current = rankingNow.current;
+                if (current) void runRanking(current, current.limit + RANKING_PAGE);
+              }}
+              onRefresh={() => {
+                storeRanking(null);
+                void runRanking(null, RANKING_PAGE);
+              }}
+            />
+          ) : (
+            <>
+              <fieldset disabled={blocked}>
+                <DetailListPagination
+                  filter={query.filter}
+                  totalCount={total}
+                  onFilterChange={(filter) =>
+                    replaceQuery({ ...query, filter: boundedFilter(filter, mediaKind) })
+                  }
+                />
+              </fieldset>
+              <div className="dq-review-queue-items">
+                {items.map((item) => (
+                  <button
+                    type="button"
+                    className="dq-button"
+                    key={item.key}
+                    title={queueItemLabel(item)}
+                    aria-label={queueItemLabel(item)}
+                    disabled={blocked}
+                    aria-pressed={current?.key === item.key}
+                    onClick={() => {
+                      showItem(item);
+                      setError("");
+                      setNotice("");
+                    }}
+                  >
+                    {item.occurrence && (
+                      <PerformerAvatar performer={item.occurrence.performer} />
+                    )}
+                    <span className="dq-queue-scene-title">
+                      {mediaTitle(item.media)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </aside>
         <div className="dq-review-inspector">
           {current ? (

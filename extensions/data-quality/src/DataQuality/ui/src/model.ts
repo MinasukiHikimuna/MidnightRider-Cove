@@ -77,6 +77,33 @@ export interface AudioReview extends ReviewBase {
   presentation?: { cardSize?: number | null };
 }
 
+export type OccurrenceCondition =
+  | "any"
+  | "includes"
+  | "includesAll"
+  | "excludes"
+  | "excludesAll"
+  | "isNull";
+export const OCCURRENCE_CONDITION_LABELS: Record<OccurrenceCondition, string> = {
+  any: "Any occurrence tags",
+  includes: "Has any selected tag",
+  includesAll: "Has all selected tags",
+  excludes: "Has none of the selected tags",
+  excludesAll: "Missing at least one selected tag",
+  isNull: "Has no occurrence tags",
+};
+export const OCCURRENCE_CONDITIONS = Object.keys(
+  OCCURRENCE_CONDITION_LABELS,
+) as OccurrenceCondition[];
+
+/**
+ * Conditions that look for missing tags. A recorded absence answers such an occurrence, and
+ * each condition tag is a category a batch fills with one answer.
+ */
+export function conditionSeeksMissingTags(condition: OccurrenceCondition): boolean {
+  return condition === "excludes" || condition === "excludesAll";
+}
+
 export interface OccurrenceReview extends ReviewBase {
   entityType: "performerOccurrence" | "audioPerformerOccurrence";
   actions: MediaReviewAction[];
@@ -84,11 +111,16 @@ export interface OccurrenceReview extends ReviewBase {
     targetMode: "all" | "selected" | "filter";
     performerIds: number[];
     performerFilter: Record<string, unknown>;
-    condition: "any" | "includes" | "includesAll" | "excludes" | "isNull";
+    condition: OccurrenceCondition;
     conditionTagIds: number[];
     includeSubtags?: boolean;
-    /** With "excludes": hide occurrences confirmed absent for every condition tag. Defaults to true. */
+    /**
+     * With "excludes" or "excludesAll": hide occurrences whose missing condition tags are all
+     * confirmed absent. Defaults to true.
+     */
     hideConfirmedAbsent?: boolean;
+    /** Performer profile tags that flag a performer in the performer ranking. */
+    flagPerformerTagIds?: number[];
     tagIds: number[];
     multiple: boolean;
   };
@@ -453,10 +485,11 @@ function validOccurrenceSettings(value: unknown): boolean {
   return ["all", "selected", "filter"].includes(settings.targetMode) &&
     ids(settings.performerIds) && (settings.targetMode !== "selected" || settings.performerIds.length > 0) &&
     !!settings.performerFilter && typeof settings.performerFilter === "object" && !Array.isArray(settings.performerFilter) &&
-    ["any", "includes", "includesAll", "excludes", "isNull"].includes(settings.condition) &&
+    OCCURRENCE_CONDITIONS.includes(settings.condition) &&
     ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
     (settings.includeSubtags === undefined || typeof settings.includeSubtags === "boolean") &&
     (settings.hideConfirmedAbsent === undefined || typeof settings.hideConfirmedAbsent === "boolean") &&
+    (settings.flagPerformerTagIds === undefined || ids(settings.flagPerformerTagIds)) &&
     ids(settings.tagIds) && typeof settings.multiple === "boolean";
 }
 

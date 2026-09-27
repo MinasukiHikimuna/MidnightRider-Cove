@@ -1,6 +1,7 @@
 import {
   boundedFilter,
   isOccurrenceReview,
+  OCCURRENCE_CONDITIONS,
   reviewMediaKind,
   type MediaReview,
   type OccurrenceReview,
@@ -8,7 +9,7 @@ import {
 export type { MediaReview } from "./model";
 export type PerformerScope = Omit<
   OccurrenceReview["occurrence"],
-  "tagIds" | "multiple"
+  "tagIds" | "multiple" | "flagPerformerTagIds"
 >;
 export interface ReviewQuery {
   filter: Record<string, unknown>;
@@ -16,6 +17,11 @@ export interface ReviewQuery {
   searchMode: string;
   startFrom: "beginning" | "end";
   performerScope?: PerformerScope;
+  /**
+   * Narrows an occurrence queue and its batches to one performer. Navigation state only:
+   * saving queue criteria or the rule never writes it into the review.
+   */
+  performerFocus?: number;
 }
 export const queryKeys = [
   "q",
@@ -28,6 +34,7 @@ export const queryKeys = [
   "filters",
   "searchMode",
   "performerScope",
+  "performer",
   "startFrom",
 ];
 const allScope: PerformerScope = {
@@ -81,10 +88,20 @@ export function readQuery(
   review: MediaReview,
   params: URLSearchParams,
 ): { query: ReviewQuery; startAtEnd: boolean } {
-  const explicit = queryKeys.some((key) => params.has(key));
+  let performerFocus: number | undefined;
+  if (isOccurrenceReview(review) && params.has("performer")) {
+    performerFocus = Number(params.get("performer"));
+    if (!Number.isSafeInteger(performerFocus) || performerFocus <= 0)
+      throw new Error("Invalid performer focus in review URL.");
+  }
+  // A focus alone narrows the saved queue; it does not replace its criteria.
+  const explicit = queryKeys.some((key) => key !== "performer" && params.has(key));
   if (!explicit) {
     const query = defaultQuery(review);
-    return { query, startAtEnd: query.startFrom === "end" };
+    return {
+      query: performerFocus ? { ...query, performerFocus } : query,
+      startAtEnd: query.startFrom === "end",
+    };
   }
   // Query-bearing links never inherit hidden saved criteria.
   const filter: Record<string, unknown> = {
@@ -117,9 +134,7 @@ export function readQuery(
     } as PerformerScope;
     if (
       !["all", "selected", "filter"].includes(performerScope.targetMode) ||
-      !["any", "includes", "includesAll", "excludes", "isNull"].includes(
-        performerScope.condition,
-      ) ||
+      !OCCURRENCE_CONDITIONS.includes(performerScope.condition) ||
       !Array.isArray(performerScope.performerIds) ||
       !Array.isArray(performerScope.conditionTagIds) ||
       typeof performerScope.includeSubtags !== "boolean" ||
@@ -142,6 +157,7 @@ export function readQuery(
       searchMode: params.get("searchMode") ?? "text",
       startFrom,
       performerScope,
+      ...(performerFocus ? { performerFocus } : {}),
     },
     startAtEnd: !params.has("page") && startFrom === "end",
   };
@@ -164,6 +180,8 @@ export function writeQuery(id: string, query: ReviewQuery) {
   params.set("startFrom", query.startFrom);
   if (query.performerScope)
     params.set("performerScope", JSON.stringify(query.performerScope));
+  if (query.performerFocus)
+    params.set("performer", String(query.performerFocus));
   window.history.replaceState(
     null,
     "",
@@ -188,4 +206,20 @@ export function effectiveReview(
         occurrence: { ...saved.occurrence, ...query.performerScope },
       }
     : { ...saved, view };
+}
+
+/** The queue and batch target for a focused performer; saved criteria never see the focus. */
+export function focusedReview<T extends MediaReview>(
+  review: T,
+  performerFocus: number | undefined,
+): T {
+  if (!performerFocus || !isOccurrenceReview(review)) return review;
+  return {
+    ...review,
+    occurrence: {
+      ...review.occurrence,
+      targetMode: "selected",
+      performerIds: [performerFocus],
+    },
+  };
 }

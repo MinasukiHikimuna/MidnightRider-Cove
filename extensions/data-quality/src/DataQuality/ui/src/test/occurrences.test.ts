@@ -299,6 +299,10 @@ it("lets Cove drop answered scenes only for one target performer and one conditi
   expect(children(with_({ conditionTagIds: [21, 22] }), [11])).toEqual([]);
   expect(children(with_({ hideConfirmedAbsent: false }), [11])).toEqual([]);
   expect(children(with_({ condition: "includes" }), [11])).toEqual([]);
+  expect(children(with_({ condition: "excludesAll" }), [11])).toEqual([
+    { key: "confirmed_absent_occurrence_tags", type: "text", modifier: "notEquals", value: "11:21" },
+  ]);
+  expect(children(with_({ condition: "excludesAll", conditionTagIds: [21, 22] }), [11])).toEqual([]);
 });
 
 it("hides occurrences confirmed absent for every excluded tag, per performer, unless disabled", async () => {
@@ -507,6 +511,9 @@ it.each([
   ["includesAll", [21, 22], [31, 32], ["1:11"]],
   ["includesAll", [21, 22], [33], ["1:11"]],
   ["excludes", [21], [31], ["1:12"]],
+  ["excludesAll", [21, 22], [31], ["1:11", "1:12"]],
+  ["excludesAll", [21, 22], [31, 32], ["1:12"]],
+  ["excludesAll", [21, 22], [33], ["1:12"]],
   ["isNull", [], [31], ["1:12"]],
   ["any", [], [31], ["1:11", "1:12"]],
 ] as const)("matches %s against each selected tag's descendants (%j, %j)", async (condition, parents, ownTags, expected) => {
@@ -698,4 +705,87 @@ it("queues, reads and writes audio occurrences against the audio host", async ()
     contextId: 11,
     tagId: 21,
   });
+});
+
+it("matches occurrences that miss at least one selected tag tree", () => {
+  const settings = {
+    ...occurrenceReview.occurrence,
+    condition: "excludesAll" as const,
+    conditionTagIds: [21, 22],
+  };
+  expect(occurrenceMatches(settings, [])).toBe(true);
+  expect(occurrenceMatches(settings, [21])).toBe(true);
+  expect(occurrenceMatches(settings, [21, 22])).toBe(false);
+  expect(occurrenceMatches(settings, [31], [[21, 31], [22, 32]])).toBe(true);
+  expect(occurrenceMatches(settings, [31, 32], [[21, 31], [22, 32]])).toBe(false);
+  const criterion = JSON.stringify(
+    occurrenceSceneReview({ ...occurrenceReview, occurrence: settings }, [11]).view
+      .objectFilter,
+  );
+  expect(criterion).toContain('"modifier":"excludesAll","value":[21,22],"depth":-1');
+});
+
+it("hides a missing-at-least-one occurrence only when every tag it misses is confirmed absent", async () => {
+  const assessed = {
+    ...video,
+    customFields: { confirmed_absent_occurrence_tags: ["11:22", "12:21"] },
+  };
+  fetchMock.mockImplementation((path) =>
+    String(path) === "/api/videos/find"
+      ? response({ items: [assessed], totalCount: 1 })
+      : response([application(1, 11, 21)]),
+  );
+  const rule: OccurrenceReview = {
+    ...occurrenceReview,
+    occurrence: {
+      ...occurrenceReview.occurrence,
+      targetMode: "all",
+      condition: "excludesAll",
+      conditionTagIds: [21, 22],
+      includeSubtags: false,
+    },
+  };
+  const keys = async (review: OccurrenceReview) =>
+    (await loadOccurrencePage(review, null, 1)).items.map((item) => item.key);
+  // The first performer has 21 and a recorded absence for 22; the second still misses 22.
+  expect(await keys(rule)).toEqual(["1:12"]);
+  expect(
+    await keys({ ...rule, occurrence: { ...rule.occurrence, hideConfirmedAbsent: false } }),
+  ).toEqual(["1:11", "1:12"]);
+});
+
+it("accepts the missing-at-least-one condition and performer flag tags, rejecting malformed flags", () => {
+  const rule: OccurrenceReview = {
+    ...occurrenceReview,
+    occurrence: {
+      ...occurrenceReview.occurrence,
+      condition: "excludesAll",
+      conditionTagIds: [21, 22],
+      flagPerformerTagIds: [5],
+    },
+  };
+  expect(reviewValidation(rule)).toBe("");
+  expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
+  expect(
+    reviewValidation({ ...rule, occurrence: { ...rule.occurrence, conditionTagIds: [] } }),
+  ).not.toBe("");
+  for (const flagPerformerTagIds of [[0], [5, 5], "5"])
+    expect(() =>
+      parseReviews(
+        JSON.stringify([{ ...rule, occurrence: { ...rule.occurrence, flagPerformerTagIds } }]),
+      ),
+    ).toThrow();
+});
+
+it("reads no scenes for a condition that needs tags before any are chosen", async () => {
+  fetchMock.mockImplementation(() => response({ items: [video], totalCount: 1 }));
+  for (const condition of ["includes", "excludesAll"] as const)
+    expect(
+      await loadOccurrencePage(
+        { ...occurrenceReview, occurrence: { ...occurrenceReview.occurrence, condition, conditionTagIds: [] } },
+        null,
+        1,
+      ),
+    ).toEqual({ items: [], totalCount: 0 });
+  expect(fetchMock).not.toHaveBeenCalled();
 });

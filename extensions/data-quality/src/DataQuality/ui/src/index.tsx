@@ -96,7 +96,7 @@ import {
   type OccurrenceReview,
   type ReviewEntityType,
 } from "./model";
-import { OccurrenceSettings } from "./OccurrenceReview";
+import { OccurrenceSettings, PerformerFlagSettings } from "./OccurrenceReview";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
@@ -3207,6 +3207,12 @@ function ReviewEditor({
                 }
               />
             </label>
+            {occurrenceDraft && !setup && (
+              <PerformerFlagSettings
+                review={draft as OccurrenceReview}
+                onChange={setDraft}
+              />
+            )}
         </section>
         {!workspace && !setup && <section hidden={section !== "Queue"} className="dq-editor-section">
           <QueueEditor draft={draft} onChange={setDraft} presentation={false} />
