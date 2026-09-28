@@ -3,6 +3,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { ActionPad, createActionPreviewStore } from "../ActionPad";
 import type { MediaKind, MediaReviewAction } from "../model";
 import type { TagState } from "../reviewTags";
+// The pad's own styles, for where its controls sit (jsdom applies them, without layout).
+import "../styles.css";
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("../api", async (original) => ({
@@ -135,6 +137,47 @@ it("applies, stays with the pin or Shift, and marks absence actions", () => {
   expect(screen.getByRole("button", { name: "Apply and stay: Not visible" })).toBeDisabled();
   // An action without steps only moves on, so it has nothing to apply and stay.
   expect(screen.queryByRole("button", { name: "Apply and stay: Next" })).not.toBeInTheDocument();
+});
+
+it("keeps Apply and stay on the tile's top edge, off its key cap, label and marker, and in the Tab order", () => {
+  pad([{ id: "b", label: "Not visible", steps: [{ mode: "MARK_ABSENT", tagIds: [2] }] }]);
+  const tile = screen.getByRole("button", { name: "q Not visible absent" });
+  const pin = screen.getByRole("button", { name: "Apply and stay: Not visible" });
+  const px = (value: string) => parseFloat(value) || 0;
+  const pinStyle = getComputedStyle(pin);
+  const tileStyle = getComputedStyle(tile);
+  const top = px(pinStyle.top);
+  const bottom = top + px(pinStyle.height);
+  expect(pinStyle.position).toBe("absolute");
+  // Narrow stages give tiles less padding through container queries, which jsdom reads but does
+  // not apply: the tab has to fit the least padding any rule gives a tile.
+  const paddings = [px(tileStyle.paddingTop), px(tileStyle.paddingBottom)];
+  for (const sheet of [...document.styleSheets])
+    for (const rule of [...sheet.cssRules])
+      if (rule.cssText.startsWith("@container"))
+        for (const inner of [...(rule as CSSGroupingRule).cssRules] as CSSStyleRule[])
+          if (inner.selectorText?.split(",").some((part) => part.trim() === ".dq-pad-tile"))
+            paddings.push(px(inner.style.paddingTop), px(inner.style.paddingBottom));
+  expect(paddings.length).toBeGreaterThan(2);
+  const padding = Math.min(...paddings);
+  // It starts above the tile and ends within its top padding: the key cap row and the "absent"
+  // marker begin below that, and the tile's face stays the tile's to click. (jsdom resolves no
+  // borders drawn in theme colours; leaving them out only makes these bounds stricter.)
+  expect(top).toBeLessThan(0);
+  expect(bottom).toBeLessThanOrEqual(padding);
+  // Above the tile it takes no more than the gap and the room kept there: the bottom padding of a
+  // tile in the row above, or the extra space under the pad's header.
+  const gap = px(getComputedStyle(document.querySelector(".dq-pad")!).gap);
+  expect(gap).toBeGreaterThan(0);
+  expect(-top).toBeLessThanOrEqual(gap + padding);
+  expect(-top).toBeLessThanOrEqual(
+    gap + px(getComputedStyle(document.querySelector(".dq-pad-header")!).marginBottom),
+  );
+  // Hidden until the tile is pointed at or focused, it is still a button in the Tab order, next to
+  // its tile.
+  expect(pinStyle.display).not.toBe("none");
+  expect(pin).not.toHaveAttribute("tabindex", "-1");
+  expect(tile.nextElementSibling).toBe(pin);
 });
 
 it("previews the tile under the pointer or with focus, in words above the pad", async () => {

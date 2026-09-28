@@ -111,7 +111,15 @@ import {
 import { newReview, NewReviewDialog, type ReviewDraft } from "./NewReviewDialog";
 import { downloadReviews, exportReview, readReviewFile } from "./reviewFiles";
 import { useReviewKeyLabels, useReviewKeys } from "./reviewKeys";
-import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
+import {
+  queryKeys,
+  readQuery,
+  defaultQuery,
+  effectiveReview,
+  normalizedReview,
+  withoutTagBins,
+  writeQuery,
+} from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
 import { objectFiltersEqual } from "./objectFiltersEqual";
 export { objectFiltersEqual } from "./objectFiltersEqual";
@@ -119,6 +127,7 @@ import "./styles.css";
 import {
   usePresentationTags,
   presentedVideo,
+  splitTagBins,
   TagBins,
   toggleTagBin,
 } from "./TagPresentation";
@@ -163,21 +172,54 @@ interface GridEditSnapshot {
   url: string;
 }
 
-/** A review with the queue's live criteria: the grid's drawer previews its draft on the queue. */
+/**
+ * A review with the queue's live criteria, as saving it would store them: the grid's drawer
+ * previews its draft on the queue. Queue tag bins stay out; they only narrow the visit.
+ */
 function withLiveCriteria(
   draft: Review,
   live: Review,
   filter: Record<string, unknown>,
+  saved: Review,
 ): Review {
-  return {
-    ...draft,
-    view: {
-      ...draft.view,
-      filter: { ...filter, page: 1 },
-      objectFilter: live.view.objectFilter,
-      searchMode: live.view.searchMode,
-    },
-  } as Review;
+  return withoutTagBins(
+    {
+      ...draft,
+      view: {
+        ...draft.view,
+        filter: { ...filter, page: 1 },
+        objectFilter: live.view.objectFilter,
+        searchMode: live.view.searchMode,
+      },
+    } as Review,
+    saved,
+  );
+}
+
+/**
+ * The grid's temporary review once the queue's criteria were saved: none, as the queue is the
+ * saved one, except for tag bins pressed on it, which stay pressed and are all it differs by.
+ */
+function pressedBinsAfterSave(saved: Review, live: Review): Review | null {
+  const binned =
+    reviewEntityType(live) === "video" &&
+    splitTagBins(live.view.objectFilter, saved.view.objectFilter).bins.length > 0;
+  return binned
+    ? ({ ...saved, view: { ...saved.view, objectFilter: live.view.objectFilter } } as Review)
+    : null;
+}
+
+/**
+ * Whether a review's queue criteria load the same queue as the saved review's: compared as a
+ * review link reads them (missing search, sort or direction filled in, key order aside), as the
+ * editor drawer and Save to review compare, so the grid never calls a queue temporary for a
+ * difference of form alone.
+ */
+function sameQueue(review: Review, saved: Review): boolean {
+  return objectFiltersEqual(
+    JSON.parse(queueSignature(normalizedReview(review))),
+    JSON.parse(queueSignature(normalizedReview(saved))),
+  );
 }
 
 const defaultCardSize = 180;
@@ -317,7 +359,6 @@ export function DataQualityPage({
   // live queue's), and the save state.
   const [gridEditor, setGridEditor] = useState<{
     draft: Review;
-    baseline: string;
     saving: boolean;
     error: string;
   } | null>(null);
@@ -418,6 +459,8 @@ export function DataQualityPage({
   const [displayMode, setDisplayMode] = useState<ReviewDisplayMode>("grid");
   const [cardSize, setCardSize] = useState(defaultCardSize);
   const [pending, setPending] = useState(false);
+  // The grid's Save to review is writing the queue's criteria to the review.
+  const [queueSaving, setQueueSaving] = useState(false);
   const pendingRef = useRef(false);
   const [pendingTargetLabel, setPendingTargetLabel] = useState("");
   const [message, setMessage] = useState("");
@@ -494,12 +537,37 @@ export function DataQualityPage({
   );
   // The grid's drawer edits the review as Save would store it: the draft with the live criteria.
   const gridDraft = useMemo(
-    () => (gridEditor && review ? withLiveCriteria(gridEditor.draft, review, filter) : null),
-    [gridEditor, review, filter],
+    () =>
+      gridEditor && review && savedReview
+        ? withLiveCriteria(gridEditor.draft, review, filter, savedReview)
+        : null,
+    [gridEditor, review, filter, savedReview],
+  );
+  // What Save to review would store: the saved review with the queue's criteria and direction,
+  // without its tag bins.
+  const savableQueue = useMemo(
+    () =>
+      review && savedReview
+        ? withoutTagBins(
+            { ...savedReview, view: { ...review.view, filter: { ...filter, page: 1 } } } as Review,
+            savedReview,
+          )
+        : null,
+    [review, savedReview, filter],
+  );
+  // Both are measured against the saved review, so criteria changed before the drawer opened show
+  // as the draft's changes too, and bins never count.
+  const savedSignature = useMemo(
+    () => (savedReview ? draftSignature(normalizedReview(savedReview)) : ""),
+    [savedReview],
+  );
+  const savableQueueDiffers = useMemo(
+    () => savableQueue != null && draftSignature(normalizedReview(savableQueue)) !== savedSignature,
+    [savableQueue, savedSignature],
   );
   const gridDirty = useMemo(
-    () => gridDraft != null && draftSignature(gridDraft) !== gridEditor?.baseline,
-    [gridDraft, gridEditor?.baseline],
+    () => gridDraft != null && draftSignature(normalizedReview(gridDraft)) !== savedSignature,
+    [gridDraft, savedSignature],
   );
 
   useEffect(() => {
@@ -794,6 +862,9 @@ export function DataQualityPage({
     setQueueUrlError(false);
     if (!review || usesWorkspace) {
       setQueueLoading(false);
+      // The single-item workspace keeps its own query, read from the URL, apart from the saved
+      // review it is given; back in the grid, the URL tells again what is temporary.
+      setTemporaryReview(null);
       return;
     }
     let current = true;
@@ -1386,8 +1457,8 @@ export function DataQualityPage({
   // being typed keeps its focus (disabled, it would drop focus to the page,
   // where the next letters are action keys), and a newer query supersedes the
   // load in flight.
-  // While the editor drawer saves, the queue it saves stays as it is.
-  const gridSaving = gridEditor?.saving === true;
+  // While the editor drawer or Save to review saves, the queue being saved stays as it is.
+  const gridSaving = gridEditor?.saving === true || queueSaving;
   const toolbarLocked = pending || (queueLoading && !progressReady) || gridSaving;
 
   // The grid's action keys, Find action and select all, while the grid itself
@@ -1629,28 +1700,15 @@ export function DataQualityPage({
     if (activeId && !normalized.some((item) => item.id === activeId))
       chooseReview("");
     const updated = normalized.find((item) => item.id === activeId);
-    if (updated) setLayoutOverride(null);
-    if (
-      updated &&
-      savedReview &&
-      JSON.stringify(updated) !== JSON.stringify(savedReview)
-    ) {
+    if (updated && savedReview) {
+      // The header's Single | Grid switch lasts the visit, until the review's own layout changes.
+      if ((updated.view.reviewMode ?? "single") !== (savedReview.view.reviewMode ?? "single"))
+        setLayoutOverride(null);
       if (updated.view.displayMode !== savedReview.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
-      if (queueSignature(updated) !== queueSignature(savedReview)) {
-        setTemporaryReview(null);
-        if (reviewEntityType(updated) === "video") writeQuery(updated.id, {
-          filter: boundedFilter(updated.view.filter),
-          objectFilter: updated.view.objectFilter,
-          searchMode: updated.view.searchMode,
-          startFrom: updated.view.startFrom ?? "end",
-        });
-        if (!usesWorkspace) void resumeQueue(
-          updated,
-          boundedFilter({ ...updated.view.filter, page: filter.page }),
-        );
-      }
     }
+    // Every save of the open review stores the queue's own criteria, so the queue and its URL
+    // stay as they are; whoever saved says what remains temporary (see pressedBinsAfterSave).
     return true;
   }
 
@@ -1808,7 +1866,9 @@ export function DataQualityPage({
       {review && usesWorkspace ? (
         <ReviewWorkspace
           key={review.id}
-          review={review as MediaReview}
+          // The saved review, never the grid's temporary criteria: the workspace reads those from
+          // the URL as its query, so the queue still differs from the saved review after Grid → Single.
+          review={(savedReview ?? review) as MediaReview}
           canWrite={occurrenceReview ? canWriteTags : canWriteMedia}
           canAssess={absenceFieldStatus?.kind === "ready" && canWriteMedia}
           onBusy={setPending}
@@ -1976,8 +2036,7 @@ export function DataQualityPage({
         objectFilter,
       },
     };
-    const keepsTemporaryQueue =
-      queueSignature(adjusted) !== queueSignature(savedReview);
+    const keepsTemporaryQueue = !sameQueue(adjusted, savedReview);
     const target = keepsTemporaryQueue ? adjusted : savedReview;
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
     setMessage(keepsTemporaryQueue ? "" : "Review queue defaults restored.");
@@ -1985,7 +2044,7 @@ export function DataQualityPage({
   }
 
   function resetQueueToReviewDefaults() {
-    if (pending || queueLoading || !savedReview) return;
+    if (pending || queueLoading || gridSaving || !savedReview) return;
     pendingToolbarObjectFilter.current = null;
     const targetFilter = boundedFilter({
       ...savedReview.view.filter,
@@ -2001,36 +2060,36 @@ export function DataQualityPage({
   }
 
   function saveTemporaryQueue() {
+    // As in the drawer: a queue that failed to load does not show the criteria Save would keep.
     if (
       pending ||
       queueLoading ||
+      queueError ||
+      gridSaving ||
       !review ||
-      !savedReview ||
+      !savableQueue ||
       !canConfigure
     )
       return;
+    const live = review;
+    const updated = savableQueue;
+    // The queue's controls wait while this saves (see gridSaving), so the queue still shows the
+    // criteria saved when the save lands.
+    setQueueSaving(true);
     void updateReviews(
-      reviews.map((item) =>
-        item.id === activeId
-          ? {
-              ...item,
-              view: {
-                ...review.view,
-                filter: { ...filter, page: 1 },
-              },
-            }
-          : item,
-      ),
+      reviews.map((item) => (item.id === updated.id ? updated : item)),
     )
-      .then(() => {
-        setTemporaryReview(null);
+      .then((saved) => {
+        if (!saved) return;
+        setTemporaryReview(pressedBinsAfterSave(updated, live));
         setMessage("Queue saved to this review.");
       })
       .catch((error) =>
         setActionError(
           error instanceof Error ? error.message : "Could not save queue.",
         ),
-      );
+      )
+      .finally(() => setQueueSaving(false));
   }
 
   /**
@@ -2038,7 +2097,7 @@ export function DataQualityPage({
    * tag bins keep reshaping the queue as the draft's preview. What Cancel restores is kept here.
    */
   function openGridEditor() {
-    if (!review || !savedReview || pendingRef.current || gridEditor) return;
+    if (!review || !savedReview || pendingRef.current || gridEditor || queueSaving) return;
     gridEditOpener.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     gridEditSnapshot.current = {
@@ -2053,7 +2112,8 @@ export function DataQualityPage({
       pageCursor: pageCursor.current,
       url: window.location.pathname + window.location.search + window.location.hash,
     };
-    // The direction starts as the queue's; the criteria stay the live queue's throughout.
+    // The direction starts as the queue's; the criteria stay the live queue's throughout. Whatever
+    // the queue already differs by from the saved review counts as the draft's unsaved changes.
     const draft = structuredClone({
       ...savedReview,
       view: { ...savedReview.view, startFrom: review.view.startFrom ?? "end" },
@@ -2062,12 +2122,7 @@ export function DataQualityPage({
     setPreviewOpen(false);
     setMessage("");
     setActionError("");
-    setGridEditor({
-      draft,
-      baseline: draftSignature(withLiveCriteria(draft, review, filter)),
-      saving: false,
-      error: "",
-    });
+    setGridEditor({ draft, saving: false, error: "" });
   }
 
   /** Closes the grid's drawer and hands focus back to what opened it. */
@@ -2113,7 +2168,8 @@ export function DataQualityPage({
 
   /** Save review: the draft with the queue's live criteria becomes the saved review. */
   async function saveGridEditor() {
-    if (!gridEditor || gridEditor.saving || !gridDraft) return;
+    if (!gridEditor || gridEditor.saving || !gridDraft || !review) return;
+    const live = review;
     const updated = { ...gridDraft, name: gridDraft.name.trim() } as Review;
     const invalid = reviewValidation(updated);
     if (invalid) {
@@ -2124,8 +2180,18 @@ export function DataQualityPage({
     try {
       if (!(await updateReviews(reviews.map((item) => (item.id === updated.id ? updated : item)))))
         throw new Error("Could not save reviews.");
-      // The saved review holds the queue's criteria now.
-      setTemporaryReview(null);
+      // The saved review holds the queue's criteria now, but never its bins. (The toolbar and
+      // bins wait while the drawer saves, so the queue is still the one saved.)
+      setTemporaryReview(pressedBinsAfterSave(updated, live));
+      // The queue now runs in the saved direction. The URL says so at once, page and bins kept:
+      // when the save also switched to Single video, the workspace reads its query from there.
+      if (reviewEntityType(updated) === "video")
+        writeQuery(updated.id, {
+          filter,
+          objectFilter: live.view.objectFilter,
+          searchMode: updated.view.searchMode,
+          startFrom: updated.view.startFrom ?? "end",
+        });
       setMessage("Review saved.");
       closeGridEditor();
     } catch (error) {
@@ -2170,8 +2236,7 @@ export function DataQualityPage({
   function toggleQueueTagBin(id: number) {
     if (!videoReview || !savedReview || pending || queueLoading || gridSaving) return;
     const adjusted = toggleTagBin(videoReview, id, savedReview.view.objectFilter);
-    const keepsTemporaryQueue =
-      queueSignature(adjusted) !== queueSignature(savedReview);
+    const keepsTemporaryQueue = !sameQueue(adjusted, savedReview);
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
     if (keepsTemporaryQueue) void resumeQueue(adjusted, { ...filter, page: 1 });
     else
@@ -2212,7 +2277,7 @@ export function DataQualityPage({
           // While the drawer is open, Edit review takes focus back to it. A queue URL that could
           // not be read must be reset first: the drawer saves the queue's criteria.
           onEdit={gridEditor ? () => drawerRef.current?.focus() : openGridEditor}
-          editDisabled={!gridEditor && (pending || queueLoading || queueUrlError || !canConfigure)}
+          editDisabled={!gridEditor && (pending || queueLoading || queueUrlError || queueSaving || !canConfigure)}
           editing={!!gridEditor}
           toolbar={
             <fieldset className="dq-review-toolbar" disabled={toolbarLocked}>
@@ -2258,7 +2323,7 @@ export function DataQualityPage({
               {videoReview && (
                 <LayoutSwitch
                   mode="multiple"
-                  disabled={pending || queueLoading || pageDialogOpen || !!gridEditor}
+                  disabled={pending || queueLoading || pageDialogOpen || !!gridEditor || queueSaving}
                   onChange={() =>
                     setLayoutOverride({ id: videoReview.id, mode: "single" })
                   }
@@ -2275,7 +2340,7 @@ export function DataQualityPage({
                 disabled={pending || !!gridEditor}
                 items={openReviewMenuItems(savedReview ?? current, {
                   onSelect: openGridEditor,
-                  disabled: queueLoading || queueUrlError || !canConfigure,
+                  disabled: queueLoading || queueUrlError || queueSaving || !canConfigure,
                 })}
               />
             </>
@@ -2300,21 +2365,24 @@ export function DataQualityPage({
                 <span className="dq-defaults-note">
                   Queue differs from the saved review
                 </span>
-                <button
-                  type="button"
-                  className="dq-text-button"
-                  title="Save the current queue criteria to this review"
-                  disabled={pending || queueLoading || !canConfigure}
-                  onClick={saveTemporaryQueue}
-                >
-                  <Save aria-hidden="true" />
-                  Save to review
-                </button>
+                {/* Tag bins alone leave nothing to save: a review never keeps them. */}
+                {savableQueueDiffers && (
+                  <button
+                    type="button"
+                    className="dq-text-button"
+                    title="Save the current queue criteria to this review"
+                    disabled={pending || queueLoading || !!queueError || gridSaving || !canConfigure}
+                    onClick={saveTemporaryQueue}
+                  >
+                    <Save aria-hidden="true" />
+                    Save to review
+                  </button>
+                )}
                 <button
                   type="button"
                   className="dq-text-button"
                   title="Reset the queue to the review's saved criteria"
-                  disabled={pending || queueLoading}
+                  disabled={pending || queueLoading || gridSaving}
                   onClick={resetQueueToReviewDefaults}
                 >
                   <RotateCcw aria-hidden="true" />
@@ -2355,6 +2423,7 @@ export function DataQualityPage({
               saveDisabled={queueLoading || !!queueError}
               error={gridEditor.error}
               dirty={gridDirty}
+              criteriaChanged={savableQueueDiffers}
               notices={
                 // The grid's own error sits under the drawer at narrower widths.
                 queueError && !queueLoading ? (

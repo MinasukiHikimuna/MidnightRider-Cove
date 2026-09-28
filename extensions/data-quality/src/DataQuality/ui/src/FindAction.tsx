@@ -113,6 +113,9 @@ export function FindAction({
   const root = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(null);
   const host = useRef<HTMLElement | null>(null);
+  // Keys pressed down while Find action is open. A key held since before it opened, such as the
+  // "-" that opened it, would otherwise type its auto-repeat ("---") into the search field.
+  const pressedHere = useRef(new Set<string>());
   const baseId = useId();
   const tagNames = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
   const keys = useReviewKeyLabels();
@@ -154,6 +157,13 @@ export function FindAction({
   function handleKey(event: ReactKeyboardEvent<HTMLElement>) {
     // Every key typed here belongs to Find action, not to the page or player behind it.
     event.stopPropagation();
+    // The physical key, so Shift pressed during the hold does not make it another key.
+    const key = event.code || event.key;
+    if (event.repeat && !pressedHere.current.has(key)) {
+      event.preventDefault();
+      return;
+    }
+    if (!event.repeat) pressedHere.current.add(key);
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();

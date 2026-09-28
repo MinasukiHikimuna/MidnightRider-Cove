@@ -139,6 +139,7 @@ export function EditorDrawer({
   saveDisabled = false,
   error,
   dirty,
+  criteriaChanged = false,
   notices,
   onSave,
   onCancel,
@@ -157,8 +158,13 @@ export function EditorDrawer({
   saveDisabled?: boolean;
   /** Why the last save failed. */
   error: string;
-  /** Whether the draft differs from the review as it was when editing began. */
+  /**
+   * Whether the draft differs from the saved review, the queue's criteria included: criteria
+   * changed before the drawer opened count, and Esc then no longer discards the draft.
+   */
   dirty: boolean;
+  /** The queue's criteria (tag bins aside) differ from the saved ones, so Save review keeps them. */
+  criteriaChanged?: boolean;
   /** Messages about the preview, such as a queue that could not load. */
   notices?: ReactNode;
   onSave(): void;
@@ -338,7 +344,13 @@ export function EditorDrawer({
         </div>
       )}
       <footer className="dq-drawer-footer">
-        <p className="dq-drawer-dirty">{dirty ? "Unsaved changes" : ""}</p>
+        <p className="dq-drawer-dirty">
+          {dirty
+            ? criteriaChanged
+              ? "Unsaved changes, including the queue's criteria"
+              : "Unsaved changes"
+            : ""}
+        </p>
         <button type="button" className="dq-button" disabled={saving} onClick={onCancel}>
           Cancel
         </button>

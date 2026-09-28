@@ -2,10 +2,15 @@ import {
   boundedFilter,
   isOccurrenceReview,
   OCCURRENCE_CONDITIONS,
+  queueSignature,
+  reviewEntityType,
   reviewMediaKind,
   type MediaReview,
   type OccurrenceReview,
+  type Review,
 } from "./model";
+import { objectFiltersEqual } from "./objectFiltersEqual";
+import { splitTagBins } from "./TagPresentation";
 export type { MediaReview } from "./model";
 export type PerformerScope = Omit<
   OccurrenceReview["occurrence"],
@@ -206,6 +211,46 @@ export function effectiveReview(
         occurrence: { ...saved.occurrence, ...query.performerScope },
       }
     : { ...saved, view };
+}
+
+/**
+ * A review with its queue criteria as a review link reads them: a missing search, sort or
+ * direction filled in, the page and page size bounded, the traversal direction and the performer
+ * scope's defaults explicit. Two reviews that load the same queue normalize alike, so comparing
+ * them tells what saving one over the other would change.
+ */
+export function normalizedReview<T extends Review>(review: T): T {
+  const media = review as unknown as MediaReview;
+  return effectiveReview(media, defaultQuery(media)) as unknown as T;
+}
+
+/** Whether a queue shows other criteria than the review's saved ones; its page never counts. */
+export function queryDiffers(saved: MediaReview, query: ReviewQuery): boolean {
+  return (
+    query.startFrom !== (saved.view.startFrom ?? "end") ||
+    !objectFiltersEqual(
+      JSON.parse(queueSignature(effectiveReview(saved, query))),
+      JSON.parse(queueSignature(effectiveReview(saved, defaultQuery(saved)))),
+    )
+  );
+}
+
+/**
+ * Queue tag bins narrow a video queue for the visit only; a review never saves them. This is the
+ * review with its bins lifted: down to its saved filter, or to the criteria the bins were pressed
+ * on, which saving keeps.
+ */
+export function withoutTagBins<T extends Review>(review: T, saved: Review): T {
+  if (reviewEntityType(review) !== "video") return review;
+  const { base, bins } = splitTagBins(review.view.objectFilter, saved.view.objectFilter);
+  return bins.length ? { ...review, view: { ...review.view, objectFilter: base } } : review;
+}
+
+/** The query as the review would save it: without its queue tag bins. */
+export function savableQuery(saved: MediaReview, query: ReviewQuery): ReviewQuery {
+  if (reviewEntityType(saved) !== "video") return query;
+  const { base, bins } = splitTagBins(query.objectFilter, saved.view.objectFilter);
+  return bins.length ? { ...query, objectFilter: base } : query;
 }
 
 /** The queue and batch target for a focused performer; saved criteria never see the focus. */

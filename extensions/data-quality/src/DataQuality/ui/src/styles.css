@@ -1313,6 +1313,8 @@
 .dq-pad-header {
   display: flex;
   min-height: 24px;
+  /* With the pad's gap, room for the first row's Apply and stay tabs (see .dq-pad-pin). */
+  margin-bottom: 6px;
   align-items: center;
   gap: 10px;
   color: var(--color-secondary);
@@ -1500,33 +1502,50 @@
   opacity: 1;
   cursor: progress;
 }
+/* Apply and stay: a tab on the tile's top edge, shown while the tile is pointed at or focused. It
+   sits in the gap above the tile, over the bottom border and padding of the tile above and 5 px
+   into its own tile's top border and padding (tiles keep at least 5 px padding, so 1 px stays
+   spare at both edges), right of the key cap: it never covers a label, key cap or marker, and a
+   click on the tile's face never lands on it. The pad header leaves the first row the same room. */
 .dq-pad-pin {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  z-index: 1;
+  top: -11px;
+  right: 6px;
   display: flex;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 16px;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: 1px solid var(--dq-key-border);
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--dq-key-bg);
   color: var(--color-foreground);
   opacity: 0;
   pointer-events: none;
 }
 .dq-pad-pin svg {
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
 }
 .dq-pad-slot:hover > .dq-pad-pin:not(:disabled),
 .dq-pad-slot:focus-within > .dq-pad-pin:not(:disabled) {
   opacity: 1;
   pointer-events: auto;
 }
+.dq-pad-slot:hover > .dq-pad-pin:not(:disabled),
+.dq-pad-slot:focus-within > .dq-pad-pin:not(:disabled),
 .dq-pad-pin:hover {
   border-color: var(--color-accent);
+}
+.dq-pad-pin:hover {
+  background: var(--color-accent);
+  color: white;
+}
+/* Its focus ring stays inside the tab, off the tile above (over the shared focus rule below). */
+.dq-pad-slot > .dq-pad-pin:focus-visible {
+  outline-offset: -2px;
 }
 .dq-pad-free {
   display: flex;
@@ -2476,10 +2495,13 @@
 }
 
 /* The grid preview: a dialog over the grid with the review header's steps, the player sized to
-   fit, the key hints and the same action bar at its foot. */
+   fit, the key hints and the same action bar at its foot. Above Cove's navbar and modals (50) and
+   the page's own menus and drawer, but below Cove's portals (menus from 60, the player's Playback
+   options at 100, the chord hint and conflict toast at 109 and 110, hover previews), which open
+   over it; its own Find action stacks inside it. */
 .dq-preview {
   position: fixed;
-  z-index: 120;
+  z-index: 55;
   inset: 0;
   display: flex;
   padding: 24px;

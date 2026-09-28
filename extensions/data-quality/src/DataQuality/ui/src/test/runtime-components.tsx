@@ -401,6 +401,8 @@ export function TagBadge({
   return (
     <span
       className="tag-badge"
+      // Cove previews the tag's image on hover only for a badge that knows the tag's id.
+      data-tag-id={tag?.id ?? undefined}
       data-color={tag?.color ?? undefined}
       data-group-color={tag?.tagGroupColor ?? undefined}
       data-clickable={onClick ? "true" : undefined}

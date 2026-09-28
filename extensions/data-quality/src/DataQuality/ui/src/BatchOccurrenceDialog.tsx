@@ -40,7 +40,7 @@ import {
 import { PerformerAvatar } from "./PerformerAvatar";
 import { useReviewKeyLabels } from "./reviewKeys";
 import { difference } from "./reviewTags";
-import { ReviewTagBadge } from "./TagDisplay";
+import { ReviewTagBadge, WithoutTagImagePreviews } from "./TagDisplay";
 import { namesOf, useTags } from "./tagNames";
 import { sortTagsForDisplay } from "./tagOrder";
 
@@ -1261,8 +1261,9 @@ export function BatchOccurrenceDialog({
     );
   }
 
+  // The dialog is a modal <dialog>, in the browser's top layer above Cove's tag image previews.
   return (
-    <>
+    <WithoutTagImagePreviews>
       <button
         type="button"
         className="dq-header-button"
@@ -1351,6 +1352,6 @@ export function BatchOccurrenceDialog({
           </div>
         </dialog>
       )}
-    </>
+    </WithoutTagImagePreviews>
   );
 }

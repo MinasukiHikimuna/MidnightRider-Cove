@@ -110,3 +110,29 @@ it("keeps the keyboard in the search field after any click in the panel", () => 
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }), false);
 });
+
+it("ignores the auto-repeat of a key held down since before it opened, such as the - that opened it", () => {
+  render(
+    <FindAction
+      actions={[{ id: "one", label: "Kitchen", steps: [] }]}
+      onApply={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  const search = screen.getByRole("combobox", { name: "Find an action" });
+  // A prevented keydown types nothing: holding - on would otherwise fill the field with "---".
+  expect(fireEvent.keyDown(search, { key: "-", code: "Slash", repeat: true })).toBe(false);
+  // Shift pressed during the hold still leaves the same physical key held.
+  expect(fireEvent.keyDown(search, { key: "_", code: "Slash", shiftKey: true, repeat: true })).toBe(
+    false,
+  );
+  // Pressed again here, the key types as usual, and so does its repeat, Shift joining the hold
+  // included: it is still the same physical key.
+  expect(fireEvent.keyDown(search, { key: "-", code: "Slash" })).toBe(true);
+  expect(fireEvent.keyDown(search, { key: "-", code: "Slash", repeat: true })).toBe(true);
+  expect(fireEvent.keyDown(search, { key: "_", code: "Slash", shiftKey: true, repeat: true })).toBe(
+    true,
+  );
+  expect(fireEvent.keyDown(search, { key: "k", code: "KeyK", repeat: true })).toBe(false);
+  expect(fireEvent.keyDown(search, { key: "k", code: "KeyK" })).toBe(true);
+});

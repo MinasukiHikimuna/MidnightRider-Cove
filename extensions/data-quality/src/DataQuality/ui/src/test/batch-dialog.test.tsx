@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { BatchOccurrenceDialog } from "../BatchOccurrenceDialog";
+import { ReviewTagBadge, WithoutTagImagePreviews } from "../TagDisplay";
 import type { OccurrenceReview } from "../model";
 import type { BatchEntry, OccurrenceBatch } from "../batchOccurrences";
 const mocks = vi.hoisted(() => ({
@@ -1176,4 +1177,31 @@ it("hands focus back to Batch… once the workspace enables it again, unless foc
   await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
   expect(elsewhere).toHaveFocus();
   elsewhere.remove();
+});
+
+it("shows its tags without Cove's image preview, which would open unseen under the modal dialog", async () => {
+  mount();
+  await preview();
+  fireEvent.click(button("1 keep a different answer"));
+  const list = screen.getByRole("region", { name: "Occurrences with a different answer" });
+  const badges = [...list.querySelectorAll(".tag-badge")];
+  expect(badges.map((badge) => badge.textContent)).toEqual(["Answer", "Opposite"]);
+  for (const badge of badges) expect(badge).not.toHaveAttribute("data-tag-id");
+});
+
+it("keeps a badge's colours without its image preview only where asked", () => {
+  const tag = { id: 5, name: "Five", color: "#101010", tagGroupColor: "#202020" };
+  render(
+    <>
+      <ReviewTagBadge tag={tag} />
+      <WithoutTagImagePreviews>
+        <ReviewTagBadge tag={tag} />
+      </WithoutTagImagePreviews>
+    </>,
+  );
+  const [plain, inDialog] = screen.getAllByText("Five");
+  expect(plain).toHaveAttribute("data-tag-id", "5");
+  expect(inDialog).not.toHaveAttribute("data-tag-id");
+  expect(inDialog).toHaveAttribute("data-color", "#101010");
+  expect(inDialog).toHaveAttribute("data-group-color", "#202020");
 });

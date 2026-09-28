@@ -75,12 +75,10 @@ import {
   reviewMediaKind,
   reviewValidation,
   boundedFilter,
-  queueSignature,
   type MediaKind,
   type MediaReviewAction,
 } from "./model";
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
-import { objectFiltersEqual } from "./objectFiltersEqual";
 import { useReviewKeys } from "./reviewKeys";
 import { useTags } from "./tagNames";
 import { ReviewTagBadge } from "./TagDisplay";
@@ -89,7 +87,10 @@ import {
   defaultQuery,
   effectiveReview,
   focusedReview,
+  normalizedReview,
+  queryDiffers,
   readQuery,
+  savableQuery,
   writeQuery,
   type MediaReview,
   type ReviewQuery,
@@ -338,9 +339,8 @@ export function ReviewWorkspace({
     }
   }
   const [ruleDraft, setRuleDraft] = useState<MediaReview | null>(null);
-  // Why the drawer's last save failed, and the draft as it was when editing began.
+  // Why the drawer's last save failed.
   const [ruleError, setRuleError] = useState("");
-  const [ruleBaseline, setRuleBaseline] = useState("");
   const drawerRef = useRef<HTMLElement>(null);
   const ruleSnapshot = useRef<{
     error: string;
@@ -559,12 +559,10 @@ export function ReviewWorkspace({
       active = false;
     };
   }, [focusId, flagKey]);
-  const queueDefaultsChanged =
-    query.startFrom !== (saved.view.startFrom ?? "end") ||
-    !objectFiltersEqual(
-      JSON.parse(queueSignature(effectiveReview(saved, query))),
-      JSON.parse(queueSignature(effectiveReview(saved, defaultQuery(saved)))),
-    );
+  const queueDefaultsChanged = queryDiffers(saved, query);
+  // What saving the queue would change: tag bins (carried over from the grid in the URL) never
+  // count, as the review never keeps them.
+  const savableQueueChanged = queryDiffers(saved, savableQuery(saved, query));
   const blocked = pending || loading || editing;
   const page = Number(query.filter.page);
 
@@ -1007,9 +1005,9 @@ export function ReviewWorkspace({
       targets: targets.current,
       stayedCursor: stayedCursor.current,
     };
-    const draft = structuredClone(effectiveReview(saved, queryRef.current));
-    setRuleDraft(draft);
-    setRuleBaseline(draftSignature(draft));
+    // The draft is the saved review; the queue's criteria join it as they are while it is edited,
+    // so criteria changed before editing began are unsaved changes too.
+    setRuleDraft(structuredClone(saved));
     setRuleError("");
     setNotice("");
     setError("");
@@ -1057,7 +1055,7 @@ export function ReviewWorkspace({
     if (!ruleDraft || !onSaveDefaults || lock.current) return;
     const updated = effectiveReview(
       { ...ruleDraft, name: ruleDraft.name.trim() },
-      queryRef.current,
+      savableQuery(savedRef.current, queryRef.current),
     );
     const invalid = reviewValidation(updated);
     if (invalid) {
@@ -1082,9 +1080,10 @@ export function ReviewWorkspace({
   }
   async function saveQueryDefaults() {
     if (!onSaveDefaults || lock.current) return;
-    const updated = effectiveReview(saved, {
-      ...queryRef.current,
-      filter: { ...queryRef.current.filter, page: 1 },
+    const query = savableQuery(savedRef.current, queryRef.current);
+    const updated = effectiveReview(savedRef.current, {
+      ...query,
+      filter: { ...query.filter, page: 1 },
     });
     lock.current = true;
     setPending(true);
@@ -1238,14 +1237,17 @@ export function ReviewWorkspace({
   }, [current?.key]);
   // Header controls that leave or reshape the view wait for any running write, load or edit.
   const busy = pending || loading || editing || !!ruleDraft;
-  // The drawer edits the review as Save would store it: the draft with the live queue's criteria.
+  // The drawer edits the review as Save would store it: the draft with the live queue's criteria,
+  // without tag bins. Unsaved changes are measured against the saved review.
   const ruleView = useMemo(
-    () => (ruleDraft ? effectiveReview(ruleDraft, query) : null),
-    [ruleDraft, query],
+    () => (ruleDraft ? effectiveReview(ruleDraft, savableQuery(saved, query)) : null),
+    [ruleDraft, saved, query],
   );
   const ruleDirty = useMemo(
-    () => ruleView != null && draftSignature(ruleView) !== ruleBaseline,
-    [ruleView, ruleBaseline],
+    () =>
+      ruleView != null &&
+      draftSignature(normalizedReview(ruleView)) !== draftSignature(normalizedReview(saved)),
+    [ruleView, saved],
   );
   function retryAfterError() {
     if (current) {
@@ -1483,16 +1485,19 @@ export function ReviewWorkspace({
           ) : queueDefaultsChanged ? (
             <>
               <span className="dq-defaults-note">Queue differs from the saved review</span>
-              <button
-                type="button"
-                className="dq-text-button"
-                title="Save the current queue criteria to this review"
-                disabled={blocked || !onSaveDefaults}
-                onClick={() => void saveQueryDefaults()}
-              >
-                <Save aria-hidden="true" />
-                Save to review
-              </button>
+              {/* Tag bins alone leave nothing to save: a review never keeps them. */}
+              {savableQueueChanged && (
+                <button
+                  type="button"
+                  className="dq-text-button"
+                  title="Save the current queue criteria to this review"
+                  disabled={blocked || !onSaveDefaults}
+                  onClick={() => void saveQueryDefaults()}
+                >
+                  <Save aria-hidden="true" />
+                  Save to review
+                </button>
+              )}
               <button
                 type="button"
                 className="dq-text-button"
@@ -1525,6 +1530,7 @@ export function ReviewWorkspace({
             saveDisabled={loading}
             error={ruleError}
             dirty={ruleDirty}
+            criteriaChanged={savableQueueChanged}
             notices={errorMessage && <div className="dq-review-feedback">{errorMessage}</div>}
             onSave={() => void saveRuleEdit()}
             onCancel={cancelRuleEdit}

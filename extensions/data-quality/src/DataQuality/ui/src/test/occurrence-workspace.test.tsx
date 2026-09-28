@@ -1938,7 +1938,8 @@ it("keeps the header, Scope and queue live beside the drawer while its actions a
   await waitFor(() =>
     expect(new URLSearchParams(window.location.search).get("startFrom")).toBe("end"),
   );
-  expect(within(drawer).getByText("Unsaved changes")).toBeInTheDocument();
+  // The direction is the queue's: it shows as a change of the queue's criteria.
+  expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
   const saveButton = within(drawer).getByRole("button", { name: "Save review" });
   await waitFor(() => expect(saveButton).toBeEnabled());
   fireEvent.click(saveButton);

@@ -5,8 +5,13 @@ import {
   writeQuery,
   effectiveReview,
   focusedReview,
+  normalizedReview,
+  queryDiffers,
+  savableQuery,
+  withoutTagBins,
 } from "../reviewQuery";
-import type { OccurrenceReview } from "../model";
+import type { OccurrenceReview, VideoReview } from "../model";
+import { withTagBin } from "../TagPresentation";
 const review: OccurrenceReview = {
   id: "r",
   name: "Review",
@@ -166,4 +171,64 @@ it("keeps the saved queue when a link carries only a performer focus", () => {
   expect(query.performerScope?.condition).toBe("excludes");
   expect(query.objectFilter).toEqual({ organized: false });
   expect(startAtEnd).toBe(false);
+});
+
+const videoReview: VideoReview = {
+  id: "v",
+  name: "Video review",
+  description: "",
+  actions: [],
+  view: {
+    // As new reviews save it: no search yet, and no direction for older ones.
+    filter: { page: 1, perPage: 40, sort: "date", direction: "desc" },
+    objectFilter: { organized: false },
+    displayMode: "grid",
+    searchMode: "text",
+  },
+};
+const binned = (objectFilter: Record<string, unknown>, tagId: number) =>
+  withTagBin({ ...videoReview, view: { ...videoReview.view, objectFilter } }, tagId).view.objectFilter;
+
+it("normalizes a review's criteria the way a review link reads them", () => {
+  // A link round trip fills in the search and the direction; the queue is the same.
+  const linked = readQuery(videoReview, new URLSearchParams("review=v&page=3&perPage=40&sort=date&direction=desc&filters=%7B%22organized%22%3Afalse%7D&searchMode=text&startFrom=end")).query;
+  expect(
+    JSON.stringify(normalizedReview(effectiveReview(videoReview, linked))),
+  ).toBe(JSON.stringify(normalizedReview(videoReview)));
+  expect(normalizedReview(videoReview).view).toMatchObject({
+    filter: { q: "", page: 1, perPage: 40 },
+    startFrom: "end",
+  });
+  expect(queryDiffers(videoReview, linked)).toBe(false);
+  expect(queryDiffers(videoReview, { ...linked, filter: { ...linked.filter, q: "x" } })).toBe(true);
+  expect(queryDiffers(videoReview, { ...linked, startFrom: "beginning" })).toBe(true);
+});
+
+it("leaves queue tag bins out of what a video review saves, down to the saved filter", () => {
+  const query = defaultQuery(videoReview);
+  const one = binned(videoReview.view.objectFilter, 5);
+  const two = withTagBin({ ...videoReview, view: { ...videoReview.view, objectFilter: one } }, 7).view.objectFilter;
+  // Bins alone: the savable query is the saved one, so nothing differs that saving would keep.
+  expect(savableQuery(videoReview, { ...query, objectFilter: two }).objectFilter).toBe(
+    videoReview.view.objectFilter,
+  );
+  expect(queryDiffers(videoReview, { ...query, objectFilter: two })).toBe(true);
+  expect(queryDiffers(videoReview, savableQuery(videoReview, { ...query, objectFilter: two }))).toBe(false);
+  // Bins pressed on changed criteria: saving keeps the criteria, not the bins.
+  const changed = { organized: true };
+  expect(
+    savableQuery(videoReview, { ...query, objectFilter: binned(changed, 5) }).objectFilter,
+  ).toEqual(changed);
+  const live = { ...videoReview, view: { ...videoReview.view, objectFilter: binned(changed, 5) } };
+  expect(withoutTagBins(live, videoReview).view.objectFilter).toEqual(changed);
+  // Without bins, nothing changes.
+  const plain = { ...query, objectFilter: changed };
+  expect(savableQuery(videoReview, plain)).toBe(plain);
+  expect(withoutTagBins(videoReview, videoReview)).toBe(videoReview);
+  // A saved condition of a bin's shape is the review's own and stays.
+  const savedBin = { ...videoReview, view: { ...videoReview.view, objectFilter: one } };
+  expect(savableQuery(savedBin, { ...query, objectFilter: one }).objectFilter).toBe(one);
+  // Only video reviews have bins.
+  const occurrenceQuery = { ...defaultQuery(review), objectFilter: binned(review.view.objectFilter, 5) };
+  expect(savableQuery(review, occurrenceQuery)).toBe(occurrenceQuery);
 });
