@@ -12,6 +12,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import {
   activeTestKeys,
   testFilterControls,
+  testGlobalShortcuts,
   testKeyboardConflicts,
   testPlayerShortcuts,
   testVideoControls,
@@ -1713,26 +1714,54 @@ it.each([
   expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
 });
 
-it("leaves f, g and k to Cove while their slots hold no action", async () => {
+it("claims f, g and k while their keys hold no action, so they do nothing", async () => {
   open({ ...review, actions: numberedActions(13) });
   await ready();
   // Nothing in the idle workspace counts as an open dialog, which would pause every key.
   expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
   const active = activeTestKeys();
-  for (const key of ["q", "Shift+q", "s", "Shift+s", "-"]) expect(active).toContain(`local:${key}`);
-  for (const key of ["d", "f", "g", "k", "b"]) {
+  for (const key of ["q", "Shift+q", "s", "Shift+s", "-", "f", "Shift+f", "g", "Shift+g", "k", "Shift+k"])
+    expect(active).toContain(`local:${key}`);
+  // Other empty keys are not registered; Cove binds nothing to them here.
+  for (const key of ["d", "h", "b"]) {
     expect(active).not.toContain(`local:${key}`);
     expect(active).not.toContain(`local:Shift+${key}`);
   }
-  // Unregistered, f, g and k reach Cove's own shortcuts: k plays or pauses, and f, which both
-  // Filters and fullscreen claim here, gets Cove's conflict notice.
-  for (const key of ["g", "k", "f"]) fireEvent.keyDown(document.body, { key });
-  expect(testVideoControls.toggle).toHaveBeenCalledTimes(1);
-  expect(testKeyboardConflicts).toEqual(["f"]);
+  // Cove's Filters and fullscreen on f, its go-to chords on g and play/pause on k never fire.
+  for (const key of ["g", "k", "f", "G", "K", "F"])
+    expect(fireEvent.keyDown(document.body, { key, shiftKey: key !== key.toLowerCase() })).toBe(false);
+  expect(testVideoControls.toggle).not.toHaveBeenCalled();
   expect(testPlayerShortcuts.fullscreen).not.toHaveBeenCalled();
+  expect(testGlobalShortcuts.goTo).not.toHaveBeenCalled();
+  expect(testKeyboardConflicts).toEqual([]);
   expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
   await act(async () => {});
   expect(api.applyTags).not.toHaveBeenCalled();
+  // Space and the Filters button keep working.
+  fireEvent.keyDown(document.body, { key: " " });
+  expect(testVideoControls.toggle).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+  expect(await screen.findByRole("dialog", { name: "Video filters" })).toBeInTheDocument();
+});
+
+it("applies the actions pinned to f, g and k, Shift with the key staying", async () => {
+  const actions = numberedActions(3).map((action, index) => ({
+    ...action,
+    shortcut: ["f", "g", "k"][index],
+  }));
+  open({ ...review, actions });
+  await ready();
+  fireEvent.keyDown(document.body, { key: "K", shiftKey: true });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe("Action 3");
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: "g" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  expect(appliedLabel(1)).toBe("Action 2");
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  expect(testGlobalShortcuts.goTo).not.toHaveBeenCalled();
+  expect(testVideoControls.toggle).not.toHaveBeenCalled();
 });
 
 it("applies a held key's action once", async () => {
@@ -1955,6 +1984,32 @@ it("keeps the header, Scope and queue live beside the drawer while its actions a
   await ready();
   expect(activeTestKeys()).toContain("local:q");
   expect(screen.getByRole("button", { name: "Batch…" })).toBeEnabled();
+});
+
+it("previews the draft's keys on the paused pad while the drawer is open", async () => {
+  const save = vi.fn().mockResolvedValue(true);
+  const rule = { ...review, actions: numberedActions(2) };
+  const rendered = open(rule, true, save);
+  await ready();
+  rendered.rerender(
+    <ReviewWorkspace review={rule} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={save} />,
+  );
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: /^Key for Action 2: / }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Key for Action 2" })).getByRole("button", { name: "A: free" }));
+  const pad = screen.getByRole("region", { name: "Actions, paused while editing" });
+  const rows = [...pad.querySelectorAll<HTMLElement>(".dq-pad-row")];
+  expect(rows).toHaveLength(2);
+  expect(within(rows[0]).getByRole("button", { name: "q Action 1" })).toBeDisabled();
+  expect(within(rows[1]).getByRole("button", { name: "a Action 2" })).toBeDisabled();
+  // Cancel drops the draft and its placement.
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  await ready();
+  expect(screen.getByRole("button", { name: "w Action 2" })).toBeEnabled();
+  expect(activeTestKeys()).toContain("local:w");
+  expect(activeTestKeys()).not.toContain("local:a");
+  expect(save).not.toHaveBeenCalled();
 });
 
 it("shows the queue's errors in the drawer while it covers the item column", async () => {

@@ -1511,7 +1511,7 @@ export function DataQualityPage({
       !findOpen &&
       !queueError &&
       (queue.items.length > 0 || queueLoading || pending),
-    actionCount: review?.actions.length ?? 0,
+    actions: review?.actions ?? NO_ACTIONS,
     onAction: (index) => {
       const action = review?.actions[index];
       if (action) void execute(action);
@@ -3073,7 +3073,7 @@ function ReviewPreview({
   useReviewKeys({
     surface: "overlay",
     enabled: !findOpen,
-    actionCount: review.actions.length,
+    actions: review.actions,
     onAction: (index) => {
       const action = review.actions[index];
       if (action) void onAction(action);

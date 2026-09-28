@@ -15,6 +15,7 @@ import { testVideoControls } from "@cove/runtime/components";
 import {
   activeTestKeys,
   testFilterControls,
+  testGlobalShortcuts,
   testKeyboardConflicts,
 } from "./runtime-components";
 
@@ -2420,6 +2421,28 @@ it("opens Find action once for a held -, without typing its repeats into the sea
   expect(findOptions()).toHaveLength(12);
 });
 
+it("puts the preview's keys where the review places its actions, and no empty f, g or k", async () => {
+  const actions = numberedActions(2);
+  actions[0] = { ...actions[0], shortcut: "k" } as (typeof actions)[number];
+  openGrid(actions);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "Enter" });
+  const preview = await screen.findByRole("dialog", { name: "Review preview: Video 1" });
+  // The preview holds Cove's keys back itself: it registers only the keys that hold actions.
+  expect(activeTestKeys().filter((key) => key.startsWith("overlay:")).sort()).toEqual(
+    ["overlay:-", "overlay:Shift+k", "overlay:Shift+q", "overlay:k", "overlay:q"].sort(),
+  );
+  const lines = [...preview.querySelectorAll<HTMLElement>(".dq-bar-line")];
+  expect(lines.map((line) => [...line.querySelectorAll(".dq-bar-tile:not(.dq-bar-find) kbd")].map((key) => key.textContent))).toEqual([
+    ["q"],
+    ["k"],
+  ]);
+  fireEvent.keyDown(preview, { key: "k" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 1");
+});
+
 it("runs action keys and Find action in the preview, also after clicking its actions", async () => {
   openGrid(numberedActions(2));
   const first = await screen.findByRole("article", { name: "Video 1" });
@@ -2602,15 +2625,50 @@ it("registers the keys once in the single-item workspace, where the grid's stay 
   expect(active).not.toContain("local:Ctrl+a");
 });
 
-it("leaves f to Cove's Filters while action 15 does not exist", async () => {
+it("claims f, g and k in the grid while they hold no action, so they do nothing", async () => {
   openGrid(numberedActions(14));
   const first = await screen.findByRole("article", { name: "Video 1" });
   await waitFor(() => expect(first).toHaveFocus());
   expect(activeTestKeys()).toContain("local:d");
-  expect(activeTestKeys()).not.toContain("local:f");
-  fireEvent.keyDown(first, { key: "f" });
-  expect(await screen.findByRole("dialog", { name: "Video filters" })).toBeInTheDocument();
+  expect(activeTestKeys()).not.toContain("local:h");
+  for (const key of ["f", "g", "k"]) {
+    expect(activeTestKeys()).toContain(`local:${key}`);
+    expect(activeTestKeys()).toContain(`local:Shift+${key}`);
+  }
+  // No Filters dialog on f, no go-to chord on g; the stroke is the page's.
+  for (const init of [{ key: "f" }, { key: "g" }, { key: "k" }, { key: "G", shiftKey: true }])
+    expect(fireEvent.keyDown(first, init)).toBe(false);
+  await act(async () => {});
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
+  expect(testGlobalShortcuts.goTo).not.toHaveBeenCalled();
+  expect(testKeyboardConflicts).toEqual([]);
   expect(api.runReviewAction).not.toHaveBeenCalled();
+  // The Filters button still opens them.
+  fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+  expect(await screen.findByRole("dialog", { name: "Video filters" })).toBeInTheDocument();
+});
+
+it("applies the actions pinned to g and k in the grid, whatever their place in the review", async () => {
+  const actions = numberedActions(3);
+  actions[0] = { ...actions[0], shortcut: "k" } as (typeof actions)[number];
+  actions[2] = { ...actions[2], shortcut: "g" } as (typeof actions)[number];
+  openGrid(actions);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  // The bar shows the Auto action on q first, then g and k on the second keyboard row.
+  const lines = [...document.querySelectorAll<HTMLElement>(".dq-bar-line")];
+  expect(lines.map((line) => [...line.querySelectorAll(".dq-bar-tile:not(.dq-bar-find) kbd")].map((key) => key.textContent))).toEqual([
+    ["q"],
+    ["g", "k"],
+  ]);
+  fireEvent.keyDown(first, { key: "g" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 3");
+  expect(testGlobalShortcuts.goTo).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByRole("button", { name: /Action 1/ })).toBeEnabled());
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "k" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
+  expect(api.runReviewAction.mock.calls[1][1].label).toBe("Action 1");
 });
 
 it("leaves the grid keys to Cove while the queue is empty", async () => {

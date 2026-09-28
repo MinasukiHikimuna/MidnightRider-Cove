@@ -2310,6 +2310,14 @@
   display: flex;
   min-width: 0;
   flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+}
+/* One line per keyboard row that holds actions, so the rows read as on the pad; a long row wraps
+   within its own line, closer together than the lines themselves. */
+.dq-bar-line {
+  display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
@@ -4038,24 +4046,205 @@ textarea.dq-input {
   background: var(--color-card);
 }
 .dq-action-row-head {
+  position: relative;
   display: flex;
   min-height: 40px;
   align-items: center;
   gap: 8px;
   padding: 0 4px 0 2px;
 }
-.dq-action-row-head > .dq-key {
-  width: 24px;
+/* The action's key opens the key picker; a pinned key carries a small pin. */
+.dq-key-button {
+  position: relative;
+  display: inline-flex;
+  width: 34px;
+  height: 30px;
   flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+.dq-key-button:hover:not(:disabled),
+.dq-key-button[aria-expanded="true"] {
+  border-color: var(--color-border);
+  background: var(--color-card-hover);
+}
+.dq-key-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.dq-key-button > .dq-key {
+  width: 24px;
   padding-inline: 0;
+}
+.dq-key-button > svg {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 10px;
+  height: 10px;
+  color: var(--color-accent);
 }
 .dq-key-none {
   color: var(--color-muted);
 }
-.dq-action-row-open .dq-action-row-head > .dq-key {
+.dq-action-row-open .dq-key-button > .dq-key {
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: white;
+}
+/* The key picker: a small keyboard map under the row's key, over the rows below it. */
+.dq-key-picker-backdrop {
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+}
+.dq-key-picker {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 2px);
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 45%);
+  container-type: inline-size;
+  cursor: default;
+}
+.dq-key-picker-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-key-picker-title strong {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+.dq-key-picker-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dq-key-picker-row {
+  --dq-pick: min(56px, calc((100cqw - 40px) / 11.9));
+  display: flex;
+  gap: 4px;
+}
+.dq-key-picker-row[data-indent="1"] {
+  padding-left: calc(var(--dq-pick) * 0.3);
+}
+.dq-key-picker-row[data-indent="2"] {
+  padding-left: calc(var(--dq-pick) * 0.8);
+}
+.dq-key-choice {
+  display: flex;
+  width: var(--dq-pick);
+  height: 54px;
+  flex: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  overflow: hidden;
+  padding: 4px 5px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  text-align: left;
+}
+.dq-key-choice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+.dq-key-choice-head svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  color: var(--color-accent);
+}
+.dq-key-choice-label {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.65625rem;
+  line-height: 12px;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dq-key-choice-free {
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-muted);
+}
+.dq-key-choice-free .dq-key {
+  border-bottom-width: 1px;
+  background: transparent;
+  color: var(--color-muted);
+}
+.dq-key-choice:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dq-key-choice-own {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-card));
+}
+.dq-key-choice:hover:not(:disabled),
+.dq-key-picker-choice:hover {
+  border-color: var(--color-accent);
+}
+.dq-key-choice:focus-visible,
+.dq-key-picker-choice:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.dq-key-picker-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dq-key-picker-choice {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  font-size: 0.78125rem;
+}
+.dq-key-picker-choice strong {
+  font-weight: 600;
+}
+.dq-key-picker-choice span {
+  color: var(--color-secondary);
+}
+.dq-key-picker-choice[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-card));
+}
+.dq-key-picker-hint {
+  margin: 0 0 0 auto;
+  color: var(--color-muted);
+  font-size: 0.75rem;
 }
 .dq-action-row-summary {
   display: flex;

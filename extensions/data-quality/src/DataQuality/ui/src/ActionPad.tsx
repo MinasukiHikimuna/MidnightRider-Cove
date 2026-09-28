@@ -9,11 +9,13 @@ import { Ban, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
 import { actionEffectParts } from "./FindAction";
 import { previewActionEffect, type TagTrees } from "./effectPreview";
 import {
-  ACTION_KEYS,
+  ACTION_KEY_ROWS,
+  type ActionKey,
+  type ActionKeyMap,
   type MediaKind,
   type MediaReviewAction,
 } from "./model";
-import { useReviewKeyLabels } from "./reviewKeys";
+import { useActionKeyMap, useReviewKeyLabels } from "./reviewKeys";
 import type { TagState } from "./reviewTags";
 import { useTagNames } from "./tagNames";
 
@@ -55,29 +57,21 @@ export function useActionPreview<A>(store: ActionPreviewStore<A>): A | null {
   return useSyncExternalStore(store.subscribe, store.get, store.get);
 }
 
-/** The pad's keyboard rows, by action slot: q…å, a…ä, then z…b followed by the fixed keys. */
-const ROWS = [
-  { indent: 0, slots: range(0, 11), fixed: [] },
-  { indent: 1, slots: range(11, 22), fixed: [] },
-  { indent: 2, slots: range(22, 27), fixed: ["n", "m", ",", "."] },
-] as const;
-
-function range(start: number, end: number): number[] {
-  return Array.from({ length: end - start }, (_, index) => start + index);
-}
+/** The pad's keyboard rows: q…å, a…ä, then z…b followed by keys that apply no action. */
+const ROWS: ReadonlyArray<{ indent: number; keys: readonly ActionKey[]; fixed: readonly string[] }> =
+  ACTION_KEY_ROWS.map((keys, indent) => ({
+    indent,
+    keys,
+    fixed: indent === 2 ? ["n", "m", ",", "."] : [],
+  }));
 
 /**
- * What an unassigned key still does in Cove on this page: an empty slot's key is not registered,
- * so it keeps Cove's own meaning (with a video on screen, f opens Filters and toggles
- * fullscreen, which is why Cove reports a conflict for it). These are the Cove Native preset's
- * keys; extensions cannot read Cove's own bindings, so other presets may differ.
+ * What a key that applies no action still does in the single-item review: with a video, Cove's
+ * player mutes on m (Cove Native preset). Empty action keys do nothing there, f, g and k
+ * included, so none of them is labelled.
  */
 function coveKeyLabel(key: string, mediaKind: MediaKind): string {
-  if (key === "g") return "Go to…";
-  if (key === "f") return mediaKind === "video" ? "Fullscreen · filters" : "Filters";
-  if (mediaKind === "video" && key === "k") return "Play / pause";
-  if (mediaKind === "video" && key === "m") return "Mute";
-  return "";
+  return mediaKind === "video" && key === "m" ? "Mute" : "";
 }
 
 /**
@@ -100,10 +94,10 @@ function hasAbsence(action: MediaReviewAction): boolean {
 }
 
 /**
- * Review actions laid out like the keyboard: action N sits on its key's place, so the pad mirrors
- * the hand position. Rows without any action are left out; the bottom row also carries Find
- * action for the actions past the last key. Hovering or focusing a tile previews its effect above
- * the pad and on the current tags.
+ * Review actions laid out like the keyboard: each action sits on its key's place (actionKeyMap),
+ * so the pad mirrors the hand position, with empty keys between them. Rows without any action are
+ * left out; the bottom row also carries Find action, which counts the actions without a key.
+ * Hovering or focusing a tile previews its effect above the pad and on the current tags.
  */
 export function ActionPad({
   actions,
@@ -134,13 +128,14 @@ export function ActionPad({
   paused?: boolean;
 }) {
   const keys = useReviewKeyLabels();
+  const keyMap = useActionKeyMap(actions);
   const baseId = useId();
   const names = useTagNames(
     useMemo(() => actions.flatMap((item) => item.steps.flatMap((step) => step.tagIds)), [actions]),
   );
-  const rows = ROWS.filter((row) => row.slots.some((slot) => slot < actions.length));
-  const bottomRow = rows.length === ROWS.length;
-  const extra = Math.max(0, actions.length - ACTION_KEYS.length);
+  const rows = ROWS.filter((row) => row.keys.some((key) => keyMap.actionOn.has(key)));
+  const bottomRow = rows.includes(ROWS[2]);
+  const extra = actions.length - keyMap.actionOn.size;
 
   const previewHandlers = (action: MediaReviewAction) => ({
     onMouseEnter: () => preview.set(action),
@@ -153,26 +148,24 @@ export function ActionPad({
     },
   });
 
-  const tile = (slot: number): ReactNode => {
-    const action = actions[slot];
-    const binding = keys.action(slot);
-    if (!action) {
-      const label = coveKeyLabel(binding, mediaKind);
+  const tile = (binding: ActionKey): ReactNode => {
+    const index = keyMap.actionOn.get(binding);
+    const action = index === undefined ? undefined : actions[index];
+    if (!action)
       return (
         <div
-          key={slot}
-          className={`dq-pad-slot dq-pad-free${label ? " dq-pad-reserved" : ""}`}
+          key={binding}
+          className="dq-pad-slot dq-pad-free"
           aria-hidden="true"
+          title="No action on this key: it does nothing here"
         >
           <KeyCap binding={binding} />
-          {label && <span className="dq-pad-label">{label}</span>}
         </div>
       );
-    }
     const disabled = isDisabled(action);
-    const effectId = `${baseId}-effect-${slot}`;
+    const effectId = `${baseId}-effect-${binding}`;
     return (
-      <div key={slot} className="dq-pad-slot" {...(paused ? {} : previewHandlers(action))}>
+      <div key={binding} className="dq-pad-slot" {...(paused ? {} : previewHandlers(action))}>
         {/* What the action changes, read out with the tile (the line above the pad is visual). */}
         <span id={effectId} className="dq-sr-only">
           {actionEffectParts(action, names, [], trees)
@@ -231,11 +224,11 @@ export function ActionPad({
           <>
             <PadEffectLine
               actions={actions}
+              keyMap={keyMap}
               names={names}
               tags={tags}
               trees={trees}
               preview={preview}
-              extra={extra}
               findKey={keys.find}
             />
             <span className="dq-pad-hint">
@@ -248,7 +241,7 @@ export function ActionPad({
           <button
             type="button"
             className="dq-pad-find-button"
-            aria-label="Find action"
+            aria-label={extra ? `Find action, ${extra} more` : "Find action"}
             aria-keyshortcuts={keys.find}
             disabled={findDisabled}
             onClick={onFind}
@@ -260,7 +253,7 @@ export function ActionPad({
       </div>
       {rows.map((row) => (
         <div key={row.indent} className="dq-pad-row" data-indent={row.indent}>
-          {row.slots.map(tile)}
+          {row.keys.map(tile)}
           {row.fixed.map((key) => {
             const label = coveKeyLabel(key, mediaKind);
             return (
@@ -304,37 +297,38 @@ export function ActionPad({
  */
 function PadEffectLine({
   actions,
+  keyMap,
   names,
   tags,
   trees,
   preview,
-  extra,
   findKey,
 }: {
   actions: readonly MediaReviewAction[];
+  keyMap: ActionKeyMap;
   names: Record<number, string | null>;
   tags: TagState | null;
   trees: TagTrees;
   preview: ActionPreviewStore;
-  extra: number;
   findKey: string;
 }) {
-  const keys = useReviewKeyLabels();
   const action = useActionPreview(preview);
   const index = action ? actions.indexOf(action) : -1;
-  if (!action || index < 0)
+  if (!action || index < 0) {
+    const keyed = keyMap.actionOn.size;
     return (
       <p className="dq-pad-effect dq-pad-summary">
         {actions.length === 1 ? "1 action" : `${actions.length} actions`}
-        {extra > 0 && (
+        {keyed < actions.length && (
           <>
-            {` · ${ACTION_KEYS.length} on keys, ${extra} more under `}
+            {` · ${keyed} on keys, ${actions.length - keyed} more under `}
             <KeyCap binding={findKey} />
           </>
         )}
       </p>
     );
-  const binding = keys.action(index);
+  }
+  const binding = keyMap.keys[index];
   const effect = tags && action.steps.length ? previewActionEffect(action, tags, trees) : null;
   const unchanged =
     effect &&

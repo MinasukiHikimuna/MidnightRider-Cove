@@ -217,6 +217,22 @@ it("walks from the answers to a preview without writes, keeps different answers 
   expect(await screen.findByText(/Batch finished/)).toBeInTheDocument();
 });
 
+it("shows each answer's key as the review places it, pinned, Auto or none", () => {
+  mount({
+    ...review,
+    actions: [
+      { ...review.actions[0], shortcut: "k" },
+      { id: "b", label: "Second answer", steps: [{ mode: "ADD", tagIds: [23] }] },
+      { id: "c", label: "Keyless answer", steps: [{ mode: "ADD", tagIds: [22] }], shortcut: "none" },
+    ],
+  });
+  fireEvent.click(openButton());
+  const key = (name: string) => checkbox(name).closest("label")!.querySelector("kbd");
+  expect(key("Answer")).toHaveTextContent("k");
+  expect(key("Second answer")).toHaveTextContent("q");
+  expect(key("Keyless answer")).toBeNull();
+});
+
 it("previews several answers together in review order, each with its key and effect, and needs at least one", async () => {
   const rule: OccurrenceReview = {
     ...review,

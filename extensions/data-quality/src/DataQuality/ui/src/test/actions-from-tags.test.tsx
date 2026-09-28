@@ -250,6 +250,8 @@ it("adds the ticked children of several parents in order, skipping ones an actio
     },
     { id: expect.any(String), label: "Kitchen", steps: [{ mode: "ADD", tagIds: [11] }] },
   ]);
+  // Generated actions take their keys as Auto.
+  for (const action of onAdd.mock.calls[0][0]) expect(action).not.toHaveProperty("shortcut");
 });
 
 it("words the only-one choice per performer in occurrence reviews and shows appearance counts", async () => {

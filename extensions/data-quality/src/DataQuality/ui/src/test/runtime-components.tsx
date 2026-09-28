@@ -11,7 +11,8 @@ import React from "react";
  * would follow the user's preset instead, so the stand-in rejects it. Cove's own shortcuts that
  * compete for these keys are registered, with their Cove Native keys, by the doubles of the host
  * components that own them: Filters on f (list toolbar, list surface) and fullscreen on f,
- * play/pause on Space and k, and mute on m (video player, player surface).
+ * play/pause on Space and k, and mute on m (video player, player surface); the app shell's go-to
+ * chords are always registered, as a g on the global surface (testGlobalShortcuts).
  *
  * One window capture listener normalizes each stroke the way Cove does and collects the enabled
  * entries bound to it, skipping text entry (nothing modelled here may run in it), key repeat for
@@ -22,9 +23,8 @@ import React from "react";
  * most recently registered one runs, as Cove registers a changed registration again at the end.
  * A resolved or conflicting stroke is claimed before any extension listener sees it.
  *
- * Not modelled: chord prefixes (with an empty "g" slot, Cove waits for a "g …" chord), presets
- * other than Cove Native for Cove's own shortcuts, and the delay before Cove sees a changed
- * registration.
+ * Not modelled: chord prefixes (the go-to chords are a single g), presets other than Cove Native
+ * for Cove's own shortcuts, and the delay before Cove sees a changed registration.
  */
 type TestKeyInvocation = { sequence: string; target: EventTarget | null; repeat: boolean };
 type TestKeyEntry = {
@@ -159,6 +159,46 @@ function useTestCoveShortcut(
 
 /** Cove's player shortcuts that have no counterpart in testVideoControls. */
 export const testPlayerShortcuts = { fullscreen: vi.fn(), mute: vi.fn() };
+
+/**
+ * Cove's "g …" go-to chords, which its app shell registers on the global surface whatever page is
+ * open. Chord prefixes are not modelled, so the stand-in binds the g that starts them: it runs
+ * wherever nothing on a higher surface claims g, as Cove would start the chord there.
+ */
+export const testGlobalShortcuts = { goTo: vi.fn() };
+mountedKeyEntries.add({
+  current: [
+    {
+      id: "global.goTo",
+      stroke: "g",
+      surface: "global",
+      enabled: true,
+      defined: true,
+      action: () => testGlobalShortcuts.goTo(),
+    },
+  ],
+});
+
+/**
+ * Runs the enabled fixed-key binding registered for this stroke, handing it the invocation given:
+ * what Cove does while it still holds an older list of bindings, when it forwards a stroke to the
+ * binding now at the same position. Without an invocation, as Cove's fallback listener calls it.
+ */
+export function invokeTestBinding(stroke: string, invocation?: Partial<TestKeyInvocation>) {
+  const normalized = normalizeTestBinding(stroke);
+  const entry = [...mountedKeyEntries]
+    .flatMap((entries) => entries.current)
+    .find((candidate) => candidate.enabled && !candidate.defined && candidate.stroke === normalized);
+  if (!entry) throw new Error(`No enabled binding for '${stroke}'.`);
+  entry.action(
+    (invocation && {
+      sequence: normalized,
+      target: document.body,
+      repeat: false,
+      ...invocation,
+    }) as TestKeyInvocation,
+  );
+}
 
 /** The enabled fixed keys, as "surface:stroke" (for example "local:Shift+q"), for assertions. */
 export function activeTestKeys(): string[] {

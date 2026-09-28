@@ -39,7 +39,7 @@ import {
   type OccurrenceReview,
 } from "./model";
 import { PerformerAvatar } from "./PerformerAvatar";
-import { useReviewKeyLabels } from "./reviewKeys";
+import { useActionKeyMap } from "./reviewKeys";
 import { difference } from "./reviewTags";
 import { ReviewTagBadge, WithoutTagImagePreviews } from "./TagDisplay";
 import { namesOf, useTags } from "./tagNames";
@@ -364,12 +364,13 @@ export function BatchOccurrenceDialog({
   const latest = useRef({ onClose, onWrite });
   latest.current = { onClose, onWrite };
   const ids = useId();
-  const keys = useReviewKeyLabels();
   // A run moves to the Run step, which stays until New batch or Close drops its results.
   const started = step === "run";
   const undoing = progress?.kind === "undo";
   // Completed results keep describing the batch that ran until they are dropped.
   const displayReview = started && batch ? batch.review : review;
+  // Answers show the keys the review's actions have, whichever of them the batch lists.
+  const keyMap = useActionKeyMap(displayReview.actions);
   const settings = displayReview.occurrence;
   const mediaKind = reviewMediaKind(displayReview);
   const labels = mediaLabel(mediaKind);
@@ -658,7 +659,7 @@ export function BatchOccurrenceDialog({
   );
   const runStats = started ? tally(entries) : null;
   const keyOf = (id: string) =>
-    keys.action(displayReview.actions.findIndex((action) => action.id === id));
+    keyMap.keys[displayReview.actions.findIndex((action) => action.id === id)] ?? "";
   const effectOf = (action: MediaReviewAction) =>
     actionEffectParts(action, effectNames, [], trees);
   const categorized =

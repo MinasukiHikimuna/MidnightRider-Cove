@@ -977,7 +977,7 @@ export function ReviewWorkspace({
   useReviewKeys({
     surface: "local",
     enabled: keysActive,
-    actionCount: saved.actions.length,
+    actions: saved.actions,
     onAction: (index, stay) => {
       const action = saved.actions[index];
       if (action) void execute(action, stay);

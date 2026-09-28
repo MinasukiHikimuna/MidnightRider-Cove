@@ -74,8 +74,19 @@ it("names a copy after its review, numbering it past the copies already there", 
   expect(copyName("Review 10", reviews)).toBe("Review 10 copy");
   const copies = [...reviews, review("f", "Review 10 copy"), review("g", " review 10 COPY 2 ")];
   expect(copyName("Review 10", copies)).toBe("Review 10 copy 3");
-  // A copy of a copy is named after it in turn.
-  expect(copyName("Review 10 copy", copies)).toBe("Review 10 copy copy");
+  // A copy of a copy numbers on from the same name instead of adding another "copy".
+  expect(copyName("Review 10 copy", copies)).toBe("Review 10 copy 3");
+  expect(copyName("Review 10 copy 2", copies)).toBe("Review 10 copy 3");
+  expect(copyName("Review 10 copy", [...reviews, review("f", "Review 10 copy")])).toBe(
+    "Review 10 copy 2",
+  );
+  // Whatever its case, as names are compared.
+  expect(copyName("Review 10 COPY", [...reviews, review("f", "Review 10 copy")])).toBe(
+    "Review 10 copy 2",
+  );
+  // Only a trailing " copy" or " copy N" counts.
+  expect(copyName("copy", reviews)).toBe("copy copy");
+  expect(copyName("Copyist", reviews)).toBe("Copyist copy");
 });
 
 it("duplicates a review under a new id and its copy's name, sharing nothing with it", () => {

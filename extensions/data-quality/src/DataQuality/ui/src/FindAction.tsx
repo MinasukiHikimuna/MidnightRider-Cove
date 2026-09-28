@@ -9,8 +9,14 @@ import {
 } from "react";
 import { Search } from "@cove/runtime/lucide-react";
 import type { TagTrees } from "./effectPreview";
-import { tagsAddedBy, type ReviewAction, type ReviewStep } from "./model";
-import { useReviewKeyLabels } from "./reviewKeys";
+import {
+  ACTION_KEYS,
+  tagsAddedBy,
+  type ActionKey,
+  type ReviewAction,
+  type ReviewStep,
+} from "./model";
+import { useActionKeyMap } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
 
 export interface EffectPart {
@@ -84,8 +90,9 @@ export function actionTagIds(actions: readonly ReviewAction[]): number[] {
 
 /**
  * Find action: type part of an action's name, choose with ↑/↓, Enter applies and advances,
- * Shift+Enter applies and stays where the view can stay, Esc closes. Lists every action, keyed or
- * not, so actions past the 27 action keys stay reachable from the keyboard.
+ * Shift+Enter applies and stays where the view can stay, Esc closes. Lists every action, the
+ * keyed ones in key order and then the rest in review order, so actions without a key stay
+ * reachable from the keyboard.
  */
 export function FindAction({
   actions,
@@ -118,13 +125,16 @@ export function FindAction({
   const pressedHere = useRef(new Set<string>());
   const baseId = useId();
   const tagNames = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
-  const keys = useReviewKeyLabels();
+  const keyMap = useActionKeyMap(actions);
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
+    // Keyed actions first, in key order; actions without a key last (the sort is stable).
+    const place = (key: ActionKey | "") => (key ? ACTION_KEYS.indexOf(key) : ACTION_KEYS.length);
     return actions
-      .map((action, index) => ({ action, index, key: keys.action(index) }))
+      .map((action, index) => ({ action, index, key: keyMap.keys[index] }))
+      .sort((left, right) => place(left.key) - place(right.key))
       .filter((row) => !needle || row.action.label.toLocaleLowerCase().includes(needle));
-  }, [actions, keys, query]);
+  }, [actions, keyMap, query]);
   const active = rows.length ? Math.min(highlight, rows.length - 1) : -1;
   const optionId = (index: number) => `${baseId}-option-${index}`;
 

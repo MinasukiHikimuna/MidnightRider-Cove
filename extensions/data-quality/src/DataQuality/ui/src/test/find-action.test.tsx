@@ -82,6 +82,36 @@ it("filters by label, skips disabled rows on Enter and applies with the mouse", 
   expect(onClose).toHaveBeenCalled();
 });
 
+it("lists the keyed actions in key order, then the ones without a key in review order", () => {
+  const onApply = vi.fn();
+  render(
+    <FindAction
+      actions={[
+        { id: "late", label: "Late", steps: [], shortcut: "b" },
+        { id: "hidden", label: "Hidden", steps: [], shortcut: "none" },
+        { id: "auto", label: "Auto", steps: [] },
+        { id: "early", label: "Early", steps: [], shortcut: "a" },
+        { id: "also", label: "Also hidden", steps: [], shortcut: "none" },
+      ]}
+      onApply={onApply}
+      onClose={vi.fn()}
+    />,
+  );
+  const dialog = screen.getByRole("dialog", { name: "Find an action" });
+  expect(within(dialog).getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "qAutoSkip",
+    "aEarlySkip",
+    "bLateSkip",
+    "·HiddenSkip",
+    "·Also hiddenSkip",
+  ]);
+  // ↓ goes down the list in that order.
+  const search = within(dialog).getByRole("combobox", { name: "Find an action" });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ id: "early" }), false);
+});
+
 it("keeps the keyboard in the search field after any click in the panel", () => {
   const onApply = vi.fn();
   render(

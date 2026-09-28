@@ -69,23 +69,64 @@ const rows = (container: HTMLElement) => [
 const effectLine = (container: HTMLElement) =>
   container.querySelector(".dq-pad-effect") as HTMLElement;
 
-it("lays actions on the keyboard rows they use and names what unassigned keys still do", () => {
+it("lays actions on the keyboard rows they use, empty keys all alike", () => {
   const { container, onFind } = pad(numbered(13));
   expect(rows(container)).toHaveLength(2);
   expect(rows(container)[0].querySelectorAll(".dq-pad-slot")).toHaveLength(11);
   expect(screen.getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "å Action 11" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "s Action 13" })).toBeInTheDocument();
-  // f, g and k keep Cove's meaning while their slots are empty, and say which.
+  // Empty keys, f, g and k included, do nothing on review pages and name nothing.
   const second = rows(container)[1];
-  expect(second).toHaveTextContent("Fullscreen · filters");
-  expect(second).toHaveTextContent("Go to…");
-  expect(second).toHaveTextContent("Play / pause");
-  expect(second.querySelectorAll(".dq-pad-free")).toHaveLength(9);
+  const free = [...second.querySelectorAll<HTMLElement>(".dq-pad-free")];
+  expect(free.map((slot) => slot.textContent)).toEqual(["d", "f", "g", "h", "j", "k", "l", "ö", "ä"]);
+  for (const slot of free) {
+    expect(slot).toHaveClass("dq-pad-slot dq-pad-free", { exact: true });
+    expect(slot).toHaveAttribute("title", "No action on this key: it does nothing here");
+  }
   // Without a bottom row, Find action lives in the pad's header.
   expect(effectLine(container)).toHaveTextContent("13 actions");
   fireEvent.click(screen.getByRole("button", { name: "Find action" }));
   expect(onFind).toHaveBeenCalledTimes(1);
+});
+
+it("places pinned actions on their keys with empty keys between them", () => {
+  const actions = numbered(14);
+  actions[11] = { ...actions[11], shortcut: "a" };
+  actions[12] = { ...actions[12], shortcut: "s" };
+  actions[0] = { ...actions[0], shortcut: "å" };
+  actions[13] = { ...actions[13], shortcut: "none" };
+  const { container } = pad(actions);
+  // Without a bottom row, the header's Find action counts the action without a key.
+  expect(screen.getByRole("button", { name: "Find action, 1 more" })).toHaveClass("dq-pad-find-button");
+  const [first, second] = rows(container);
+  // The Auto actions fill the first row around the pin on å; a and s sit alone on the second.
+  const tileKeys = (row: HTMLElement) =>
+    [...row.querySelectorAll(".dq-pad-tile")].map((tile) => tile.getAttribute("aria-keyshortcuts"));
+  expect(tileKeys(first)).toEqual(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"]);
+  expect(tileKeys(second)).toEqual(["a", "s"]);
+  expect(within(first).getByRole("button", { name: "q Action 2" })).toBeInTheDocument();
+  expect(within(first).getByRole("button", { name: "å Action 1" })).toBeInTheDocument();
+  expect(within(second).getByRole("button", { name: "a Action 12" })).toBeInTheDocument();
+  expect(within(second).getByRole("button", { name: "s Action 13" })).toBeInTheDocument();
+  expect(second.querySelectorAll(".dq-pad-free")).toHaveLength(9);
+  expect(rows(container)).toHaveLength(2);
+});
+
+it("leaves out rows without actions, keeping the bottom row's Find action with its count", () => {
+  // One action on z, one without a key, the rest nowhere.
+  const actions: MediaReviewAction[] = [
+    { id: "z", label: "Low", steps: [], shortcut: "z" },
+    { id: "none", label: "Hidden", steps: [], shortcut: "none" },
+  ];
+  const { container } = pad(actions);
+  expect(rows(container)).toHaveLength(1);
+  expect(within(rows(container)[0]).getByRole("button", { name: "z Low" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Hidden/ })).not.toBeInTheDocument();
+  // One Find action: the bottom row's tile, counting the action without a key.
+  expect(screen.getAllByRole("button", { name: /^Find action/ })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Find action, 1 more" })).toBeInTheDocument();
+  expect(effectLine(container)).toHaveTextContent("2 actions · 1 on keys, 1 more under -");
 });
 
 it("adds the bottom row, with Find action counting the actions past the last key", () => {
@@ -109,12 +150,10 @@ it("adds the bottom row, with Find action counting the actions past the last key
   expect(effectLine(container)).toHaveTextContent("30 actions · 27 on keys, 3 more under -");
 });
 
-it("shows audio reviews only the Cove keys that still act without a video", () => {
-  const { container } = pad(numbered(12), { mediaKind: "audio" });
-  const second = rows(container)[1];
-  expect(second).toHaveTextContent("Filters");
-  expect(second).not.toHaveTextContent("Fullscreen");
-  expect(second).not.toHaveTextContent("Play / pause");
+it("names no Cove key in audio reviews, where m mutes nothing", () => {
+  const { container } = pad(numbered(27), { mediaKind: "audio" });
+  expect(rows(container)[2]).not.toHaveTextContent("Mute");
+  expect(container.querySelector(".dq-pad-reserved")).toBeNull();
 });
 
 it("applies, stays with the pin or Shift, and marks absence actions", () => {

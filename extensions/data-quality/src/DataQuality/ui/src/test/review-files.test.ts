@@ -35,3 +35,21 @@ it("reads a review file with the stored reviews' validation, refusing large file
   await expect(readReviewFile(large)).rejects.toThrow("Review files must be smaller than 2 MB.");
   expect(read).toBe(false);
 });
+
+it("keeps each action's key choice through a review file", async () => {
+  const review = {
+    id: "keys",
+    name: "Keys",
+    description: "",
+    view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text" },
+    // Pinned, no key, Auto, a digit from an older version (Auto), and a key pinned twice.
+    actions: ["s", "none", undefined, "3", "s"].map((shortcut, index) => ({
+      id: `action-${index}`,
+      label: `Action ${index + 1}`,
+      steps: [],
+      ...(shortcut === undefined ? {} : { shortcut }),
+    })),
+  };
+  const read = await readReviewFile(new File([JSON.stringify([review], null, 2)], "keys.json"));
+  expect(read).toEqual([review]);
+});

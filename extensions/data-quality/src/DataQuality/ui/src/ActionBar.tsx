@@ -17,18 +17,19 @@ import {
 } from "./ActionPad";
 import { actionEffectParts, actionTagIds } from "./FindAction";
 import type { TagTrees } from "./effectPreview";
-import { ACTION_KEYS, type ReviewAction } from "./model";
-import { useReviewKeyLabels } from "./reviewKeys";
+import { ACTION_KEY_ROWS, type ActionKeyMap, type ReviewAction } from "./model";
+import { useActionKeyMap, useReviewKeyLabels } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
 
 type TagGroups = ReadonlyArray<{ id: number; name: string }>;
 
 /**
  * The card grid's actions, in one bar under the cards (and at the foot of the grid preview): what
- * the actions apply to, then a compact tile per action key (key cap and label, wrapping onto more
- * rows when needed) and Find action, which also reaches the actions past the last key. Tiles
- * share the pad's key caps and effect wording: pointing at or focusing one shows what it changes
- * above the bar, and the tile carries the same text as its description.
+ * the actions apply to, then a compact tile per keyed action (key cap and label), one line per
+ * keyboard row that holds actions, in key order (a long line wraps), and Find action, which also
+ * reaches the actions without a key. Tiles share the pad's key caps and effect wording: pointing
+ * at or focusing one shows what it changes above the bar, and the tile carries the same text as
+ * its description.
  */
 export function ActionBar({
   actions,
@@ -68,12 +69,18 @@ export function ActionBar({
   paused?: boolean;
 }) {
   const keys = useReviewKeyLabels();
+  const keyMap = useActionKeyMap(actions);
   const baseId = useId();
   const names = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
   const [preview] = useState(() => createActionPreviewStore<ReviewAction>());
   const bar = useRef<HTMLElement>(null);
   const stacked = useStackedLayout(bar, actions);
-  const keyed = actions.slice(0, ACTION_KEYS.length);
+  // The positions of the keyed actions, one line per keyboard row, in key order.
+  const lines = ACTION_KEY_ROWS.map((row) =>
+    row.flatMap((key) => keyMap.actionOn.get(key) ?? []),
+  ).filter((line) => line.length > 0);
+  if (!lines.length && actions.length) lines.push([]);
+  const keyed = lines.flat();
   const extra = actions.length - keyed.length;
   const effectText = (action: ReviewAction) =>
     actionEffectParts(action, names, tagGroups, trees)
@@ -97,42 +104,47 @@ export function ActionBar({
       <div className="dq-bar-summary">{summary}</div>
       <span className="dq-bar-divider" aria-hidden="true" />
       <div className="dq-bar-tiles" aria-busy={busy || undefined}>
-        {keyed.map((action, index) => {
-          const binding = keys.action(index);
-          return (
-            <button
-              key={action.id}
-              type="button"
-              className="dq-bar-tile"
-              title={action.label}
-              aria-keyshortcuts={binding || undefined}
-              aria-describedby={`${baseId}-effect-${index}`}
-              disabled={paused || isDisabled(action)}
-              onClick={() => onApply(action)}
-              {...(paused ? {} : previewHandlers(action))}
-            >
-              {/* The space keeps the accessible name readable: "q Observation". */}
-              {binding && <KeyCap binding={binding} />}{" "}
-              <span className="dq-bar-label">{action.label}</span>
-            </button>
-          );
-        })}
-        {actions.length > 0 ? (
-          <button
-            type="button"
-            className="dq-bar-tile dq-bar-find"
-            aria-label={extra > 0 ? `Find action, ${extra} more` : "Find action"}
-            aria-keyshortcuts={keys.find}
-            disabled={paused}
-            onClick={onFind}
-          >
-            <KeyCap binding={keys.find} hidden />
-            <Search aria-hidden="true" />
-            <span className="dq-bar-label">{extra > 0 ? `${extra} more` : "Find action"}</span>
-          </button>
-        ) : (
-          <p className="dq-bar-empty">This review has no actions.</p>
-        )}
+        {lines.map((line, lineIndex) => (
+          <div key={lineIndex} className="dq-bar-line">
+            {line.map((index) => {
+              const action = actions[index];
+              const binding = keyMap.keys[index];
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  className="dq-bar-tile"
+                  title={action.label}
+                  aria-keyshortcuts={binding || undefined}
+                  aria-describedby={`${baseId}-effect-${index}`}
+                  disabled={paused || isDisabled(action)}
+                  onClick={() => onApply(action)}
+                  {...(paused ? {} : previewHandlers(action))}
+                >
+                  {/* The space keeps the accessible name readable: "q Observation". */}
+                  {binding && <KeyCap binding={binding} />}{" "}
+                  <span className="dq-bar-label">{action.label}</span>
+                </button>
+              );
+            })}
+            {/* Find action closes the last line, as the - key follows the letters. */}
+            {lineIndex === lines.length - 1 && (
+              <button
+                type="button"
+                className="dq-bar-tile dq-bar-find"
+                aria-label={extra > 0 ? `Find action, ${extra} more` : "Find action"}
+                aria-keyshortcuts={keys.find}
+                disabled={paused}
+                onClick={onFind}
+              >
+                <KeyCap binding={keys.find} hidden />
+                <Search aria-hidden="true" />
+                <span className="dq-bar-label">{extra > 0 ? `${extra} more` : "Find action"}</span>
+              </button>
+            )}
+          </div>
+        ))}
+        {!actions.length && <p className="dq-bar-empty">This review has no actions.</p>}
       </div>
       {hints && <p className="dq-bar-hints">{hints}</p>}
       {/* Paused, the tiles preview nothing: the line above the bar says why they wait instead. */}
@@ -142,14 +154,21 @@ export function ActionBar({
           Actions are paused while you edit the review
         </p>
       ) : (
-        <BarEffect actions={keyed} preview={preview} names={names} tagGroups={tagGroups} trees={trees} />
+        <BarEffect
+          actions={actions}
+          keyMap={keyMap}
+          preview={preview}
+          names={names}
+          tagGroups={tagGroups}
+          trees={trees}
+        />
       )}
       {notices && <div className="dq-bar-notices">{notices}</div>}
       {/* What each tile changes, read out with the tile; the line above the bar is visual. */}
       <div hidden>
-        {keyed.map((action, index) => (
-          <span key={action.id} id={`${baseId}-effect-${index}`}>
-            {effectText(action)}
+        {keyed.map((index) => (
+          <span key={actions[index].id} id={`${baseId}-effect-${index}`}>
+            {effectText(actions[index])}
           </span>
         ))}
       </div>
@@ -162,8 +181,9 @@ export function ActionBar({
 
 /**
  * Whether the summary and hints should take a line of their own above the tiles: when the tiles
- * then need fewer lines in all than beside them. Every width compared is the content's own, the
- * same in both layouts, so the choice never flips back and forth.
+ * then need fewer lines in all than beside them, or as many while that keeps every keyboard row
+ * on a single line. Every width compared is the content's own, the same in both layouts, so the
+ * choice never flips back and forth.
  */
 function useStackedLayout(bar: RefObject<HTMLElement | null>, actions: readonly ReviewAction[]) {
   const [stacked, setStacked] = useState(false);
@@ -176,28 +196,38 @@ function useStackedLayout(bar: RefObject<HTMLElement | null>, actions: readonly 
       const gap = parseFloat(style.columnGap) || 0;
       const width =
         element.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
-      const tiles = [...element.querySelectorAll<HTMLElement>(".dq-bar-tiles > *")].map(
-        (tile) => tile.offsetWidth,
+      // Each keyboard row's tiles start a line of their own and wrap within it.
+      const lines = [...element.querySelectorAll<HTMLElement>(".dq-bar-line")].map((line) =>
+        [...line.children].map((tile) => (tile as HTMLElement).offsetWidth),
       );
-      const tileGap = parseFloat(getComputedStyle(element.querySelector(".dq-bar-tiles")!).columnGap) || 0;
+      const firstLine = element.querySelector(".dq-bar-line");
+      const tileGap = firstLine ? parseFloat(getComputedStyle(firstLine).columnGap) || 0 : 0;
       const hints = element.querySelector<HTMLElement>(".dq-bar-hints");
       const beside =
         (summary?.offsetWidth ?? 0) +
         (hints ? hints.offsetWidth + gap : 0) +
         1 + // the divider
         2 * gap;
-      const rows = (room: number) => {
-        let count = 1;
-        let line = 0;
-        for (const tile of tiles) {
-          if (line > 0 && line + tileGap + tile > room) {
-            count += 1;
-            line = tile;
-          } else line += (line > 0 ? tileGap : 0) + tile;
-        }
-        return count;
-      };
-      setStacked(1 + rows(width) < rows(width - beside));
+      // How many rows each keyboard row's line takes in this width.
+      const rows = (room: number) =>
+        lines.map((tiles) => {
+          let count = 1;
+          let line = 0;
+          for (const tile of tiles) {
+            if (line > 0 && line + tileGap + tile > room) {
+              count += 1;
+              line = tile;
+            } else line += (line > 0 ? tileGap : 0) + tile;
+          }
+          return count;
+        });
+      const total = (counts: number[]) => Math.max(1, counts.reduce((sum, count) => sum + count, 0));
+      const under = rows(width);
+      const besideRows = total(rows(width - beside));
+      setStacked(
+        1 + total(under) < besideRows ||
+          (1 + total(under) === besideRows && under.every((count) => count === 1)),
+      );
     };
     // Any part changing size (a selection count, a note replacing the hints, a font arriving)
     // measures again; the parts' own widths do not depend on the layout, so this settles.
@@ -221,22 +251,23 @@ function useStackedLayout(bar: RefObject<HTMLElement | null>, actions: readonly 
 /** Above the bar while a tile is pointed at or focused: "Q Label + Tag − rest of Tree". */
 function BarEffect({
   actions,
+  keyMap,
   preview,
   names,
   tagGroups,
   trees,
 }: {
   actions: readonly ReviewAction[];
+  keyMap: ActionKeyMap;
   preview: ActionPreviewStore<ReviewAction>;
   names: Record<number, string | null>;
   tagGroups?: TagGroups;
   trees?: TagTrees;
 }) {
-  const keys = useReviewKeyLabels();
   const action = useActionPreview(preview);
   const index = action ? actions.indexOf(action) : -1;
   if (!action || index < 0) return null;
-  const binding = keys.action(index);
+  const binding = keyMap.keys[index];
   return (
     <p className="dq-bar-effect" aria-hidden="true">
       {binding && <KeyCap binding={binding} />}

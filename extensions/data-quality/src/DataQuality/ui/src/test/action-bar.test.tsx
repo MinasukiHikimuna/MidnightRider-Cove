@@ -61,6 +61,33 @@ it("shows a tile per action key, says what each does, and counts the rest under 
   expect(onFind).toHaveBeenCalledTimes(1);
 });
 
+it("gives each keyboard row that holds actions a line of its own, in key order", () => {
+  api.request.mockResolvedValue({ name: "Tag" });
+  const list = actions(5);
+  // Pinned to s and a, three Auto actions, and one without a key.
+  list[0] = { ...list[0], shortcut: "s" };
+  list[4] = { ...list[4], shortcut: "a" };
+  list.push({ id: "none", label: "Hidden", steps: [], shortcut: "none" });
+  const { region } = bar(list);
+  const lines = [...region.querySelectorAll<HTMLElement>(".dq-bar-line")];
+  expect(lines).toHaveLength(2);
+  const labels = (line: HTMLElement) =>
+    within(line)
+      .getAllByRole("button")
+      .map((tile) => tile.getAttribute("aria-label") ?? tile.textContent);
+  expect(labels(lines[0])).toEqual(["q Action 2", "w Action 3", "e Action 4"]);
+  // The a row keeps its order by key, not by review order, and Find action closes the last line.
+  expect(labels(lines[1])).toEqual(["a Action 5", "s Action 1", "Find action, 1 more"]);
+  expect(within(region).queryByRole("button", { name: /Hidden/ })).not.toBeInTheDocument();
+});
+
+it("keeps Find action when no action has a key", () => {
+  const { region } = bar([{ id: "none", label: "Hidden", steps: [], shortcut: "none" }]);
+  const lines = [...region.querySelectorAll<HTMLElement>(".dq-bar-line")];
+  expect(lines).toHaveLength(1);
+  expect(within(lines[0]).getByRole("button", { name: "Find action, 1 more" })).toBeInTheDocument();
+});
+
 it("names a tag action's group and says when there are no actions", () => {
   const assign: TagReviewAction = { id: "assign", label: "Classify", effect: { mode: "SET_TAG_GROUP", tagGroupId: 8 } };
   const first = bar([assign], { tagGroups: [{ id: 8, name: "Classification" }] });
@@ -100,14 +127,36 @@ function layout(widths: Record<string, number>) {
 
 it("puts the summary on a line of its own when the tiles then need fewer rows", () => {
   layout({ "dq-action-bar": 1000, "dq-bar-summary": 300, "dq-bar-hints": 250, "dq-bar-tile": 120 });
-  // 21 tiles: 7 rows beside the summary (3 a row), 1 + 3 rows under it (8 a row).
+  // Lines of 11 tiles and of 9 tiles plus Find action: 4 + 4 rows beside the summary (3 a row),
+  // 1 + 2 + 2 under it (8 a row).
   expect(bar(actions(20)).region).toHaveClass("dq-bar-stacked");
 });
 
 it("keeps the summary beside the tiles when that takes no more rows", () => {
   layout({ "dq-action-bar": 1000, "dq-bar-summary": 300, "dq-bar-hints": 250, "dq-bar-tile": 120 });
-  // 4 tiles: 2 rows beside the summary, 1 + 1 under it.
-  expect(bar(actions(3)).region).not.toHaveClass("dq-bar-stacked");
+  // 3 tiles on one line: 1 row beside the summary, 1 + 1 under it.
+  expect(bar(actions(2)).region).not.toHaveClass("dq-bar-stacked");
+});
+
+it("puts the summary on its own line at a tie when that keeps each keyboard row on one line", () => {
+  layout({ "dq-action-bar": 1000, "dq-bar-summary": 300, "dq-bar-hints": 250, "dq-bar-tile": 120 });
+  // Three actions on q, w, e and three on a, s, d, then Find action: beside the summary (3 a row)
+  // the q row fits and the a row wraps, 1 + 2 rows; under it 1 + 1 + 1, the rows unbroken.
+  const list = actions(6);
+  list[3] = { ...list[3], shortcut: "a" };
+  list[4] = { ...list[4], shortcut: "s" };
+  list[5] = { ...list[5], shortcut: "d" };
+  expect(bar(list).region).toHaveClass("dq-bar-stacked");
+});
+
+it("counts every keyboard row's line on its own when choosing the layout", () => {
+  layout({ "dq-action-bar": 1000, "dq-bar-summary": 300, "dq-bar-hints": 250, "dq-bar-tile": 120 });
+  // Nine actions on the q row and one on a, then Find action: beside the summary (3 a row) the
+  // lines take 3 + 1 rows, under it 1 + 2 + 1 with the q row still broken, so the summary stays
+  // beside them. As one flow of 11 tiles, they would have taken 4 rows beside it and 1 + 2 under.
+  const list = actions(10);
+  list[9] = { ...list[9], shortcut: "a" };
+  expect(bar(list).region).not.toHaveClass("dq-bar-stacked");
 });
 
 it("pauses every tile, Find action included, and says why while the review is edited", () => {

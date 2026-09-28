@@ -193,7 +193,7 @@ export function reviewEntityType(review: Review): ReviewEntityType {
 }
 
 /**
- * Action keys in the order actions are assigned to them: the letter rows of a Finnish/Swedish
+ * Action keys in keyboard order, the order Auto fills them: the letter rows of a Finnish/Swedish
  * keyboard, skipping n and m (previous/next in the grid preview). None needs AltGr. The keys are
  * fixed: reviewKeys.ts registers them with Cove whatever keyboard preset the user has.
  */
@@ -202,11 +202,110 @@ export const ACTION_KEYS = [
   "a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä",
   "z", "x", "c", "v", "b",
 ] as const;
+export type ActionKey = (typeof ACTION_KEYS)[number];
+/** The action keys by keyboard row: q…å, a…ä, z…b. */
+export const ACTION_KEY_ROWS: ReadonlyArray<readonly ActionKey[]> = [
+  ACTION_KEYS.slice(0, 11),
+  ACTION_KEYS.slice(11, 22),
+  ACTION_KEYS.slice(22),
+];
 
-/** The key for an action's position; later actions have none and are reached with Find action. */
-export function actionShortcut(action: ReviewAction, index: number): string {
-  void action;
-  return ACTION_KEYS[index] ?? "";
+/** The saved `shortcut` of an action without a key, reached only through Find action. */
+export const NO_ACTION_KEY = "none";
+/** How an action gets its key: pinned to one, none, or Auto (the next free key). */
+export type ActionKeyChoice = ActionKey | typeof NO_ACTION_KEY | "auto";
+
+export function isActionKey(value: unknown): value is ActionKey {
+  return typeof value === "string" && (ACTION_KEYS as readonly string[]).includes(value);
+}
+
+/**
+ * An action's saved `shortcut`, read: one of the action keys pins it there, "none" leaves it
+ * without a key, and anything else (no value, or the digits older versions saved) is Auto.
+ */
+export function actionKeyChoice(action: Pick<ReviewAction, "shortcut">): ActionKeyChoice {
+  const value = action.shortcut;
+  return isActionKey(value) || value === NO_ACTION_KEY ? value : "auto";
+}
+
+/** Which key each of a review's actions has; see actionKeyMap. */
+export interface ActionKeyMap {
+  /** Each action's key, by its position among the review's actions; "" when it has none. */
+  keys: ReadonlyArray<ActionKey | "">;
+  /** The position of the action on each key that holds one. */
+  actionOn: ReadonlyMap<ActionKey, number>;
+  /**
+   * Actions pinned to a key an earlier action is pinned to (imported or hand-edited data): the
+   * earlier one keeps the key and these take a key as Auto does.
+   */
+  duplicatePins: ReadonlySet<number>;
+}
+
+/**
+ * The keys of a review's actions. Pinned keys come first; a key pinned twice stays with the first
+ * action. Then the Auto actions, in review order, take the free keys in keyboard order
+ * (ACTION_KEYS; n and m are never used). Actions set to no key, and Auto actions past the last
+ * free key, have none and are reached with Find action. Everything that shows, registers or
+ * edits action keys reads them from here.
+ */
+export function actionKeyMap(actions: ReadonlyArray<Pick<ReviewAction, "shortcut">>): ActionKeyMap {
+  const keys: Array<ActionKey | ""> = actions.map(() => "");
+  const actionOn = new Map<ActionKey, number>();
+  const duplicatePins = new Set<number>();
+  const auto: number[] = [];
+  actions.forEach((action, index) => {
+    const choice = actionKeyChoice(action);
+    if (choice === NO_ACTION_KEY) return;
+    if (choice !== "auto") {
+      if (!actionOn.has(choice)) {
+        actionOn.set(choice, index);
+        keys[index] = choice;
+        return;
+      }
+      duplicatePins.add(index);
+    }
+    auto.push(index);
+  });
+  const free = ACTION_KEYS.filter((key) => !actionOn.has(key));
+  auto.forEach((index, position) => {
+    const key = free[position];
+    if (key === undefined) return;
+    keys[index] = key;
+    actionOn.set(key, index);
+  });
+  return { keys, actionOn, duplicatePins };
+}
+
+/**
+ * The actions after choosing one action's key. Choosing a key another action holds swaps them:
+ * that action takes this one's pinned key, or turns Auto when this one had no pin of its own. Any
+ * other action still pinned to a key that changes hands turns Auto, so each choice takes effect
+ * as made. Auto clears the saved key; No key saves "none".
+ */
+export function withActionKey<A extends ReviewAction>(
+  actions: readonly A[],
+  index: number,
+  choice: ActionKeyChoice,
+): A[] {
+  const { keys, actionOn } = actionKeyMap(actions);
+  const settings = new Map<number, string | undefined>([[index, choice === "auto" ? undefined : choice]]);
+  if (isActionKey(choice)) {
+    const holder = actionOn.get(choice);
+    const own = keys[index];
+    if (holder !== undefined && holder !== index)
+      settings.set(holder, own && actions[index].shortcut === own ? own : undefined);
+  }
+  const claimed = new Set([...settings.values()].filter(isActionKey));
+  return actions.map((action, position) => {
+    const setting = settings.has(position)
+      ? settings.get(position)
+      : isActionKey(action.shortcut) && claimed.has(action.shortcut)
+        ? undefined
+        : action.shortcut;
+    if (setting === action.shortcut) return action;
+    const { shortcut: _previous, ...rest } = action;
+    return (setting === undefined ? rest : { ...rest, shortcut: setting }) as A;
+  });
 }
 
 export function moveItem<T>(items: T[], index: number, delta: number): T[] {
@@ -512,11 +611,12 @@ export function mergeReviews(...sources: Review[][]): Review[] {
 
 /**
  * The name of a review's copy: "<name> copy", else "<name> copy 2", "<name> copy 3", …, the first
- * that no review has (names compared trimmed, ignoring case).
+ * that no review has (names compared trimmed, ignoring case). A copy's copy numbers on from the
+ * same name: "<name> copy" gives "<name> copy 2", not "<name> copy copy".
  */
 export function copyName(name: string, reviews: readonly Review[]): string {
   const taken = new Set(reviews.map((review) => review.name.trim().toLocaleLowerCase()));
-  const base = `${name.trim()} copy`;
+  const base = `${name.trim().replace(/ copy(?: \d+)?$/i, "")} copy`;
   for (let number = 1; ; number++) {
     const candidate = number === 1 ? base : `${base} ${number}`;
     if (!taken.has(candidate.toLocaleLowerCase())) return candidate;

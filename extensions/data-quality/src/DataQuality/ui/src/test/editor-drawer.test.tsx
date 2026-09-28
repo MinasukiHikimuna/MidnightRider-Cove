@@ -1,4 +1,5 @@
 import { createEvent, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { draftSignature, EditorDrawer } from "../EditorDrawer";
@@ -530,4 +531,147 @@ it("shows an incomplete action that Find an action hides when Save is refused", 
   expect(find).toHaveValue("");
   expect(within(drawer).getByRole("textbox", { name: "Button label" })).toHaveValue("");
   expect(within(drawer).getByRole("textbox", { name: "Button label" })).toHaveFocus();
+});
+
+const keyButton = (drawer: HTMLElement, name: string) =>
+  within(drawer).getByRole("button", { name: new RegExp(`^Key for ${name}: `) });
+const picker = () => screen.queryByRole("dialog", { name: /^Key for / });
+const shortcuts = () => latest.actions.map((action) => action.shortcut);
+
+it("pins a key, swaps with the action holding it, and sets Auto or No key from the key picker", () => {
+  const { drawer, tab } = open(video);
+  tab("Actions");
+  expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: Q, Auto");
+  fireEvent.click(keyButton(drawer, "Kept"));
+  const map = picker()!;
+  expect(map).toHaveAccessibleName("Key for Kept");
+  // Every key says what holds it; n and m are shown but cannot be chosen.
+  expect(within(map).getByRole("button", { name: "Q: this action, Auto" })).toHaveFocus();
+  expect(within(map).getByRole("button", { name: "W: Swapped, Auto" })).toBeEnabled();
+  expect(within(map).getByRole("button", { name: "S: free" })).toBeEnabled();
+  expect(within(map).getByRole("button", { name: /^N: not available/ })).toBeDisabled();
+  expect(within(map).getByRole("button", { name: /^M: not available/ })).toBeDisabled();
+  expect(within(map).getByRole("button", { name: /^Auto/ })).toHaveAttribute("aria-pressed", "true");
+  // A free key pins the action there; the picker closes and hands focus back to the key.
+  fireEvent.click(within(map).getByRole("button", { name: "S: free" }));
+  expect(picker()).toBeNull();
+  expect(shortcuts()).toEqual(["s", undefined, undefined]);
+  expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: S, pinned");
+  expect(keyButton(drawer, "Kept")).toHaveFocus();
+  expect(keyButton(drawer, "Swapped")).toHaveAccessibleName("Key for Swapped: Q, Auto");
+  // A key another action holds swaps them. Swapped had no pin to give, so Kept, which held s,
+  // turns Auto.
+  fireEvent.click(keyButton(drawer, "Swapped"));
+  fireEvent.click(within(picker()!).getByRole("button", { name: "S: Kept, pinned" }));
+  expect(shortcuts()).toEqual([undefined, "s", undefined]);
+  expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: Q, Auto");
+  // Pinned on both sides, the other action takes the chooser's pinned key.
+  fireEvent.click(keyButton(drawer, "Absent"));
+  fireEvent.click(within(picker()!).getByRole("button", { name: "A: free" }));
+  fireEvent.click(keyButton(drawer, "Absent"));
+  fireEvent.click(within(picker()!).getByRole("button", { name: "S: Swapped, pinned" }));
+  expect(shortcuts()).toEqual([undefined, "a", "s"]);
+  // No key leaves the action to Find action; Auto clears the pin.
+  fireEvent.click(keyButton(drawer, "Kept"));
+  fireEvent.click(within(picker()!).getByRole("button", { name: /^No key/ }));
+  expect(shortcuts()).toEqual(["none", "a", "s"]);
+  expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: no key, Find action only");
+  fireEvent.click(keyButton(drawer, "Swapped"));
+  fireEvent.click(within(picker()!).getByRole("button", { name: /^Auto/ }));
+  expect(latest.actions[1]).not.toHaveProperty("shortcut");
+  expect(keyButton(drawer, "Swapped")).toHaveAccessibleName("Key for Swapped: Q, Auto");
+});
+
+it("works the key picker from the keyboard, and Esc closes only the picker", async () => {
+  const user = userEvent.setup();
+  const { drawer, tab, onCancel } = open(video);
+  tab("Actions");
+  const button = keyButton(drawer, "Swapped");
+  fireEvent.click(button);
+  expect(button).toHaveAttribute("aria-expanded", "true");
+  const map = picker()!;
+  const focused = () => (document.activeElement as HTMLElement).getAttribute("aria-label");
+  expect(focused()).toBe("W: this action, Auto");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+  expect(focused()).toBe("E: Absent, Auto");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(focused()).toBe("D: free");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(focused()).toBe("C: free");
+  fireEvent.keyDown(document.activeElement!, { key: "End" });
+  expect(focused()).toBe("B: free");
+  // Below the keys: Auto and No key.
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(within(map).getByRole("button", { name: /^No key/ }));
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  expect(document.activeElement).toBe(within(map).getByRole("button", { name: /^Auto/ }));
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  expect(focused()).toBe("Z: free");
+  // Tab goes round the picker: the map's key, Auto, No key, and back.
+  await user.keyboard("{Tab}");
+  expect(document.activeElement).toBe(within(map).getByRole("button", { name: /^Auto/ }));
+  await user.keyboard("{Tab}{Tab}");
+  expect(focused()).toBe("Z: free");
+  await user.keyboard("{Shift>}{Tab}{/Shift}");
+  expect(document.activeElement).toBe(within(map).getByRole("button", { name: /^No key/ }));
+  await user.keyboard("{Shift>}{Tab}{Tab}{/Shift}");
+  expect(focused()).toBe("Z: free");
+  // Esc closes the picker, not the drawer, and changes nothing.
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(picker()).toBeNull();
+  expect(onCancel).not.toHaveBeenCalled();
+  expect(button).toHaveFocus();
+  expect(shortcuts()).toEqual([undefined, undefined, undefined]);
+  // Enter opens the picker from the key, and Enter on a key chooses it.
+  await user.keyboard("{Enter}");
+  expect(picker()).not.toBeNull();
+  await user.keyboard("{ArrowLeft}{Enter}");
+  expect(picker()).toBeNull();
+  expect(shortcuts()).toEqual([undefined, "q", undefined]);
+  expect(button).toHaveFocus();
+  // A press outside closes it too.
+  fireEvent.click(button);
+  fireEvent.mouseDown(document.querySelector(".dq-key-picker-backdrop")!);
+  expect(picker()).toBeNull();
+  expect(button).toHaveFocus();
+});
+
+it("warns about a key pinned twice until a key is chosen again", () => {
+  const { drawer, tab } = open({
+    ...video,
+    actions: video.actions.map((action) => ({ ...action, shortcut: "w" })),
+  });
+  tab("Actions");
+  // The first pin wins; the later ones take free keys as Auto does, and say so.
+  expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: W, pinned");
+  expect(keyButton(drawer, "Swapped")).toHaveAccessibleName("Key for Swapped: Q, Auto (W is pinned twice)");
+  expect(within(drawer).getAllByText("W is pinned twice")).toHaveLength(2);
+  // Its key and the picker say it works as Auto.
+  expect(keyButton(drawer, "Absent")).toHaveAccessibleName("Key for Absent: E, Auto (W is pinned twice)");
+  fireEvent.click(keyButton(drawer, "Absent"));
+  expect(within(picker()!).getByRole("button", { name: /^Auto/ })).toHaveAttribute("aria-pressed", "true");
+  expect(within(picker()!).getByRole("button", { name: "W: Kept, pinned" })).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(within(picker()!).getByRole("button", { name: "W: Kept, pinned" }));
+  // The chooser had no pin of its own, so Kept turns Auto, as does the other stale pin.
+  expect(shortcuts()).toEqual([undefined, undefined, "w"]);
+  expect(within(drawer).queryByText("W is pinned twice")).toBeNull();
+});
+
+it("starts a copy of a pinned action on Auto and keeps a copy without a key keyless", () => {
+  const { drawer, tab } = open({
+    ...video,
+    actions: [
+      { ...video.actions[0], shortcut: "s" },
+      { ...video.actions[1], shortcut: "none" },
+    ],
+  });
+  tab("Actions");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Duplicate Kept" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Duplicate Swapped" }));
+  expect(latest.actions.map((action) => [action.label, action.shortcut])).toEqual([
+    ["Kept", "s"],
+    ["Kept copy", undefined],
+    ["Swapped", "none"],
+    ["Swapped copy", "none"],
+  ]);
 });

@@ -26,13 +26,15 @@ import {
 } from "@cove/runtime/lucide-react";
 import type { TagGroup } from "./api";
 import { ActionsFromTags } from "./ActionsFromTags";
-import { KeyCap } from "./ActionPad";
 import type { TagTrees } from "./effectPreview";
 import { actionEffectParts, actionTagIds } from "./FindAction";
+import { ActionKeyButton } from "./KeyPicker";
 import {
   hasContradictoryAssessments,
+  NO_ACTION_KEY,
   reviewEntityType,
   validAction,
+  withActionKey,
   type MediaReview,
   type MediaReviewAction,
   type Review,
@@ -41,7 +43,7 @@ import {
   type ReviewStep,
   type TagReviewAction,
 } from "./model";
-import { useReviewKeyLabels } from "./reviewKeys";
+import { useActionKeyMap } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
 
 const STEP_MODES: ReadonlyArray<{ mode: ReviewStep["mode"]; label: string }> = [
@@ -86,10 +88,12 @@ function newAction(entityType: ReviewEntityType): ReviewAction {
 }
 
 /**
- * The review's actions as compact rows in key order: drag handle, key, label and what the action
- * changes, with duplicate, delete and expand. One action at a time opens in full to edit its label
- * and ordered steps (or, in tag reviews, its effect). Find an action narrows the rows by label;
- * reordering, by dragging a handle or Alt + ↑/↓ on it, works on the full list only.
+ * The review's actions as compact rows in review order: drag handle, key, label and what the
+ * action changes, with duplicate, delete and expand. The key opens the key picker, which pins the
+ * action to a key, leaves it to Auto (the next free key in keyboard order) or gives it none. One
+ * action at a time opens in full to edit its label and ordered steps (or, in tag reviews, its
+ * effect). Find an action narrows the rows by label; reordering, by dragging a handle or
+ * Alt + ↑/↓ on it, works on the full list only.
  */
 export function ActionsEditor({
   review,
@@ -116,7 +120,7 @@ export function ActionsEditor({
   const entityType = reviewEntityType(review);
   const media = entityType !== "tag";
   const actions = review.actions as readonly ReviewAction[];
-  const keys = useReviewKeyLabels();
+  const keyMap = useActionKeyMap(actions);
   const names = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
   const [filter, setFilter] = useState("");
   const [fromTags, setFromTags] = useState(false);
@@ -192,8 +196,12 @@ export function ActionsEditor({
   }
   function duplicate(index: number) {
     const action = actions[index];
+    // A key holds one action: the copy of a pinned action starts on Auto, and one without a key
+    // stays without.
+    const { shortcut, ...copied } = structuredClone(action);
     const copy = {
-      ...structuredClone(action),
+      ...copied,
+      ...(shortcut === NO_ACTION_KEY ? { shortcut } : {}),
       id: crypto.randomUUID(),
       label: `${action.label} copy`,
     };
@@ -264,7 +272,8 @@ export function ActionsEditor({
           </label>
         </div>
         <p className="dq-actions-hint">
-          Letters follow this order. Drag a handle, or press Alt + ↑ / ↓, to reorder.
+          Choose a key on its key cap; Auto takes the next free key in this order. Drag a handle,
+          or press Alt + ↑ / ↓, to reorder.
         </p>
         <span role="status" className="dq-actions-status">
           {added?.actions === actions
@@ -313,7 +322,16 @@ export function ActionsEditor({
                 <ActionRow
                   action={action}
                   entityType={entityType}
-                  binding={keys.action(index)}
+                  keyButton={
+                    <ActionKeyButton
+                      actions={actions}
+                      index={index}
+                      keyMap={keyMap}
+                      name={action.label.trim() || "New action"}
+                      onChoose={(choice) => update(withActionKey(actions, index, choice))}
+                    />
+                  }
+                  takenPin={keyMap.duplicatePins.has(index) ? action.shortcut : undefined}
                   effect={actionEffectParts(action, names, tagGroups, trees)}
                   open={open}
                   detailId={`${baseId}-detail-${action.id}`}
@@ -367,7 +385,8 @@ export function ActionsEditor({
 function ActionRow({
   action,
   entityType,
-  binding,
+  keyButton,
+  takenPin,
   effect,
   open,
   detailId,
@@ -381,8 +400,10 @@ function ActionRow({
 }: {
   action: ReviewAction;
   entityType: ReviewEntityType;
-  /** The action's key; "" past the last action key. */
-  binding: string;
+  /** The action's key, as a button that opens the key picker. */
+  keyButton: ReactNode;
+  /** A key the action is pinned to that an earlier action is pinned to as well. */
+  takenPin?: string;
   effect: ReturnType<typeof actionEffectParts>;
   open: boolean;
   detailId: string;
@@ -413,13 +434,7 @@ function ActionRow({
         >
           <GripVertical aria-hidden="true" />
         </button>
-        {binding ? (
-          <KeyCap binding={binding} />
-        ) : (
-          <span className="dq-key dq-key-none" title="Reached with Find action">
-            ·
-          </span>
-        )}
+        {keyButton}
         {/* A click on the name or the summary opens the action too; the button at the end is the
             control for keyboards and assistive technology. */}
         <div className="dq-action-row-summary" onClick={onToggle}>
@@ -439,6 +454,15 @@ function ActionRow({
             <span className="dq-action-problem">
               <AlertTriangle aria-hidden="true" />
               {problem}
+            </span>
+          )}
+          {takenPin && (
+            <span
+              className="dq-action-problem"
+              title={`An earlier action is pinned to ${takenPin.toLocaleUpperCase()} too, so this one takes a free key as Auto does. Choose its key to settle it.`}
+            >
+              <AlertTriangle aria-hidden="true" />
+              {`${takenPin.toLocaleUpperCase()} is pinned twice`}
             </span>
           )}
         </div>
