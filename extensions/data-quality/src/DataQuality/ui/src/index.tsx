@@ -6,11 +6,11 @@ import React, {
   useRef,
   useState,
   useSyncExternalStore,
-  type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
+  ConfirmDialog,
   DetailListToolbar,
   TAG_CRITERIA,
   TAG_SORT_OPTIONS,
@@ -25,6 +25,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  Download,
   ExternalLink,
   Film,
   Grid3X3,
@@ -32,12 +34,9 @@ import {
   List,
   Loader2,
   Pencil,
-  Plus,
   RotateCcw,
   Save,
-  Settings,
   Trash2,
-  Upload,
   X,
 } from "@cove/runtime/lucide-react";
 import {
@@ -45,7 +44,6 @@ import {
   createOccurrenceAbsenceField,
   findTags,
   findMedia,
-  mediaLabel,
   getConfirmedAbsentTagsFieldStatus,
   getOccurrenceAbsenceFieldStatus,
   listTagGroups,
@@ -57,6 +55,7 @@ import {
   runTagReviewAction,
   settleReviewWrites,
   saveReviews,
+  StaleReviewsError,
   videoPreviewStatusUrl,
   videoPreviewUrl,
   videoScreenshotUrl,
@@ -78,7 +77,6 @@ import {
   isReviewGridArrowTarget,
   reviewGridArrowDelta,
   mergeReviews,
-  parseReviews,
   reviewEntityType,
   toggleShownReviewSelection,
   type Review,
@@ -90,12 +88,7 @@ import {
   type ReviewEntityType,
 } from "./model";
 import { ActionBar } from "./ActionBar";
-import {
-  draftSignature,
-  EditorDrawer,
-  exportReviewDraft,
-  ReviewDetailsFields,
-} from "./EditorDrawer";
+import { draftSignature, EditorDrawer } from "./EditorDrawer";
 import { KeyCap } from "./ActionPad";
 import { FindAction } from "./FindAction";
 import { useTagTrees, type TagTrees } from "./effectPreview";
@@ -105,9 +98,18 @@ import {
   MoreMenu,
   ReviewHeader,
   ReviewPager,
+  type MoreMenuItem,
 } from "./ReviewHeader";
 import { ReviewWorkspace } from "./ReviewWorkspace";
-import { ReviewEntityIcon } from "./ReviewEntityIcon";
+import {
+  ReviewList,
+  sortReviews,
+  type ReviewCounts,
+  type ReviewSort,
+  type SortDirection,
+} from "./ReviewList";
+import { newReview, NewReviewDialog, type ReviewDraft } from "./NewReviewDialog";
+import { downloadReviews, exportReview, readReviewFile } from "./reviewFiles";
 import { useReviewKeyLabels, useReviewKeys } from "./reviewKeys";
 import { queryKeys, readQuery, defaultQuery, effectiveReview, writeQuery } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
@@ -138,8 +140,15 @@ interface ReviewPage {
   items: ReviewEntity[];
   totalCount: number;
 }
-type ReviewBrowserSort = "name" | "count";
-type ReviewBrowserDirection = "asc" | "desc";
+/** Where the reviews are kept: the account, the account without write access, or this browser. */
+type StorageMode = "account" | "readOnly" | "browser";
+const STORAGE_SUMMARY: Record<StorageMode, string> = {
+  account: "saved to your account",
+  readOnly: "saved to your account, read-only",
+  browser: "saved in this browser only",
+};
+/** Where focus goes once the reviews list shows: its heading, or the row of a review. */
+type ListFocus = "heading" | { reviewId: string };
 /** The grid as it was when its editor drawer opened, for Cancel to restore. */
 interface GridEditSnapshot {
   temporaryReview: Review | null;
@@ -267,6 +276,7 @@ export function DataQualityPage({
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
   const [tagGroupsError, setTagGroupsError] = useState("");
   const [canConfigure, setCanConfigure] = useState(true);
+  const [storageMode, setStorageMode] = useState<StorageMode>("account");
   const [storageNotice, setStorageNotice] = useState("");
   const [progressError, setProgressError] = useState("");
   const [progressLoadBlocked, setProgressLoadBlocked] = useState(false);
@@ -274,19 +284,35 @@ export function DataQualityPage({
   // "<review id>:<query revision>" of the last load that finished, for requests waiting on it.
   const [loadedFor, setLoadedFor] = useState("");
   const [activeId, setActiveId] = useState(selectedReviewId);
-  const [reviewCounts, setReviewCounts] = useState<
-    Record<string, number | null>
-  >({});
-  const [reviewBrowserSort, setReviewBrowserSort] =
-    useState<ReviewBrowserSort>("name");
-  const [reviewBrowserDirection, setReviewBrowserDirection] =
-    useState<ReviewBrowserDirection>("asc");
-  const reviewBrowserHeadingRef = useRef<HTMLHeadingElement>(null);
-  const focusReviewBrowser = useRef(false);
-  // A request to open the active review's editor drawer, from Manage reviews; whichever view shows
-  // the review opens it once its queue has loaded, then clears the request.
+  const [reviewCounts, setReviewCounts] = useState<ReviewCounts>({});
+  const reviewCountsRef = useRef(reviewCounts);
+  reviewCountsRef.current = reviewCounts;
+  // Counts belong to one visit of the list: back from a review, every review counts again.
+  const [countsForList, setCountsForList] = useState(!activeId);
+  if (countsForList !== !activeId) {
+    setCountsForList(!activeId);
+    if (!activeId) setReviewCounts({});
+  }
+  const [listSort, setListSort] = useState<ReviewSort>("name");
+  const [listDirection, setListDirection] = useState<SortDirection>("asc");
+  const listHeadingRef = useRef<HTMLHeadingElement>(null);
+  const listFocus = useRef<ListFocus | null>(null);
+  // What the last import or deletion did, under the page's header: on the list, or in the open
+  // review when deleting it failed.
+  const [pageNotice, setPageNotice] = useState<{ text: string; alert: boolean } | null>(null);
+  const [importing, setImporting] = useState(false);
+  // New review or Duplicate, and Delete… awaiting confirmation. Both are modal: while either is
+  // open the grid's own keys wait, as Cove's wait for any dialog.
+  const [creating, setCreating] = useState<ReviewDraft | null>(null);
+  const [deleting, setDeleting] = useState<{ review: Review; pending: boolean } | null>(null);
+  const pageDialogOpen = !!creating || !!deleting;
+  const pageDialogRef = useRef(pageDialogOpen);
+  pageDialogRef.current = pageDialogOpen;
+  // Nothing else on the list changes the reviews while one of these saves.
+  const listLocked = importing || !!deleting;
+  // A request to open the active review's editor drawer (Edit on the list, a created review);
+  // whichever view shows the review opens it once its queue has loaded, then clears the request.
   const [editRequest, setEditRequest] = useState(0);
-  const [managerOpen, setManagerOpen] = useState(false);
   // The grid's editor drawer: the review's definition being edited (its queue criteria stay the
   // live queue's), and the save state.
   const [gridEditor, setGridEditor] = useState<{
@@ -347,26 +373,6 @@ export function DataQualityPage({
   const writeSubject =
     entityType === "tag" ? "Tag" : mediaKind === "audio" ? "Audio" : "Video";
   const canWriteCurrent = entityType === "tag" ? canWriteTags : canWriteMedia;
-  const sortedReviews = useMemo(() => {
-    const direction = reviewBrowserDirection === "asc" ? 1 : -1;
-    return [...reviews].sort((left, right) => {
-      if (reviewBrowserSort === "count") {
-        const leftCount = reviewCounts[left.id];
-        const rightCount = reviewCounts[right.id];
-        const leftKnown = typeof leftCount === "number";
-        const rightKnown = typeof rightCount === "number";
-        if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
-        if (leftKnown && rightKnown && leftCount !== rightCount)
-          return (leftCount - rightCount) * direction;
-      }
-      return (
-        left.name.localeCompare(right.name, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        }) * direction
-      );
-    });
-  }, [reviewBrowserDirection, reviewBrowserSort, reviewCounts, reviews]);
   const pendingToolbarObjectFilter = useRef<Record<string, unknown> | null>(
     null,
   );
@@ -382,10 +388,10 @@ export function DataQualityPage({
     perPage: 40,
   });
   const [queue, setQueue] = useState<ReviewPage>({ items: [], totalCount: 0 });
-  // Opening another review straight from a card grid (Manage reviews → Edit) renders it before
-  // its load resets the page: a tag review's items must never be drawn as video cards, or the
-  // reverse, nor the last review's filter be saved as this one's progress. The queue and its
-  // readiness belong to the review they were loaded for.
+  // Opening another review straight from a card grid (a duplicate once created, or browser
+  // navigation) renders it before its load resets the page: a tag review's items must never be
+  // drawn as video cards, or the reverse, nor the last review's filter be saved as this one's
+  // progress. The queue and its readiness belong to the review they were loaded for.
   const [queueReviewId, setQueueReviewId] = useState(activeId);
   if (queueReviewId !== activeId) {
     setQueueReviewId(activeId);
@@ -501,6 +507,12 @@ export function DataQualityPage({
     const timeout = window.setTimeout(() => setMessage(""), 4000);
     return () => window.clearTimeout(timeout);
   }, [message]);
+  // What an import or a deletion did stays a while; a refused import stays until the next action.
+  useEffect(() => {
+    if (!pageNotice || pageNotice.alert) return;
+    const timeout = window.setTimeout(() => setPageNotice(null), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [pageNotice]);
 
   useEffect(() => {
     const ids = videoReview
@@ -556,6 +568,7 @@ export function DataQualityPage({
       setCanWriteTags(result.canWriteTags ?? false);
       setCanReadTagGroups(result.canReadTagGroups ?? false);
       setCanConfigure(result.canConfigure ?? true);
+      setStorageMode(result.storage ?? "account");
       setStorageNotice(result.storageNotice ?? "");
       if (activeId && !result.reviews.some((item) => item.id === activeId)) {
         setActiveId("");
@@ -595,11 +608,13 @@ export function DataQualityPage({
     void loadAllReviews();
   }, []);
 
+  // Each review on the list counts its matching items on its own. An import or a deletion counts
+  // only the reviews without a count (new ones, or ones whose count failed); the others keep theirs.
   useEffect(() => {
     if (activeId || reviews.length === 0) return;
     const controller = new AbortController();
-    setReviewCounts({});
     for (const item of reviews) {
+      if (typeof reviewCountsRef.current[item.id] === "number") continue;
       const countRequest =
         isOccurrenceReview(item)
           ? resolvePerformers(item, controller.signal).then(ids => ids?.length === 0 ? { items: [], totalCount: 0 } : findMedia(occurrenceSceneReview(item, ids), { ...item.view.filter, page: 1, perPage: 1 }, controller.signal))
@@ -630,11 +645,21 @@ export function DataQualityPage({
     return () => controller.abort();
   }, [activeId, reviews]);
 
+  // Back from a review, the list's heading takes focus; after a deletion, the review that took the
+  // deleted one's place (or the heading, when none is left). A deletion sets the target as its
+  // confirmation closes, which may render after the list already lost the row.
   useLayoutEffect(() => {
-    if (activeId || reviewsLoading || !focusReviewBrowser.current) return;
-    focusReviewBrowser.current = false;
-    reviewBrowserHeadingRef.current?.focus();
-  }, [activeId, reviewsLoading]);
+    const target = listFocus.current;
+    if (activeId || reviewsLoading || !target) return;
+    listFocus.current = null;
+    const row =
+      target === "heading"
+        ? null
+        : [...(pageRef.current?.querySelectorAll<HTMLElement>("[data-review-id]") ?? [])].find(
+            (link) => link.dataset.reviewId === target.reviewId,
+          );
+    (row ?? listHeadingRef.current)?.focus();
+  }, [activeId, reviewsLoading, deleting, reviews]);
 
   const absenceFieldGeneration = useRef(0);
   const refreshAbsenceFieldStatus = useCallback(async () => {
@@ -855,9 +880,10 @@ export function DataQualityPage({
     };
   }, [review?.id, usesWorkspace, queryRevision]);
 
-  // Manage reviews → Edit on a review in the card grid opens its drawer once that review's queue
-  // has loaded. A queue URL that cannot be read stops the load: the request is dropped then rather
-  // than left to open the drawer much later.
+  // Edit on the reviews list (or a review just created) opens a card grid review's drawer once
+  // its queue has loaded. Such requests come with the review's own URL, which chooseReview writes
+  // without query state; should one ever meet a queue URL that cannot be read, which stops the
+  // load, it is dropped rather than left to open the drawer much later.
   useEffect(() => {
     if (!editRequest || usesWorkspace || !review) return;
     if (queueUrlError) {
@@ -963,9 +989,11 @@ export function DataQualityPage({
     window.requestAnimationFrame(() => {
       // Never pull focus out of a field the reviewer is in, such as the search
       // that just reloaded the queue: on a card, their next letters would apply
-      // actions. Nor out of the editor drawer, whose draft the reload previews.
+      // actions. Nor out of the editor drawer, whose draft the reload previews,
+      // nor from behind the page's New review, Duplicate or Delete… dialog.
       // The card still becomes the focused one for the keys.
       if (
+        pageDialogRef.current ||
         isEditableTarget(document.activeElement) ||
         document.activeElement?.closest(".dq-drawer")
       )
@@ -1257,7 +1285,7 @@ export function DataQualityPage({
       event.metaKey
     )
       return;
-    if (managerOpen) return;
+    if (pageDialogOpen) return;
     const target = event.target;
     const withinPage =
       target instanceof Node && pageRef.current?.contains(target) === true;
@@ -1316,7 +1344,7 @@ export function DataQualityPage({
     () => {},
   );
   gridArrowNavigationRef.current = (event) => {
-    if (usesWorkspace || managerOpen || previewOpen || findOpen) return;
+    if (usesWorkspace || pageDialogOpen || previewOpen || findOpen) return;
     if (pending || queueLoading || !itemIds.length) return;
     if (
       event.defaultPrevented ||
@@ -1374,7 +1402,7 @@ export function DataQualityPage({
     enabled:
       !!review &&
       !usesWorkspace &&
-      !managerOpen &&
+      !pageDialogOpen &&
       !gridEditor &&
       !previewOpen &&
       !findOpen &&
@@ -1418,14 +1446,175 @@ export function DataQualityPage({
   function chooseReview(id: string) {
     setLayoutOverride(null);
     setEditRequest(0);
+    setPageNotice(null);
     setActiveId(id);
     writeSelectedReviewId(id);
   }
 
   function showAllReviews() {
-    focusReviewBrowser.current = true;
-    setReviewCounts({});
+    listFocus.current = "heading";
     chooseReview("");
+  }
+
+  /** Opens a review with its editor drawer, which its view opens once the queue has loaded. */
+  function editReview(id: string) {
+    if (id !== activeId) chooseReview(id);
+    setEditRequest((value) => value + 1);
+  }
+
+  /** New review, or Duplicate of a saved review: the dialog asks for the kind, name and description. */
+  function startCreating(source?: Review) {
+    setPageNotice(null);
+    setCreating({
+      review: source
+        ? { ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name} copy` }
+        : newReview("video", { id: crypto.randomUUID(), name: "", description: "" }),
+      duplicate: !!source,
+      saving: false,
+      error: "",
+    });
+  }
+
+  /** Create & configure: the review is saved, then opens with its editor drawer. */
+  async function createReview() {
+    if (!creating || creating.saving) return;
+    const created = { ...creating.review, name: creating.review.name.trim() } as Review;
+    const invalid = reviewValidation(created);
+    if (invalid) {
+      setCreating({ ...creating, error: invalid });
+      return;
+    }
+    setCreating({ ...creating, saving: true, error: "" });
+    try {
+      if (!(await updateReviews([...reviews, created]))) throw new Error("Could not save reviews.");
+      setCreating(null);
+      editReview(created.id);
+    } catch (error) {
+      setCreating(
+        (current) =>
+          current && {
+            ...current,
+            saving: false,
+            error:
+              "Could not save reviews. Your edits are still open. " +
+              (error instanceof Error ? error.message : "Retry saving."),
+          },
+      );
+    }
+  }
+
+  /**
+   * Delete… confirmed: the review goes, from the list or from its own view. A failed deletion
+   * closes the confirmation, which hands focus back to the menu it came from, and says why under
+   * the page's header.
+   */
+  async function deleteReview() {
+    if (!deleting || deleting.pending) return;
+    const target = deleting.review;
+    // On the list, focus then moves to the review that takes the deleted one's place.
+    const order = sortReviews(reviews, reviewCounts, listSort, listDirection).map((item) => item.id);
+    const rest = order.filter((id) => id !== target.id);
+    const successor = rest[Math.min(order.indexOf(target.id), rest.length - 1)];
+    setDeleting({ review: target, pending: true });
+    try {
+      if (!(await updateReviews(reviews.filter((item) => item.id !== target.id))))
+        throw new Error("Could not save reviews.");
+      // Deleting the open review leaves it for the list, which starts at its heading.
+      listFocus.current =
+        target.id !== activeId && successor ? { reviewId: successor } : "heading";
+      setPageNotice({ text: `Deleted “${target.name}”.`, alert: false });
+    } catch (error) {
+      setPageNotice({ text: `“${target.name}” was not deleted. ${listSaveFailure(error)}`, alert: true });
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  /**
+   * Import adds the reviews of a review file that the list does not have yet; a review already in
+   * the list (the same id) stays as it is. A deleted review comes back when imported again.
+   */
+  async function importReviews(file: File) {
+    if (listLocked || !canConfigure) return;
+    setPageNotice(null);
+    setImporting(true);
+    try {
+      const imported = await readReviewFile(file);
+      const merged = mergeReviews(reviews, imported);
+      const added = merged.length - reviews.length;
+      const kept = imported.length - added;
+      if (added && !(await updateReviews(merged))) throw new Error("Could not save reviews.");
+      setPageNotice({
+        alert: false,
+        text: !imported.length
+          ? "Nothing to import: the file holds no reviews."
+          : !added
+            ? "Nothing imported: the reviews in this file are already in the list."
+            : `Imported ${added === 1 ? "1 review" : `${added} reviews`}.` +
+              (kept === 1
+                ? " 1 review already in the list stays as it is."
+                : kept
+                  ? ` ${kept} reviews already in the list stay as they are.`
+                  : ""),
+      });
+    } catch (error) {
+      setPageNotice({ alert: true, text: `Could not import “${file.name}”. ${listSaveFailure(error)}` });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /** Why an import or a deletion failed, in the list's words: the list keeps no draft to export. */
+  function listSaveFailure(error: unknown) {
+    if (error instanceof StaleReviewsError)
+      return "Reviews changed in another browser. Reload the page to get them, then try again.";
+    return error instanceof Error ? error.message : "Try again.";
+  }
+
+  /** A saved review's own items, on its row in the list and in its More menu. */
+  function reviewMenuItems(target: Review): MoreMenuItem[] {
+    const locked = !canConfigure || listLocked;
+    return [
+      {
+        label: "Duplicate",
+        icon: <Copy aria-hidden="true" />,
+        disabled: locked,
+        onSelect: () => startCreating(target),
+      },
+      {
+        label: "Export",
+        icon: <Download aria-hidden="true" />,
+        onSelect: () => exportReview(target),
+      },
+      {
+        label: "Delete…",
+        icon: <Trash2 aria-hidden="true" />,
+        danger: true,
+        separated: true,
+        disabled: locked,
+        onSelect: () => {
+          setPageNotice(null);
+          setDeleting({ review: target, pending: false });
+        },
+      },
+    ];
+  }
+
+  /** An open review's More menu: Edit review (the view's own), the review's items, All reviews. */
+  function openReviewMenuItems(
+    target: Review,
+    edit: { onSelect(): void; disabled?: boolean },
+  ): MoreMenuItem[] {
+    return [
+      { label: "Edit review", icon: <Pencil aria-hidden="true" />, ...edit },
+      ...reviewMenuItems(target),
+      {
+        label: "All reviews",
+        icon: <ChevronLeft aria-hidden="true" />,
+        separated: true,
+        onSelect: showAllReviews,
+      },
+    ];
   }
 
   async function updateReviews(next: Review[]): Promise<boolean> {
@@ -1584,6 +1773,18 @@ export function DataQualityPage({
           </button>
         </p>
       )}
+      {pageNotice &&
+        (pageNotice.alert ? (
+          <p role="alert" className="dq-alert">
+            <AlertTriangle aria-hidden="true" />
+            {pageNotice.text}
+          </p>
+        ) : (
+          // The page's live region announces it.
+          <p className="dq-status" aria-hidden="true">
+            {pageNotice.text}
+          </p>
+        ))}
     </>
   );
 
@@ -1600,6 +1801,10 @@ export function DataQualityPage({
           : undefined
       }
     >
+      {/* Always present, so what an import or a deletion did is announced when it changes. */}
+      <p className="dq-sr-only" aria-live="polite">
+        {pageNotice && !pageNotice.alert ? pageNotice.text : ""}
+      </p>
       {review && usesWorkspace ? (
         <ReviewWorkspace
           key={review.id}
@@ -1612,8 +1817,7 @@ export function DataQualityPage({
           onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined}
           pageControls={{
             onBack: showAllReviews,
-            onManage: () => setManagerOpen(true),
-            manageDisabled: !canConfigure,
+            moreItems: (edit) => openReviewMenuItems(savedReview ?? review, edit),
             onGrid: videoReview
               ? () => setLayoutOverride({ id: videoReview.id, mode: "multiple" })
               : undefined,
@@ -1623,148 +1827,32 @@ export function DataQualityPage({
       ) : review ? (
         renderGridReview(review)
       ) : (
-        <>
-          <header className="data-quality-header">
-            <div className="dq-header-copy">
-              <h1>Data Quality</h1>
-            </div>
-            <button
-              className="dq-header-action"
-              type="button"
-              aria-label="Manage reviews"
-              title="Manage reviews"
-              disabled={!canConfigure}
-              onClick={() => setManagerOpen(true)}
-            >
-              <Settings />
-            </button>
-          </header>
-          {pageNotices}
-          {reviews.length ? (
-            <section
-              className="dq-review-browser"
-              aria-labelledby="dq-reviews-title"
-            >
-              <div className="dq-review-browser-heading">
-                <div>
-                  <h2
-                    id="dq-reviews-title"
-                    ref={reviewBrowserHeadingRef}
-                    tabIndex={-1}
-                  >
-                    Reviews
-                  </h2>
-                  <p>Choose a review to open its queue.</p>
-                  <span className="dq-sr-only" role="status">
-                    {reviews.every(
-                      (item) => reviewCounts[item.id] !== undefined,
-                    )
-                      ? reviews.some((item) => reviewCounts[item.id] === null)
-                        ? "Review counts loaded; some counts are unavailable."
-                        : "Review counts loaded."
-                      : ""}
-                  </span>
-                </div>
-                <div className="dq-review-browser-sort">
-                  <label>
-                    <span className="dq-sr-only">Sort reviews by</span>
-                    <select
-                      aria-label="Sort reviews by"
-                      value={reviewBrowserSort}
-                      onChange={(event) =>
-                        setReviewBrowserSort(
-                          event.target.value as ReviewBrowserSort,
-                        )
-                      }
-                    >
-                      <option value="name">Name</option>
-                      <option value="count">Item count</option>
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    aria-label={
-                      reviewBrowserDirection === "asc"
-                        ? "Ascending"
-                        : "Descending"
-                    }
-                    title={
-                      reviewBrowserDirection === "asc"
-                        ? "Ascending"
-                        : "Descending"
-                    }
-                    onClick={() =>
-                      setReviewBrowserDirection((current) =>
-                        current === "asc" ? "desc" : "asc",
-                      )
-                    }
-                  >
-                    <ChevronRight
-                      className={
-                        reviewBrowserDirection === "asc"
-                          ? "dq-sort-ascending"
-                          : "dq-sort-descending"
-                      }
-                    />
-                  </button>
-                </div>
-              </div>
-              <div className="dq-review-browser-list">
-                {sortedReviews.map((item) => {
-                  const count = reviewCounts[item.id];
-                  const itemType = reviewEntityType(item);
-                  const singular =
-                    itemType === "tag"
-                      ? "tag"
-                      : isOccurrenceReview(item)
-                        ? mediaLabel(mediaKindOf(itemType)).queue
-                        : mediaLabel(mediaKindOf(itemType)).one;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      disabled={pending}
-                      onClick={() => chooseReview(item.id)}
-                    >
-                      <span className="dq-review-browser-summary">
-                        <span className="dq-review-title">
-                          <ReviewEntityIcon entityType={itemType} />
-                          <strong>{item.name}</strong>
-                        </span>
-                        <span
-                          className="dq-review-count"
-                          aria-label={
-                            count === undefined
-                              ? `Counting matching ${singular}s`
-                              : count === null
-                                ? `Matching ${singular} count unavailable`
-                                : `${count.toLocaleString()} matching ${count === 1 ? singular : `${singular}s`}`
-                          }
-                        >
-                          {count === undefined
-                            ? "…"
-                            : count === null
-                              ? "—"
-                              : count.toLocaleString()}
-                        </span>
-                      </span>
-                      {item.description && (
-                        <span className="dq-review-rule-name">
-                          {item.description}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ) : (
-            <div className="dq-empty">
-              <Film />
-              <p>No saved reviews are available in this browser.</p>
-            </div>
-          )}
-        </>
+        <ReviewList
+          reviews={reviews}
+          counts={reviewCounts}
+          sort={listSort}
+          direction={listDirection}
+          onSortChange={setListSort}
+          onDirectionChange={setListDirection}
+          storage={STORAGE_SUMMARY[storageMode]}
+          canConfigure={canConfigure}
+          busy={listLocked}
+          headingRef={listHeadingRef}
+          notices={pageNotices}
+          onOpen={chooseReview}
+          onNew={() => startCreating()}
+          onImport={(file) => void importReviews(file)}
+          onExportAll={() => downloadReviews(reviews, "data-quality-reviews.json")}
+          rowMenuItems={(item) => [
+            {
+              label: "Edit",
+              icon: <Pencil aria-hidden="true" />,
+              disabled: !canConfigure || listLocked,
+              onSelect: () => editReview(item.id),
+            },
+            ...reviewMenuItems(item),
+          ]}
+        />
       )}
 
       {previewOpen && previewVideo && videoReview && (
@@ -1812,20 +1900,27 @@ export function DataQualityPage({
           onClose={() => setFindOpen(false)}
         />
       )}
-      {managerOpen && (
-        <ReviewManager
-          reviews={reviews}
-          onSave={updateReviews}
-          onEdit={(id) => {
-            // The review opens in its own layout (a new or duplicated one included), and whichever
-            // view shows it opens the drawer once its queue has loaded.
-            if (id !== activeId) chooseReview(id);
-            setEditRequest((value) => value + 1);
-            setManagerOpen(false);
-          }}
-          onClose={() => setManagerOpen(false)}
+      {creating && (
+        <NewReviewDialog
+          draft={creating}
+          onChange={(next) => setCreating((current) => current && { ...current, review: next, error: "" })}
+          onCreate={() => void createReview()}
+          onCancel={() => setCreating(null)}
         />
       )}
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete review?"
+        message={
+          deleting
+            ? `“${deleting.review.name}” will be deleted. Export it first to keep a copy you can import again.`
+            : ""
+        }
+        confirmLabel="Delete review"
+        isPending={deleting?.pending ?? false}
+        onConfirm={() => void deleteReview()}
+        onCancel={() => setDeleting((current) => (current?.pending ? current : null))}
+      />
     </div>
   );
 
@@ -2163,7 +2258,7 @@ export function DataQualityPage({
               {videoReview && (
                 <LayoutSwitch
                   mode="multiple"
-                  disabled={pending || queueLoading || managerOpen || !!gridEditor}
+                  disabled={pending || queueLoading || pageDialogOpen || !!gridEditor}
                   onChange={() =>
                     setLayoutOverride({ id: videoReview.id, mode: "single" })
                   }
@@ -2178,13 +2273,10 @@ export function DataQualityPage({
               />
               <MoreMenu
                 disabled={pending || !!gridEditor}
-                items={[
-                  {
-                    label: "Manage reviews",
-                    disabled: queueLoading || !canConfigure,
-                    onSelect: () => setManagerOpen(true),
-                  },
-                ]}
+                items={openReviewMenuItems(savedReview ?? current, {
+                  onSelect: openGridEditor,
+                  disabled: queueLoading || queueUrlError || !canConfigure,
+                })}
               />
             </>
           }
@@ -3080,348 +3172,6 @@ function ReviewPreview({
           onClose={() => setFindOpen(false)}
         />
       )}
-    </div>
-  );
-}
-
-/** A new review of the given kind, keeping only its id, name and description: no actions and the
- * kind's default queue. */
-function newReview(
-  entityType: ReviewEntityType,
-  { id, name, description }: Pick<Review, "id" | "name" | "description">,
-): Review {
-  const base = { id, name, description };
-  const view = (filter: Record<string, unknown>, extra: Partial<Review["view"]> = {}) => ({
-    filter: { page: 1, perPage: 40, ...filter },
-    objectFilter: {},
-    displayMode: "grid" as const,
-    searchMode: "text",
-    ...extra,
-  });
-  switch (entityType) {
-    case "tag":
-      // Tag reviews start with the ungrouped tags, by name.
-      return {
-        ...base,
-        entityType: "tag",
-        view: {
-          ...view({ sort: "name", direction: "asc" }, { startFrom: "beginning" }),
-          objectFilter: { tagGroupsCriterion: { value: [], modifier: "IS_NULL" } },
-        },
-        actions: [],
-      };
-    case "audio":
-      // Audios have no card grid, so an audio review always runs the single-item workspace.
-      return {
-        ...base,
-        entityType: "audio",
-        view: view({ sort: "date", direction: "desc" }, { startFrom: "end", reviewMode: "single" }),
-        actions: [],
-      };
-    case "performerOccurrence":
-    case "audioPerformerOccurrence":
-      return {
-        ...base,
-        entityType,
-        view: view({ sort: "date", direction: "desc" }, { startFrom: "end" }),
-        actions: [],
-        occurrence: {
-          targetMode: "all",
-          performerIds: [],
-          performerFilter: {},
-          condition: "any",
-          conditionTagIds: [],
-          tagIds: [],
-          multiple: true,
-        },
-      };
-    default:
-      return {
-        ...base,
-        entityType: "video",
-        view: view({ sort: "date", direction: "desc" }, { startFrom: "end" }),
-        actions: [],
-      };
-  }
-}
-
-/**
- * Manage reviews: the list with New review, Duplicate, Delete, Import and Export. Edit opens the
- * review with its editor drawer. New review and Duplicate first ask for the kind, name and
- * description; Create & configure saves the review and opens it in the drawer.
- */
-function ReviewManager({
-  reviews,
-  onEdit,
-  onSave,
-  onClose,
-}: {
-  reviews: Review[];
-  /** Opens the review with its editor drawer, closing the manager. */
-  onEdit(id: string): void;
-  onSave: (reviews: Review[]) => boolean | Promise<boolean>;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState<Review | null>(null);
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [entityTypeLocked, setEntityTypeLocked] = useState(false);
-  const dialog = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialog.current
-      ?.querySelector<HTMLElement>(
-        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      )
-      ?.focus({ preventScroll: true });
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus({ preventScroll: true });
-    };
-  }, []);
-  function handleManagerKey(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (event.defaultPrevented) {
-      event.stopPropagation();
-      return;
-    }
-    if (event.key === "Escape") {
-      consumeShortcut(event);
-      if (!saving) onClose();
-      return;
-    }
-    if (event.key !== "Tab") {
-      event.stopPropagation();
-      return;
-    }
-    const focusable = [
-      ...(dialog.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      ) ?? []),
-    ].filter((element) => element.offsetParent !== null);
-    if (!focusable.length) {
-      consumeShortcut(event);
-      dialog.current?.focus();
-      return;
-    }
-    const activeIndex = focusable.indexOf(
-      document.activeElement as HTMLElement,
-    );
-    if (event.shiftKey && activeIndex <= 0) {
-      consumeShortcut(event);
-      focusable.at(-1)?.focus();
-    } else if (!event.shiftKey && activeIndex === focusable.length - 1) {
-      consumeShortcut(event);
-      focusable[0].focus();
-    } else event.stopPropagation();
-  }
-  function begin(review?: Review) {
-    setEntityTypeLocked(Boolean(review));
-    setDraft(
-      review
-        ? structuredClone(review)
-        : newReview("video", { id: crypto.randomUUID(), name: "", description: "" }),
-    );
-    setError("");
-  }
-  async function createFromDraft() {
-    if (saving || !draft) return;
-    const invalid = reviewValidation(draft);
-    if (invalid) {
-      setError(invalid);
-      return;
-    }
-    const created = { ...draft, name: draft.name.trim() };
-    setSaving(true);
-    setError("");
-    try {
-      if (!(await onSave([...reviews, created]))) throw new Error("Could not save reviews.");
-      onEdit(created.id);
-    } catch (error) {
-      setError(
-        "Could not save reviews. Your edits are still open. " +
-          (error instanceof Error ? error.message : "Retry saving."),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function persistList(next: Review[]) {
-    if (saving) return;
-    setSaving(true);
-    setError("");
-    try {
-      if (!(await onSave(next))) throw new Error("Could not save reviews.");
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not save reviews.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function importFile(event: ChangeEvent<HTMLInputElement>) {
-    if (saving) return;
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (file.size > 2_000_000) {
-      setError("Review files must be smaller than 2 MB.");
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      const imported = parseReviews(await file.text());
-      if (!(await onSave(mergeReviews(reviews, imported))))
-        throw new Error("Could not save reviews.");
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Could not import reviews.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div
-      ref={dialog}
-      tabIndex={-1}
-      className="dq-manager-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Manage Data Quality reviews"
-      onKeyDown={handleManagerKey}
-    >
-      <div className="dq-manager">
-        <header>
-          <div>
-            <h2>{draft ? "New review" : "Manage reviews"}</h2>
-            <p>
-              {draft
-                ? "Name the review, then configure its queue and actions."
-                : "Edit opens a review with its editor beside the queue."}
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close review manager"
-            disabled={saving}
-            onClick={onClose}
-          >
-            <X />
-          </button>
-        </header>
-        {error && (
-          <p role="alert" className="dq-alert">
-            {error}
-          </p>
-        )}
-        <fieldset disabled={saving} className="dq-manager-content">
-          {draft ? (
-            <div className="dq-new-review">
-              <div className="dq-new-review-fields">
-                <ReviewDetailsFields
-                  review={draft}
-                  onChange={setDraft}
-                  entityTypeLocked={entityTypeLocked}
-                  onEntityTypeChange={(entityType) => {
-                    if (!entityTypeLocked && entityType !== reviewEntityType(draft))
-                      setDraft(newReview(entityType, draft));
-                  }}
-                  autoFocus
-                />
-              </div>
-              <div className="dq-new-review-footer">
-                <button
-                  className="dq-button"
-                  type="button"
-                  onClick={() => exportReviewDraft(draft)}
-                >
-                  Export draft
-                </button>
-                <button className="dq-button" type="button" onClick={onClose}>
-                  Cancel
-                </button>
-                <button
-                  className="dq-button primary"
-                  type="button"
-                  onClick={() => void createFromDraft()}
-                >
-                  Create & configure
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="dq-manager-tools">
-                <button type="button" className="dq-button" onClick={() => {
-                  const url = URL.createObjectURL(new Blob([JSON.stringify(reviews, null, 2)], { type: "application/json" }));
-                  const link = document.createElement("a"); link.href = url; link.download = "data-quality-reviews.json"; link.click(); URL.revokeObjectURL(url);
-                }}>Export reviews</button>
-                <button
-                  className="dq-button"
-                  type="button"
-                  onClick={() => begin()}
-                >
-                  <Plus /> New review
-                </button>
-                <label className="dq-button">
-                  <Upload /> Import reviews
-                  <input
-                    type="file"
-                    accept="application/json,.json"
-                    onChange={importFile}
-                  />
-                </label>
-              </div>
-              <div className="dq-review-list">
-                {reviews.map((review) => (
-                  <article key={review.id}>
-                    <div>
-                      <div className="dq-review-title">
-                        <ReviewEntityIcon entityType={reviewEntityType(review)} />
-                        <strong>{review.name}</strong>
-                      </div>
-                      <p>{review.description || "No description"}</p>
-                    </div>
-                    <button type="button" onClick={() => onEdit(review.id)}>
-                      <Pencil /> Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        begin({
-                          ...structuredClone(review),
-                          id: crypto.randomUUID(),
-                          name: `${review.name} copy`,
-                        })
-                      }
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Delete ${review.name}`}
-                      onClick={() => {
-                        if (window.confirm(`Delete review “${review.name}”?`))
-                          void persistList(
-                            reviews.filter((item) => item.id !== review.id),
-                          );
-                      }}
-                    >
-                      <Trash2 />
-                    </button>
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-        </fieldset>
-      </div>
     </div>
   );
 }

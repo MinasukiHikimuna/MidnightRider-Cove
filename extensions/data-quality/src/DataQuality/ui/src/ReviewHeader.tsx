@@ -1,6 +1,8 @@
 import {
+  Fragment,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -267,24 +269,47 @@ export function CardViewSwitch<T extends string>({
 
 export interface MoreMenuItem {
   label: string;
+  icon?: ReactNode;
   disabled?: boolean;
+  /** Destructive, such as Delete…: drawn in the danger colour. */
+  danger?: boolean;
+  /** Starts a new group of items, after a divider. */
+  separated?: boolean;
   onSelect(): void;
 }
 
-/** "More review options": a menu button; ↑/↓ move, Esc or Tab closes. */
+/**
+ * A menu button with its menu, "More review options" unless labelled otherwise (a reviews-list row
+ * names its review); ↑/↓ move, Esc or Tab closes. The menu opens upwards when the window has no
+ * room for it below the button.
+ */
 export function MoreMenu({
   items,
   disabled,
+  label = "More review options",
 }: {
   items: MoreMenuItem[];
   disabled?: boolean;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [upwards, setUpwards] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  useLayoutEffect(() => {
+    if (!open || !menu.current || !button.current) return;
+    const anchor = button.current.getBoundingClientRect();
+    const needed = menu.current.offsetHeight + 12;
+    const below = window.innerHeight - anchor.bottom;
+    setUpwards(below < needed && anchor.top > below);
+  }, [open]);
   useEffect(() => {
-    if (open) menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    // Without scrolling: an item of a menu about to open upwards would scroll the page first.
+    if (open)
+      menu.current
+        ?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')
+        ?.focus({ preventScroll: true });
   }, [open]);
   useEffect(() => {
     if (disabled) setOpen(false);
@@ -318,13 +343,13 @@ export function MoreMenu({
     }
   };
   return (
-    <div className="dq-menu" onKeyDown={handleKey}>
+    <div className={`dq-menu${open ? " dq-menu-open" : ""}`} onKeyDown={handleKey}>
       <button
         ref={button}
         type="button"
         className="dq-icon-button"
-        aria-label="More review options"
-        title="More review options"
+        aria-label={label}
+        title={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -340,24 +365,28 @@ export function MoreMenu({
             ref={menu}
             id={menuId}
             role="menu"
-            aria-label="More review options"
-            className="dq-menu-list"
+            aria-label={label}
+            className={`dq-menu-list${upwards ? " dq-menu-list-up" : ""}`}
           >
             {items.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                onClick={() => {
-                  // Focus goes back to the button first, so whatever the item opens (the review
-                  // manager) returns focus there when it closes.
-                  close();
-                  item.onSelect();
-                }}
-              >
-                {item.label}
-              </button>
+              <Fragment key={item.label}>
+                {item.separated && <div role="separator" className="dq-menu-separator" />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={item.danger ? "dq-menu-danger" : undefined}
+                  disabled={item.disabled}
+                  onClick={() => {
+                    // Focus goes back to the button first, so whatever the item opens (a dialog)
+                    // returns focus there when it closes.
+                    close();
+                    item.onSelect();
+                  }}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              </Fragment>
             ))}
           </div>
         </>

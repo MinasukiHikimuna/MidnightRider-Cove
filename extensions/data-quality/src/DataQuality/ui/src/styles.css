@@ -2,50 +2,11 @@
   display: grid;
   gap: 0.75rem;
 }
-.data-quality-header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.5rem;
-}
-.dq-header-copy {
-  min-width: 0;
-  flex: 1 1 0;
-  overflow: hidden;
-}
-.data-quality-header h1 {
-  overflow: hidden;
-  font-size: 1.5rem;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dq-header-action {
-  display: inline-flex;
-  width: 2rem;
-  height: 2rem;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.375rem;
-  color: var(--color-secondary);
-}
-.dq-header-action:hover:not(:disabled) {
-  color: var(--color-foreground);
-}
-.dq-header-action:disabled {
-  opacity: 0.4;
-}
-.dq-header-action svg {
-  width: 1rem;
-  height: 1rem;
-}
 .data-quality-page .themed-range-input:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;
 }
-.dq-button,
-.dq-manager button:not([role="tab"]):not(.filter-dialog *) {
+.dq-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -57,17 +18,13 @@
   color: var(--color-foreground);
   font-size: 0.8rem;
 }
-.dq-button:hover,
-.dq-manager
-  button:not([role="tab"]):not(.filter-dialog *):hover:not(:disabled) {
+.dq-button:hover {
   border-color: var(--color-accent);
 }
 .dq-button:disabled {
   opacity: 0.4;
 }
-.dq-button svg,
-.dq-manager button:not(.filter-dialog *) svg,
-.dq-manager label:not(.filter-dialog *) svg {
+.dq-button svg {
   width: 1rem;
   height: 1rem;
 }
@@ -89,132 +46,6 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-.dq-review-browser {
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  background: var(--color-surface);
-}
-.dq-review-browser-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1rem 0.75rem;
-  border-bottom: 1px solid var(--color-border);
-}
-.dq-review-browser-heading > div:first-child {
-  min-width: 0;
-}
-.dq-review-browser-heading h2 {
-  font-size: 1rem;
-  font-weight: 600;
-}
-.dq-review-browser-heading p {
-  margin-top: 0.15rem;
-  color: var(--color-secondary);
-  font-size: 0.8rem;
-}
-.dq-review-browser-sort {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.35rem;
-}
-.dq-review-browser-sort select,
-.dq-review-browser-sort button {
-  min-height: 2rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  background: var(--color-input);
-  color: var(--color-foreground);
-}
-.dq-review-browser-sort select {
-  padding: 0.3rem 1.75rem 0.3rem 0.5rem;
-  font-size: 0.8rem;
-}
-.dq-review-browser-sort button {
-  display: inline-flex;
-  width: 2rem;
-  align-items: center;
-  justify-content: center;
-}
-.dq-review-browser-sort button:hover {
-  border-color: var(--color-accent);
-}
-.dq-review-browser-sort svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-.dq-review-browser-sort .dq-sort-ascending {
-  transform: rotate(-90deg);
-}
-.dq-review-browser-sort .dq-sort-descending {
-  transform: rotate(90deg);
-}
-@media (max-width: 520px) {
-  .dq-review-browser-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-.dq-review-browser-list {
-  display: flex;
-  flex-direction: column;
-}
-.dq-review-browser-list button {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.15rem;
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-}
-.dq-review-browser-list button:last-child {
-  border-bottom: 0;
-}
-.dq-review-browser-list button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-}
-.dq-review-browser-list button:disabled {
-  opacity: 0.5;
-}
-.dq-review-browser-summary {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-.dq-review-title {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.45rem;
-}
-.dq-review-title svg {
-  width: 1rem;
-  height: 1rem;
-  flex: none;
-  color: var(--color-muted);
-}
-.dq-review-browser-summary strong,
-.dq-review-rule-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dq-review-rule-name,
-.dq-review-count {
-  color: var(--color-secondary);
-  font-size: 0.75rem;
-}
-.dq-review-count {
-  flex: none;
-  font-variant-numeric: tabular-nums;
 }
 .dq-grid {
   display: grid;
@@ -370,94 +201,273 @@
     transform: rotate(360deg);
   }
 }
-.dq-manager-backdrop {
-  position: fixed;
-  z-index: 120;
-  inset: 0;
-  display: flex;
-  padding: 0.75rem;
-  background: rgb(0 0 0 / 70%);
-  backdrop-filter: blur(4px);
-}
-.dq-manager header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem;
-  border-color: var(--color-border);
-}
-.dq-manager {
-  width: min(100%, 72rem);
-  max-height: calc(100dvh - 2rem);
-  margin: auto;
-  overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  background: var(--color-background);
-  box-shadow: 0 1rem 3rem rgb(0 0 0 / 40%);
-}
-.dq-manager-content {
-  min-width: 0;
-}
-.dq-manager header {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-background);
-}
-.dq-manager header h2 {
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-.dq-manager header p {
-  color: var(--color-secondary);
-  font-size: 0.75rem;
-}
-.dq-manager-tools,
 .dq-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.75rem;
 }
-.dq-manager-tools input[type="file"] {
-  display: none;
+
+/* The reviews list: the page header with Import, Export all and New review, a line with the
+   number of reviews and the sort order, then the table of reviews. At most 1240 px wide, centred;
+   below 760 px the Type column goes (each review's icon still names its kind). */
+.dq-reviews-page {
+  display: flex;
+  width: min(100%, 1240px);
+  flex-direction: column;
+  gap: 20px;
+  margin-inline: auto;
 }
-.dq-review-list {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.4rem;
-  padding: 0 0.75rem 0.75rem;
+.dq-reviews-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
-.dq-review-list article {
+.dq-reviews-header h1 {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.dq-reviews-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.dq-reviews-header .dq-header-button {
+  height: 34px;
+}
+.dq-header-button.dq-header-button-primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.dq-header-button.dq-header-button-primary:hover:not(:disabled) {
+  border-color: var(--color-accent-hover, var(--color-accent));
+  background: var(--color-accent-hover, var(--color-accent));
+}
+.dq-reviews-page > .dq-status,
+.dq-reviews-page > .dq-alert,
+.dq-reviews-page > p,
+.dq-reviews-page > details {
+  margin: 0;
+}
+.dq-reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dq-reviews-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dq-reviews-summary {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-reviews-sort,
+.dq-reviews-sort > label {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
+  gap: 8px;
 }
-.dq-review-list article > div {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-.dq-review-list p {
-  overflow: hidden;
+.dq-reviews-sort > label {
   color: var(--color-secondary);
-  font-size: 0.75rem;
+  font-size: 0.78125rem;
+}
+.dq-reviews-sort .dq-select {
+  width: auto;
+  min-height: 32px;
+}
+.dq-icon-button.dq-reviews-direction {
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+}
+.dq-reviews-direction svg {
+  width: 15px;
+  height: 15px;
+}
+.dq-reviews-table {
+  width: 100%;
+  table-layout: fixed;
+  border: 1px solid var(--color-border);
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+.dq-reviews-table th,
+.dq-reviews-table td {
+  padding: 0 16px 0 0;
+  vertical-align: middle;
+}
+.dq-reviews-table th {
+  height: 38px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-secondary);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dq-reviews-table td {
+  height: 56px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
+}
+.dq-reviews-table th:first-child,
+.dq-reviews-table td:first-child {
+  padding-left: 18px;
+}
+.dq-reviews-table th:last-child,
+.dq-reviews-table td:last-child {
+  padding-right: 12px;
+}
+.dq-reviews-table tbody tr {
+  position: relative;
+}
+.dq-reviews-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.dq-reviews-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 11px;
+}
+.dq-reviews-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 11px;
+}
+.dq-reviews-table tbody tr:hover td,
+.dq-reviews-table tbody tr:focus-within td {
+  background: color-mix(in srgb, var(--color-card-hover) 70%, transparent);
+}
+/* Column widths come from the header row; the review column takes the rest. */
+.dq-reviews-table th.dq-reviews-type {
+  width: 246px;
+}
+.dq-reviews-table th.dq-reviews-count {
+  width: 126px;
+}
+.dq-reviews-table th.dq-reviews-actions {
+  width: 48px;
+}
+.dq-reviews-table .dq-reviews-count {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.dq-reviews-table td.dq-reviews-type {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--color-foreground) 75%, var(--color-secondary));
+  font-size: 0.8125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-@media (max-width: 700px) {
-  .dq-review-list article {
-    flex-wrap: wrap;
+.dq-reviews-actions {
+  text-align: right;
+}
+/* The name opens the review; its link covers the whole row, under the row's menu. */
+.dq-reviews-link {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+.dq-reviews-link::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+.dq-reviews-link:focus-visible {
+  outline: none;
+}
+.dq-reviews-link:focus-visible::after {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.dq-reviews-link:hover .dq-reviews-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dq-reviews-icon {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--color-card);
+  color: var(--color-secondary);
+}
+.dq-reviews-icon svg {
+  width: 15px;
+  height: 15px;
+}
+/* Above the link's overlay, so a truncated description shows its tooltip; the text is part of the
+   link, so a click there still opens the review. The mark of a count that failed shows why. */
+.dq-reviews-text,
+.dq-reviews-count [title] {
+  position: relative;
+  z-index: 1;
+}
+.dq-reviews-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.dq-reviews-name,
+.dq-reviews-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-reviews-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.dq-reviews-description {
+  color: var(--color-secondary);
+  font-size: 0.78125rem;
+}
+.dq-reviews-actions .dq-menu {
+  z-index: 1;
+  display: inline-flex;
+  vertical-align: middle;
+}
+/* An open row menu stays above the rows after it. */
+.dq-reviews-actions .dq-menu-open {
+  z-index: 3;
+}
+.dq-reviews-actions .dq-icon-button {
+  border: 1px solid transparent;
+}
+.dq-reviews-actions .dq-icon-button[aria-expanded="true"] {
+  border-color: var(--color-border);
+}
+@media (max-width: 760px) {
+  .dq-reviews-table .dq-reviews-type {
+    display: none;
   }
-  .dq-review-list article > div {
-    flex-basis: 100%;
+}
+@media (max-width: 520px) {
+  .dq-reviews-table th:first-child,
+  .dq-reviews-table td:first-child {
+    padding-left: 12px;
+  }
+  .dq-reviews-table th.dq-reviews-count {
+    width: 92px;
   }
 }
 
@@ -913,6 +923,9 @@
   box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 45%);
 }
 .dq-menu-list [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 8px 10px;
   border: 0;
   border-radius: 6px;
@@ -922,6 +935,11 @@
   text-align: left;
   white-space: nowrap;
 }
+.dq-menu-list [role="menuitem"] svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
 .dq-menu-list [role="menuitem"]:hover:not(:disabled),
 .dq-menu-list [role="menuitem"]:focus-visible {
   background: var(--color-card-hover);
@@ -929,6 +947,23 @@
 }
 .dq-menu-list [role="menuitem"]:disabled {
   opacity: 0.45;
+}
+.dq-menu-list .dq-menu-danger {
+  color: color-mix(in srgb, rgb(239 68 68) 70%, var(--color-foreground));
+}
+.dq-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--color-border);
+}
+/* No room below the button (a row near the window's bottom): the menu opens upwards. */
+.dq-menu-list.dq-menu-list-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.dq-menu > .dq-icon-button[aria-expanded="true"] {
+  background: var(--color-card-hover);
+  color: var(--color-foreground);
 }
 
 /* Scope: a header button summarising the occurrence scope, with its controls in a popover. It
@@ -4198,24 +4233,6 @@ textarea.dq-input {
   color: var(--color-secondary);
   font-size: 0.72rem;
 }
-/* New review, in Manage reviews: its kind, name and description, then Create & configure. */
-.dq-new-review-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 1rem 1.25rem;
-}
-.dq-new-review-footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.85rem 1.25rem;
-  border-top: 1px solid var(--color-border);
-}
-.dq-new-review-footer > button:first-child {
-  margin-right: auto;
-}
 /* While the drawer is open the review's actions pause: the pad and the bar say so and dim. */
 .dq-pad-paused-note {
   display: flex;
@@ -4247,4 +4264,85 @@ textarea.dq-input {
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   box-shadow: inset 0 0 0 1px var(--color-accent);
   color: var(--color-foreground);
+}
+
+/* New review and Duplicate: a small modal form for the kind, name and description. */
+.dq-form-dialog {
+  width: min(520px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: clamp(1rem, 12dvh, 120px) auto auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 55%);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+.dq-form-dialog::backdrop {
+  background: rgb(0 0 0 / 70%);
+}
+.dq-form-dialog-header {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+.dq-form-dialog-header h2 {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.dq-form-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px;
+}
+.dq-form-dialog-intro {
+  margin: 0;
+  color: var(--color-secondary);
+}
+.dq-form-dialog-body > .dq-alert {
+  margin: 0;
+}
+.dq-form-dialog-fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dq-form-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-background) 45%, var(--color-surface));
+}
+.dq-form-dialog-space {
+  flex: 1 1 auto;
+}
+.dq-form-dialog-footer .dq-button {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 0.8125rem;
+}
+.dq-form-dialog-footer .dq-button.primary {
+  padding: 0 18px;
+  font-weight: 600;
+}
+.dq-form-dialog-footer .dq-button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.4;
 }

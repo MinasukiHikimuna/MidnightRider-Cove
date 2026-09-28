@@ -117,6 +117,23 @@ declare module "@cove/runtime/components" {
     groupColor?: string | null;
     onClick?(): void;
   }>;
+  /**
+   * Cove's confirmation dialog, as its own pages ask before deleting: a modal with the title, the
+   * message, Cancel (focused on open) and the confirm button, destructive by default. Esc and the
+   * backdrop cancel unless pending; closing hands focus back to what had it. Exported to
+   * extensions since v1.3.0 with these props.
+   */
+  export const ConfirmDialog: ComponentType<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm(): void | Promise<void>;
+    onCancel(): void;
+    destructive?: boolean;
+    isPending?: boolean;
+    errorMessage?: string | null;
+  }>;
   export const EntityDetailTabs: ComponentType<{
     tabs: Array<{
       key: string;
@@ -296,12 +313,15 @@ declare module "@cove/runtime/lucide-react" {
     SVGProps<SVGSVGElement> & { size?: number | string }
   >;
   export const AlertTriangle: Icon;
+  export const ArrowDown: Icon;
+  export const ArrowUp: Icon;
   export const Ban: Icon;
   export const Check: Icon;
   export const ChevronDown: Icon;
   export const ChevronLeft: Icon;
   export const ChevronRight: Icon;
   export const Copy: Icon;
+  export const Download: Icon;
   export const ExternalLink: Icon;
   export const Film: Icon;
   export const Flag: Icon;
@@ -312,6 +332,7 @@ declare module "@cove/runtime/lucide-react" {
   export const LayoutGrid: Icon;
   export const List: Icon;
   export const Loader2: Icon;
+  export const Mic: Icon;
   export const MoreHorizontal: Icon;
   export const Pencil: Icon;
   export const Pin: Icon;
@@ -322,7 +343,6 @@ declare module "@cove/runtime/lucide-react" {
   export const RotateCcw: Icon;
   export const Save: Icon;
   export const Search: Icon;
-  export const Settings: Icon;
   export const SkipForward: Icon;
   export const Tag: Icon;
   export const Tags: Icon;

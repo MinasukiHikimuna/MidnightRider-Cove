@@ -266,6 +266,7 @@ export {
   saveReviews,
   loadProgress,
   saveProgress,
+  StaleReviewsError,
 } from "./storage";
 
 // Media detail GETs use Cove's one-second output cache, varied by query.

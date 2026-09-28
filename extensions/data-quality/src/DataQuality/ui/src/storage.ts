@@ -24,6 +24,12 @@ interface Session {
   writable: boolean;
   durable: boolean;
 }
+/**
+ * The account configuration changed since this browser read it. The message speaks to an editor
+ * whose draft stays open; the reviews list words it for its own actions.
+ */
+export class StaleReviewsError extends Error {}
+
 const sessions = new Map<string, Session>();
 const writes = new Map<string, Promise<unknown>>();
 const has = (permissions: string[], value: string) =>
@@ -265,6 +271,11 @@ async function loadAccountReviews() {
     canWriteTags: has(me.permissions, "tags.write"),
     canReadTagGroups: has(me.permissions, "taggroups.read"),
     canConfigure: !readable || writable,
+    /** Where the configuration is kept: the account, the account without write access, or this browser. */
+    storage: (!readable ? "browser" : writable ? "account" : "readOnly") as
+      | "account"
+      | "readOnly"
+      | "browser",
     storageNotice: !readable
       ? "Reviews and progress are saved only in this browser. Saved filter read and write permissions enable account storage."
       : !writable
@@ -288,7 +299,7 @@ async function persist(key: string, next: Configuration) {
         `/api/savedfilters/${session.recordId}`,
       );
       if (decode(remote.uiOptions).revision !== session.config.revision)
-        throw new Error(
+        throw new StaleReviewsError(
           "Reviews changed in another browser. Your draft is still open. Export it, then reload before saving.",
         );
     }

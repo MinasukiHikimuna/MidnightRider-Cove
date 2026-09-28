@@ -837,6 +837,52 @@ export function EntityDetailTabs({
   );
 }
 
+/**
+ * Cove's ConfirmDialog as the host draws it: a modal dialog named by its title, the message, an
+ * error when given, Cancel (focused on open) and the confirm button, both disabled while pending.
+ * Esc cancels unless pending, and closing hands focus back to what had it before.
+ */
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = "Delete",
+  onConfirm,
+  onCancel,
+  isPending = false,
+  errorMessage = null,
+}: React.ComponentProps<typeof import("@cove/runtime/components").ConfirmDialog>) {
+  const cancel = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancel.current?.focus();
+    return () => previous?.focus();
+  }, [open]);
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Escape" && !isPending) onCancel();
+      }}
+    >
+      <h3>{title}</h3>
+      <p>{message}</p>
+      {errorMessage ? <div>{errorMessage}</div> : null}
+      <button ref={cancel} disabled={isPending} onClick={onCancel}>
+        Cancel
+      </button>
+      <button disabled={isPending} onClick={() => void onConfirm()}>
+        {confirmLabel}
+      </button>
+    </div>
+  );
+}
+
 export function DetailListPagination({
   filter,
   totalCount,

@@ -16,8 +16,11 @@ import type { TagGroup } from "./api";
 import { ActionsEditor } from "./ActionsEditor";
 import type { TagTrees } from "./effectPreview";
 import { PerformerFlagSettings, TagChoiceSettings } from "./OccurrenceReview";
+import { REVIEW_KIND_NAMES } from "./ReviewEntityIcon";
+import { exportReview } from "./reviewFiles";
 import {
   isOccurrenceReview,
+  REVIEW_ENTITY_TYPES,
   reviewEntityType,
   reviewValidation,
   validAction,
@@ -48,18 +51,6 @@ export function draftSignature(review: Review): string {
   );
 }
 
-/** Downloads the draft as a review file that Import reviews reads. */
-export function exportReviewDraft(review: Review) {
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify([review], null, 2)], { type: "application/json" }),
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "data-quality-review.json";
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 /** Name, description and kind of a review: the drawer's Review tab and the new-review form. */
 export function ReviewDetailsFields({
   review,
@@ -87,11 +78,11 @@ export function ReviewDetailsFields({
           disabled={entityTypeLocked}
           onChange={(event) => onEntityTypeChange?.(event.target.value as ReviewEntityType)}
         >
-          <option value="video">Videos</option>
-          <option value="audio">Audios</option>
-          <option value="tag">Tags</option>
-          <option value="performerOccurrence">Performer occurrence tags</option>
-          <option value="audioPerformerOccurrence">Audio performer occurrence tags</option>
+          {REVIEW_ENTITY_TYPES.map((entityType) => (
+            <option key={entityType} value={entityType}>
+              {REVIEW_KIND_NAMES[entityType]}
+            </option>
+          ))}
         </select>
       </label>
       <label className="dq-drawer-field">
@@ -289,7 +280,8 @@ export function EditorDrawer({
               <button
                 type="button"
                 className="dq-text-button"
-                onClick={() => exportReviewDraft(draft)}
+                // Keeps a draft that cannot be saved, for example after an edit in another browser.
+                onClick={() => exportReview(draft)}
               >
                 Export draft
               </button>

@@ -53,7 +53,13 @@ import { ExistingAnswers } from "./ExistingAnswers";
 import { FindAction } from "./FindAction";
 import { PerformerAvatar } from "./PerformerAvatar";
 import { PerformerRankingList } from "./PerformerRankingList";
-import { LayoutSwitch, MoreMenu, ReviewHeader, ReviewPager } from "./ReviewHeader";
+import {
+  LayoutSwitch,
+  MoreMenu,
+  ReviewHeader,
+  ReviewPager,
+  type MoreMenuItem,
+} from "./ReviewHeader";
 import { ScopePopover } from "./ScopePopover";
 import {
   countPerformer,
@@ -131,9 +137,8 @@ interface StayedCursor {
 export interface WorkspacePageControls {
   /** Back to the list of reviews. */
   onBack?(): void;
-  /** Opens the review manager from the More menu. */
-  onManage?(): void;
-  manageDisabled?: boolean;
+  /** The More menu's items, around the workspace's own Edit review. */
+  moreItems?(edit: { onSelect(): void; disabled?: boolean }): MoreMenuItem[];
   /** Video reviews: switch this visit to the card grid. */
   onGrid?(): void;
   /** The page's notices, shown under the header. */
@@ -1428,16 +1433,13 @@ export function ReviewWorkspace({
                 onChange={() => pageControls.onGrid?.()}
               />
             )}
-            {pageControls?.onManage && (
+            {pageControls?.moreItems && (
               <MoreMenu
                 disabled={busy}
-                items={[
-                  {
-                    label: "Manage reviews",
-                    disabled: pageControls.manageDisabled,
-                    onSelect: () => pageControls.onManage?.(),
-                  },
-                ]}
+                items={pageControls.moreItems({
+                  onSelect: beginRuleEdit,
+                  disabled: !onSaveDefaults,
+                })}
               />
             )}
           </>

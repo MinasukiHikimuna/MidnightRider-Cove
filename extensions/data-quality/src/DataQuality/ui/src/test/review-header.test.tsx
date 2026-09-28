@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { LayoutSwitch, MoreMenu, ReviewHeader, ReviewPager } from "../ReviewHeader";
 
@@ -36,6 +36,55 @@ it("opens the More menu on its first item, moves with the arrows and closes with
   fireEvent.click(screen.getByRole("menuitem", { name: "First" }));
   expect(first).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+});
+
+it("names a row's menu after its review, groups its items and marks the destructive one", () => {
+  const onDelete = vi.fn();
+  render(
+    <MoreMenu
+      label="Actions for Weekly check"
+      items={[
+        { label: "Edit", icon: <svg data-testid="edit-icon" />, onSelect: vi.fn() },
+        { label: "Delete…", danger: true, separated: true, onSelect: onDelete },
+      ]}
+    />,
+  );
+  const button = screen.getByRole("button", { name: "Actions for Weekly check" });
+  fireEvent.click(button);
+  const menu = screen.getByRole("menu", { name: "Actions for Weekly check" });
+  const [edit, remove] = within(menu).getAllByRole("menuitem");
+  expect(edit).toContainElement(screen.getByTestId("edit-icon"));
+  expect(edit).toHaveTextContent("Edit");
+  expect(remove).toHaveClass("dq-menu-danger");
+  // The divider comes before the item that starts the group, and the arrows pass over it.
+  expect(within(menu).getByRole("separator").nextElementSibling).toBe(remove);
+  expect(edit).toHaveFocus();
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(remove).toHaveFocus();
+  fireEvent.click(remove);
+  expect(onDelete).toHaveBeenCalledTimes(1);
+  expect(button).toHaveFocus();
+});
+
+it("opens the menu upwards when the window has no room for it below the button", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.getAttribute("role") === "menu" ? 160 : 0;
+  });
+  // The button's place in the window.
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+  const at = (top: number) => rect.mockReturnValue({ top, bottom: top + 32 } as DOMRect);
+  const items = [{ label: "Export", onSelect: vi.fn() }];
+  const { unmount } = render(<MoreMenu label="Near the bottom" items={items} />);
+  at(window.innerHeight - 60);
+  fireEvent.click(screen.getByRole("button", { name: "Near the bottom" }));
+  expect(screen.getByRole("menu")).toHaveClass("dq-menu-list-up");
+  unmount();
+  at(100);
+  render(<MoreMenu label="Near the top" items={items} />);
+  fireEvent.click(screen.getByRole("button", { name: "Near the top" }));
+  expect(screen.getByRole("menu")).not.toHaveClass("dq-menu-list-up");
 });
 
 it("closes the More menu when it becomes unavailable", () => {

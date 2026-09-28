@@ -67,6 +67,7 @@ it("migrates edited reviews to the account and reads them from a clean browser",
   const loaded = await loadReviews();
   expect(loaded.reviews).toEqual([review]);
   expect(loaded.storageNotice).toBe("");
+  expect(loaded.storage).toBe("account");
   await saveReviews(loaded.storageKey, [{ ...review, name: "Durable" }]);
   localStorage.clear();
   const otherBrowser = await loadReviews();
@@ -145,9 +146,43 @@ it("retains local-only operation without saved-filter permissions", async () => 
   const loaded = await loadReviews();
   expect(loaded.canWrite).toBe(false);
   expect(loaded.storageNotice).toMatch(/browser/i);
+  expect(loaded).toMatchObject({ storage: "browser", canConfigure: true });
   await saveReviews(loaded.storageKey, [review]);
   expect((await loadReviews()).reviews).toEqual([review]);
   expect(records).toHaveLength(0);
+});
+
+it("records a deletion as a tombstone, and lifts it when the review is imported again", async () => {
+  const loaded = await loadReviews();
+  await saveReviews(loaded.storageKey, [review]);
+  await saveReviews(loaded.storageKey, []);
+  const config = () =>
+    JSON.parse(records.find((row) => row.mode.includes("configuration"))!.uiOptions);
+  expect(config()).toMatchObject({ reviews: [], deletedIds: [review.id] });
+  await saveReviews(loaded.storageKey, [review]);
+  expect(config()).toMatchObject({ reviews: [review], deletedIds: [] });
+});
+
+it("reads account reviews read-only without saved-filter write permission", async () => {
+  permissions = ["savedfilters.read", "videos.read"];
+  records.push({
+    id: 1,
+    mode: "ext:com.midnightrider.data-quality:configuration",
+    name: "Data Quality configuration",
+    uiOptions: JSON.stringify({
+      version: 2,
+      revision: "r",
+      reviews: [review],
+      deletedIds: [],
+      importedIds: [],
+    }),
+  });
+  localStorage.setItem("cove-data-quality-v2:u:migrated", "true");
+  const loaded = await loadReviews();
+  expect(loaded).toMatchObject({ reviews: [review], storage: "readOnly", canConfigure: false });
+  expect(loaded.storageNotice).toMatch(/read-only/i);
+  await expect(saveReviews(loaded.storageKey, [])).rejects.toThrow(/write permission/i);
+  expect(JSON.parse(records[0].uiOptions).reviews).toEqual([review]);
 });
 
 it("preserves malformed or future-version data without writing over it", async () => {
