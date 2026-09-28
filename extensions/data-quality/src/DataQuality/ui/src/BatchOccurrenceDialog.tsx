@@ -13,6 +13,7 @@ import { Check, ChevronLeft, Flag, Layers, Undo2, X } from "@cove/runtime/lucide
 import { KeyCap } from "./ActionPad";
 import { mediaLabel, request, type TagInfo } from "./api";
 import {
+  ConflictingAnswersError,
   planTags,
   previewOccurrenceBatch,
   runEntries,
@@ -343,6 +344,9 @@ export function BatchOccurrenceDialog({
   const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The last preview refused the chosen answers (two in one condition category): previewing them
+  // again cannot help, so the preview step offers Change answers instead.
+  const [refused, setRefused] = useState(false);
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [listed, setListed] = useState<Listed | null>(null);
@@ -478,6 +482,7 @@ export function BatchOccurrenceDialog({
     setSelected([]);
     setNotice("");
     setError("");
+    setRefused(false);
     setListed(null);
   }
   function close() {
@@ -496,6 +501,7 @@ export function BatchOccurrenceDialog({
     setCarried({});
     setNotice("");
     setError("");
+    setRefused(false);
     setListed(null);
   }
   // A refusal stays in view on the answers until they change.
@@ -526,6 +532,7 @@ export function BatchOccurrenceDialog({
     running.current = true;
     setBusy(true);
     setError("");
+    setRefused(false);
     setNotice("Loading all matching occurrences…");
     setBatch(null);
     setCarried({});
@@ -554,6 +561,7 @@ export function BatchOccurrenceDialog({
             ? failure.message
             : String(failure),
       );
+      setRefused(!abort.signal.aborted && failure instanceof ConflictingAnswersError);
       setNotice("");
     } finally {
       running.current = false;
@@ -1221,6 +1229,13 @@ export function BatchOccurrenceDialog({
           >
             Apply to {previewStats.willChange.toLocaleString()}{" "}
             {previewStats.willChange === 1 ? "occurrence" : "occurrences"}
+          </button>
+        );
+      // Refused answers only change on the Answers step, where the refusal stays in view.
+      if (refused)
+        return (
+          <button key="change-answers" type="button" className="dq-button primary" onClick={back}>
+            Change answers
           </button>
         );
       return (

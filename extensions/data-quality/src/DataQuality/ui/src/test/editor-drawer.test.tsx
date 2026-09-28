@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { draftSignature, EditorDrawer } from "../EditorDrawer";
@@ -21,6 +21,10 @@ beforeEach(() => {
     const id = Number(path.split("/").at(-1));
     return { id, name: `Tag ${id}` };
   });
+  // jsdom has no modal dialogs: the discard confirmation opens as an open dialog element.
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
   Object.defineProperty(window, "requestAnimationFrame", {
     configurable: true,
     value: (callback: FrameRequestCallback) => {
@@ -400,16 +404,73 @@ it("refuses an incomplete draft and shows where it is incomplete", () => {
   expect(onSave).toHaveBeenCalledTimes(1);
 });
 
-it("closes with Esc only while nothing has changed, and with Close or Cancel always", () => {
+const discardDialog = () => screen.queryByRole("dialog", { name: "Discard unsaved changes?" });
+
+it("closes at once with Esc or Close while nothing has changed, and with Cancel always", () => {
   const { drawer, onCancel } = open(video);
   fireEvent.keyDown(drawer, { key: "Escape" });
   expect(onCancel).toHaveBeenCalledTimes(1);
-  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Changed" } });
-  fireEvent.keyDown(within(drawer).getByLabelText("Description"), { key: "Escape" });
-  expect(onCancel).toHaveBeenCalledTimes(1);
   fireEvent.click(within(drawer).getByRole("button", { name: "Close editor" }));
+  expect(onCancel).toHaveBeenCalledTimes(2);
+  // Cancel discards unsaved changes without asking: it says what it does.
+  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Changed" } });
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
   expect(onCancel).toHaveBeenCalledTimes(3);
+  expect(discardDialog()).toBeNull();
+});
+
+it("asks before Esc or Close discard unsaved changes, and Keep editing returns to where they were", () => {
+  const { drawer, onCancel } = open(video);
+  const description = within(drawer).getByLabelText("Description");
+  fireEvent.change(description, { target: { value: "Changed" } });
+  description.focus();
+  // Claimed, so the same Esc cannot also cancel the dialog it opens (Chrome would).
+  expect(fireEvent.keyDown(description, { key: "Escape" })).toBe(false);
+  let dialog = discardDialog()!;
+  expect(dialog).toHaveAttribute("aria-modal", "true");
+  expect(dialog).toHaveTextContent("Closing the editor leaves the review as it was last saved.");
+  expect(within(dialog).getByRole("button", { name: "Keep editing" })).toHaveFocus();
+  expect(onCancel).not.toHaveBeenCalled();
+  // Esc in the confirmation keeps editing. Nothing on the page may take that Esc from the browser,
+  // which closes the modal with it.
+  const escape = createEvent.keyDown(within(dialog).getByRole("button", { name: "Keep editing" }), {
+    key: "Escape",
+  });
+  fireEvent(within(dialog).getByRole("button", { name: "Keep editing" }), escape);
+  expect(escape.defaultPrevented).toBe(false);
+  fireEvent(dialog, new Event("cancel", { cancelable: true }));
+  expect(discardDialog()).toBeNull();
+  expect(description).toHaveFocus();
+  expect(description).toHaveValue("Changed");
+  // Close asks too; Keep editing hands focus back to it.
+  const close = within(drawer).getByRole("button", { name: "Close editor" });
+  close.focus();
+  fireEvent.click(close);
+  dialog = discardDialog()!;
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+  expect(discardDialog()).toBeNull();
+  expect(close).toHaveFocus();
+  expect(onCancel).not.toHaveBeenCalled();
+  // Chrome's second Esc closes the modal without a cancel: that keeps editing as well.
+  fireEvent.click(close);
+  fireEvent(discardDialog()!, new Event("close"));
+  expect(discardDialog()).toBeNull();
+  expect(onCancel).not.toHaveBeenCalled();
+  // A click that left focus outside the drawer (some browsers do not focus a clicked button)
+  // hands it to the drawer, where Esc still works.
+  (document.activeElement as HTMLElement).blur();
+  fireEvent.click(close);
+  fireEvent.click(within(discardDialog()!).getByRole("button", { name: "Keep editing" }));
+  expect(drawer).toHaveFocus();
+});
+
+it("discards unsaved changes from the confirmation as Cancel does", () => {
+  const { drawer, onCancel } = open(video);
+  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Changed" } });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Close editor" }));
+  fireEvent.click(within(discardDialog()!).getByRole("button", { name: "Discard" }));
+  expect(onCancel).toHaveBeenCalledTimes(1);
+  expect(discardDialog()).toBeNull();
 });
 
 it("edits a tag review's action effects, naming a group that is no longer there", async () => {

@@ -167,6 +167,33 @@ export function readQuery(
     startAtEnd: !params.has("page") && startFrom === "end",
   };
 }
+/**
+ * The state of a history entry the page pushed when a review was opened from the list: the entry
+ * before it is the list's. Cove reads a route only from a state with a page, so it reads this
+ * entry's route from its URL, as for the page's other entries.
+ */
+const OPENED_FROM_LIST = { dataQualityOpenedFromList: true } as const;
+
+/** Whether the current history entry is a review opened from the list. */
+export function openedFromList(): boolean {
+  const state: unknown = window.history.state;
+  return (
+    !!state &&
+    typeof state === "object" &&
+    (state as Record<string, unknown>).dataQualityOpenedFromList === true
+  );
+}
+
+/**
+ * Changes the page's URL: a review opened from the list adds a history entry, so Back returns to
+ * the list; every other change (queue criteria, another review from within one) replaces the
+ * current entry, which stays a review opened from the list if it was one.
+ */
+export function writePageUrl(url: string, { openingFromList = false } = {}) {
+  if (openingFromList) window.history.pushState({ ...OPENED_FROM_LIST }, "", url);
+  else window.history.replaceState(openedFromList() ? { ...OPENED_FROM_LIST } : null, "", url);
+}
+
 export function writeQuery(id: string, query: ReviewQuery) {
   const params = new URLSearchParams(window.location.search);
   queryKeys.forEach((key) => params.delete(key));
@@ -187,11 +214,7 @@ export function writeQuery(id: string, query: ReviewQuery) {
     params.set("performerScope", JSON.stringify(query.performerScope));
   if (query.performerFocus)
     params.set("performer", String(query.performerFocus));
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}?${params}${window.location.hash}`,
-  );
+  writePageUrl(`${window.location.pathname}?${params}${window.location.hash}`);
 }
 export function effectiveReview(
   saved: MediaReview,

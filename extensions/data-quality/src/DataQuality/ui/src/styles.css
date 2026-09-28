@@ -3584,6 +3584,14 @@
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
+/* Between about 1400 and 1700 px the review beside it is narrower: a narrower drawer keeps more
+   of the player in view. Wider windows, and those from 900 to 1399 px, keep 720 px; below 900 px
+   it sits in the page (below). */
+@media (min-width: 1400px) and (max-width: 1699px) {
+  .dq-drawer {
+    width: min(600px, 100%);
+  }
+}
 /* Narrow windows have no room beside it: the drawer sits in the page above the review, under
    the header, which stays usable. */
 @media (max-width: 899px) {
@@ -3696,6 +3704,52 @@ textarea.dq-input {
 .dq-drawer-footer .dq-button[aria-disabled="true"] {
   cursor: default;
   opacity: 0.4;
+}
+/* Discard unsaved changes?: a small modal over the page, as Cove's own confirmations look. */
+.dq-confirm-dialog {
+  width: min(400px, calc(100vw - 2rem));
+  margin: auto;
+  padding: 20px 22px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 55%);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.dq-confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+.dq-confirm-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.dq-confirm-dialog p {
+  margin: 0 0 18px;
+  color: var(--color-secondary);
+}
+.dq-confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.dq-confirm-dialog-actions .dq-button {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 0.8125rem;
+}
+.dq-button.dq-button-danger {
+  border-color: rgb(220 38 38);
+  background: rgb(220 38 38);
+  color: white;
+  font-weight: 600;
+}
+.dq-button.dq-button-danger:hover {
+  border-color: rgb(239 68 68);
+  background: rgb(239 68 68);
 }
 .dq-link-button {
   padding: 0;
@@ -4288,7 +4342,7 @@ textarea.dq-input {
   color: var(--color-foreground);
 }
 
-/* New review and Duplicate: a small modal form for the kind, name and description. */
+/* New review: a small modal form for the kind, name and description. */
 .dq-form-dialog {
   width: min(520px, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);

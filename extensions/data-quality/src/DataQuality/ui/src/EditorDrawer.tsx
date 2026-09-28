@@ -122,11 +122,60 @@ function drawerTabs(review: Review, legacyChoices: boolean): DrawerTab[] {
 }
 
 /**
+ * Asks before Esc or Close throw away unsaved changes: a small modal over the page whose Keep
+ * editing (focused, and what Esc means here) returns to the drawer and whose Discard closes it as
+ * Cancel does.
+ */
+function DiscardChangesDialog({
+  onKeepEditing,
+  onDiscard,
+}: {
+  onKeepEditing(): void;
+  onDiscard(): void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const keepEditing = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const textId = useId();
+  useEffect(() => {
+    if (dialog.current && !dialog.current.open) dialog.current.showModal();
+    keepEditing.current?.focus();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="dq-confirm-dialog"
+      aria-labelledby={titleId}
+      aria-describedby={textId}
+      // As for the page's other modals: Cove's shortcuts and the review's keys wait while it is open.
+      aria-modal="true"
+      onCancel={(event) => {
+        event.preventDefault();
+        onKeepEditing();
+      }}
+      // Chrome closes a modal on a second Esc without a cancel it lets us refuse: keep editing.
+      onClose={onKeepEditing}
+    >
+      <h2 id={titleId}>Discard unsaved changes?</h2>
+      <p id={textId}>Closing the editor leaves the review as it was last saved.</p>
+      <div className="dq-confirm-dialog-actions">
+        <button ref={keepEditing} type="button" className="dq-button" onClick={onKeepEditing}>
+          Keep editing
+        </button>
+        <button type="button" className="dq-button dq-button-danger" onClick={onDiscard}>
+          Discard
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
  * Edit review: a drawer over the right-hand column. The header's toolbar, Scope and the queue stay
  * live beside it as the draft's preview (their criteria are the draft's), while the review's
  * actions pause. Review, Appearance and Actions hold the rest of the definition; Save review keeps
- * everything, Cancel or Close restores the view from before editing. Esc closes it while nothing
- * has changed.
+ * everything, Cancel restores the view from before editing. Esc and Close do the same at once while
+ * nothing has changed, and ask first when something has.
  */
 export function EditorDrawer({
   draft,
@@ -179,12 +228,41 @@ export function EditorDrawer({
   const [problem, setProblem] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reveal, setReveal] = useState(0);
+  // Esc or Close with unsaved changes asks first; Keep editing hands focus back to what had it.
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const discardOpener = useRef<HTMLElement | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
+  const aside = useRef<HTMLElement | null>(null);
   const tabs = drawerTabs(draft, legacyChoices);
   const entityType = reviewEntityType(draft);
   const signature = useMemo(() => draftSignature(draft), [draft]);
   // What stopped the last Save press goes as soon as the draft changes.
   useEffect(() => setProblem(""), [signature]);
+  useEffect(() => {
+    if (confirmingDiscard) return;
+    const opener = discardOpener.current;
+    discardOpener.current = null;
+    if (!opener) return;
+    // Back where Esc or Close was pressed; the drawer itself when that is gone, disabled or outside
+    // it (some browsers do not focus a clicked button), so Esc keeps reaching the drawer.
+    const usable =
+      opener.isConnected &&
+      !!aside.current?.contains(opener) &&
+      !(opener instanceof HTMLButtonElement && opener.disabled);
+    (usable ? opener : aside.current)?.focus({ preventScroll: true });
+  }, [confirmingDiscard]);
+
+  /** Esc and Close: without changes the drawer closes as Cancel does, with changes it asks first. */
+  function requestClose() {
+    if (saving || confirmingDiscard) return;
+    if (!dirty) {
+      onCancel();
+      return;
+    }
+    discardOpener.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setConfirmingDiscard(true);
+  }
 
   function save() {
     const trimmed = { ...draft, name: draft.name.trim() } as Review;
@@ -213,163 +291,186 @@ export function EditorDrawer({
 
   const message = problem || error;
   return (
-    <aside
-      ref={drawerRef}
-      className="dq-drawer"
-      role="dialog"
-      aria-label="Edit review"
-      tabIndex={-1}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.defaultPrevented || dirty || saving) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onCancel();
-      }}
-    >
-      <header className="dq-drawer-header">
-        <div className="dq-drawer-title">
-          <span className="dq-eyebrow">Edit review</span>
-          <h2>{draft.name.trim() || "Untitled review"}</h2>
-        </div>
-        <button
-          type="button"
-          className="dq-icon-button"
-          aria-label="Close editor"
-          title="Close without saving"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          <X aria-hidden="true" />
-        </button>
-      </header>
-      <div className="dq-drawer-tabs">
-        <EntityDetailTabs
-          tabs={tabs.map((name) => ({
-            key: name,
-            label: name,
-            count: name === "Actions" ? draft.actions.length : undefined,
-          }))}
-          activeTab={tab}
-          onTabChange={(key) => setTab(key as DrawerTab)}
-        />
-      </div>
-      <div className="dq-drawer-body">
-        <fieldset className="dq-drawer-fields" disabled={saving}>
-          <legend className="dq-sr-only">Review settings</legend>
-          <div className="dq-drawer-panel" role="tabpanel" hidden={tab !== "Review"} aria-label="Review">
-            <ReviewDetailsFields
-              review={draft}
-              onChange={onChange}
-              entityTypeLocked
-              nameRef={nameInput}
-              autoFocus
-            />
-            <label className="dq-drawer-field">
-              <span>Review direction</span>
-              <select
-                className="dq-select"
-                aria-label="Review direction"
-                value={direction}
-                onChange={(event) => onDirectionChange(event.target.value as Direction)}
-              >
-                <option value="end">Start from the end</option>
-                <option value="beginning">Start from the beginning</option>
-              </select>
-              <small className="dq-drawer-note">
-                From the end, the queue opens on its last page and works towards the first.
-              </small>
-            </label>
-            {isOccurrenceReview(draft) && (
-              <PerformerFlagSettings review={draft} onChange={onChange} />
-            )}
-            <div>
-              <button
-                type="button"
-                className="dq-text-button"
-                // Keeps a draft that cannot be saved, for example after an edit in another browser.
-                onClick={() => exportReview(draft)}
-              >
-                Export draft
-              </button>
-            </div>
+    <>
+      <aside
+        ref={(node) => {
+          aside.current = node;
+          if (drawerRef) drawerRef.current = node;
+        }}
+        className="dq-drawer"
+        role="dialog"
+        aria-label="Edit review"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || event.defaultPrevented || saving) return;
+          event.preventDefault();
+          event.stopPropagation();
+          requestClose();
+        }}
+      >
+        <header className="dq-drawer-header">
+          <div className="dq-drawer-title">
+            <span className="dq-eyebrow">Edit review</span>
+            <h2>{draft.name.trim() || "Untitled review"}</h2>
           </div>
-          {tabs.includes("Appearance") && (
-            <div
-              className="dq-drawer-panel"
-              role="tabpanel"
-              hidden={tab !== "Appearance"}
-              aria-label="Appearance"
-            >
-              <AppearanceSettings review={draft} onChange={onChange} />
-            </div>
-          )}
-          <div
-            className="dq-drawer-panel dq-actions-panel"
-            role="tabpanel"
-            hidden={tab !== "Actions"}
-            aria-label="Actions"
+          <button
+            type="button"
+            className="dq-icon-button"
+            aria-label="Close editor"
+            title="Close without saving"
+            disabled={saving}
+            onClick={requestClose}
           >
-            <ActionsEditor
-              review={draft}
-              onChange={onChange}
-              tagGroups={tagGroups}
-              trees={trees}
-              saving={saving}
-              expandedId={expandedId}
-              onExpand={setExpandedId}
-              reveal={reveal}
-            />
-          </div>
-          {legacyChoices && isOccurrenceReview(draft) && (
+            <X aria-hidden="true" />
+          </button>
+        </header>
+        <div className="dq-drawer-tabs">
+          <EntityDetailTabs
+            tabs={tabs.map((name) => ({
+              key: name,
+              label: name,
+              count: name === "Actions" ? draft.actions.length : undefined,
+            }))}
+            activeTab={tab}
+            onTabChange={(key) => setTab(key as DrawerTab)}
+          />
+        </div>
+        <div className="dq-drawer-body">
+          <fieldset className="dq-drawer-fields" disabled={saving}>
+            <legend className="dq-sr-only">Review settings</legend>
             <div
               className="dq-drawer-panel"
               role="tabpanel"
-              hidden={tab !== "Tag choices"}
-              aria-label="Tag choices"
+              hidden={tab !== "Review"}
+              aria-label="Review"
             >
-              <TagChoiceSettings review={draft} onChange={onChange} />
+              <ReviewDetailsFields
+                review={draft}
+                onChange={onChange}
+                entityTypeLocked
+                nameRef={nameInput}
+                autoFocus
+              />
+              <label className="dq-drawer-field">
+                <span>Review direction</span>
+                <select
+                  className="dq-select"
+                  aria-label="Review direction"
+                  value={direction}
+                  onChange={(event) => onDirectionChange(event.target.value as Direction)}
+                >
+                  <option value="end">Start from the end</option>
+                  <option value="beginning">Start from the beginning</option>
+                </select>
+                <small className="dq-drawer-note">
+                  From the end, the queue opens on its last page and works towards the first.
+                </small>
+              </label>
+              {isOccurrenceReview(draft) && (
+                <PerformerFlagSettings review={draft} onChange={onChange} />
+              )}
+              <div>
+                <button
+                  type="button"
+                  className="dq-text-button"
+                  // Keeps a draft that cannot be saved, for example after an edit in another
+                  // browser.
+                  onClick={() => exportReview(draft)}
+                >
+                  Export draft
+                </button>
+              </div>
             </div>
-          )}
-        </fieldset>
-      </div>
-      {(message || notices) && (
-        <div className="dq-drawer-notices">
-          {notices}
-          {message && (
-            <p role="alert" className="dq-alert">
-              <AlertTriangle aria-hidden="true" />
-              {message}
-            </p>
-          )}
+            {tabs.includes("Appearance") && (
+              <div
+                className="dq-drawer-panel"
+                role="tabpanel"
+                hidden={tab !== "Appearance"}
+                aria-label="Appearance"
+              >
+                <AppearanceSettings review={draft} onChange={onChange} />
+              </div>
+            )}
+            <div
+              className="dq-drawer-panel dq-actions-panel"
+              role="tabpanel"
+              hidden={tab !== "Actions"}
+              aria-label="Actions"
+            >
+              <ActionsEditor
+                review={draft}
+                onChange={onChange}
+                tagGroups={tagGroups}
+                trees={trees}
+                saving={saving}
+                expandedId={expandedId}
+                onExpand={setExpandedId}
+                reveal={reveal}
+              />
+            </div>
+            {legacyChoices && isOccurrenceReview(draft) && (
+              <div
+                className="dq-drawer-panel"
+                role="tabpanel"
+                hidden={tab !== "Tag choices"}
+                aria-label="Tag choices"
+              >
+                <TagChoiceSettings review={draft} onChange={onChange} />
+              </div>
+            )}
+          </fieldset>
         </div>
-      )}
-      <footer className="dq-drawer-footer">
-        <p className="dq-drawer-dirty">
-          {dirty
-            ? criteriaChanged
-              ? "Unsaved changes, including the queue's criteria"
-              : "Unsaved changes"
-            : ""}
-        </p>
-        <button type="button" className="dq-button" disabled={saving} onClick={onCancel}>
-          Cancel
-        </button>
-        {/* Not disabled while saving: a disabled button would drop focus to the page, where a
-            failed save would leave it and the grid's keys would take Esc and Space. */}
-        <button
-          type="button"
-          className="dq-button primary"
-          aria-busy={saving || undefined}
-          aria-disabled={saving || undefined}
-          disabled={!saving && saveDisabled}
-          onClick={() => {
-            if (!saving) save();
+        {(message || notices) && (
+          <div className="dq-drawer-notices">
+            {notices}
+            {message && (
+              <p role="alert" className="dq-alert">
+                <AlertTriangle aria-hidden="true" />
+                {message}
+              </p>
+            )}
+          </div>
+        )}
+        <footer className="dq-drawer-footer">
+          <p className="dq-drawer-dirty">
+            {dirty
+              ? criteriaChanged
+                ? "Unsaved changes, including the queue's criteria"
+                : "Unsaved changes"
+              : ""}
+          </p>
+          <button type="button" className="dq-button" disabled={saving} onClick={onCancel}>
+            Cancel
+          </button>
+          {/* Not disabled while saving: a disabled button would drop focus to the page, where a
+              failed save would leave it and the grid's keys would take Esc and Space. */}
+          <button
+            type="button"
+            className="dq-button primary"
+            aria-busy={saving || undefined}
+            aria-disabled={saving || undefined}
+            disabled={!saving && saveDisabled}
+            onClick={() => {
+              if (!saving) save();
+            }}
+          >
+            Save review
+          </button>
+        </footer>
+      </aside>
+      {/* Outside the drawer, so its keys (Esc above all) never reach the drawer's own. */}
+      {confirmingDiscard && (
+        <DiscardChangesDialog
+          onKeepEditing={() => setConfirmingDiscard(false)}
+          onDiscard={() => {
+            // The drawer closes, and whoever opened it takes focus back.
+            discardOpener.current = null;
+            setConfirmingDiscard(false);
+            onCancel();
           }}
-        >
-          Save review
-        </button>
-      </footer>
-    </aside>
+        />
+      )}
+    </>
   );
 }
 

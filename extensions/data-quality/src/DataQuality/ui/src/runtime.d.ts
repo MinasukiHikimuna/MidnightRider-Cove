@@ -280,8 +280,6 @@ declare module "@cove/runtime/components" {
     placeholder?: string;
     disabled?: boolean;
     allowCreate?: boolean;
-    selectedDisplay?: "chip" | "input";
-    children?: ReactNode;
     /**
      * Replaces the wrapper's layout classes (chips above the search field by default). The review
      * lays chips and field out on one line through it (.dq-chip-input in styles.css), which relies
@@ -291,10 +289,7 @@ declare module "@cove/runtime/components" {
     containerClassName?: string;
     /** Replaces the search field's classes. */
     inputClassName?: string;
-    /**
-     * The search field's accessible name. Cove v1.5.0 and later; earlier hosts ignore it and the
-     * field keeps only its placeholder.
-     */
+    /** The search field's accessible name (Cove 1.4.2-dev.109 and later, below the floor). */
     inputAriaLabel?: string;
   }>;
   export function formatDuration(seconds: number): string;

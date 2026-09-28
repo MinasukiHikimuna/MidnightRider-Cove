@@ -102,11 +102,12 @@ import {
 } from "./ReviewHeader";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import {
+  readListOrder,
   ReviewList,
   sortReviews,
+  writeListOrder,
+  type ListOrder,
   type ReviewCounts,
-  type ReviewSort,
-  type SortDirection,
 } from "./ReviewList";
 import { newReview, NewReviewDialog, type ReviewDraft } from "./NewReviewDialog";
 import { downloadReviews, exportReview, readReviewFile } from "./reviewFiles";
@@ -117,7 +118,9 @@ import {
   defaultQuery,
   effectiveReview,
   normalizedReview,
+  openedFromList,
   withoutTagBins,
+  writePageUrl,
   writeQuery,
 } from "./reviewQuery";
 import { occurrenceSceneReview, resolvePerformers } from "./occurrences";
@@ -139,6 +142,7 @@ import {
 import {
   reviewValidation,
   boundedFilter,
+  duplicateReview,
   resumeFocus,
   queueSignature,
 } from "./model";
@@ -242,17 +246,14 @@ function selectedReviewId() {
   return new URLSearchParams(window.location.search).get("review") ?? "";
 }
 
-function writeSelectedReviewId(reviewId: string) {
+/** The URL names the review shown, or none for the list; opening one from the list adds an entry. */
+function writeSelectedReviewId(reviewId: string, openingFromList = false) {
   const params = new URLSearchParams(window.location.search);
   queryKeys.forEach(key => params.delete(key));
   if (reviewId) params.set("review", reviewId);
   else params.delete("review");
   const query = params.toString();
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}${query ? `?${query}` : ""}`,
-  );
+  writePageUrl(`${window.location.pathname}${query ? `?${query}` : ""}`, { openingFromList });
 }
 
 function pageFilter(value: Record<string, unknown>) {
@@ -326,32 +327,57 @@ export function DataQualityPage({
   // "<review id>:<query revision>" of the last load that finished, for requests waiting on it.
   const [loadedFor, setLoadedFor] = useState("");
   const [activeId, setActiveId] = useState(selectedReviewId);
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
   const [reviewCounts, setReviewCounts] = useState<ReviewCounts>({});
   const reviewCountsRef = useRef(reviewCounts);
   reviewCountsRef.current = reviewCounts;
+  // For browser navigation, which reads them outside a render.
+  const reviewsRef = useRef(reviews);
+  reviewsRef.current = reviews;
+  const reviewsLoadingRef = useRef(reviewsLoading);
+  reviewsLoadingRef.current = reviewsLoading;
+  // The page went back in history to the list itself (All reviews, a deletion) and waits for it.
+  const leavingForList = useRef(false);
+  // A save that finishes after the page is gone (Cove went elsewhere) must not write the URL.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   // Counts belong to one visit of the list: back from a review, every review counts again.
   const [countsForList, setCountsForList] = useState(!activeId);
   if (countsForList !== !activeId) {
     setCountsForList(!activeId);
     if (!activeId) setReviewCounts({});
   }
-  const [listSort, setListSort] = useState<ReviewSort>("name");
-  const [listDirection, setListDirection] = useState<SortDirection>("asc");
+  // The list's sort, remembered in this browser.
+  const [listOrder, setListOrder] = useState(readListOrder);
+  const { sort: listSort, direction: listDirection } = listOrder;
+  const changeListOrder = (change: Partial<ListOrder>) => {
+    const next = { ...listOrder, ...change };
+    setListOrder(next);
+    writeListOrder(next);
+  };
   const listHeadingRef = useRef<HTMLHeadingElement>(null);
   const listFocus = useRef<ListFocus | null>(null);
-  // What the last import or deletion did, under the page's header: on the list, or in the open
-  // review when deleting it failed.
+  // What the last import, duplicate or deletion did, under the page's header: on the list, or in
+  // the open review when duplicating or deleting it failed.
   const [pageNotice, setPageNotice] = useState<{ text: string; alert: boolean } | null>(null);
   const [importing, setImporting] = useState(false);
-  // New review or Duplicate, and Delete… awaiting confirmation. Both are modal: while either is
-  // open the grid's own keys wait, as Cove's wait for any dialog.
+  // A duplicate being saved, before it opens.
+  const [duplicating, setDuplicating] = useState(false);
+  // New review, and Delete… awaiting confirmation. Both are modal: while either is open the grid's
+  // own keys wait, as Cove's wait for any dialog.
   const [creating, setCreating] = useState<ReviewDraft | null>(null);
   const [deleting, setDeleting] = useState<{ review: Review; pending: boolean } | null>(null);
   const pageDialogOpen = !!creating || !!deleting;
   const pageDialogRef = useRef(pageDialogOpen);
   pageDialogRef.current = pageDialogOpen;
   // Nothing else on the list changes the reviews while one of these saves.
-  const listLocked = importing || !!deleting;
+  const listLocked = importing || !!deleting || duplicating;
   // A request to open the active review's editor drawer (Edit on the list, a created review);
   // whichever view shows the review opens it once its queue has loaded, then clears the request.
   const [editRequest, setEditRequest] = useState(0);
@@ -396,20 +422,26 @@ export function DataQualityPage({
   const [queryRevision, setQueryRevision] = useState(0);
   const readyQueryRevision = useRef(-1);
   const deferredNavigation = useRef(false);
+  const usesWorkspaceRef = useRef(usesWorkspace);
+  usesWorkspaceRef.current = usesWorkspace;
+  // Registered once for the page's lifetime. Cove's own popstate listener runs first and renders
+  // at once, which runs this page's pending effects in the middle of the dispatch: a listener
+  // replaced then (as when a deleted review leaves for the list) would miss that Back.
   useEffect(() => {
     const restore = () => {
-      if (!usesWorkspace && pendingRef.current) {
+      const workspace = usesWorkspaceRef.current;
+      if (!workspace && pendingRef.current) {
         deferredNavigation.current = true;
         return;
       }
       // A URL write still pending from the last render must not overwrite the URL navigated to.
       readyQueryRevision.current = -1;
-      setActiveId(selectedReviewId());
-      if (!usesWorkspace) setQueryRevision(value => value + 1);
+      followHistory();
+      if (!workspace) setQueryRevision(value => value + 1);
     };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
-  }, [usesWorkspace]);
+  }, []);
   const canWriteMedia = mediaKind === "audio" ? canWriteAudios : canWriteVideos;
   const writeSubject =
     entityType === "tag" ? "Tag" : mediaKind === "audio" ? "Audio" : "Video";
@@ -1061,7 +1093,7 @@ export function DataQualityPage({
       // Never pull focus out of a field the reviewer is in, such as the search
       // that just reloaded the queue: on a card, their next letters would apply
       // actions. Nor out of the editor drawer, whose draft the reload previews,
-      // nor from behind the page's New review, Duplicate or Delete… dialog.
+      // nor from behind the page's New review or Delete… dialog.
       // The card still becomes the focused one for the keys.
       if (
         pageDialogRef.current ||
@@ -1310,7 +1342,7 @@ export function DataQualityPage({
           setPendingTargetLabel("");
           if (deferredNavigation.current) {
             deferredNavigation.current = false;
-            setActiveId(selectedReviewId());
+            followHistory();
             setQueryRevision(value => value + 1);
           }
         }
@@ -1519,12 +1551,54 @@ export function DataQualityPage({
     setEditRequest(0);
     setPageNotice(null);
     setActiveId(id);
-    writeSelectedReviewId(id);
+    // Opened from the list, a review gets a history entry of its own, so Back returns to the list.
+    writeSelectedReviewId(id, !!id && !review);
+  }
+
+  /**
+   * Back to the list. A review opened from the list goes back to the list's history entry, as the
+   * browser's Back does, rather than leave a copy of the list behind it (once, however often this
+   * is asked before the list shows); a review opened any other way (its own link, a new tab) turns
+   * its entry into the list's.
+   */
+  function leaveForList() {
+    if (leavingForList.current) return;
+    if (openedFromList()) {
+      leavingForList.current = true;
+      window.history.back();
+    } else chooseReview("");
+  }
+
+  /**
+   * Browser Back or Forward: the page shows what the URL names. Back from a review to the list
+   * focuses that review's row, unless All reviews asked for the heading; a request to open a
+   * review's drawer stays with that review. Only refs and state setters: the page's popstate
+   * listener keeps the copy of its first render.
+   */
+  function followHistory() {
+    const own = leavingForList.current;
+    leavingForList.current = false;
+    let next = selectedReviewId();
+    // A review deleted since its entry was left: that entry shows the list, under its URL.
+    if (next && !reviewsLoadingRef.current && !reviewsRef.current.some((item) => item.id === next)) {
+      next = "";
+      writeSelectedReviewId("");
+    }
+    const current = activeIdRef.current;
+    if (next !== current) {
+      setEditRequest(0);
+      // The browser's Back and Forward leave the last view's notice behind; All reviews and a
+      // deletion say what they did themselves.
+      if (!own) setPageNotice(null);
+      if (!next && current) listFocus.current ??= { reviewId: current };
+    }
+    setActiveId(next);
   }
 
   function showAllReviews() {
     listFocus.current = "heading";
-    chooseReview("");
+    setPageNotice(null);
+    leaveForList();
   }
 
   /** Opens a review with its editor drawer, which its view opens once the queue has loaded. */
@@ -1533,17 +1607,43 @@ export function DataQualityPage({
     setEditRequest((value) => value + 1);
   }
 
-  /** New review, or Duplicate of a saved review: the dialog asks for the kind, name and description. */
-  function startCreating(source?: Review) {
+  /** New review: the dialog asks for the kind, name and description. */
+  function startCreating() {
     setPageNotice(null);
     setCreating({
-      review: source
-        ? { ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name} copy` }
-        : newReview("video", { id: crypto.randomUUID(), name: "", description: "" }),
-      duplicate: !!source,
+      review: newReview("video", { id: crypto.randomUUID(), name: "", description: "" }),
       saving: false,
       error: "",
     });
+  }
+
+  /**
+   * Duplicate: the copy ("<name> copy", then "copy 2", …) is saved at once and opens with its
+   * editor drawer, where it can be renamed. A failure says why under the page's header, and focus
+   * stays on the menu it came from.
+   */
+  async function duplicate(source: Review) {
+    if (listLocked || !canConfigure) return;
+    setPageNotice(null);
+    const copy = duplicateReview(source, reviews, crypto.randomUUID());
+    const startedOn = activeId;
+    setDuplicating(true);
+    try {
+      if (!(await updateReviews([...reviews, copy]))) throw new Error("Could not save reviews.");
+      // The review's own navigation waits while the copy saves, but the browser's Back and
+      // Forward do not: somewhere else by now, the page stays there and says what was saved.
+      if (!mountedRef.current) return;
+      if (activeIdRef.current !== startedOn)
+        setPageNotice({ text: `Saved the copy “${copy.name}”.`, alert: false });
+      else editReview(copy.id);
+    } catch (error) {
+      setPageNotice({
+        text: `“${source.name}” was not duplicated. ${listSaveFailure(error)}`,
+        alert: true,
+      });
+    } finally {
+      setDuplicating(false);
+    }
   }
 
   /** Create & configure: the review is saved, then opens with its editor drawer. */
@@ -1558,6 +1658,7 @@ export function DataQualityPage({
     setCreating({ ...creating, saving: true, error: "" });
     try {
       if (!(await updateReviews([...reviews, created]))) throw new Error("Could not save reviews.");
+      if (!mountedRef.current) return;
       setCreating(null);
       editReview(created.id);
     } catch (error) {
@@ -1635,7 +1736,10 @@ export function DataQualityPage({
     }
   }
 
-  /** Why an import or a deletion failed, in the list's words: the list keeps no draft to export. */
+  /**
+   * Why an import, a duplicate or a deletion failed, in the list's words: the list keeps no draft
+   * to export.
+   */
   function listSaveFailure(error: unknown) {
     if (error instanceof StaleReviewsError)
       return "Reviews changed in another browser. Reload the page to get them, then try again.";
@@ -1650,7 +1754,7 @@ export function DataQualityPage({
         label: "Duplicate",
         icon: <Copy aria-hidden="true" />,
         disabled: locked,
-        onSelect: () => startCreating(target),
+        onSelect: () => void duplicate(target),
       },
       {
         label: "Export",
@@ -1671,18 +1775,27 @@ export function DataQualityPage({
     ];
   }
 
-  /** An open review's More menu: Edit review (the view's own), the review's items, All reviews. */
+  /**
+   * An open review's More menu: Edit review (the view's own), the review's items, All reviews.
+   * While a duplicate saves, before the copy opens, the review is neither edited nor left.
+   */
   function openReviewMenuItems(
     target: Review,
     edit: { onSelect(): void; disabled?: boolean },
   ): MoreMenuItem[] {
     return [
-      { label: "Edit review", icon: <Pencil aria-hidden="true" />, ...edit },
+      {
+        label: "Edit review",
+        icon: <Pencil aria-hidden="true" />,
+        ...edit,
+        disabled: edit.disabled || duplicating,
+      },
       ...reviewMenuItems(target),
       {
         label: "All reviews",
         icon: <ChevronLeft aria-hidden="true" />,
         separated: true,
+        disabled: duplicating,
         onSelect: showAllReviews,
       },
     ];
@@ -1697,8 +1810,7 @@ export function DataQualityPage({
       throw error;
     }
     setReviews(normalized);
-    if (activeId && !normalized.some((item) => item.id === activeId))
-      chooseReview("");
+    if (activeId && !normalized.some((item) => item.id === activeId)) leaveForList();
     const updated = normalized.find((item) => item.id === activeId);
     if (updated && savedReview) {
       // The header's Single | Grid switch lasts the visit, until the review's own layout changes.
@@ -1882,6 +1994,7 @@ export function DataQualityPage({
               ? () => setLayoutOverride({ id: videoReview.id, mode: "multiple" })
               : undefined,
             notices: pageNotices,
+            busy: duplicating,
           }}
         />
       ) : review ? (
@@ -1892,8 +2005,8 @@ export function DataQualityPage({
           counts={reviewCounts}
           sort={listSort}
           direction={listDirection}
-          onSortChange={setListSort}
-          onDirectionChange={setListDirection}
+          onSortChange={(sort) => changeListOrder({ sort })}
+          onDirectionChange={(direction) => changeListOrder({ direction })}
           storage={STORAGE_SUMMARY[storageMode]}
           canConfigure={canConfigure}
           busy={listLocked}
@@ -2273,11 +2386,14 @@ export function DataQualityPage({
           description={current.description}
           entityType={entityType}
           onBack={showAllReviews}
-          backDisabled={pending || !!gridEditor}
+          backDisabled={pending || !!gridEditor || duplicating}
           // While the drawer is open, Edit review takes focus back to it. A queue URL that could
           // not be read must be reset first: the drawer saves the queue's criteria.
           onEdit={gridEditor ? () => drawerRef.current?.focus() : openGridEditor}
-          editDisabled={!gridEditor && (pending || queueLoading || queueUrlError || queueSaving || !canConfigure)}
+          editDisabled={
+            !gridEditor &&
+            (pending || queueLoading || queueUrlError || queueSaving || duplicating || !canConfigure)
+          }
           editing={!!gridEditor}
           toolbar={
             <fieldset className="dq-review-toolbar" disabled={toolbarLocked}>
@@ -2323,7 +2439,9 @@ export function DataQualityPage({
               {videoReview && (
                 <LayoutSwitch
                   mode="multiple"
-                  disabled={pending || queueLoading || pageDialogOpen || !!gridEditor || queueSaving}
+                  disabled={
+                    pending || queueLoading || pageDialogOpen || !!gridEditor || queueSaving || duplicating
+                  }
                   onChange={() =>
                     setLayoutOverride({ id: videoReview.id, mode: "single" })
                   }

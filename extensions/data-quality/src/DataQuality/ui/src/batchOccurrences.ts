@@ -59,6 +59,11 @@ export interface TagPlan {
   kept: KeptAnswer[];
   replaced: number[];
 }
+/**
+ * Two chosen answers add tags to the same condition category. The preview refuses them before
+ * reading any occurrence; the reviewer has to change the answers, not retry.
+ */
+export class ConflictingAnswersError extends Error {}
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
 const sorted = (ids: number[]) => [...ids].sort((a, b) => a - b);
@@ -142,7 +147,7 @@ async function requireOneAnswerPerCategory(
     } catch {
       signal.throwIfAborted();
     }
-    throw new Error(
+    throw new ConflictingAnswersError(
       `${answering.map((action) => action.label).join(" and ")} answer the same condition tag, ${name}. Choose one of them.`,
     );
   }

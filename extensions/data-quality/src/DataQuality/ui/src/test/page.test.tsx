@@ -57,6 +57,8 @@ const { api, review } = vi.hoisted(() => ({
   },
 }));
 
+const LIST_ORDER_KEY = "data-quality.reviews-sort.v1";
+
 it("compares equivalent object filters independently of key order", () => {
   expect(
     objectFiltersEqual(
@@ -125,6 +127,8 @@ beforeEach(() => {
   vi.useRealTimers();
   window.history.replaceState(null, "", "/data-quality?review=review");
   localStorage.removeItem("data-quality.workspace-layout.v1");
+  // The list's sort is remembered per browser; each test starts from the default order.
+  localStorage.removeItem(LIST_ORDER_KEY);
   api.loadReviews.mockReset().mockResolvedValue({
     reviews: [review],
     storageKey: "reviews",
@@ -153,7 +157,7 @@ beforeEach(() => {
   api.createConfirmedAbsentTagsField.mockReset().mockResolvedValue(undefined);
   api.request.mockReset().mockResolvedValue({ available: true });
   api.readVideo.mockReset().mockImplementation(async id => video(id));
-  // jsdom has no modal dialogs: New review and Duplicate open as an open dialog element.
+  // jsdom has no modal dialogs: New review and the discard confirmation open as open dialogs.
   HTMLDialogElement.prototype.showModal = function () {
     this.setAttribute("open", "");
   };
@@ -235,6 +239,24 @@ function listedReviews() {
 /** What the page's live region says about the last import or deletion. */
 function announced() {
   return document.querySelector(".data-quality-page > [aria-live='polite']")?.textContent ?? "";
+}
+
+/**
+ * Starts the test at the URL in a history entry of its own, with nothing ahead of it (an earlier
+ * test may have gone back), and says how many entries history holds then.
+ */
+function freshHistory(url: string) {
+  window.history.pushState(null, "", url);
+  return window.history.length;
+}
+
+/** The browser's Back (or Forward) button: resolves once the page has handled the navigation. */
+async function goBack(delta = -1) {
+  const landed = new Promise((resolve) => window.addEventListener("popstate", resolve, { once: true }));
+  await act(async () => {
+    window.history.go(delta);
+    await landed;
+  });
 }
 
 /** Browser navigation (Back or Forward) to another URL of the page. */
@@ -682,11 +704,17 @@ describe("Data Quality extension page", () => {
     fireEvent.click(edit);
     expect(screen.getByLabelText("Entity type")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    // Duplicate saves the copy at once and opens it in its drawer, of the same kind.
     await chooseFromMore("Duplicate");
-    const dialog = screen.getByRole("dialog", { name: "Duplicate review" });
-    expect(within(dialog).getByLabelText("Entity type")).toBeDisabled();
-    expect(within(dialog).getByLabelText("Entity type")).toHaveValue("tag");
-    expect(within(dialog).getByLabelText("Review name")).toHaveValue("Review tags copy");
+    const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+    expect(within(drawer).getByLabelText("Entity type")).toBeDisabled();
+    expect(within(drawer).getByLabelText("Entity type")).toHaveValue("tag");
+    expect(within(drawer).getByLabelText("Review name")).toHaveValue("Review tags copy");
+    expect(api.saveReviews.mock.calls[0][1][1]).toEqual({
+      ...tagReview,
+      id: expect.any(String),
+      name: "Review tags copy",
+    });
   });
 
   it("offers explicit setup when the absence field is missing", async () => {
@@ -1215,27 +1243,293 @@ it("deletes the open review from its More menu and returns to the list's heading
   expect(announced()).toBe("Deleted “Review”.");
 });
 
-it("duplicates a review from its row, then opens the copy with its editor drawer", async () => {
-  window.history.replaceState(null, "", "/data-quality");
+it("duplicates a review from its row at once under a free copy name, then opens the copy in its drawer", async () => {
+  const entries = freshHistory("/data-quality");
+  const earlier = { ...review, id: "earlier-copy", name: "Review copy" };
+  api.loadReviews.mockResolvedValue({ reviews: [review, earlier], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("region", { name: "Reviews" });
   chooseFromRow("Review", "Duplicate");
-  const dialog = screen.getByRole("dialog", { name: "Duplicate review" });
-  expect(within(dialog).getByLabelText("Review name")).toHaveValue("Review copy");
-  expect(within(dialog).getByLabelText("Review name")).toHaveFocus();
-  expect(within(dialog).getByLabelText("Entity type")).toBeDisabled();
-  fireEvent.change(within(dialog).getByLabelText("Review name"), {
-    target: { value: "Second pass" },
-  });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Create & configure" }));
+  // No dialog asks for a name first.
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
-  const [original, copy] = api.saveReviews.mock.calls[0][1];
-  expect(original).toEqual(review);
-  expect(copy).toEqual({ ...review, id: expect.any(String), name: "Second pass" });
+  const [original, kept, copy] = api.saveReviews.mock.calls[0][1];
+  expect([original, kept]).toEqual([review, earlier]);
+  expect(copy).toEqual({ ...review, id: expect.any(String), name: "Review copy 2" });
   expect(copy.id).not.toBe(review.id);
+  // It opens in its drawer, to be renamed there, in a history entry of its own.
   const drawer = await screen.findByRole("dialog", { name: "Edit review" });
-  expect(within(drawer).getByLabelText("Review name")).toHaveValue("Second pass");
+  expect(within(drawer).getByLabelText("Review name")).toHaveValue("Review copy 2");
   expect(window.location.search).toContain(`review=${copy.id}`);
+  expect(window.history.length).toBe(entries + 1);
+});
+
+it("says why a duplicate was not saved, and holds the list's other changes while it saves", async () => {
+  window.history.replaceState(null, "", "/data-quality");
+  let fail!: (error: Error) => void;
+  api.saveReviews.mockImplementationOnce(
+    () => new Promise<void>((_resolve, reject) => (fail = reject)),
+  );
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  chooseFromRow("Review", "Duplicate");
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "New review" })).toBeDisabled();
+  await act(async () =>
+    fail(
+      new StaleReviewsError(
+        "Reviews changed in another browser. Your draft is still open. Export it, then reload before saving.",
+      ),
+    ),
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "“Review” was not duplicated. Reviews changed in another browser. Reload the page to get them, then try again.",
+  );
+  expect(listedReviews()).toEqual(["Review"]);
+  expect(screen.getByRole("button", { name: "Actions for Review" })).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
+  expect(window.location.search).toBe("");
+});
+
+it("remembers the list's sort in this browser for the next visit", async () => {
+  window.history.replaceState(null, "", "/data-quality");
+  const reviews = [
+    { ...review, id: "a", name: "Alpha" },
+    { ...review, id: "b", name: "Beta" },
+    { ...review, id: "c", name: "Gamma" },
+  ];
+  const counts: Record<string, number> = { a: 5, b: 17, c: 2 };
+  api.loadReviews.mockResolvedValue({ reviews, storageKey: "reviews", canWrite: true });
+  api.findMedia.mockImplementation(async (target) => ({ items: [], totalCount: counts[target.id] }));
+  const firstVisit = render(<DataQualityPage onNavigate={vi.fn()} />);
+  let list = await screen.findByRole("region", { name: "Reviews" });
+  expect(listedReviews()).toEqual(["Alpha", "Beta", "Gamma"]);
+  fireEvent.change(within(list).getByLabelText("Sort by"), { target: { value: "count" } });
+  fireEvent.click(within(list).getByRole("button", { name: "Sort direction: ascending" }));
+  firstVisit.unmount();
+  // The next visit (a reload, or back from elsewhere in Cove) sorts the same way.
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  list = await screen.findByRole("region", { name: "Reviews" });
+  expect(within(list).getByLabelText("Sort by")).toHaveValue("count");
+  expect(within(list).getByRole("button", { name: "Sort direction: descending" })).toBeInTheDocument();
+  expect(within(list).getByRole("columnheader", { name: "Matching" })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
+  await within(list).findByRole("cell", { name: "2 matching videos" });
+  await waitFor(() => expect(listedReviews()).toEqual(["Beta", "Alpha", "Gamma"]));
+});
+
+it("opens a review from the list in a history entry of its own, so Back returns to its row", async () => {
+  const entries = freshHistory("/data-quality");
+  const other = { ...review, id: "other", name: "Other" };
+  api.loadReviews.mockResolvedValue({ reviews: [review, other], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  fireEvent.click(screen.getByRole("link", { name: /Other/ }));
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  const shownReview = () => new URLSearchParams(window.location.search).get("review");
+  expect(shownReview()).toBe("other");
+  expect(window.history.length).toBe(entries + 1);
+  // Changes of the review's URL replace its entry.
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "narrower" },
+  });
+  await waitFor(() => expect(window.location.search).toContain("q=narrower"));
+  expect(window.history.length).toBe(entries + 1);
+  // Back returns to the list, on the row of the review it came from.
+  await goBack();
+  expect(window.location.search).toBe("");
+  expect(await screen.findByRole("region", { name: "Reviews" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("link", { name: /Other/ })).toHaveFocus());
+  // Edit on a row opens its review the same way.
+  chooseFromRow("Review", "Edit");
+  expect(await screen.findByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
+  expect(shownReview()).toBe("review");
+  expect(window.history.length).toBe(entries + 1);
+  await goBack();
+  await waitFor(() =>
+    expect(document.querySelector("[data-review-id='review']")).toHaveFocus(),
+  );
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+});
+
+it("goes back to the list's entry from All reviews or a deletion after opening a review from the list", async () => {
+  const entries = freshHistory("/data-quality");
+  const other = { ...review, id: "other", name: "Other" };
+  api.loadReviews.mockResolvedValue({ reviews: [review, other], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  fireEvent.click(screen.getByRole("link", { name: /Other/ }));
+  const back = await screen.findByRole("button", { name: "All reviews" });
+  await waitFor(() => expect(back).toBeEnabled());
+  fireEvent.click(back);
+  // As the browser's Back does, rather than leave a second copy of the list behind.
+  await waitFor(() => expect(window.location.search).toBe(""));
+  const heading = await screen.findByRole("heading", { name: "Data Quality" });
+  await waitFor(() => expect(heading).toHaveFocus());
+  expect(window.history.length).toBe(entries + 1);
+  // The review stays ahead in history: Forward opens it again.
+  await goBack(1);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  expect(new URLSearchParams(window.location.search).get("review")).toBe("other");
+  // Deleting a review opened from the list goes back the same way.
+  await chooseFromMore("Delete…");
+  fireEvent.click(screen.getByRole("button", { name: "Delete review" }));
+  await waitFor(() => expect(window.location.search).toBe(""));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Data Quality" })).toHaveFocus());
+  expect(listedReviews()).toEqual(["Review"]);
+  expect(announced()).toBe("Deleted “Other”.");
+  expect(window.history.length).toBe(entries + 1);
+  // Back in the list's own entry, not the review's entry turned into the list.
+  expect(window.history.state).toBeNull();
+  // Forward to the deleted review's entry shows the list, under the list's URL.
+  await goBack(1);
+  expect(window.location.search).toBe("");
+  expect(listedReviews()).toEqual(["Review"]);
+  expect(announced()).toBe("Deleted “Other”.");
+});
+
+it("goes back only once for All reviews pressed twice, and drops a review's notice on the browser's Back", async () => {
+  const entries = freshHistory("/data-quality");
+  api.loadReviews.mockResolvedValue({ reviews: [review], storageKey: "reviews", canWrite: true });
+  api.saveReviews.mockRejectedValueOnce(new Error("Storage offline"));
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  fireEvent.click(screen.getByRole("link", { name: /Review/ }));
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  // A failed duplicate leaves its reason under the review's header.
+  await chooseFromMore("Duplicate");
+  expect(await screen.findByText("“Review” was not duplicated. Storage offline")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+  await goBack();
+  await screen.findByRole("region", { name: "Reviews" });
+  expect(screen.queryByText(/was not duplicated/)).not.toBeInTheDocument();
+  await goBack(1);
+  const back = await screen.findByRole("button", { name: "All reviews" });
+  await waitFor(() => expect(back).toBeEnabled());
+  const landed = new Promise((resolve) => window.addEventListener("popstate", resolve, { once: true }));
+  const goesBack = vi.spyOn(window.history, "back");
+  fireEvent.click(back);
+  fireEvent.click(back);
+  // A second Back before the first lands would leave Data Quality (browsers go back twice).
+  expect(goesBack).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    await landed;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(window.location.search).toBe("");
+  expect(window.history.length).toBe(entries + 1);
+  expect(screen.getByRole("heading", { name: "Data Quality" })).toHaveFocus();
+});
+
+it("keeps a review in view while its duplicate saves, and stays where Back went meanwhile", async () => {
+  const entries = freshHistory("/data-quality");
+  api.loadReviews.mockResolvedValue({ reviews: [review], storageKey: "reviews", canWrite: true });
+  let finish!: () => void;
+  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  fireEvent.click(screen.getByRole("link", { name: /Review/ }));
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await chooseFromMore("Duplicate");
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
+  // The review's own way back and its editor wait for the copy.
+  expect(screen.getByRole("button", { name: "All reviews" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Edit review" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "More review options" }));
+  expect(screen.getByRole("menuitem", { name: "All reviews" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Edit review" })).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  // The browser's Back does not wait: the page stays on the list and says what was saved.
+  await goBack();
+  await screen.findByRole("region", { name: "Reviews" });
+  await act(async () => finish());
+  await waitFor(() => expect(announced()).toBe("Saved the copy “Review copy”."));
+  expect(window.location.search).toBe("");
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+  expect(listedReviews()).toEqual(["Review", "Review copy"]);
+  expect(window.history.length).toBe(entries + 1);
+});
+
+it("leaves the URL alone when a duplicate finishes saving after the page is gone", async () => {
+  const entries = freshHistory("/data-quality");
+  api.loadReviews.mockResolvedValue({ reviews: [review], storageKey: "reviews", canWrite: true });
+  let finish!: () => void;
+  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  const page = render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  chooseFromRow("Review", "Duplicate");
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
+  // Cove shows another page meanwhile.
+  page.unmount();
+  window.history.replaceState(null, "", "/videos");
+  await act(async () => finish());
+  expect(window.location.pathname + window.location.search).toBe("/videos");
+  expect(window.history.length).toBe(entries);
+});
+
+it("drops a pending Edit when Back leaves the review before its queue loads", async () => {
+  freshHistory("/data-quality");
+  api.loadReviews.mockResolvedValue({ reviews: [review], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  let load!: (page: { items: unknown[]; totalCount: number }) => void;
+  api.findMedia.mockImplementation(
+    (_review, filter) =>
+      Number(filter.perPage) === 1
+        ? Promise.resolve({ items: [], totalCount: 2 })
+        : new Promise((resolve) => (load = resolve)),
+  );
+  chooseFromRow("Review", "Edit");
+  await screen.findByRole("heading", { name: "Review" });
+  await goBack();
+  await screen.findByRole("region", { name: "Reviews" });
+  api.findMedia.mockResolvedValue({ items: [video(1), video(2)], totalCount: 2 });
+  await act(async () => load({ items: [video(1), video(2)], totalCount: 2 }));
+  // Forward opens the review again, without the drawer asked for before.
+  await goBack(1);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+});
+
+it("follows Back and Forward with one listener for the page's lifetime", async () => {
+  // Cove's own popstate listener runs first and renders at once, which runs this page's pending
+  // effects in the middle of the dispatch: a listener replaced then (as when deleting the open
+  // review leaves for the list) would miss that Back.
+  const added: unknown[] = [];
+  const removed: unknown[] = [];
+  const add = window.addEventListener.bind(window);
+  const remove = window.removeEventListener.bind(window);
+  vi.spyOn(window, "addEventListener").mockImplementation((type, listener, options) => {
+    if (type === "popstate") added.push(listener);
+    add(type, listener, options);
+  });
+  vi.spyOn(window, "removeEventListener").mockImplementation((type, listener, options) => {
+    if (type === "popstate") removed.push(listener);
+    remove(type, listener, options);
+  });
+  freshHistory("/data-quality");
+  const other = { ...review, id: "other", name: "Other" };
+  api.loadReviews.mockResolvedValue({ reviews: [review, other], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("region", { name: "Reviews" });
+  expect(added).toHaveLength(1);
+  const pageListener = added[0];
+  fireEvent.click(screen.getByRole("link", { name: /Other/ }));
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await chooseFromMore("Delete…");
+  fireEvent.click(screen.getByRole("button", { name: "Delete review" }));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Data Quality" })).toHaveFocus());
+  fireEvent.click(screen.getByRole("link", { name: /Review/ }));
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  await goBack();
+  await screen.findByRole("region", { name: "Reviews" });
+  expect(removed).not.toContain(pageListener);
 });
 
 it("keeps a new review's draft open, exportable, when it cannot be saved", async () => {
@@ -1584,6 +1878,8 @@ it("creates media review details then configures the rule in the workspace", asy
   fireEvent.click(screen.getByRole("button", {name: "Create & configure"}));
   const drawer = await screen.findByRole("dialog", {name: "Edit review"});
   expect(screen.queryByRole("dialog", {name: "New review"})).not.toBeInTheDocument();
+  // Opened from the list, in a history entry of its own.
+  expect(window.history.state).toEqual({ dataQualityOpenedFromList: true });
   expect(within(drawer).getByLabelText("Review name")).toHaveValue("New media review");
   expect(within(drawer).getByRole("tab", {name: "Actions"})).toBeInTheDocument();
   fireEvent.click(within(drawer).getByRole("button", {name: "Cancel"}));
@@ -2603,6 +2899,61 @@ it("edits a grid review in a drawer beside the cards, with actions paused, and C
   await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
 });
 
+it("closes the grid's drawer at once without changes, and asks first with them; Discard restores the queue", async () => {
+  openGrid(numberedActions(2));
+  await screen.findByRole("article", { name: "Video 1" });
+  const before = window.location.search;
+  let drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Close editor" }));
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+  drawer = await openEditor();
+  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Changed" } });
+  api.findMedia.mockResolvedValue({ items: [video(3)], totalCount: 1 });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "draft" },
+  });
+  await screen.findByRole("article", { name: "Video 3" });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Close editor" }));
+  const confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
+  // The review's keys stay paused while it asks.
+  expect(activeTestKeys()).not.toContain("local:q");
+  fireEvent.click(within(confirm).getByRole("button", { name: "Discard" }));
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Discard unsaved changes?" })).not.toBeInTheDocument();
+  // As Cancel does: the queue as it was, its URL, nothing saved, focus back on Edit review.
+  expect(await screen.findByRole("article", { name: "Video 1" })).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("");
+  await waitFor(() => expect(window.location.search).toBe(before));
+  expect(api.saveReviews).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Edit review" })).toHaveFocus();
+  await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
+});
+
+it("asks before Esc discards the workspace drawer's changes; Discard keeps the review as saved", async () => {
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  const drawer = await openEditor();
+  const name = within(drawer).getByLabelText("Review name");
+  fireEvent.change(name, { target: { value: "Renamed" } });
+  name.focus();
+  // Claimed, so the same Esc cannot also cancel the dialog it opens (Chrome would).
+  expect(fireEvent.keyDown(name, { key: "Escape" })).toBe(false);
+  let confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
+  expect(within(confirm).getByRole("button", { name: "Keep editing" })).toHaveFocus();
+  // Esc there keeps editing, back in the field it was pressed in.
+  fireEvent(confirm, new Event("cancel", { cancelable: true }));
+  expect(screen.queryByRole("dialog", { name: "Discard unsaved changes?" })).not.toBeInTheDocument();
+  expect(name).toHaveFocus();
+  expect(name).toHaveValue("Renamed");
+  fireEvent.keyDown(name, { key: "Escape" });
+  confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
+  fireEvent.click(within(confirm).getByRole("button", { name: "Discard" }));
+  expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
+  expect(api.saveReviews).not.toHaveBeenCalled();
+  expect(screen.getByRole("heading", { name: review.name })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Edit review" })).toHaveFocus());
+});
+
 it("saves the grid's draft with the toolbar's criteria, keeping the drawer open when saving fails", async () => {
   api.saveReviews.mockRejectedValueOnce(new Error("Storage offline"));
   openGrid(numberedActions(2));
@@ -2673,8 +3024,10 @@ it("counts a search made before the grid's drawer opened as unsaved, which Cance
   let drawer = await openEditor();
   // Measured against the saved review, the queue's search is a change the drawer would save.
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
-  // So Esc no longer discards the draft as if nothing had changed.
+  // So Esc asks before discarding the draft, as for any change, and Keep editing stays.
   fireEvent.keyDown(within(drawer).getByLabelText("Review name"), { key: "Escape" });
+  const confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
+  fireEvent.click(within(confirm).getByRole("button", { name: "Keep editing" }));
   expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
   // Cancel saves nothing, and the queue keeps its temporary search.
@@ -2837,6 +3190,8 @@ it("counts a search made before the workspace's drawer opened as unsaved, which 
   let drawer = await openEditor();
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
   fireEvent.keyDown(within(drawer).getByLabelText("Review name"), { key: "Escape" });
+  const confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
+  fireEvent(confirm, new Event("cancel", { cancelable: true }));
   expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
   expect(api.saveReviews).not.toHaveBeenCalled();
@@ -3179,21 +3534,24 @@ it("never takes focus from the Delete confirmation to a card when the grid finis
   expect(cancel).toHaveFocus();
 });
 
-it("holds the review's keys while New review or Duplicate is open, then gives them back", async () => {
+it("duplicates the open review from its More menu at once, opening the copy in its drawer in the same history entry", async () => {
+  const entries = freshHistory("/data-quality?review=review");
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("heading", { name: "Reviewing this video" });
   await chooseFromMore("Duplicate");
-  const dialog = screen.getByRole("dialog", { name: "Duplicate review" });
-  // A native dialog has no role attribute; its aria-modal is what makes Cove hold the keys.
-  expect(dialog).toHaveAttribute("aria-modal", "true");
-  within(dialog).getByRole("button", { name: "Cancel" }).focus();
-  fireEvent.keyDown(document.activeElement!, { key: "-" });
-  expect(screen.queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
-  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-  expect(screen.queryByRole("dialog", { name: "Duplicate review" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "More review options" })).toHaveFocus();
-  fireEvent.keyDown(document.body, { key: "-" });
-  expect(await screen.findByRole("combobox", { name: "Find an action" })).toBeInTheDocument();
+  await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
+  const [original, copy] = api.saveReviews.mock.calls[0][1];
+  expect(original).toEqual(review);
+  expect(copy).toEqual({ ...review, id: expect.any(String), name: "Review copy" });
+  const drawer = await screen.findByRole("dialog", { name: "Edit review" });
+  expect(within(drawer).getByLabelText("Review name")).toHaveValue("Review copy");
+  expect(window.location.search).toContain(`review=${copy.id}`);
+  // Within a review the URL changes in place, whichever review it names.
+  expect(window.history.length).toBe(entries);
+  // The keys wait while the copy's drawer is open, and come back when it closes.
+  expect(activeTestKeys()).not.toContain("local:q");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
 });
 
 it("keeps a saving new review's dialog open on a second Esc, and hands focus back to the name after a failure", async () => {

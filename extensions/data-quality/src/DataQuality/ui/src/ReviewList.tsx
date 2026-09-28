@@ -9,6 +9,41 @@ export type ReviewSort = "name" | "count";
 export type SortDirection = "asc" | "desc";
 /** Matching items per review id: absent while counting, null when the count failed. */
 export type ReviewCounts = Record<string, number | null>;
+/** How the list is sorted. */
+export interface ListOrder {
+  sort: ReviewSort;
+  direction: SortDirection;
+}
+
+/** The list's sort is remembered per browser, apart from the reviews. */
+const LIST_ORDER_KEY = "data-quality.reviews-sort.v1";
+const DEFAULT_LIST_ORDER: ListOrder = { sort: "name", direction: "asc" };
+
+/** The sort this browser last used, or by name ascending when there is none it can read. */
+export function readListOrder(): ListOrder {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(LIST_ORDER_KEY) ?? "null");
+    if (stored && typeof stored === "object") {
+      const { sort, direction } = stored as Partial<Record<keyof ListOrder, unknown>>;
+      if ((sort === "name" || sort === "count") && (direction === "asc" || direction === "desc"))
+        return { sort, direction };
+    }
+  } catch {
+    // Storage that cannot be read, or a value that is not ours: the default order.
+  }
+  return DEFAULT_LIST_ORDER;
+}
+
+export function writeListOrder(order: ListOrder): void {
+  try {
+    localStorage.setItem(
+      LIST_ORDER_KEY,
+      JSON.stringify({ sort: order.sort, direction: order.direction }),
+    );
+  } catch {
+    // Without storage the choice lasts while the page stays open.
+  }
+}
 
 /**
  * The list's order: by name, or by matching count with the reviews still counting or without a

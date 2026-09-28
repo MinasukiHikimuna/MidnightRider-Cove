@@ -144,6 +144,8 @@ export interface WorkspacePageControls {
   onGrid?(): void;
   /** The page's notices, shown under the header. */
   notices?: ReactNode;
+  /** The page is saving (a duplicate of this review): the way back, Edit review and the layout wait. */
+  busy?: boolean;
 }
 
 /** "Studio · 2024-08-11 · 1080p · 27:31" for the title line; parts the item lacks are left out. */
@@ -1322,10 +1324,10 @@ export function ReviewWorkspace({
         description={saved.description}
         entityType={reviewEntityType(saved)}
         onBack={pageControls?.onBack}
-        backDisabled={busy}
+        backDisabled={busy || !!pageControls?.busy}
         // While the drawer is open, Edit review takes focus back to it.
         onEdit={ruleDraft ? () => drawerRef.current?.focus() : beginRuleEdit}
-        editDisabled={!ruleDraft && (busy || !onSaveDefaults)}
+        editDisabled={!ruleDraft && (busy || !onSaveDefaults || !!pageControls?.busy)}
         editing={!!ruleDraft}
         toolbar={
           // Not disabled while the queue reloads: a search being typed keeps its focus (a
@@ -1431,7 +1433,7 @@ export function ReviewWorkspace({
             {pageControls?.onGrid && (
               <LayoutSwitch
                 mode="single"
-                disabled={busy}
+                disabled={busy || !!pageControls.busy}
                 onChange={() => pageControls.onGrid?.()}
               />
             )}

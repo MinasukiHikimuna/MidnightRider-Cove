@@ -65,21 +65,20 @@ export function newReview(
   }
 }
 
-/** A review being created: a new one, or a copy of a saved review. */
+/** A new review being created. */
 export interface ReviewDraft {
   review: Review;
-  /** A copy keeps the kind of the review it copies. */
-  duplicate: boolean;
   saving: boolean;
   /** Why the last Create & configure failed. */
   error: string;
 }
 
 /**
- * New review and Duplicate: the review's kind, name and description first; Create & configure
- * saves it, and the page opens it with its editor drawer. A modal dialog, so Cove's shortcuts and
- * the review's keys wait. Cancel, close and Esc give focus back to what opened it; while saving it
- * stays open, and a draft that cannot be saved can still be exported.
+ * New review: the review's kind, name and description first; Create & configure saves it, and the
+ * page opens it with its editor drawer. A modal dialog, so Cove's shortcuts and the review's keys
+ * wait. Cancel, close and Esc give focus back to what opened it; while saving it stays open, and a
+ * draft that cannot be saved can still be exported. (Duplicate needs no dialog: the page saves the
+ * copy at once and opens it in its drawer.)
  */
 export function NewReviewDialog({
   draft,
@@ -92,7 +91,7 @@ export function NewReviewDialog({
   onCreate(): void;
   onCancel(): void;
 }) {
-  const { review, duplicate, saving, error } = draft;
+  const { review, saving, error } = draft;
   const dialog = useRef<HTMLDialogElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const savingRef = useRef(saving);
@@ -150,7 +149,7 @@ export function NewReviewDialog({
         }}
       >
         <header className="dq-form-dialog-header">
-          <h2 id={titleId}>{duplicate ? "Duplicate review" : "New review"}</h2>
+          <h2 id={titleId}>New review</h2>
           <button
             type="button"
             className="dq-icon-button"
@@ -176,10 +175,9 @@ export function NewReviewDialog({
             <ReviewDetailsFields
               review={review}
               onChange={onChange}
-              entityTypeLocked={duplicate}
+              entityTypeLocked={false}
               onEntityTypeChange={(entityType) => {
-                if (!duplicate && entityType !== reviewEntityType(review))
-                  onChange(newReview(entityType, review));
+                if (entityType !== reviewEntityType(review)) onChange(newReview(entityType, review));
               }}
               nameRef={nameInput}
             />

@@ -10,7 +10,11 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { BatchOccurrenceDialog } from "../BatchOccurrenceDialog";
 import { ReviewTagBadge, WithoutTagImagePreviews } from "../TagDisplay";
 import type { OccurrenceReview } from "../model";
-import type { BatchEntry, OccurrenceBatch } from "../batchOccurrences";
+import {
+  ConflictingAnswersError,
+  type BatchEntry,
+  type OccurrenceBatch,
+} from "../batchOccurrences";
 const mocks = vi.hoisted(() => ({
   preview: vi.fn(),
   run: vi.fn(),
@@ -590,6 +594,8 @@ it("cancels a preview in flight and offers to preview again", async () => {
     "Preview cancelled. No tags were changed.",
   );
   expect(button("Close")).toBeEnabled();
+  // Only refused answers need changing; a cancelled (or failed) preview can simply run again.
+  expect(screen.queryByRole("button", { name: "Change answers" })).not.toBeInTheDocument();
   mocks.preview.mockImplementation(async () => batch);
   fireEvent.click(button("Preview again"));
   await screen.findByText("Preview ready. No tags have been changed.");
@@ -605,7 +611,7 @@ it("refuses two answers for one category and keeps the refusal in view until the
     ],
   };
   const refusal = "Answer and Second answer answer the same condition tag, Size. Choose one of them.";
-  mocks.preview.mockRejectedValueOnce(new Error(refusal));
+  mocks.preview.mockRejectedValue(new ConflictingAnswersError(refusal));
   mount(rule);
   fireEvent.click(openButton());
   fireEvent.click(checkbox("Answer"));
@@ -614,11 +620,37 @@ it("refuses two answers for one category and keeps the refusal in view until the
   expect(await screen.findByRole("alert")).toHaveTextContent(refusal);
   expect(step("Preview")).toHaveAttribute("aria-current", "step");
   expect(screen.queryByRole("button", { name: /^Apply to/ })).not.toBeInTheDocument();
-  fireEvent.click(button("Change"));
+  // Previewing the same answers again cannot help: the primary button goes back to them instead.
+  expect(screen.queryByRole("button", { name: "Preview again" })).not.toBeInTheDocument();
+  expect(button("Change answers")).toHaveClass("primary");
+  fireEvent.click(button("Change answers"));
   expect(step("Answers")).toHaveAttribute("aria-current", "step");
   expect(screen.getByRole("alert")).toHaveTextContent(refusal);
+  // The same answers are refused again; the answers card's Change goes back to them as well.
+  fireEvent.click(button("Preview all matches"));
+  await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2));
+  expect(await screen.findByRole("button", { name: "Change answers" })).toBeInTheDocument();
+  fireEvent.click(button("Change"));
+  expect(step("Answers")).toHaveAttribute("aria-current", "step");
   fireEvent.click(checkbox("Second answer"));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  // Answers that can be previewed leave the refusal's button behind.
+  mocks.preview.mockImplementation(async () => batch);
+  fireEvent.click(button("Preview all matches"));
+  await screen.findByText("Preview ready. No tags have been changed.");
+  expect(screen.queryByRole("button", { name: "Change answers" })).not.toBeInTheDocument();
+});
+
+it("offers Preview again, not Change answers, when a preview fails for another reason", async () => {
+  mocks.preview.mockRejectedValueOnce(new Error("The server did not answer."));
+  mount();
+  fireEvent.click(openButton());
+  fireEvent.click(checkbox("Answer"));
+  fireEvent.click(button("Preview all matches"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("The server did not answer.");
+  expect(screen.queryByRole("button", { name: "Change answers" })).not.toBeInTheDocument();
+  fireEvent.click(button("Preview again"));
+  await screen.findByText("Preview ready. No tags have been changed.");
 });
 
 it("shows the dates of the batch with links to the earliest and latest, and to both from a flag", async () => {

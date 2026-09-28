@@ -510,6 +510,24 @@ export function mergeReviews(...sources: Review[][]): Review[] {
   return merged;
 }
 
+/**
+ * The name of a review's copy: "<name> copy", else "<name> copy 2", "<name> copy 3", …, the first
+ * that no review has (names compared trimmed, ignoring case).
+ */
+export function copyName(name: string, reviews: readonly Review[]): string {
+  const taken = new Set(reviews.map((review) => review.name.trim().toLocaleLowerCase()));
+  const base = `${name.trim()} copy`;
+  for (let number = 1; ; number++) {
+    const candidate = number === 1 ? base : `${base} ${number}`;
+    if (!taken.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+}
+
+/** Duplicate: the review as saved under a new id and its copy's name. */
+export function duplicateReview(source: Review, reviews: readonly Review[], id: string): Review {
+  return { ...structuredClone(source), id, name: copyName(source.name, reviews) };
+}
+
 function validOccurrenceSettings(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const settings = value as OccurrenceReview["occurrence"];

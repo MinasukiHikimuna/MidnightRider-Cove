@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
 import {
+  ConflictingAnswersError,
   planTags,
   previewOccurrenceBatch,
   runEntries,
@@ -641,12 +642,15 @@ it("skips without writing when every category it would fill already has a differ
 it("refuses two answers for the same condition category before any write", async () => {
   trees = { 30: [31, 32], 40: [41, 42] };
   names = { 30: "Size" };
-  await expect(preview(categorized, [small, medium])).rejects.toThrow(
+  const refusal = preview(categorized, [small, medium]);
+  await expect(refusal).rejects.toThrow(
     "Small and Medium answer the same condition tag, Size. Choose one of them.",
   );
-  await expect(preview(categorized, [])).rejects.toThrow(
-    "Choose a configured occurrence tag action.",
-  );
+  // The dialog tells this refusal apart from other failures: only the answers can fix it.
+  await expect(refusal).rejects.toBeInstanceOf(ConflictingAnswersError);
+  const unconfigured = preview(categorized, []);
+  await expect(unconfigured).rejects.toThrow("Choose a configured occurrence tag action.");
+  await expect(unconfigured).rejects.not.toBeInstanceOf(ConflictingAnswersError);
   expect(writes).toEqual([]);
 });
 
