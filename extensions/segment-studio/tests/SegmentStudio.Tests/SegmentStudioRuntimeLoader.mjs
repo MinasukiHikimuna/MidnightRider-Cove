@@ -7,6 +7,8 @@ const runtimeModules = {
     "export const StepBack = () => null;",
     "export const StepForward = () => null;",
   ].join("\n"),
+  // Like Cove 1.5.1 and earlier, this exports neither ExtensionEntityActions nor
+  // ExtensionSelectionActions: the bundle has to load without them.
   "@cove/runtime/components": [
     "export const DetailListPagination = () => null;",
     "export const DetailListToolbar = () => null;",

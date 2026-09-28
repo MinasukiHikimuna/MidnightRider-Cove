@@ -494,6 +494,21 @@ public sealed class ExtensionTests
     }
 
     [Fact]
+    public void OpenInSegmentStudioIsOfferedOnlyOnTheVideoPage()
+    {
+        // The editor renders the host's video actions so Run AI is at hand. It
+        // reports its own page type, and this action is limited to the video page,
+        // so Segment Studio does not offer to open itself inside its own editor.
+        var action = Assert.Single(
+            CreateExtension().GetUIManifest().Actions,
+            action => action.Id == SegmentStudioExtension.OpenInSegmentStudioActionId);
+
+        Assert.Equal(new[] { "video" }, action.Pages);
+        Assert.Equal(new[] { "video" }, action.EntityTypes);
+        Assert.Equal("toolbar", action.ActionType);
+    }
+
+    [Fact]
     public void CapabilityFilterHoldsSharedModeLockAcrossEndpointExecution()
     {
         var source = File.ReadAllText(Path.Combine(

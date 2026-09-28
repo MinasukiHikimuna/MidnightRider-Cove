@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "../../shared/runtime.js";
 import { createOperationId, requestJson } from "../../shared/api.js";
 
+// How often an open editor checks for a newly completed analysis run while its
+// tab is visible. It also checks when the window regains focus or the tab
+// becomes visible again.
+const ANALYSIS_RUN_CHECK_INTERVAL_MS = 30000;
+
 function shouldLoadSegmentAnalysis(fullMode) {
   return fullMode === true;
 }
@@ -18,19 +23,109 @@ function createSegmentAnalysisRequestScope() {
   };
 }
 
+// Watches for Segment Studio analysis runs that complete while the editor is
+// open and calls onCompletedRun once for each check that finds one. A native AI
+// run writes its analysis run once, already completed, so there is no queued or
+// running state to wait for: the watch looks for a completed run it has not seen
+// before. The first successful check only records the runs that already exist,
+// so opening the editor never reloads it, even when that first check has to be
+// retried. Checks never overlap and the interval pauses while the tab is hidden.
+// A failed check is retried by the next one. A failed reload is not retried: its
+// run already counts as seen, and the reload callback reports its own error.
+// Returns a function that stops the watch and aborts a check in flight.
+function startCompletedRunWatch({
+  fetchRuns,
+  onCompletedRun,
+  windowTarget,
+  documentTarget,
+  intervalMs = ANALYSIS_RUN_CHECK_INTERVAL_MS,
+}) {
+  const scope = createSegmentAnalysisRequestScope();
+  let seen = null;
+  let checking = false;
+  let timer = null;
+
+  const isVisible = () => documentTarget.visibilityState !== "hidden";
+
+  async function check() {
+    if (checking || !scope.isActive()) return;
+    checking = true;
+    try {
+      const runs = await fetchRuns(scope.signal);
+      if (!scope.isActive()) return;
+      const completed = (Array.isArray(runs) ? runs : [])
+        .filter((run) => run?.status === "completed" && run.id != null)
+        .map((run) => String(run.id));
+      if (seen === null) {
+        seen = new Set(completed);
+        return;
+      }
+      const fresh = completed.filter((id) => !seen.has(id));
+      if (fresh.length === 0) return;
+      fresh.forEach((id) => seen.add(id));
+      await onCompletedRun();
+    } catch {
+      // The next check retries; a failed reload reports its own error.
+    } finally {
+      checking = false;
+    }
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = null;
+    if (!scope.isActive() || !isVisible()) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      await check();
+      schedule();
+    }, intervalMs);
+  }
+
+  function handleFocus() {
+    check();
+  }
+
+  function handleVisibilityChange() {
+    if (isVisible()) {
+      check();
+      schedule();
+    } else {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  check();
+  schedule();
+  windowTarget.addEventListener("focus", handleFocus);
+  documentTarget.addEventListener("visibilitychange", handleVisibilityChange);
+
+  return function stop() {
+    scope.dispose();
+    clearTimeout(timer);
+    timer = null;
+    windowTarget.removeEventListener("focus", handleFocus);
+    documentTarget.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
+}
+
 function useSegmentAnalysis(
   videoId,
   onReload,
+  onAnalysisCompleted,
   fullMode = false,
   acquireSaveLock = () => () => {},
 ) {
-  const [analysisRun, setAnalysisRun] = useState(null);
   const [nativeImportState, setNativeImportState] = useState({
     busy: false,
     reviewState: null,
     error: "",
   });
-  const analysisReloadedRunRef = useRef(null);
+  const analysisCompletedRef = useRef(onAnalysisCompleted);
+  useEffect(() => {
+    analysisCompletedRef.current = onAnalysisCompleted;
+  }, [onAnalysisCompleted]);
 
   async function importNativeSegments(reviewState) {
     const releaseSaveLock = acquireSaveLock("import", -1);
@@ -58,48 +153,17 @@ function useSegmentAnalysis(
     }
   }
 
-  async function refreshAnalysisRun(scope) {
-    try {
-      const runs = await requestJson(`/videos/${videoId}/analysis-runs`, {
-        signal: scope.signal,
-      });
-      if (!scope.isActive()) return null;
-      const run = runs?.[0] || null;
-      setAnalysisRun(run);
-      if (run?.status === "completed" && analysisReloadedRunRef.current !== run.id) {
-        analysisReloadedRunRef.current = run.id;
-        await onReload();
-      }
-      return run;
-    } catch {
-      // A failed status check leaves the editor as it is.
-      return null;
-    }
-  }
-
+  // Segment Studio's review runs exist only in Full mode, so Basic has nothing
+  // to watch for.
   useEffect(() => {
-    if (!shouldLoadSegmentAnalysis(fullMode)) {
-      setAnalysisRun(null);
-      return undefined;
-    }
-    const scope = createSegmentAnalysisRequestScope();
-    refreshAnalysisRun(scope);
-    return scope.dispose;
+    if (!shouldLoadSegmentAnalysis(fullMode)) return undefined;
+    return startCompletedRunWatch({
+      fetchRuns: (signal) => requestJson(`/videos/${videoId}/analysis-runs`, { signal }),
+      onCompletedRun: () => analysisCompletedRef.current(),
+      windowTarget: window,
+      documentTarget: document,
+    });
   }, [videoId, fullMode]);
-
-  useEffect(() => {
-    if (!shouldLoadSegmentAnalysis(fullMode)
-      || (analysisRun?.status !== "queued" && analysisRun?.status !== "running")) return undefined;
-    const scope = createSegmentAnalysisRequestScope();
-    let timer = setTimeout(async function pollAnalysisRun() {
-      await refreshAnalysisRun(scope);
-      if (scope.isActive()) timer = setTimeout(pollAnalysisRun, 2500);
-    }, 2500);
-    return () => {
-      clearTimeout(timer);
-      scope.dispose();
-    };
-  }, [analysisRun?.id, analysisRun?.status, fullMode]);
 
   return {
     importNativeSegments,
@@ -107,4 +171,4 @@ function useSegmentAnalysis(
   };
 }
 
-export { createSegmentAnalysisRequestScope, shouldLoadSegmentAnalysis, useSegmentAnalysis };
+export { ANALYSIS_RUN_CHECK_INTERVAL_MS, createSegmentAnalysisRequestScope, shouldLoadSegmentAnalysis, startCompletedRunWatch, useSegmentAnalysis };

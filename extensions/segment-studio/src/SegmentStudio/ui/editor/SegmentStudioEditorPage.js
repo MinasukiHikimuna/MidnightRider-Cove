@@ -79,6 +79,16 @@ function SegmentStudioEditorPage({
     });
   }
 
+  function reloadAfterAnalysis() {
+    return reloadEditor({
+      onLoaded: (loaded) => {
+        setDetail(loaded);
+        setError("");
+      },
+      onError: (requestError) => setError(requestError.message || "Unable to load the new AI review results."),
+    });
+  }
+
   return h("div", {
     className: `mx-auto flex w-full flex-col gap-2 ${splitLayout ? "lg:overflow-hidden" : "p-3 sm:p-4"}`,
     style: splitLayout ? {
@@ -102,6 +112,7 @@ function SegmentStudioEditorPage({
       onDetailChange: updateDetail,
       onConflict: reloadAfterConflict,
       onReload: reloadAfterSlotChange,
+      onAnalysisCompleted: reloadAfterAnalysis,
       onSlotsChanged: reloadAfterSlotChange,
       splitLayout,
       profile,

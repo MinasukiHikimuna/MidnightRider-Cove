@@ -21,6 +21,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
     public const string ProvenanceManagePermission = "segment-studio.provenance.manage";
     public const string LineageManagePermission = "segment-studio.lineage.manage";
     public const string LineageMaintenancePermission = "segment-studio.lineage.maintenance";
+    public const string OpenInSegmentStudioActionId = "open-segment-studio";
 
     private CancellationTokenSource? _cleanupCancellation;
     private Task? _cleanupTask;
@@ -169,7 +170,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 detailRoute: "segment-studio/:id",
                 navOrder: 65)
             .AddAction(
-                "open-segment-studio",
+                OpenInSegmentStudioActionId,
                 "Open in Segment Studio",
                 "toolbar",
                 ["video"],
@@ -178,65 +179,23 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 order: 45,
                 suppressSuccessAlert: true);
         SegmentStudioKeyboardActions.AddTo(builder);
-        return builder.Build();
+        var manifest = builder.Build();
+        // The editor renders the host's video actions so Run AI is at hand, which
+        // would offer to open Segment Studio from inside Segment Studio. The action
+        // is restricted to the video page, and the editor passes its own page type.
+        // The builder takes no pages, so the restriction goes on the built action.
+        var openAction = manifest.Actions.FindIndex(action => action.Id == OpenInSegmentStudioActionId);
+        manifest.Actions[openAction] = manifest.Actions[openAction] with { Pages = ["video"] };
+        return manifest;
     }
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/analysis-runs",
-                async Task<IResult> (int videoId, DbContext db,
-                    ICurrentPrincipalAccessor principalAccessor,
-                    [FromServices] IJobService jobs, CancellationToken ct) =>
-                {
-                    if (principalAccessor.Current?.UserId is not int userId)
-                        return Results.Unauthorized();
-                    var profile =
-                        await SegmentStudioFeatureProfileService.GetAsync(
-                            db, userId, ct);
-                    var runs = await db.Set<SegmentStudioAnalysisRun>()
-                        .Where(run => run.VideoId == videoId)
-                        .OrderByDescending(run => run.CreatedAt)
-                        .Take(20)
-                        .ToListAsync(ct);
-                    var now = DateTime.UtcNow;
-                    foreach (var run in runs.Where(run =>
-                                 run.Status == "queued" || run.Status == "running"))
-                    {
-                        var job = string.IsNullOrWhiteSpace(run.JobId)
-                            ? null
-                            : jobs.GetJob(run.JobId);
-                        if (job?.Status is JobStatus.Pending or JobStatus.Running)
-                            continue;
-                        if (job is null && run.JobId is null
-                            && now - run.CreatedAt < TimeSpan.FromMinutes(1))
-                            continue;
-                        run.Status = job?.Status == JobStatus.Cancelled ? "cancelled" : "failed";
-                        run.ErrorCode = job?.Status == JobStatus.Cancelled
-                            ? "cancelled"
-                            : "job_interrupted";
-                        run.ErrorMessage = job?.Status == JobStatus.Cancelled
-                            ? "Analysis was cancelled before it started."
-                            : "The analysis job ended before the run completed.";
-                        run.UpdatedAt = now;
-                        run.CompletedAt = now;
-                    }
-                    await db.SaveChangesAsync(ct);
-                    if (profile.EffectiveMode == SegmentStudioModes.Basic)
-                        return Results.Ok(runs.Select(run =>
-                            ToAnalysisRunResponse(run, [])));
-                    var runIds = runs.Select(run => run.Id).ToArray();
-                    var candidates = await db.Set<SegmentStudioAnalysisCandidate>().AsNoTracking()
-                        .Where(candidate => runIds.Contains(candidate.RunId))
-                        .OrderBy(candidate => candidate.StartSec)
-                        .ThenBy(candidate => candidate.Id)
-                        .ToListAsync(ct);
-                    var candidatesByRun = candidates.ToLookup(candidate => candidate.RunId);
-                    return Results.Ok(runs.Select(run =>
-                        ToAnalysisRunResponse(
-                            run,
-                            candidatesByRun[run.Id])));
-                })
+                async (int videoId, DbContext db, [FromServices] IJobService jobs, CancellationToken ct) =>
+                    Results.Ok(await SegmentStudioAnalysisRuns.ListAsync(
+                        db, videoId, jobId => jobs.GetJob(jobId)?.Status, DateTime.UtcNow, ct)))
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsRead)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
@@ -4157,37 +4116,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
     }
 
     private sealed record SegmentStudioVideoFile(string Format, double Duration, string AudioCodec, double FrameRate);
-
-    private static SegmentStudioAnalysisRunResponse ToAnalysisRunResponse(
-        SegmentStudioAnalysisRun run, IEnumerable<SegmentStudioAnalysisCandidate> candidates) =>
-        new(
-            run.Id,
-            run.VideoId,
-            run.VideoFileId,
-            run.Status,
-            JsonSerializer.Deserialize<IReadOnlyList<string>>(
-                run.AnalysesJson,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [],
-            run.JobId,
-            run.ServiceRunId,
-            run.SourceFingerprint,
-            candidates.Select(candidate => new SegmentStudioAnalysisCandidateResponse(
-                candidate.Id,
-                candidate.CandidateKey,
-                candidate.Kind,
-                candidate.TagName,
-                candidate.Title,
-                candidate.StartSec,
-                candidate.EndSec,
-                candidate.Confidence,
-                candidate.ModelKey,
-                candidate.ObservationCount,
-                candidate.ReviewState)).ToArray(),
-            run.ErrorCode,
-            run.ErrorMessage,
-            run.CreatedAt,
-            run.UpdatedAt,
-            run.CompletedAt);
 
     private sealed record SegmentStudioEditorVideo(
         int Id,

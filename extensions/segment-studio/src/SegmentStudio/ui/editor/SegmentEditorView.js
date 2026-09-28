@@ -1,6 +1,6 @@
 import { formatTime } from "../shared/api.js";
 import { DerivedSegmentIcon, EditorToolbarIcon, provenanceSourceLabel } from "./SegmentDetails.js";
-import { h, useExtensionKeyboardBindings, useMemo, useRef, VideoPlayer } from "../shared/runtime.js";
+import { ExtensionEntityActions, h, useExtensionKeyboardBindings, useMemo, useRef, VideoPlayer } from "../shared/runtime.js";
 import { segmentRailItemStyle, SegmentStateBadge } from "../shared/presentation.js";
 import { setBackLinkNavigation } from "../discovery/components.js";
 import { PerformerAvatar, PerformerSublaneAvatars, swimlaneDisplayLabel } from "./model/swimlanes.js";
@@ -11,7 +11,7 @@ import { EditorFiltersDialog, FirstSegmentTagDialog } from "./dialogs/EditorFilt
 import { ApprovedDraftPublishingDialog, AutoAssignPerformersDialog, EDITOR_HISTORY_POPOVER_ID, EditorHistoryPopover, IncorrectExamplesDialog, KeyboardShortcutsDialog, MergeSelectionDialog, RejectedSegmentsDeletionDialog, SegmentQuickSearchDialog } from "./dialogs/EditorDialogs.js";
 import { DerivedSegmentMaterializationDialog } from "./dialogs/MaterializationDialog.js";
 import { SegmentActiveEditor } from "./SegmentActiveEditor.js";
-import { DEFAULT_EDITOR_LAYOUT, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
+import { DEFAULT_EDITOR_LAYOUT, SEGMENT_STUDIO_EDITOR_PAGE_TYPE, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 import { SwimlaneTimeline } from "./SwimlaneTimeline.js";
 import { InlineTagConfigurationDialog } from "./dialogs/InlineTagConfigurationDialog.js";
 import { StepBack, StepForward } from "@cove/runtime/lucide-react";
@@ -165,6 +165,20 @@ function SegmentEditorView(props) {
         ]) : null,
         h("div", { key: "toolbar", className: "flex flex-wrap items-center justify-between gap-2" }, [
           h("div", { key: "workflow", className: "flex flex-wrap items-center gap-1.5" }, [
+            // Run AI and any other contributed video action, rendered by the host
+            // exactly as they are on a video's own page rather than reimplemented here.
+            // The host queues the run and returns at once. In Full mode,
+            // useSegmentAnalysis reloads the editor when Segment Studio's review
+            // results for the run arrive.
+            video?.id
+              ? h(ExtensionEntityActions, {
+                key: "extension-actions",
+                entityType: "video",
+                entityId: video.id,
+                pageType: SEGMENT_STUDIO_EDITOR_PAGE_TYPE,
+                renderMode: "toolbar",
+              })
+              : null,
             compatibilityMode ? h("button", {
               key: "auto-assign-performers",
               type: "button",

@@ -11,7 +11,8 @@ Its extension ID is `com.midnightrider.segment-studio`. The shorter
 Version 0.1.8 requires Cove 1.4.0-rc.1 or later and the AI Core extension
 (`cove.community.ai.core`) 0.6.0 or later, which itself requires Cove 1.5.0.
 Segment Studio compiles against the AI contract that AI Core ships and does
-not load without it.
+not load without it. Its Run AI buttons in the editor and discovery appear only
+on Cove versions that let extensions show other extensions' video actions.
 
 The extension includes video discovery, a timeline-first editor, review and
 recycling-bin workflows, segment groups, provenance inspection, integrity

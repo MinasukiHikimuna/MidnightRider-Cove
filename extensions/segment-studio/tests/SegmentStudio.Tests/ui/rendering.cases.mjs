@@ -12,6 +12,32 @@ test("UI imports only components available in the declared Cove runtime", () => 
   assert.match(source, /VideoPlayer/);
 });
 
+test("host components newer than the declared runtime render nothing when missing", async () => {
+  // The test runtime mirrors Cove 1.5.1 and earlier, whose components module
+  // exports neither of these. Importing them by name would fail the whole bundle
+  // at load time, so Run AI's buttons must simply not appear there instead.
+  const runtime = await import(new URL("../../../src/SegmentStudio/ui/shared/runtime.js", import.meta.url));
+  for (const name of ["ExtensionEntityActions", "ExtensionSelectionActions"]) {
+    assert.equal(typeof runtime[name], "function", name);
+    assert.equal(runtime[name]({ entityType: "video" }), null, name);
+  }
+  const Present = () => "rendered";
+  assert.equal(runtime.optionalHostComponent({ ExtensionEntityActions: Present }, "ExtensionEntityActions"), Present);
+  // React.memo and forwardRef return objects carrying $$typeof, not functions.
+  const Memoized = { $$typeof: Symbol.for("react.memo"), type: Present, compare: null };
+  assert.equal(runtime.optionalHostComponent({ ExtensionEntityActions: Memoized }, "ExtensionEntityActions"), Memoized);
+  for (const notAComponent of ["not a component", {}, null])
+    assert.equal(runtime.optionalHostComponent({ ExtensionEntityActions: notAComponent }, "ExtensionEntityActions")({}), null);
+
+  // The built bundle is what hosts load: it must look them up on the namespace too.
+  const bundle = fs.readFileSync(new URL("src/SegmentStudio/dist/ui.mjs", repositoryRoot), "utf8");
+  assert.doesNotMatch(
+    bundle,
+    /import\s*\{[^}]*\bExtension(?:Entity|Selection)Actions\b[^}]*\}\s*from\s*["']@cove\/runtime\/components["']/,
+  );
+  assert.match(bundle, /import \* as \w+ from "@cove\/runtime\/components"/);
+});
+
 test("video results use compact Cove-style cards", () => {
   const cards = source.slice(source.indexOf("function SegmentSummary"), source.indexOf("export { DISCOVERY_URL_OPTIONS"));
   const discoveryPage = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));

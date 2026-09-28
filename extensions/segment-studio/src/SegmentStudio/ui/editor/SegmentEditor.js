@@ -44,7 +44,7 @@ function restorePublishApprovedFocus(target, fallback) {
   focusTarget?.focus?.({ preventScroll: true });
 }
 
-function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsChanged, splitLayout, initialSegmentId, compatibilityMode = false, profile, onNavigate }) {
+function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysisCompleted, onSlotsChanged, splitLayout, initialSegmentId, compatibilityMode = false, profile, onNavigate }) {
   const lastSelectionReferenceRef = useRef(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
@@ -122,6 +122,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onSlotsCh
   } = useSegmentAnalysis(
     detail.video.id,
     onReload,
+    onAnalysisCompleted,
     compatibilityMode,
     (kind, lockId) => saveQueue.acquire({ kind, lockId }),
   );

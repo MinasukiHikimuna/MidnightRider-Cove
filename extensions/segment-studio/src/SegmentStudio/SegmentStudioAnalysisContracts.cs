@@ -1,7 +1,8 @@
 namespace SegmentStudio;
 
 /// <summary>
-/// An analysis run as the runs endpoint reports it, with the candidates it produced.
+/// An analysis run as the runs endpoint reports it. The candidates a run produced
+/// are reviewed as drafts in the editor, so the endpoint does not return them.
 /// </summary>
 public sealed record SegmentStudioAnalysisRunResponse(
     Guid Id,
@@ -12,23 +13,8 @@ public sealed record SegmentStudioAnalysisRunResponse(
     string? JobId,
     Guid? ServiceRunId,
     string? SourceFingerprint,
-    IReadOnlyList<SegmentStudioAnalysisCandidateResponse> Candidates,
     string? ErrorCode,
     string? ErrorMessage,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? CompletedAt);
-
-/// <summary>One reviewable tag span belonging to a run.</summary>
-public sealed record SegmentStudioAnalysisCandidateResponse(
-    long Id,
-    string CandidateKey,
-    string Kind,
-    string TagName,
-    string Title,
-    double StartSec,
-    double EndSec,
-    double? Confidence,
-    string ModelKey,
-    int ObservationCount,
-    string ReviewState);

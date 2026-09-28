@@ -1,5 +1,10 @@
 export const SEGMENT_STUDIO_EXTENSION_ID = "com.midnightrider.segment-studio";
 
+// The page type the editor reports to the host's video actions. Segment Studio's
+// own "Open in Segment Studio" action is restricted to the video page, so it is
+// not offered inside the editor it would open.
+export const SEGMENT_STUDIO_EDITOR_PAGE_TYPE = "segment-studio-editor";
+
 const EDITOR_LAYOUT_STORAGE_KEY = "segment-studio.layout.v1";
 
 const REVIEW_FILTER_STORAGE_KEY = "segment-studio.review-filters.v1";

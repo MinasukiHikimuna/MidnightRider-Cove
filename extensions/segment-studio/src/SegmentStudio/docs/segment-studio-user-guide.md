@@ -332,6 +332,19 @@ result is not silently discarded.
 Segment Studio requires AI Core. It uses the AI contract that AI Core ships, so
 Cove does not load Segment Studio unless AI Core is installed.
 
+The same **Run AI** action is available inside Segment Studio: in the editor
+toolbar for the open video and, in Full mode, in discovery for the selected
+videos. These buttons need a Cove version that lets extensions show other
+extensions' video actions; on older versions Segment Studio works without them,
+and Run AI stays available on each video's own page.
+
+In Full mode, an open editor reloads by itself when a Segment Studio review run
+for its video completes, so new drafts appear without reloading the page. It
+checks when you return to the window or tab, and every 30 seconds while the tab
+is visible. It does not reload for a run that produced no review candidates,
+for segments another capability writes to the library in the same run (such as
+AI Tagging's), or in Basic mode; reload the editor to see those.
+
 Segment Studio writes these drafts after the run's analysis finishes, as part of
 the AI run rather than on behalf of a signed-in user. Starting a run needs only
 AI Core's permission to run AI (`cove.community.ai.core.runs.run`): Segment

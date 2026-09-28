@@ -191,15 +191,227 @@ test("Basic mode skips Full-only analysis requests", async () => {
   assert.equal(applyStaleResult, false);
 
   const analysisHook = sourceByModule["editor/hooks/useSegmentAnalysis.js"];
-  const firstEffectStart = analysisHook.indexOf("useEffect(() => {");
-  const pollingEffectStart = analysisHook.indexOf("useEffect(() => {", firstEffectStart + 1);
-  const pollingEffect = analysisHook.slice(pollingEffectStart, analysisHook.indexOf("\n\n  return {", pollingEffectStart));
-  assert.match(analysisHook, /if \(!shouldLoadSegmentAnalysis\(fullMode\)\)[\s\S]{0,180}setAnalysisRun\(null\)/);
-  assert.match(pollingEffect, /if \(!shouldLoadSegmentAnalysis\(fullMode\)/);
-  assert.match(pollingEffect, /const scope = createSegmentAnalysisRequestScope\(\)/);
-  assert.match(pollingEffect, /if \(scope\.isActive\(\)\) timer = setTimeout/);
-  assert.match(pollingEffect, /clearTimeout\(timer\);\s*scope\.dispose\(\)/);
-  assert.match(pollingEffect, /\[analysisRun\?\.id, analysisRun\?\.status, fullMode\]/);
+  const watchEffectStart = analysisHook.indexOf("useEffect(() => {\n    if (!shouldLoadSegmentAnalysis(fullMode)) return undefined;");
+  assert.ok(watchEffectStart >= 0);
+  const watchEffect = analysisHook.slice(watchEffectStart, analysisHook.indexOf("\n\n  return {", watchEffectStart));
+  assert.match(watchEffect, /return startCompletedRunWatch\(\{/);
+  assert.match(watchEffect, /fetchRuns: \(signal\) => requestJson\(`\/videos\/\$\{videoId\}\/analysis-runs`, \{ signal \}\)/);
+  assert.match(watchEffect, /onCompletedRun: \(\) => analysisCompletedRef\.current\(\)/);
+  assert.match(watchEffect, /windowTarget: window,\s*documentTarget: document/);
+  assert.match(watchEffect, /\}, \[videoId, fullMode\]\);/);
+
+  // The reload after a run has its own callback and error message rather than
+  // borrowing the performer-slot reload's.
+  const page = sourceByModule["editor/SegmentStudioEditorPage.js"];
+  assert.match(page, /function reloadAfterAnalysis\(\) \{[\s\S]{0,300}"Unable to load the new AI review results\."/);
+  assert.match(page, /onAnalysisCompleted: reloadAfterAnalysis,/);
+  assert.match(page, /onReload: reloadAfterSlotChange,/);
+});
+
+// ── the completed-run watch ─────────────────────────────────────────────
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+const timedTests = new WeakSet();
+
+// An EventTarget that records which listeners are registered, by type.
+function listenerTrackingTarget(properties = {}) {
+  const target = Object.assign(new EventTarget(), properties);
+  target.listeners = new Map();
+  const add = target.addEventListener.bind(target);
+  const remove = target.removeEventListener.bind(target);
+  target.addEventListener = (type, listener, options) => {
+    if (!target.listeners.has(type)) target.listeners.set(type, new Set());
+    target.listeners.get(type).add(listener);
+    add(type, listener, options);
+  };
+  target.removeEventListener = (type, listener, options) => {
+    target.listeners.get(type)?.delete(listener);
+    remove(type, listener, options);
+  };
+  return target;
+}
+
+// The first check runs as soon as the watch starts, so `runs` and `respond` give
+// its answer; change them afterwards for later checks.
+function startWatch(t, { visibilityState = "visible", reload, runs = [], respond = null } = {}) {
+  if (!timedTests.has(t)) {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    timedTests.add(t);
+  }
+  const windowTarget = listenerTrackingTarget();
+  const documentTarget = listenerTrackingTarget({ visibilityState });
+  const watch = {
+    runs,
+    fetches: 0,
+    reloads: 0,
+    signals: [],
+    windowTarget,
+    documentTarget,
+    // Set to make checks return a pending promise or throw instead of `runs`.
+    respond,
+  };
+  watch.stop = ui.startCompletedRunWatch({
+    fetchRuns: async (signal) => {
+      watch.fetches += 1;
+      watch.signals.push(signal);
+      if (watch.respond) return watch.respond(signal);
+      return watch.runs;
+    },
+    onCompletedRun: async () => {
+      watch.reloads += 1;
+      if (reload) await reload();
+    },
+    windowTarget,
+    documentTarget,
+  });
+  watch.tick = async (ms = ui.ANALYSIS_RUN_CHECK_INTERVAL_MS) => {
+    t.mock.timers.tick(ms);
+    await settle();
+  };
+  watch.focus = async () => {
+    windowTarget.dispatchEvent(new Event("focus"));
+    await settle();
+  };
+  watch.setVisibility = async (state) => {
+    documentTarget.visibilityState = state;
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+  };
+  return watch;
+}
+
+const completed = (id) => ({ id, status: "completed" });
+
+test("the run watch reloads once for each run that completes while the editor is open", async (t) => {
+  const watch = startWatch(t, { runs: [completed("a")] });
+  await settle();
+  assert.equal(watch.fetches, 1);
+  assert.equal(watch.reloads, 0, "the runs that exist when the editor opens are not a reason to reload");
+
+  await watch.tick();
+  assert.equal(watch.fetches, 2);
+  watch.runs = [{ id: "b", status: "running" }, completed("a")];
+  await watch.tick();
+  assert.equal(watch.reloads, 0, "only completed runs count");
+
+  watch.runs = [completed("b"), completed("a")];
+  await watch.tick();
+  assert.equal(watch.reloads, 1);
+  await watch.tick();
+  await watch.focus();
+  assert.equal(watch.fetches, 6);
+  assert.equal(watch.reloads, 1, "each run reloads the editor once");
+
+  watch.runs = [completed("d"), completed("c"), completed("b"), completed("a")];
+  await watch.focus();
+  assert.equal(watch.reloads, 2, "several new runs found by one check reload once");
+  watch.stop();
+});
+
+test("a failed first check leaves the baseline to the next successful one", async (t) => {
+  const watch = startWatch(t, { respond: () => { throw new Error("offline"); } });
+  await settle();
+  assert.equal(watch.fetches, 1);
+
+  watch.respond = null;
+  watch.runs = [completed("a")];
+  await watch.tick();
+  assert.equal(watch.reloads, 0, "runs that existed before the first successful check do not reload");
+
+  watch.runs = [completed("b"), completed("a")];
+  await watch.tick();
+  assert.equal(watch.reloads, 1);
+
+  watch.respond = () => { throw new Error("offline again"); };
+  await watch.tick();
+  watch.respond = null;
+  await watch.tick();
+  assert.equal(watch.fetches, 5, "a failed check does not stop the watch");
+  assert.equal(watch.reloads, 1);
+  watch.stop();
+});
+
+test("run checks never overlap", async (t) => {
+  let finish;
+  const watch = startWatch(t, { respond: () => new Promise((resolve) => { finish = resolve; }) });
+  await settle();
+  await watch.focus();
+  await watch.setVisibility("visible");
+  await watch.tick();
+  assert.equal(watch.fetches, 1, "focus, visibility and the timer wait for the check in flight");
+
+  watch.respond = null;
+  finish([completed("a")]);
+  await settle();
+  watch.runs = [completed("b"), completed("a")];
+  await watch.focus();
+  assert.equal(watch.fetches, 2);
+  assert.equal(watch.reloads, 1);
+  watch.stop();
+});
+
+test("the run watch pauses its timer while the tab is hidden", async (t) => {
+  const watch = startWatch(t);
+  await settle();
+  assert.equal(watch.fetches, 1);
+
+  await watch.setVisibility("hidden");
+  await watch.tick(10 * ui.ANALYSIS_RUN_CHECK_INTERVAL_MS);
+  assert.equal(watch.fetches, 1, "no checks while hidden");
+
+  watch.runs = [completed("a")];
+  await watch.setVisibility("visible");
+  assert.equal(watch.fetches, 2, "becoming visible checks at once");
+  assert.equal(watch.reloads, 1);
+  await watch.tick();
+  assert.equal(watch.fetches, 3, "and resumes the timer");
+  watch.stop();
+
+  const hidden = startWatch(t, { visibilityState: "hidden" });
+  await settle();
+  await hidden.tick(10 * ui.ANALYSIS_RUN_CHECK_INTERVAL_MS);
+  assert.equal(hidden.fetches, 1, "a watch started hidden records the baseline but does not poll");
+  hidden.stop();
+});
+
+test("stopping the run watch aborts the check in flight and removes its listeners", async (t) => {
+  let finish;
+  const watch = startWatch(t, { runs: [completed("a")] });
+  await settle();
+  watch.respond = () => new Promise((resolve) => { finish = resolve; });
+  await watch.focus();
+  assert.equal(watch.fetches, 2);
+  assert.equal(watch.windowTarget.listeners.get("focus").size, 1);
+  assert.equal(watch.documentTarget.listeners.get("visibilitychange").size, 1);
+
+  watch.stop();
+  assert.equal(watch.windowTarget.listeners.get("focus").size, 0, "the focus listener is removed");
+  assert.equal(watch.documentTarget.listeners.get("visibilitychange").size, 0, "the visibility listener is removed");
+  assert.equal(watch.signals.at(-1).aborted, true, "the check in flight is aborted");
+  finish([completed("b"), completed("a")]);
+  await settle();
+  assert.equal(watch.reloads, 0, "a result arriving after stop is ignored");
+
+  watch.respond = null;
+  await watch.focus();
+  await watch.setVisibility("hidden");
+  await watch.setVisibility("visible");
+  await watch.tick(10 * ui.ANALYSIS_RUN_CHECK_INTERVAL_MS);
+  assert.equal(watch.fetches, 2, "no listener or timer survives stop");
+});
+
+test("a failed reload is not retried and the watch keeps checking", async (t) => {
+  const watch = startWatch(t, { reload: async () => { throw new Error("reload failed"); } });
+  await settle();
+  watch.runs = [completed("a")];
+  await watch.tick();
+  assert.equal(watch.reloads, 1);
+  await watch.tick();
+  await watch.tick();
+  assert.equal(watch.fetches, 4);
+  assert.equal(watch.reloads, 1, "the failed reload reports its own error; the run is not reloaded again");
+  watch.stop();
 });
 
 test("approved draft publishing is previewed by tag before conversion to native segments", () => {
@@ -1505,4 +1717,23 @@ test("editor video title links to Cove without a separate open-video action", ()
   assert.match(source, /function PerformerAvatar\(\{ performer, compact = false, tooltip = null \}\)/);
   assert.match(source, /title: tooltip \|\| undefined/);
   assert.doesNotMatch(editor, /Open Cove video/);
+});
+
+test("the editor toolbar offers the host's video actions instead of its own scan", () => {
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+
+  assert.match(view, /h\(ExtensionEntityActions, \{[\s\S]{0,200}entityType: "video"/);
+  assert.match(view, /entityId: video\.id/);
+  assert.match(view, /renderMode: "toolbar"/);
+  // The host only calls onInvoked in menu mode, and then before the job is
+  // queued, so the editor reloads from its own run watcher instead.
+  assert.doesNotMatch(view, /onInvoked/);
+  assert.doesNotMatch(view, /startFullAnalysis|segment-studio-full-scan-run/);
+  // Segment Studio's own "Open in Segment Studio" action is restricted to the
+  // video page, so the editor reports a page type of its own.
+  assert.match(view, /pageType: SEGMENT_STUDIO_EDITOR_PAGE_TYPE,/);
+  assert.match(
+    sourceByModule["shared/constants.js"],
+    /export const SEGMENT_STUDIO_EDITOR_PAGE_TYPE = "segment-studio-editor";/,
+  );
 });
