@@ -36,7 +36,9 @@ python3 scripts/publish-extension.py \
 ```
 
 Remove `--dry-run` to publish. Add `--push-main` if local `main` is ahead of
-GitHub and you want the command to push it. The command requires a clean `main`
+GitHub and you want the command to push it. Use `--commit <hash>` when the tag
+must point to a particular commit; the extension files there must match local
+`main`. The command requires a clean `main`
 checkout, `git`, `gh` authentication with write access to this repository and
 the upstream official registry, and Python 3. It reads the version from the
 extension manifest, pushes an annotated tag, waits for the release ZIP, and

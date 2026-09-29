@@ -154,6 +154,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--extension-id", required=True, help="Extension ID from release.json")
     parser.add_argument("--changelog-file", required=True, type=Path, help="Reviewed release notes for the registry")
+    parser.add_argument("--commit", help="Commit to tag; its extension files must match local main")
     parser.add_argument("--push-main", action="store_true", help="Push local main before creating the release tag")
     parser.add_argument("--dry-run", action="store_true", help="Check and print the release plan without publishing")
     parser.add_argument("--registry-repository", default=REGISTRY_REPOSITORY)
@@ -203,6 +204,12 @@ def main() -> None:
     source_manifest_url = f"https://raw.githubusercontent.com/{source_repository}/main/{relative_manifest}"
     branch = f"publish/{extension_dir.name}/v{version}"
     head = command("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
+    release_commit = command("git", "rev-parse", "--verify", f"{args.commit or 'HEAD'}^{{commit}}", cwd=root).stdout.strip()
+    extension_path = extension_dir.relative_to(root).as_posix()
+    current_tree = command("git", "rev-parse", f"{head}:{extension_path}", cwd=root).stdout.strip()
+    release_tree = command("git", "rev-parse", f"{release_commit}:{extension_path}", cwd=root).stdout.strip()
+    if release_tree != current_tree:
+        raise PublishError(f"Extension files at {release_commit} differ from local main")
     remote_head = command("gh", "api", f"repos/{source_repository}/commits/main", "--jq", ".sha").stdout.strip()
     if head != remote_head:
         if command("git", "merge-base", "--is-ancestor", remote_head, head, cwd=root, check=False).returncode:
@@ -211,10 +218,10 @@ def main() -> None:
             raise PublishError("Local main is ahead of GitHub; rerun with --push-main")
 
     tagged_commit = remote_tag_commit(source_repository, tag)
-    if tagged_commit and tagged_commit != head:
-        raise PublishError(f"Remote tag {tag} points to {tagged_commit}, not HEAD")
+    if tagged_commit and tagged_commit != release_commit:
+        raise PublishError(f"Remote tag {tag} points to {tagged_commit}, not {release_commit}")
     local_tag = command("git", "rev-parse", "--verify", f"refs/tags/{tag}^{{}}", cwd=root, check=False)
-    if local_tag.returncode == 0 and local_tag.stdout.strip() != head:
+    if local_tag.returncode == 0 and local_tag.stdout.strip() != release_commit:
         raise PublishError(f"Local tag {tag} points to another commit")
 
     current_entry = live_registry_entry(registry_repository, args.extension_id)
@@ -223,7 +230,8 @@ def main() -> None:
         version, changelog, download_url,
     )
 
-    print(f"Source: {source_repository}@{head}", flush=True)
+    print(f"Source main: {source_repository}@{head}", flush=True)
+    print(f"Release commit: {release_commit}", flush=True)
     print(f"Tag: {tag}", flush=True)
     print(f"Asset: {download_url}", flush=True)
     print(f"Registry: {'update' if current_entry else 'new extension'}", flush=True)
@@ -240,7 +248,7 @@ def main() -> None:
         )
     if not tagged_commit:
         if local_tag.returncode:
-            command("git", "tag", "--annotate", tag, "--message", f"{manifest['name']} {version}", cwd=root)
+            command("git", "tag", "--annotate", tag, "--message", f"{manifest['name']} {version}", release_commit, cwd=root)
         print("Pushing release tag...", flush=True)
         command(
             "git", "-c", "credential.helper=!gh auth git-credential", "push",
@@ -248,7 +256,7 @@ def main() -> None:
         )
 
     print("Waiting for the release ZIP...", flush=True)
-    release_url = wait_for_release(source_repository, tag, head, asset_name)
+    release_url = wait_for_release(source_repository, tag, release_commit, asset_name)
     print(f"Release: {release_url}", flush=True)
 
     existing_pr = open_registry_pr(registry_repository, branch)
