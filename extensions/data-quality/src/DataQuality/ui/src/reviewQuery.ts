@@ -14,7 +14,7 @@ import { splitTagBins } from "./TagPresentation";
 export type { MediaReview } from "./model";
 export type PerformerScope = Omit<
   OccurrenceReview["occurrence"],
-  "tagIds" | "multiple" | "flagPerformerTagIds"
+  "tagIds" | "multiple" | "performerFlags" | "flagPerformerTagIds"
 >;
 export interface ReviewQuery {
   filter: Record<string, unknown>;

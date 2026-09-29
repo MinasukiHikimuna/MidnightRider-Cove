@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
-import { loadPerformerAnswers } from "../performerAnswers";
-import type { OccurrenceReview } from "../model";
+import { answerCategories, loadPerformerAnswers, type AnswerSummary } from "../performerAnswers";
+import type { MediaReviewAction, OccurrenceReview } from "../model";
 
 const fetchMock = vi.mocked(extensionFetch);
 const review: OccurrenceReview = {
@@ -69,16 +69,27 @@ it("summarizes one performer's answers per condition category, most used first",
   expect(await loadPerformerAnswers(review, 11, new AbortController().signal)).toEqual({
     answered: 3,
     groups: [
-      { id: 30, name: "Size", tags: [{ id: 32, name: "Tag 32", count: 2 }] },
+      {
+        id: 30,
+        name: "Size",
+        members: [30, 31, 32],
+        tags: [{ id: 32, name: "Tag 32", count: 2 }],
+      },
       {
         id: 40,
         name: "Augmentation",
+        members: [40, 41, 42],
         tags: [
           { id: 41, name: "Tag 41", count: 1 },
           { id: 42, name: "Tag 42", count: 1 },
         ],
       },
-      { id: null, name: "Other review tags", tags: [{ id: 50, name: "Tag 50", count: 1 }] },
+      {
+        id: null,
+        name: "Other review tags",
+        members: [50],
+        tags: [{ id: 50, name: "Tag 50", count: 1 }],
+      },
     ],
   });
   expect(requested[0]).toBe(
@@ -98,6 +109,7 @@ it("lists only the review's action tags when the condition has no categories", a
       {
         id: null,
         name: "Review tags",
+        members: [32, 50],
         tags: [
           { id: 32, name: "Tag 32", count: 2 },
           { id: 50, name: "Tag 50", count: 1 },
@@ -123,6 +135,7 @@ it("counts a legacy review's tag choices as the answers to summarize", async () 
       {
         id: null,
         name: "Review tags",
+        members: [41, 42],
         tags: [
           { id: 41, name: "Tag 41", count: 1 },
           { id: 42, name: "Tag 42", count: 1 },
@@ -166,4 +179,85 @@ it("keeps each answer's badge data and orders equally frequent answers like Cove
     expect.objectContaining({ id: 42, name: "Beta", tagGroupColor: "#664422", count: 1 }),
     expect.objectContaining({ id: 41, name: "Alpha", color: "#224466", count: 1 }),
   ]);
+});
+
+// Answers per category: condition categories, then answer groups outside them, then the rest.
+const held = (id: number, count: number) => ({ id, name: `Tag ${id}`, count });
+const summary: AnswerSummary = {
+  answered: 9,
+  groups: [
+    { id: 30, name: "Size", members: [30, 31, 32], tags: [held(32, 5), held(31, 2)] },
+    { id: 40, name: "Kind", members: [40, 41, 42], tags: [held(41, 3)] },
+    { id: null, name: "Other review tags", members: [50, 51, 60], tags: [held(51, 2), held(50, 4), held(60, 1)] },
+  ],
+};
+const answer = (id: string, group: string | undefined, tag: number): MediaReviewAction => ({
+  id,
+  label: id,
+  ...(group === undefined ? {} : { group }),
+  steps: [{ mode: "ADD", tagIds: [tag] }],
+});
+
+it("gives answer groups outside the condition categories rows of their own", () => {
+  const actions = [
+    // Inside the Size category entirely: Size shows these answers already.
+    answer("small", "Measure", 31),
+    answer("large", "measure ", 32),
+    // Outside every condition category: a row of its own, its answers taken from the rest.
+    answer("plain", "Finish", 50),
+    answer("shiny", "Finish", 51),
+    // A group none of whose answers the performer holds still gets its row.
+    answer("wide", "Width", 70),
+    // Ungrouped: stays with the other review tags.
+    answer("note", undefined, 60),
+  ];
+  const rows = answerCategories(summary, actions);
+  expect(rows.map((row) => [row.key, row.kind, row.name])).toEqual([
+    ["tag:30", "condition", "Size"],
+    ["tag:40", "condition", "Kind"],
+    ["group:finish", "group", "Finish"],
+    ["group:width", "group", "Width"],
+    ["other", "other", "Other review tags"],
+  ]);
+  expect(rows[0].members).toEqual([30, 31, 32]);
+  // Most frequent first.
+  expect(rows[2].tags).toEqual([held(50, 4), held(51, 2)]);
+  expect(rows[2].members).toEqual([50, 51]);
+  expect(rows[3].tags).toEqual([]);
+  expect(rows[4].tags).toEqual([held(60, 1)]);
+  expect(rows[4].members).toEqual([60]);
+});
+
+it("counts a group's answers wherever the performer holds them, a group across categories too", () => {
+  // One answer in Size, one in Kind: no single category holds the group.
+  const rows = answerCategories(summary, [answer("a", "Mixed up", 32), answer("b", "Mixed up", 41)]);
+  expect(rows.map((row) => row.key)).toEqual(["tag:30", "tag:40", "group:mixed up", "other"]);
+  expect(rows[2].tags).toEqual([held(32, 5), held(41, 3)]);
+});
+
+it("keeps the rows as they were without answer groups, and names the rest alone", () => {
+  expect(answerCategories(summary, [answer("a", undefined, 50)]).map((row) => row.key)).toEqual([
+    "tag:30",
+    "tag:40",
+    "other",
+  ]);
+  const alone: AnswerSummary = {
+    answered: 1,
+    groups: [{ id: null, name: "Review tags", members: [50], tags: [held(50, 1)] }],
+  };
+  expect(answerCategories(alone, []).map((row) => row.name)).toEqual(["Review tags"]);
+  // With a group row before them, the rest are the other review tags.
+  expect(
+    answerCategories(
+      { ...alone, groups: [{ id: null, name: "Review tags", members: [50, 51], tags: [held(50, 1)] }] },
+      [answer("x", "Finish", 51)],
+    ).map((row) => row.name),
+  ).toEqual(["Finish", "Other review tags"]);
+  // The rest only shows while it holds answers.
+  expect(
+    answerCategories(
+      { answered: 0, groups: [{ id: null, name: "Review tags", members: [50], tags: [] }] },
+      [],
+    ),
+  ).toEqual([]);
 });

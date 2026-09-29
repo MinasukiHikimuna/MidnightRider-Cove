@@ -1,4 +1,5 @@
 import { countMedia, normalizeCriteria, request, requestIfFound } from "./api";
+import type { ProfileTag } from "./attention";
 import { reviewMediaKind, type OccurrenceReview } from "./model";
 import { conditionCannotMatch, occurrenceSceneReview } from "./occurrences";
 
@@ -9,8 +10,11 @@ export interface RankedPerformer {
   count: number;
   /** Every item the performer appears in, which bounds the count. */
   total: number;
-  /** The review's flag tags on the performer's profile. */
-  flags: string[];
+  /**
+   * The tags on the performer's profile, as read with the performer: the review's flags are
+   * matched against them when shown, so changing the flags never counts anyone again.
+   */
+  tags: ProfileTag[];
 }
 type Candidate = Omit<RankedPerformer, "count">;
 export interface PerformerRanking {
@@ -37,7 +41,7 @@ interface PerformerDto {
   tags?: Array<{ id: number; name: string }>;
 }
 
-/** Queue criteria decide the ranking; paging and sort order do not. */
+/** Queue criteria decide the ranking; paging, sort order and performer flags do not. */
 export function rankingSignature(review: OccurrenceReview): string {
   const {
     page: _page,
@@ -48,12 +52,17 @@ export function rankingSignature(review: OccurrenceReview): string {
     seed: _seed,
     ...filter
   } = review.view.filter;
+  const {
+    performerFlags: _flags,
+    flagPerformerTagIds: _older,
+    ...occurrence
+  } = review.occurrence;
   return JSON.stringify([
     review.entityType,
     filter,
     review.view.objectFilter,
     review.view.searchMode,
-    review.occurrence,
+    occurrence,
   ]);
 }
 
@@ -64,7 +73,6 @@ function candidatesKey(review: OccurrenceReview): string {
     settings.targetMode,
     settings.targetMode === "selected" ? settings.performerIds : [],
     settings.targetMode === "filter" ? settings.performerFilter : {},
-    settings.flagPerformerTagIds ?? [],
   ]);
 }
 
@@ -73,14 +81,11 @@ async function loadCandidates(
   signal: AbortSignal,
 ): Promise<Candidate[]> {
   const audio = reviewMediaKind(review) === "audio";
-  const flagIds = new Set(review.occurrence.flagPerformerTagIds ?? []);
   const candidate = (performer: PerformerDto): Candidate => ({
     id: performer.id,
     name: performer.name,
     total: (audio ? performer.audioCount : performer.videoCount) ?? 0,
-    flags: (performer.tags ?? [])
-      .filter((tag) => flagIds.has(tag.id))
-      .map((tag) => tag.name),
+    tags: (performer.tags ?? []).map((tag) => ({ id: tag.id, name: tag.name })),
   });
   const settings = review.occurrence;
   const candidates: Candidate[] = [];

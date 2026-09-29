@@ -8,7 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Ban, Check, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
+import { Ban, Check, Flag, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
 import {
   actionGroups,
   answersGroup,
@@ -17,6 +17,7 @@ import {
   type ActionGroup,
   type GroupStatus,
 } from "./answerGroups";
+import { attentionText, categoriesTouched, type AttentionEntry } from "./attention";
 import { actionEffectParts } from "./FindAction";
 import { previewActionEffect, type TagTrees } from "./effectPreview";
 import {
@@ -100,6 +101,8 @@ export function mobilePreviewHandlers<A>(preview: ActionPreviewStore<A>, action:
     onBlur: () => preview.clear(action),
   };
 }
+
+const NO_ATTENTION: readonly AttentionEntry[] = [];
 
 /** The pad's keyboard rows: q…å, a…ä, then z…b followed by keys that apply no action. */
 const ROWS: ReadonlyArray<{ indent: number; keys: readonly ActionKey[]; fixed: readonly string[] }> =
@@ -218,11 +221,14 @@ function GroupChecklist({
   groups,
   statuses,
   actions,
+  attentionOf,
 }: {
   groups: readonly ActionGroup[];
   /** Null while the item's tags load. */
   statuses: readonly GroupStatus[] | null;
   actions: readonly MediaReviewAction[];
+  /** Why a group needs attention (its answers touch such a category); empty when it does not. */
+  attentionOf(group: ActionGroup): string;
 }) {
   return (
     <ul
@@ -234,21 +240,29 @@ function GroupChecklist({
         const answers = statuses ? (group as GroupStatus).answers : null;
         const state = !answers ? "unknown" : answers.length ? "answered" : "open";
         const answer = answers?.map((index) => actions[index].label).join(", ");
+        const attention = attentionOf(group);
+        const title =
+          state === "answered"
+            ? `${group.name}: ${answer}`
+            : state === "open"
+              ? `${group.name}: not answered yet`
+              : group.name;
         return (
           <li
             key={group.key}
             className="dq-group"
             data-state={state}
+            data-attention={attention ? true : undefined}
             // In full, for a name or answer the header cuts short.
-            title={
-              state === "answered"
-                ? `${group.name}: ${answer}`
-                : state === "open"
-                  ? `${group.name}: not answered yet`
-                  : group.name
-            }
+            title={attention ? `${title}. Needs attention: ${attention}` : title}
           >
             <span className="dq-group-name">{group.name}</span>
+            {attention && (
+              <span className="dq-group-flag">
+                <Flag aria-hidden="true" />
+                <span className="dq-sr-only">, needs attention: {attention}</span>
+              </span>
+            )}
             {state === "answered" && (
               <>
                 <Check aria-hidden="true" />
@@ -310,6 +324,7 @@ export function ActionPad({
   findDisabled,
   paused = false,
   waitForGroups = false,
+  attention = NO_ATTENTION,
   stayOnTap = false,
   onStayOnTapChange,
 }: {
@@ -332,6 +347,11 @@ export function ActionPad({
    * with the item's answers and marks the actions of the open ones.
    */
   waitForGroups?: boolean;
+  /**
+   * The categories where the performer on screen needs attention (attention.ts): the keys whose
+   * actions touch one, and the groups whose answers do, carry a flag.
+   */
+  attention?: readonly AttentionEntry[];
   /** Phone-sized windows: a tapped action applies and stays (the Stay on this item switch). */
   stayOnTap?: boolean;
   /** Turns Stay on this item on or off; without it phone-sized windows show no switch. */
@@ -365,17 +385,58 @@ export function ActionPad({
         .map((index) => [index, group.name] as const),
     ),
   );
-  const checklist = answerGroups.length > 0 && (
-    <GroupChecklist groups={answerGroups} statuses={statuses} actions={actions} />
+  // The categories needing attention that each action touches, where its key carries a flag. The
+  // paused pad shows none, like the groups.
+  const touchedByAction = useMemo(
+    () => actions.map((action) => (paused ? [] : categoriesTouched(action, attention, trees))),
+    [actions, attention, trees, paused],
   );
-  /** What the action changes, read out with its tile or button, and whose open group it answers. */
+  const reasonsOf = (entries: readonly AttentionEntry[]) => entries.map(attentionText).join("; ");
+  const attentionByAction = touchedByAction.map(reasonsOf);
+  const checklist = answerGroups.length > 0 && (
+    <GroupChecklist
+      groups={answerGroups}
+      statuses={statuses}
+      actions={actions}
+      // Each category once, however many of the group's actions touch it.
+      attentionOf={(group) =>
+        reasonsOf([
+          ...new Map(
+            group.actions.flatMap((index) => touchedByAction[index]).map((entry) => [entry.key, entry]),
+          ).values(),
+        ])
+      }
+    />
+  );
+  /**
+   * What the action changes, read out with its tile or button, whose open group it answers and
+   * where it touches a category that needs attention.
+   */
   const description = (index: number): string => {
     const effect = actionEffectParts(actions[index], names, [], trees)
       .map((part) => part.text)
       .join(", ");
     const group = openGroupOf.get(index);
-    return group === undefined ? effect : `${effect}. ${group}: not answered yet`;
+    const attentionNote = attentionByAction[index];
+    return [
+      effect,
+      group === undefined ? "" : `${group}: not answered yet`,
+      attentionNote ? `Needs attention: ${attentionNote}` : "",
+    ]
+      .filter(Boolean)
+      .join(". ");
   };
+  const flagMark = (index: number) =>
+    attentionByAction[index] ? (
+      // The tile's description says it; the mark is for the eye, with the reasons on hover.
+      <span
+        className="dq-pad-flag"
+        aria-hidden="true"
+        title={`Needs attention: ${attentionByAction[index]}`}
+      >
+        <Flag />
+      </span>
+    ) : null;
 
   const previewHandlers = (action: MediaReviewAction) => ({
     onMouseEnter: () => preview.set(action),
@@ -417,6 +478,7 @@ export function ActionPad({
           aria-keyshortcuts={binding}
           aria-describedby={effectId}
           data-group-open={openGroupOf.has(index!) || undefined}
+          data-attention={attentionByAction[index!] ? true : undefined}
           disabled={disabled}
           onClick={(event) => onApply(action, event.shiftKey)}
         >
@@ -430,6 +492,7 @@ export function ActionPad({
               absent
             </span>
           )}
+          {flagMark(index!)}
         </button>
         {canApplyAndStay(action) && (
           <button
@@ -468,6 +531,7 @@ export function ActionPad({
           aria-keyshortcuts={binding}
           aria-describedby={`${baseId}-effect-${binding}`}
           data-group-open={openGroupOf.has(index) || undefined}
+          data-attention={attentionByAction[index] ? true : undefined}
           disabled={isDisabled(action)}
           onClick={(event) => {
             // A tap that focused the button leaves no preview behind for the next item.
@@ -484,6 +548,7 @@ export function ActionPad({
               absent
             </span>
           )}
+          {flagMark(index)}
         </button>
       );
     };

@@ -334,6 +334,31 @@ export function EntityReferenceMultiSelector({
 }) {
   return <input data-testid="tag-selector" aria-label={inputAriaLabel} placeholder={placeholder} disabled={disabled} value={values.join(",")} onChange={(event) => onChange?.(event.target.value.split(",").filter(Boolean).map(Number))} />;
 }
+/** One tag id typed as text sets the value; an empty field clears it. */
+export function EntityReferenceSelector({
+  placeholder,
+  inputAriaLabel,
+  value,
+  onChange,
+  disabled,
+}: {
+  placeholder?: string;
+  inputAriaLabel?: string;
+  value?: number;
+  onChange?: (id: number | undefined) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      data-testid="tag-picker"
+      aria-label={inputAriaLabel}
+      placeholder={placeholder}
+      disabled={disabled}
+      value={value ?? ""}
+      onChange={(event) => onChange?.(event.target.value ? Number(event.target.value) : undefined)}
+    />
+  );
+}
 export function formatDuration(seconds: number) {
   return `${seconds}s`;
 }

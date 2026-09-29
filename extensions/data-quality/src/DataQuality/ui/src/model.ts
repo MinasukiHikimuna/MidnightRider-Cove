@@ -129,6 +129,16 @@ export function targetsAllPerformers(
   );
 }
 
+/**
+ * A performer flag: a performer profile tag that flags the performers who carry it, and the
+ * category it affects, that tag and everything under it (see attention.ts). Without a category the
+ * flag affects the whole review.
+ */
+export interface PerformerFlag {
+  tagId: number;
+  categoryTagId?: number;
+}
+
 export interface OccurrenceReview extends ReviewBase, MediaReviewSettings {
   entityType: "performerOccurrence" | "audioPerformerOccurrence";
   actions: MediaReviewAction[];
@@ -144,12 +154,56 @@ export interface OccurrenceReview extends ReviewBase, MediaReviewSettings {
      * confirmed absent. Defaults to true.
      */
     hideConfirmedAbsent?: boolean;
-    /** Performer profile tags that flag a performer in the performer ranking. */
+    /** The review's performer flags; read them with performerFlags(), which reads both fields. */
+    performerFlags?: PerformerFlag[];
+    /**
+     * Performer flags as older versions saved them: profile tags that flag a performer for the
+     * whole review. Read as whole-review flags; the editor moves them to `performerFlags` once the
+     * flags change.
+     */
     flagPerformerTagIds?: number[];
     tagIds: number[];
     multiple: boolean;
   };
   presentation?: { cardSize?: number | null };
+}
+
+/**
+ * A review's performer flags: its flag pairs, then the tags older versions saved as flags, each a
+ * whole-review flag unless a pair says so already.
+ */
+export function performerFlags(
+  settings: Pick<OccurrenceReview["occurrence"], "performerFlags" | "flagPerformerTagIds">,
+): PerformerFlag[] {
+  const flags = [...(settings.performerFlags ?? [])];
+  for (const tagId of settings.flagPerformerTagIds ?? [])
+    if (!flags.some((flag) => flag.tagId === tagId && flag.categoryTagId === undefined))
+      flags.push({ tagId });
+  return flags;
+}
+
+/**
+ * The occurrence settings with these performer flags, kept in `performerFlags` only (the older
+ * field goes) and without either field when there are none. A flag given twice is kept once.
+ */
+export function withPerformerFlags<S extends OccurrenceReview["occurrence"]>(
+  settings: S,
+  flags: readonly PerformerFlag[],
+): S {
+  const { performerFlags: _flags, flagPerformerTagIds: _older, ...rest } = settings;
+  const kept: PerformerFlag[] = [];
+  for (const flag of flags)
+    if (
+      !kept.some(
+        (other) => other.tagId === flag.tagId && other.categoryTagId === flag.categoryTagId,
+      )
+    )
+      kept.push(
+        flag.categoryTagId === undefined
+          ? { tagId: flag.tagId }
+          : { tagId: flag.tagId, categoryTagId: flag.categoryTagId },
+      );
+  return (kept.length ? { ...rest, performerFlags: kept } : rest) as S;
 }
 
 export type Review = VideoReview | AudioReview | TagReview | OccurrenceReview;
@@ -674,8 +728,26 @@ function validOccurrenceSettings(value: unknown): boolean {
     ids(settings.conditionTagIds) && (["any", "isNull"].includes(settings.condition) || settings.conditionTagIds.length > 0) &&
     (settings.includeSubtags === undefined || typeof settings.includeSubtags === "boolean") &&
     (settings.hideConfirmedAbsent === undefined || typeof settings.hideConfirmedAbsent === "boolean") &&
+    (settings.performerFlags === undefined || validPerformerFlags(settings.performerFlags)) &&
     (settings.flagPerformerTagIds === undefined || ids(settings.flagPerformerTagIds)) &&
     ids(settings.tagIds) && typeof settings.multiple === "boolean";
+}
+
+/** Flag pairs: a positive tag id each, an optional positive category tag id, no pair twice. */
+function validPerformerFlags(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  const positive = (id: unknown) => Number.isSafeInteger(id) && (id as number) > 0;
+  const seen = new Set<string>();
+  return value.every((flag: unknown) => {
+    if (!flag || typeof flag !== "object" || Array.isArray(flag)) return false;
+    const { tagId, categoryTagId } = flag as Record<string, unknown>;
+    if (!positive(tagId) || (categoryTagId !== undefined && !positive(categoryTagId)))
+      return false;
+    const key = `${tagId}:${categoryTagId ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function getReviewActionTargets(

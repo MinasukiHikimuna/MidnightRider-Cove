@@ -1,5 +1,11 @@
 import { request, type TagInfo } from "./api";
-import { reviewMediaKind, type OccurrenceReview } from "./model";
+import { actionGroups } from "./answerGroups";
+import {
+  reviewMediaKind,
+  tagsAddedBy,
+  type MediaReviewAction,
+  type OccurrenceReview,
+} from "./model";
 import {
   resolveConditionGroups,
   type OccurrenceApplication,
@@ -7,18 +13,29 @@ import {
 import { rememberTags } from "./tagNames";
 import { compareTagsForDisplay } from "./tagOrder";
 
+/** One of the performer's answers, with the number of their items that hold it. */
+export type AnswerCount = TagInfo & { count: number };
+
 export interface AnswerGroup {
   /** The condition tag the answers belong to; null for review tags outside every category. */
   id: number | null;
   name: string;
+  /**
+   * Every tag of the group: the condition tag with its subtree (as the condition reads it), or the
+   * review's other tags. Missing in summaries from before categories knew their tags.
+   */
+  members?: number[];
   /** Most frequent first; equally frequent answers in Cove's display order. */
-  tags: Array<TagInfo & { count: number }>;
+  tags: AnswerCount[];
 }
 export interface AnswerSummary {
   /** Items where the performer holds at least one of these answers. */
   answered: number;
   groups: AnswerGroup[];
 }
+
+const byFrequency = (a: AnswerCount, b: AnswerCount) =>
+  b.count - a.count || compareTagsForDisplay(a, b);
 
 /**
  * The answers one performer already has across all of their items, grouped by the review's
@@ -77,17 +94,19 @@ export async function loadPerformerAnswers(
     }
     return [...hosts.values()]
       .map((entry) => ({ ...entry.tag, count: entry.hosts.size }))
-      .sort((a, b) => b.count - a.count || compareTagsForDisplay(a, b));
+      .sort(byFrequency);
   };
   const groups: AnswerGroup[] = categories.map((members, index) => ({
     id: settings.conditionTagIds[index],
     name: names[index],
+    members,
     tags: group(new Set(members)),
   }));
   if (others.size)
     groups.push({
       id: null,
       name: categories.length ? "Other review tags" : "Review tags",
+      members: [...others],
       tags: group(others),
     });
   const relevant = new Set([...categorized, ...others]);
@@ -99,4 +118,68 @@ export async function loadPerformerAnswers(
     ).size,
     groups,
   };
+}
+
+/** One row of a performer's existing answers: a category and the answers they hold there. */
+export interface AnswerCategory {
+  /** "tag:<condition tag id>", "group:<answer group key>", or "other" for the other review tags. */
+  key: string;
+  kind: "condition" | "group" | "other";
+  name: string;
+  /** The category's tags: the condition tag's tree, the group's answers, or the other tags. */
+  members: readonly number[];
+  /** The answers the performer holds here, most frequent first. */
+  tags: AnswerCount[];
+}
+
+/**
+ * A performer's answers per category: each condition category, then each answer group that no
+ * single condition category holds entirely (its answers being the tags its actions add), then the
+ * review's other tags. A group inside a condition category shows there already. Two or more
+ * answers in a condition category or a group are mixed answers (see attention.ts).
+ */
+export function answerCategories(
+  summary: AnswerSummary,
+  actions: readonly MediaReviewAction[],
+): AnswerCategory[] {
+  const held = new Map<number, AnswerCount>();
+  for (const group of summary.groups) for (const tag of group.tags) held.set(tag.id, tag);
+  const members = (group: AnswerGroup) => group.members ?? group.tags.map((tag) => tag.id);
+  const rows: AnswerCategory[] = summary.groups
+    .filter((group) => group.id !== null)
+    .map((group) => ({
+      key: `tag:${group.id}`,
+      kind: "condition",
+      name: group.name,
+      members: members(group),
+      tags: group.tags,
+    }));
+  const conditions = rows.map((row) => new Set(row.members));
+  const grouped = new Set<number>();
+  for (const group of actionGroups(actions)) {
+    const answers = [
+      ...new Set(group.actions.flatMap((index) => [...tagsAddedBy(actions[index])])),
+    ];
+    if (!answers.length || conditions.some((tags) => answers.every((id) => tags.has(id))))
+      continue;
+    answers.forEach((id) => grouped.add(id));
+    rows.push({
+      key: `group:${group.key}`,
+      kind: "group",
+      name: group.name,
+      members: answers,
+      tags: answers.flatMap((id) => held.get(id) ?? []).sort(byFrequency),
+    });
+  }
+  const other = summary.groups.find((group) => group.id === null);
+  const rest = other?.tags.filter((tag) => !grouped.has(tag.id)) ?? [];
+  if (other && rest.length)
+    rows.push({
+      key: "other",
+      kind: "other",
+      name: rows.length ? "Other review tags" : "Review tags",
+      members: members(other).filter((id) => !grouped.has(id)),
+      tags: rest,
+    });
+  return rows;
 }

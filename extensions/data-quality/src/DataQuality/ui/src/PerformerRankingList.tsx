@@ -1,6 +1,10 @@
 import { Flag, RefreshCw } from "@cove/runtime/lucide-react";
+import type { ProfileTag } from "./attention";
 import { PerformerAvatar } from "./PerformerAvatar";
 import type { PerformerRanking } from "./performerRanking";
+
+/** Without a way to tell the review's flags, nobody is flagged. */
+const noFlags = (_tags: readonly ProfileTag[]) => "";
 
 export function PerformerRankingList({
   ranking,
@@ -9,6 +13,7 @@ export function PerformerRankingList({
   focus,
   disabled,
   labels,
+  flagLabel = noFlags,
   onFocus,
   onMore,
   onRefresh,
@@ -19,6 +24,11 @@ export function PerformerRankingList({
   focus?: number;
   disabled: boolean;
   labels: { one: string; many: string; queue: string };
+  /**
+   * The review's flags on a performer's profile tags in words, naming the categories they affect
+   * ("Flagged: A (affects B)"), or empty when the flags do not flag the performer.
+   */
+  flagLabel?(tags: readonly ProfileTag[]): string;
   onFocus(performerId: number): void;
   onMore(): void;
   onRefresh(): void;
@@ -57,9 +67,7 @@ export function PerformerRankingList({
       <div className="dq-queue-list">
         {shown.map((performer) => {
           const count = `${performer.count.toLocaleString()} matching ${performer.count === 1 ? labels.one : labels.many}`;
-          const flags = performer.flags.length
-            ? `Flagged: ${performer.flags.join(", ")}`
-            : "";
+          const flags = flagLabel(performer.tags);
           return (
             <button
               type="button"

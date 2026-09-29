@@ -1550,6 +1550,24 @@
   height: 12px;
   flex: none;
 }
+/* The action touches a category where the performer on screen needs attention (attention.ts): a
+   flag at the tile's top right, in a column of its own after the absent marker, its reasons in the
+   tooltip and in the tile's description. */
+.dq-pad-tile[data-attention] {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.dq-pad-flag {
+  display: inline-flex;
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  color: var(--dq-warn);
+}
+.dq-pad-flag svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
 .dq-pad-slot:hover > .dq-pad-tile:not(:disabled),
 .dq-pad-slot:focus-within > .dq-pad-tile:not(:disabled),
 .dq-bar-tile:hover:not(:disabled),
@@ -1753,6 +1771,15 @@
 }
 .dq-mobile-tile .dq-pad-marker {
   max-width: 100%;
+}
+.dq-mobile-tile[data-attention] {
+  position: relative;
+  padding-right: 26px;
+}
+.dq-mobile-tile .dq-pad-flag {
+  position: absolute;
+  top: 7px;
+  right: 8px;
 }
 .dq-mobile-tile:focus-visible {
   border-color: var(--color-accent);
@@ -1973,6 +2000,16 @@
 .dq-group[data-state="unknown"] {
   color: var(--color-muted);
 }
+/* The group's answers touch a category where the performer needs attention (attention.ts). */
+.dq-group-flag {
+  display: inline-flex;
+  flex: none;
+}
+.dq-group .dq-group-flag svg {
+  width: 12px;
+  height: 12px;
+  color: var(--dq-warn);
+}
 .dq-pad-tile[data-group-open],
 .dq-mobile-tile[data-group-open] {
   border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
@@ -2126,6 +2163,34 @@
   background: color-mix(in srgb, var(--dq-warn) 12%, transparent);
   color: var(--dq-warn);
 }
+/* Where the performer on screen needs attention (attention.ts): flags for the whole review as a
+   badge each, then each category's name with a badge per reason, wrapping in the column. */
+.dq-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dq-attention-item {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.dq-attention-category {
+  color: var(--color-foreground);
+  font-size: 0.78125rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dq-attention .dq-badge {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .dq-partners {
   display: flex;
   flex-wrap: wrap;
@@ -2264,8 +2329,9 @@
 }
 .dq-answer-category {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   color: var(--color-secondary);
   font-size: 0.78125rem;
 }
@@ -2275,6 +2341,23 @@
   border-radius: 10px;
   font-size: 0.6875rem;
   font-weight: 600;
+}
+/* In a narrow column the badges wrap under the name rather than breaking it. */
+.dq-answer-category > span:first-child {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+/* A flag's names can be long: they end in an ellipsis, in full in the tooltip. */
+.dq-answer-category .dq-answer-flag {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.dq-answer-flag-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .dq-tag-editor {
   gap: 10px;
@@ -3375,6 +3458,8 @@
   display: flex;
   gap: 12px;
   padding: 12px 14px;
+  /* In the narrow side column a long tag name wraps rather than widening the dialog. */
+  overflow-wrap: anywhere;
   border: 1px solid color-mix(in srgb, var(--dq-warn) 35%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--dq-warn) 8%, transparent);
@@ -3400,6 +3485,23 @@
   flex-wrap: wrap;
   gap: 4px 18px;
   font-size: 0.78125rem;
+}
+.dq-batch-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+}
+/* Beside the answers: the warning for the categories the ticked answers touch, over the performer's
+   existing answers. Its live region stays in place while empty, without taking room. */
+.dq-batch-side {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.dq-batch-attention-live:not(:empty) {
+  margin-bottom: 12px;
 }
 /* Answers: each configured tag action as a checkbox with its key and effect. */
 .dq-batch-pick {
@@ -4252,6 +4354,103 @@ textarea.dq-input {
   margin: 0;
   color: var(--color-secondary);
   font-size: 0.78125rem;
+}
+/* Performer flags: one card per flag, its tag, then Affects (Cove's tag picker, the tag's name in
+   the field once chosen, "Whole review" while empty) and Remove; the condition categories are
+   suggested under them. */
+.dq-flag-pairs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dq-flag-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 13rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+}
+.dq-flag-pair-tag {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.dq-flag-pair-tag > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--dq-warn);
+}
+.dq-flag-pair-affects {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.dq-flag-pair-affects > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.dq-flag-pair-label {
+  flex: none;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-flag-suggestions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.dq-flag-suggestions > span {
+  margin-right: 2px;
+}
+.dq-flag-suggestion {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: 0.75rem;
+}
+.dq-flag-suggestion:hover {
+  border-color: var(--color-accent);
+}
+.dq-flag-suggestion[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+}
+.dq-flag-suggestion:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .dq-flag-suggestion[aria-pressed="true"] {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+}
+@media (max-width: 760px) {
+  .dq-flag-pair {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .dq-flag-pair-affects {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 /* A review with a card grid: its default layout and the grid's settings. */
 .dq-drawer-section {

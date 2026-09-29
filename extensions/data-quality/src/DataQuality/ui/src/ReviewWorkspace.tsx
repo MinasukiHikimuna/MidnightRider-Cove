@@ -47,14 +47,26 @@ import {
   type GroupStatus,
 } from "./answerGroups";
 import {
+  attentionReasons,
+  combineAttention,
+  flagAttention,
+  flagCategoryIds,
+  flagSummary,
+  mixedAttention,
+  performerFlagTags,
+  type AttentionEntry,
+  type ProfileTag,
+} from "./attention";
+import {
   currentTags,
   previewActionEffect,
+  useResolvedTrees,
   useTagTrees,
   type TagTrees,
 } from "./effectPreview";
 import { draftSignature, EditorDrawer } from "./EditorDrawer";
 import { MediaDescription } from "./MediaDescription";
-import { ExistingAnswers } from "./ExistingAnswers";
+import { ExistingAnswersView, usePerformerAnswers } from "./ExistingAnswers";
 import { FindAction } from "./FindAction";
 import { PerformerAvatar } from "./PerformerAvatar";
 import { PerformerRankingList } from "./PerformerRankingList";
@@ -73,15 +85,19 @@ import {
   recountRanked,
   type PerformerRanking,
 } from "./performerRanking";
+import { answerCategories } from "./performerAnswers";
+import { rememberProfile, usePerformerProfile } from "./performerProfiles";
 import {
   hasAssessmentSteps,
   isOccurrenceReview,
+  performerFlags,
   reviewEntityType,
   reviewMediaKind,
   reviewValidation,
   boundedFilter,
   type MediaKind,
   type MediaReviewAction,
+  type PerformerFlag,
 } from "./model";
 import { loadOccurrencePage, resolvePerformers } from "./occurrences";
 import { useReviewKeys } from "./reviewKeys";
@@ -305,6 +321,28 @@ function CurrentTags({
   );
 }
 
+/**
+ * Where the performer on screen needs attention (attention.ts): flags for the whole review as a
+ * badge each, as they always read, then each category with its reasons, a flag marking each.
+ */
+function AttentionList({ entries }: { entries: readonly AttentionEntry[] }) {
+  return (
+    <ul className="dq-attention" aria-label="Needs attention">
+      {entries.map((entry) => (
+        <li key={entry.key} className="dq-attention-item">
+          {entry.tagIds !== null && <span className="dq-attention-category">{entry.name}</span>}
+          {attentionReasons(entry).map((reason) => (
+            <span key={reason} className="dq-badge dq-badge-warning dq-flag-badge">
+              <Flag aria-hidden="true" />
+              {reason}
+            </span>
+          ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ReviewWorkspace({
   review: saved,
   canWrite,
@@ -519,10 +557,11 @@ export function ReviewWorkspace({
     ? rankingSignature(scopedReview)
     : "";
   const [answersRevision, setAnswersRevision] = useState(0);
+  // The focused performer as read: their name and profile tags, whose flags the review looks for.
   const [focusPerformer, setFocusPerformer] = useState<{
     id: number;
     name: string;
-    flags: string[];
+    tags: ProfileTag[];
   } | null>(null);
   useEffect(() => () => rankingRun.current?.controller.abort(), []);
   // A run for criteria no longer shown would only overwrite the ranking; stop it.
@@ -550,37 +589,47 @@ export function ReviewWorkspace({
     // A run stopped before its first count leaves the ranking empty; the busy flag restarts it.
   }, [queueView, signature, ranking, rankingError, rankingBusy]);
   const focusId = query.performerFocus;
-  const flagKey = JSON.stringify(
-    isOccurrenceReview(scopedReview)
-      ? (scopedReview.occurrence.flagPerformerTagIds ?? [])
-      : [],
-  );
   useEffect(() => {
     if (!focusId) {
       setFocusPerformer(null);
       return;
     }
     let active = true;
-    const flagIds = new Set<number>(JSON.parse(flagKey));
-    request<{ name: string; tags?: Array<{ id: number; name: string }> }>(
-      `/api/performers/${focusId}`,
-    )
+    request<{ name: string; tags?: unknown }>(`/api/performers/${focusId}`)
       .then((performer) => {
-        if (active)
-          setFocusPerformer({
-            id: focusId,
-            name: performer.name,
-            flags: (performer.tags ?? [])
-              .filter((tag) => flagIds.has(tag.id))
-              .map((tag) => tag.name),
-          });
+        // A fresh read: the item column keeps it for this performer too.
+        const tags = rememberProfile(focusId, performer.tags);
+        if (active) setFocusPerformer({ id: focusId, name: performer.name, tags });
       })
       // The ranking's details, when it has this performer, stand in for a failed read.
       .catch(() => {});
     return () => {
       active = false;
     };
-  }, [focusId, flagKey]);
+  }, [focusId]);
+  // Performer flags (attention.ts): the review's pairs, the categories they affect with their
+  // trees, resolved once while the review is open, and those categories' names.
+  const flagsKey = JSON.stringify(
+    isOccurrenceReview(scopedReview) ? performerFlags(scopedReview.occurrence) : [],
+  );
+  const flags = useMemo<PerformerFlag[]>(() => JSON.parse(flagsKey), [flagsKey]);
+  const categoryIds = useMemo(() => flagCategoryIds(flags), [flags]);
+  const categoryTrees = useResolvedTrees(categoryIds);
+  const categoryTags = useTags(categoryIds);
+  const categoryName = (id: number) =>
+    categoryTags[id]?.name ?? (categoryTags[id] === null ? "Unavailable tag" : "…");
+  const flagCategory = (id: number) => ({
+    name: categoryName(id),
+    tagIds: categoryTrees.get(id) ?? [id],
+    resolved: categoryTrees.has(id),
+  });
+  // The focused performer's existing answers: shown in the item column, and where they differ
+  // (mixed answers) the performer needs attention too.
+  const focusAnswers = usePerformerAnswers(
+    isOccurrenceReview(scopedReview) ? scopedReview : null,
+    focusId ?? null,
+    answersRevision,
+  );
   const queueDefaultsChanged = queryDiffers(saved, query);
   // What saving the queue would change: tag bins (carried over from the grid in the URL) never
   // count, as the review never keeps them.
@@ -1231,8 +1280,51 @@ export function ReviewWorkspace({
     ? ranking?.candidates.find((item) => item.id === query.performerFocus)
     : undefined;
   // Never show the previously focused performer while the next one loads.
-  const focusInfo =
-    focusPerformer?.id === query.performerFocus ? focusPerformer : (rankedFocus ?? null);
+  const focusInfo: { id: number; name: string; flags: ProfileTag[] } | null =
+    focusPerformer && focusPerformer.id === query.performerFocus
+      ? { ...focusPerformer, flags: performerFlagTags(flags, focusPerformer.tags) }
+      : rankedFocus
+        ? { ...rankedFocus, flags: performerFlagTags(flags, rankedFocus.tags) }
+        : null;
+  /**
+   * A performer's flag tags where the page knows their profile already: the focus read, or the
+   * ranking, whose performers keep their whole profile, so flags changed since still match.
+   */
+  const knownFlagTags = (performerId: number): ProfileTag[] | undefined => {
+    if (focusPerformer?.id === performerId)
+      return performerFlagTags(flags, focusPerformer.tags);
+    const candidate = ranking?.candidates.find((item) => item.id === performerId);
+    return candidate ? performerFlagTags(flags, candidate.tags) : undefined;
+  };
+  // The performer on screen: their flags, from what is known or else one read of their profile
+  // (kept for the session), and while they are the focused one their mixed answers.
+  const shownPerformer = current?.occurrence?.performer.id ?? null;
+  const shownKnown = shownPerformer === null ? undefined : knownFlagTags(shownPerformer);
+  const shownProfile = usePerformerProfile(
+    flags.length > 0 &&
+      shownPerformer !== null &&
+      shownPerformer !== query.performerFocus &&
+      shownKnown === undefined
+      ? shownPerformer
+      : null,
+  );
+  const shownFlagTags =
+    shownKnown ?? (shownProfile ? performerFlagTags(flags, shownProfile) : []);
+  const focusMixed =
+    focusAnswers.summary && query.performerFocus
+      ? mixedAttention(answerCategories(focusAnswers.summary, definition.actions))
+      : [];
+  const focusFlagEntries = flagAttention(flags, focusInfo?.flags ?? [], flagCategory);
+  const shownEntries = combineAttention(
+    flagAttention(flags, shownFlagTags, flagCategory),
+    shownPerformer !== null && shownPerformer === query.performerFocus ? focusMixed : [],
+  );
+  // Stable while nothing changes, as the pad works out its keys' flags from them.
+  const shownKey = JSON.stringify(shownEntries);
+  const shownAttention = useMemo<AttentionEntry[]>(() => shownEntries, [shownKey]);
+  const focusFlagsKey = JSON.stringify(focusFlagEntries);
+  const focusAttention = useMemo<AttentionEntry[]>(() => focusFlagEntries, [focusFlagsKey]);
+  const flagLabel = (carried: readonly ProfileTag[]) => flagSummary(flags, carried, categoryName);
   function focusOn(performerId: number) {
     if (lock.current) return;
     const next = {
@@ -1324,13 +1416,6 @@ export function ReviewWorkspace({
           (item) => item.media.id === current.media.id && item.key !== current.key,
         )
       : [];
-  const focusedFlags =
-    current?.occurrence && current.occurrence.performer.id === query.performerFocus
-      ? (focusInfo?.flags ?? [])
-      : current?.occurrence
-        ? (ranking?.candidates.find((item) => item.id === current.occurrence!.performer.id)
-            ?.flags ?? [])
-        : [];
   const title = (media: ReviewItem["media"]) =>
     media.title ||
     media.files[0]?.basename ||
@@ -1461,7 +1546,7 @@ export function ReviewWorkspace({
               <BatchOccurrenceDialog
                 review={review}
                 disabled={blocked || !!ruleDraft}
-                performerFlags={query.performerFocus ? focusInfo?.flags : undefined}
+                performerAttention={query.performerFocus ? focusAttention : undefined}
                 trees={trees}
                 onOpen={() => { lock.current = true; setPending(true); }}
                 onWrite={() => { lastWriteAt.current = Date.now(); }}
@@ -1510,12 +1595,9 @@ export function ReviewWorkspace({
                 <strong>{focusInfo?.name ?? `performer ${query.performerFocus}`}</strong>
               </span>
               {focusInfo?.flags.length ? (
-                <span
-                  className="dq-focus-flag"
-                  title={`Flagged: ${focusInfo.flags.join(", ")}`}
-                >
+                <span className="dq-focus-flag" title={flagLabel(focusInfo.flags)}>
                   <Flag aria-hidden="true" />
-                  <span className="dq-sr-only">Flagged: {focusInfo.flags.join(", ")}</span>
+                  <span className="dq-sr-only">{flagLabel(focusInfo.flags)}</span>
                 </span>
               ) : null}
               <button
@@ -1675,6 +1757,7 @@ export function ReviewWorkspace({
                   findDisabled={editing || !!ruleDraft}
                   paused={!!ruleDraft}
                   waitForGroups={waitsForGroups(definition)}
+                  attention={shownAttention}
                   stayOnTap={stayOnTap}
                   onStayOnTapChange={setStayOnTap}
                 />
@@ -1762,11 +1845,8 @@ export function ReviewWorkspace({
                           </p>
                         </div>
                       </div>
-                      {focusedFlags.length > 0 && (
-                        <p className="dq-badge dq-badge-warning dq-flag-badge">
-                          <Flag aria-hidden="true" />
-                          Flagged: {focusedFlags.join(", ")}
-                        </p>
+                      {shownAttention.length > 0 && (
+                        <AttentionList entries={shownAttention} />
                       )}
                     </section>
                     {partners.length > 0 && (
@@ -1858,10 +1938,11 @@ export function ReviewWorkspace({
                 )}
                 {/* Stays while the focused queue loads or runs out, so it is not read again. */}
                 {isOccurrenceReview(scopedReview) && query.performerFocus && (
-                  <ExistingAnswers
-                    review={scopedReview}
-                    performerId={query.performerFocus}
-                    revision={answersRevision}
+                  <ExistingAnswersView
+                    {...focusAnswers}
+                    mediaKind={mediaKind}
+                    actions={definition.actions}
+                    flags={focusAttention}
                   />
                 )}
               </div>
@@ -1936,6 +2017,7 @@ export function ReviewWorkspace({
                   focus={query.performerFocus}
                   disabled={blocked}
                   labels={labels}
+                  flagLabel={flagLabel}
                   onFocus={focusOn}
                   onMore={() => {
                     const current = rankingNow.current;

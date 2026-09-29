@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionPad, createActionPreviewStore } from "../ActionPad";
+import type { AttentionEntry } from "../attention";
 import type { MediaKind, MediaReviewAction } from "../model";
 import type { TagState } from "../reviewTags";
 import { setViewportWidth } from "./viewport";
@@ -37,6 +38,7 @@ function pad(
     tags = null,
     paused = false,
     waitForGroups = false,
+    attention,
   }: {
     mediaKind?: MediaKind;
     disabled?(action: MediaReviewAction): boolean;
@@ -44,6 +46,7 @@ function pad(
     tags?: TagState | null;
     paused?: boolean;
     waitForGroups?: boolean;
+    attention?: AttentionEntry[];
   } = {},
 ) {
   const preview = createActionPreviewStore();
@@ -63,6 +66,7 @@ function pad(
       findDisabled={paused}
       paused={paused}
       waitForGroups={waitForGroups}
+      attention={attention}
     />,
   );
   return { ...view, preview, onApply, onFind };
@@ -618,5 +622,135 @@ describe("answer groups", () => {
       ["Size, not answered yet", "open"],
     ]);
     expect(marked(container)).toEqual(["Small", "No size"]);
+  });
+});
+
+describe("attention", () => {
+  // A size question and a kind question; the performer needs attention in Size (flagged, mixed
+  // answers) and for the whole review.
+  const actions: MediaReviewAction[] = [
+    { id: "small", label: "Small", group: "Size", steps: [{ mode: "ADD", tagIds: [11] }] },
+    {
+      id: "large",
+      label: "Large",
+      group: "Size",
+      steps: [
+        { mode: "ADD", tagIds: [12] },
+        { mode: "REMOVE_TREE", tagIds: [10] },
+      ],
+    },
+    { id: "one", label: "Kind one", group: "Kind", steps: [{ mode: "ADD", tagIds: [21] }] },
+    // Clearing an absence changes no answer.
+    { id: "clear", label: "Clear", steps: [{ mode: "CLEAR_ABSENCE", tagIds: [11] }] },
+    // Removes the size tree without adding a size: it still changes the category.
+    { id: "reset", label: "Reset", steps: [{ mode: "REMOVE_TREE", tagIds: [10] }] },
+  ];
+  const size: AttentionEntry = {
+    key: "tag:10",
+    name: "Size",
+    tagIds: [10, 11, 12],
+    flags: ["Changed"],
+    mixed: [
+      { id: 11, name: "Small", count: 40 },
+      { id: 12, name: "Large", count: 12 },
+    ],
+  };
+  const whole: AttentionEntry = {
+    key: "review",
+    name: "",
+    tagIds: null,
+    flags: ["Anything"],
+    mixed: [],
+  };
+  const flagged = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLElement>(".dq-pad-tile[data-attention]")].map(
+      (tile) => tile.title,
+    );
+  // A count stays on the line of its answer.
+  const reasons = "Size (Flagged: Changed; Mixed: Small\u00a040 · Large\u00a012)";
+
+  it("flags the keys whose actions touch a category that needs attention, with the reasons", async () => {
+    const { container } = pad(actions, {
+      attention: [whole, size],
+      tags: { ids: [], names: [], absent: [] },
+    });
+    expect(flagged(container)).toEqual(["Small", "Large", "Reset"]);
+    const small = screen.getByRole("button", { name: "q Small" });
+    expect(small.querySelector(".dq-pad-flag")).toHaveAttribute("title", `Needs attention: ${reasons}`);
+    // The mark is for the eye: the tile's description says it, its name stays as it was.
+    expect(small.querySelector(".dq-pad-flag")).toHaveAttribute("aria-hidden", "true");
+    await waitFor(() =>
+      expect(small).toHaveAccessibleDescription(`+ Tag 11. Needs attention: ${reasons}`),
+    );
+    expect(screen.getByRole("button", { name: "e Kind one" })).toHaveAccessibleDescription("+ Tag 21");
+    expect(screen.getByRole("button", { name: "e Kind one" }).querySelector(".dq-pad-flag")).toBeNull();
+  });
+
+  it("flags nothing for the whole review alone, nor while the review is edited", () => {
+    const { container, unmount } = pad(actions, { attention: [whole] });
+    expect(flagged(container)).toEqual([]);
+    unmount();
+    const paused = pad(actions, { attention: [size], paused: true, disabled: () => true });
+    expect(flagged(paused.container)).toEqual([]);
+  });
+
+  it("follows a tree removal to the tree it resolves to", () => {
+    const kind: AttentionEntry = { ...size, key: "tag:20", name: "Kind", tagIds: [20, 21] };
+    // Tag 10's tree reaches into Kind here, so removing it changes Kind too.
+    const { container } = pad(actions, { attention: [kind], trees: new Map([[10, [10, 11, 12, 21]]]) });
+    expect(flagged(container)).toEqual(["Large", "Kind one", "Reset"]);
+  });
+
+  it("flags the answer groups whose answers touch such a category in the checklist", () => {
+    pad(actions, {
+      attention: [size],
+      waitForGroups: true,
+      tags: { ids: [11], names: [], absent: [] },
+    });
+    const items = within(screen.getByRole("list", { name: "Answer groups" })).getAllByRole(
+      "listitem",
+    );
+    expect(items.map((item) => item.dataset.attention ?? "")).toEqual(["true", ""]);
+    // Text content reads the non-breaking spaces as plain ones.
+    expect(items[0]).toHaveTextContent(
+      `Size, needs attention: ${reasons.replace(/\u00a0/g, " ")}, answered: Small`,
+    );
+    expect(items[0]).toHaveAttribute("title", `Size: Small. Needs attention: ${reasons}`);
+    expect(items[1]).toHaveAttribute("title", "Kind: not answered yet");
+    expect(items[0].querySelector(".dq-group-flag svg")).not.toBeNull();
+  });
+
+  it("names each category once for a group whose actions touch it", () => {
+    const kind: AttentionEntry = { ...size, key: "tag:20", name: "Kind", tagIds: [20, 21], mixed: [] };
+    // Both Size answers touch Size; the second also removes Kind's tag.
+    const twoWays: MediaReviewAction[] = [
+      { id: "s", label: "Small", group: "Size", steps: [{ mode: "ADD", tagIds: [11] }] },
+      {
+        id: "l",
+        label: "Large",
+        group: "Size",
+        steps: [
+          { mode: "ADD", tagIds: [12] },
+          { mode: "REMOVE", tagIds: [21] },
+        ],
+      },
+    ];
+    pad(twoWays, { attention: [size, kind], waitForGroups: true, tags: { ids: [], names: [], absent: [] } });
+    const [group] = within(screen.getByRole("list", { name: "Answer groups" })).getAllByRole("listitem");
+    expect(group).toHaveAttribute(
+      "title",
+      `Size: not answered yet. Needs attention: ${reasons}; Kind (Flagged: Changed)`,
+    );
+  });
+
+  it("flags the buttons in phone-sized windows too", () => {
+    setViewportWidth(390);
+    const { container } = pad(actions, { attention: [size] });
+    const buttons = [...container.querySelectorAll<HTMLElement>(".dq-mobile-tile[data-attention]")];
+    expect(buttons.map((button) => button.title)).toEqual(["Small", "Large", "Reset"]);
+    expect(buttons[0].querySelector(".dq-pad-flag")).toHaveAttribute(
+      "title",
+      `Needs attention: ${reasons}`,
+    );
   });
 });

@@ -152,13 +152,18 @@ it("rejects an invalid performer focus and keeps flag tags out of the URL scope"
   expect(() => readQuery(review, new URLSearchParams("performer=0"))).toThrow();
   const flagged = {
     ...review,
-    occurrence: { ...review.occurrence, flagPerformerTagIds: [9] },
+    occurrence: {
+      ...review.occurrence,
+      flagPerformerTagIds: [9],
+      performerFlags: [{ tagId: 8, categoryTagId: 30 }],
+    },
   };
   const query = defaultQuery(flagged);
   expect(query.performerScope).not.toHaveProperty("flagPerformerTagIds");
-  expect(
-    (effectiveReview(flagged, query) as OccurrenceReview).occurrence.flagPerformerTagIds,
-  ).toEqual([9]);
+  expect(query.performerScope).not.toHaveProperty("performerFlags");
+  const effective = (effectiveReview(flagged, query) as OccurrenceReview).occurrence;
+  expect(effective.flagPerformerTagIds).toEqual([9]);
+  expect(effective.performerFlags).toEqual([{ tagId: 8, categoryTagId: 30 }]);
 });
 
 it("keeps the saved queue when a link carries only a performer focus", () => {

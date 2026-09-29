@@ -13,6 +13,13 @@ import { Check, ChevronLeft, Flag, Layers, Undo2, X } from "@cove/runtime/lucide
 import { KeyCap } from "./ActionPad";
 import { mediaLabel, request, type TagInfo } from "./api";
 import {
+  attentionReasons,
+  combineAttention,
+  mixedAttention,
+  touchedAttention,
+  type AttentionEntry,
+} from "./attention";
+import {
   ConflictingAnswersError,
   planTags,
   previewOccurrenceBatch,
@@ -38,6 +45,7 @@ import {
   type OccurrenceCondition,
   type OccurrenceReview,
 } from "./model";
+import { answerCategories } from "./performerAnswers";
 import { PerformerAvatar } from "./PerformerAvatar";
 import { useActionKeyMap } from "./reviewKeys";
 import { difference } from "./reviewTags";
@@ -47,6 +55,7 @@ import { sortTagsForDisplay } from "./tagOrder";
 
 /** The scope names this many chosen performers; the rest are counted. */
 const SHOWN_PERFORMERS = 5;
+const NO_TREES: TagTrees = new Map();
 
 // Closing the dialog aborts the reads in flight.
 function loadPerformerNames(ids: number[], signal: AbortSignal) {
@@ -319,7 +328,7 @@ function tally(entries: BatchEntry[]) {
 export function BatchOccurrenceDialog({
   review,
   disabled,
-  performerFlags = [],
+  performerAttention,
   trees,
   onOpen,
   onClose,
@@ -327,8 +336,12 @@ export function BatchOccurrenceDialog({
 }: {
   review: OccurrenceReview;
   disabled: boolean;
-  /** Flag tags on the one performer this batch targets. */
-  performerFlags?: string[];
+  /**
+   * The focused performer this batch targets: where their flags ask for attention. The dialog adds
+   * the categories where their existing answers are mixed, and warns when the chosen answers touch
+   * any of them (a flag for the whole review always). Without a focus there is no warning.
+   */
+  performerAttention?: readonly AttentionEntry[];
   /** The review's resolved tree removals, so answers read "− rest of <tree>" as elsewhere. */
   trees?: TagTrees;
   onOpen(): void;
@@ -670,6 +683,22 @@ export function BatchOccurrenceDialog({
   const latestDated = dated.length > 1 ? dated[dated.length - 1] : undefined;
   const itemHref = (entry: BatchEntry) => `/${mediaKind}/${entry.item.media.id}`;
   const performerName = singlePerformer ? performerNames[0] : undefined;
+  // Where the focused performer needs attention: their flags, and their mixed existing answers.
+  const attention = useMemo(
+    () =>
+      performerAttention
+        ? combineAttention(
+            performerAttention,
+            answers.summary
+              ? mixedAttention(answerCategories(answers.summary, displayReview.actions))
+              : [],
+          )
+        : [],
+    [performerAttention, answers.summary, displayReview.actions],
+  );
+  const touched = touchedAttention(chosen, attention, trees ?? NO_TREES);
+  // Flags on the focused performer's categories, for their existing answers.
+  const answerFlags = performerAttention ?? [];
   const previewGroups: Record<PreviewGroup, { title: string; test(entry: BatchEntry): boolean }> =
     {
       matching: { title: "Matching occurrences", test: () => true },
@@ -778,17 +807,43 @@ export function BatchOccurrenceDialog({
     );
   }
 
-  function flagCallout(links: boolean) {
-    if (!performerFlags.length) return null;
+  /**
+   * The attention warning for these entries, null without any: flags for the whole review alone
+   * read as they always have; otherwise the categories with their reasons. `links` adds the
+   * earliest and latest items, which a preview knows; `guidance` false leaves out what to check,
+   * which another warning in view says already.
+   */
+  function flagCallout(entries: readonly AttentionEntry[], links: boolean, guidance = true) {
+    if (!entries.length) return null;
+    const who = <strong>{performerName || "This performer"}</strong>;
+    const check = guidance
+      ? `Check the earliest and latest ${labels.many} before applying, or narrow the batch with a date filter.`
+      : "";
+    const wholeOnly = entries.every((entry) => entry.tagIds === null && !entry.mixed.length);
     return (
       <div className="dq-batch-flag" role="note">
         <Flag aria-hidden="true" />
         <div>
-          <p>
-            <strong>{performerName || "This performer"}</strong> is flagged:{" "}
-            <strong>{performerFlags.join(", ")}</strong>. Check the earliest and latest{" "}
-            {labels.many} before applying, or narrow the batch with a date filter.
-          </p>
+          {wholeOnly ? (
+            <p>
+              {who} is flagged: <strong>{entries.flatMap((entry) => entry.flags).join(", ")}</strong>.{" "}
+              {check}
+            </p>
+          ) : (
+            <>
+              <p>
+                {who} needs attention where the chosen answers apply.{check && ` ${check}`}
+              </p>
+              <ul className="dq-batch-attention" aria-label="Needs attention">
+                {entries.map((entry) => (
+                  <li key={entry.key}>
+                    <strong>{entry.tagIds === null ? "Whole review" : entry.name}</strong>:{" "}
+                    {attentionReasons(entry).join("; ")}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {links && earliest && (
             <p className="dq-batch-flag-links">
               <a href={itemHref(earliest)} target="_blank" rel="noreferrer">
@@ -807,10 +862,15 @@ export function BatchOccurrenceDialog({
   }
 
   function answersStep() {
+    // Flags for the whole review stand above the answers from the start, as they always have. The
+    // categories the ticked answers touch come and go beside them, not above, so ticking never
+    // moves the answers under the pointer; a polite live region says when they change.
+    const whole = touched.filter((entry) => entry.tagIds === null);
+    const categories = touched.filter((entry) => entry.tagIds !== null);
     return (
       <>
         {scopeChips()}
-        {flagCallout(false)}
+        {flagCallout(whole, false)}
         <div className={`dq-batch-pick${singlePerformer ? " dq-batch-pick-answers" : ""}`}>
           <fieldset className="dq-batch-answers-field">
             <legend className="dq-eyebrow">Answers</legend>
@@ -850,7 +910,18 @@ export function BatchOccurrenceDialog({
             </div>
           </fieldset>
           {singlePerformer && (
-            <ExistingAnswersView {...answers} mediaKind={mediaKind} className="dq-batch-card" />
+            <div className="dq-batch-side">
+              <div className="dq-batch-attention-live" aria-live="polite">
+                {flagCallout(categories, false, whole.length === 0)}
+              </div>
+              <ExistingAnswersView
+                {...answers}
+                mediaKind={mediaKind}
+                actions={displayReview.actions}
+                flags={answerFlags}
+                className="dq-batch-card"
+              />
+            </div>
           )}
         </div>
       </>
@@ -1022,7 +1093,7 @@ export function BatchOccurrenceDialog({
     return (
       <>
         {scopeChips()}
-        {flagCallout(true)}
+        {flagCallout(touched, true)}
         <div className={`dq-batch-cards${singlePerformer ? "" : " dq-batch-cards-one"}`}>
           <section className="dq-batch-card" aria-labelledby={`${ids}-chosen`}>
             <div className="dq-panel-heading">
@@ -1049,7 +1120,13 @@ export function BatchOccurrenceDialog({
             </ul>
           </section>
           {singlePerformer && (
-            <ExistingAnswersView {...answers} mediaKind={mediaKind} className="dq-batch-card" />
+            <ExistingAnswersView
+              {...answers}
+              mediaKind={mediaKind}
+              actions={displayReview.actions}
+              flags={answerFlags}
+              className="dq-batch-card"
+            />
           )}
         </div>
         {busy ? (

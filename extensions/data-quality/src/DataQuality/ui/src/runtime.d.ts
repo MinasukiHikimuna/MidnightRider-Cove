@@ -292,6 +292,26 @@ declare module "@cove/runtime/components" {
     /** The search field's accessible name (Cove 1.4.2-dev.109 and later, below the floor). */
     inputAriaLabel?: string;
   }>;
+  /**
+   * Cove's single-entity picker: a search field whose results set one entity. With
+   * `selectedDisplay="input"` the chosen entity's name stands in the field, with a clear button
+   * beside it; without a value the placeholder shows. Exported with these props since before the
+   * extension's floor.
+   */
+  export const EntityReferenceSelector: ComponentType<{
+    entityType: "tag" | "performer";
+    value?: number;
+    onChange(value: number | undefined): void;
+    placeholder?: string;
+    disabled?: boolean;
+    allowCreate?: boolean;
+    selectedDisplay?: "chip" | "input";
+    inputClassName?: string;
+    /** The search field's accessible name. */
+    inputAriaLabel?: string;
+    /** Entities the results leave out. */
+    excludeIds?: Iterable<number>;
+  }>;
   export function formatDuration(seconds: number): string;
   export function getResolutionLabel(width?: number, height?: number): string;
   export const testVideoControls: {

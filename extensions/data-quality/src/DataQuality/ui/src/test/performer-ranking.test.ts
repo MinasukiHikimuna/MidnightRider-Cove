@@ -131,10 +131,31 @@ it("extends the same ranking for more places and keeps its exact order", async (
   expect(aggregates.map((request) => counted(request.body))).not.toContain("8");
 });
 
-it("flags performers that carry one of the review's flag tags", async () => {
+it("keeps each performer's profile tags, which the review's flags are matched against", async () => {
   const ranking = await extendRanking(review, null, 3, signal(), { concurrency: 1 });
-  expect(ranking.ranked.find((p) => p.name === "D")?.flags).toEqual(["Changed"]);
-  expect(ranking.ranked.find((p) => p.name === "B")?.flags).toEqual([]);
+  expect(ranking.ranked.find((p) => p.name === "D")?.tags).toEqual([
+    { id: 7, name: "Changed" },
+    { id: 8, name: "Other" },
+  ]);
+  expect(ranking.ranked.find((p) => p.name === "B")?.tags).toEqual([]);
+  // Other flags keep the performers loaded and counted: nothing is read or counted again.
+  const reads = fetchMock.mock.calls.length;
+  const reflagged = await extendRanking(
+    {
+      ...review,
+      occurrence: {
+        ...review.occurrence,
+        flagPerformerTagIds: undefined,
+        performerFlags: [{ tagId: 8, categoryTagId: 30 }],
+      },
+    },
+    ranking,
+    3,
+    signal(),
+    { concurrency: 1 },
+  );
+  expect(fetchMock.mock.calls.length).toBe(reads);
+  expect(reflagged.ranked).toEqual(ranking.ranked);
 });
 
 it("recounts one performer after a write and resumes when the list shrinks", async () => {
@@ -186,6 +207,15 @@ it("keys a ranking by the queue criteria, not by paging or sort", () => {
   expect(rankingSignature(moved)).toBe(rankingSignature(review));
   const narrowed = { ...review, occurrence: { ...review.occurrence, conditionTagIds: [30] } };
   expect(rankingSignature(narrowed)).not.toBe(rankingSignature(review));
+  // Performer flags change no count: the performers keep their profile tags to match them.
+  const flags = (performerFlags: OccurrenceReview["occurrence"]["performerFlags"]) => ({
+    ...review,
+    occurrence: { ...review.occurrence, flagPerformerTagIds: undefined, performerFlags },
+  });
+  expect(rankingSignature(flags([{ tagId: 7 }]))).toBe(rankingSignature(review));
+  expect(rankingSignature(flags([{ tagId: 7, categoryTagId: 30 }]))).toBe(rankingSignature(review));
+  expect(rankingSignature(flags([{ tagId: 8 }]))).toBe(rankingSignature(review));
+  expect(rankingSignature(flags(undefined))).toBe(rankingSignature(review));
 });
 
 it("stops counting when cancelled", async () => {

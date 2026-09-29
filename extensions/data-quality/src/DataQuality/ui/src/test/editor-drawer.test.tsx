@@ -210,7 +210,19 @@ it("offers performer flags in an occurrence review's Review tab", () => {
   fireEvent.change(within(drawer).getByPlaceholderText("Search performer flag tags..."), {
     target: { value: "7" },
   });
-  expect((latest as OccurrenceReview).occurrence.flagPerformerTagIds).toEqual([7]);
+  expect((latest as OccurrenceReview).occurrence.performerFlags).toEqual([{ tagId: 7 }]);
+  expect(within(drawer).getByText("Unsaved changes")).toBeInTheDocument();
+});
+
+it("leaves older flag tags as they are until the flags change", () => {
+  const older: OccurrenceReview = {
+    ...occurrence,
+    occurrence: { ...occurrence.occurrence, flagPerformerTagIds: [7] },
+  };
+  const { drawer } = open(older);
+  expect(within(drawer).getByRole("textbox", { name: "Affects, Tag 7" })).toBeInTheDocument();
+  // Nothing differs from the saved review until a flag is changed.
+  expect(within(drawer).queryByText("Unsaved changes")).not.toBeInTheDocument();
 });
 
 it("sets a video review's default layout, grid settings and queue tag bins", () => {

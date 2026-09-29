@@ -6,9 +6,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BatchOccurrenceDialog } from "../BatchOccurrenceDialog";
 import { ReviewTagBadge, WithoutTagImagePreviews } from "../TagDisplay";
+import type { AttentionEntry } from "../attention";
 import type { OccurrenceReview } from "../model";
 import {
   ConflictingAnswersError,
@@ -130,7 +131,15 @@ beforeEach(() => {
       : { name: TAG_NAMES[path.split("/").pop()!] ?? "Opposite" },
   );
 });
-function mount(rule: OccurrenceReview = review, performerFlags?: string[]) {
+/** A flag for the whole review on the focused performer. */
+const wholeFlag = (name: string): AttentionEntry => ({
+  key: "review",
+  name: "",
+  tagIds: null,
+  flags: [name],
+  mixed: [],
+});
+function mount(rule: OccurrenceReview = review, performerAttention?: AttentionEntry[]) {
   const onOpen = vi.fn(),
     onClose = vi.fn(),
     onWrite = vi.fn();
@@ -138,7 +147,7 @@ function mount(rule: OccurrenceReview = review, performerFlags?: string[]) {
     <BatchOccurrenceDialog
       review={rule}
       disabled={false}
-      performerFlags={performerFlags}
+      performerAttention={performerAttention}
       onOpen={onOpen}
       onClose={onClose}
       onWrite={onWrite}
@@ -675,7 +684,7 @@ it("shows the dates of the batch with links to the earliest and latest, and to b
     entry(video, [], false),
     entry({ ...video, id: 3, date: undefined as unknown as string }, [], false),
   ];
-  mount(review, ["Changed"]);
+  mount(review, [wholeFlag("Changed")]);
   await preview();
   expect(screen.getByText("Dates 2019-05-01 to 2021-02-03")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Open earliest video, 2019-05-01" })).toHaveAttribute(
@@ -712,7 +721,7 @@ it("warns about a flagged performer while the answers are chosen and shows their
       },
     ],
   });
-  mount(review, ["Changed"]);
+  mount(review, [wholeFlag("Changed")]);
   fireEvent.click(openButton());
   const flag = screen.getByRole("note");
   await waitFor(() =>
@@ -733,6 +742,151 @@ it("warns about a flagged performer while the answers are chosen and shows their
     within(screen.getByRole("region", { name: "Existing answers" })).getByText("Mixed"),
   ).toBeInTheDocument();
   expect(mocks.answers).toHaveBeenCalledTimes(1);
+});
+
+describe("category attention", () => {
+  // Round (shape) and Red (colour): the performer is flagged for Shape and may have mixed answers.
+  const shaped: OccurrenceReview = {
+    ...review,
+    actions: [
+      { id: "round", label: "Round", steps: [{ mode: "ADD", tagIds: [11] }] },
+      { id: "red", label: "Red", steps: [{ mode: "ADD", tagIds: [21] }] },
+      { id: "plain", label: "Plain", group: "Finish", steps: [{ mode: "ADD", tagIds: [31] }] },
+      { id: "shiny", label: "Shiny", group: "Finish", steps: [{ mode: "ADD", tagIds: [32] }] },
+    ],
+  };
+  const shape: AttentionEntry = {
+    key: "tag:10",
+    name: "Shape",
+    tagIds: [10, 11, 12],
+    flags: ["Shape changed"],
+    mixed: [],
+  };
+  const note = () => screen.queryByRole("note");
+  beforeEach(() => {
+    mocks.answers.mockResolvedValue({
+      answered: 3,
+      groups: [
+        { id: 10, name: "Shape", members: [10, 11, 12], tags: [{ id: 11, name: "Round", count: 2 }] },
+        { id: 20, name: "Colour", members: [20, 21, 22], tags: [{ id: 21, name: "Red", count: 2 }] },
+        {
+          id: null,
+          name: "Other review tags",
+          members: [31, 32],
+          tags: [
+            { id: 31, name: "Plain", count: 2 },
+            { id: 32, name: "Shiny", count: 1 },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("warns only once the chosen answers touch a flagged category, and keeps the date links", async () => {
+    batch.entries = [
+      entry({ ...video, id: 2, date: "2021-02-03", title: "Late" }, [], false),
+      entry(video, [], false),
+    ];
+    mount(shaped, [shape]);
+    fireEvent.click(openButton());
+    await screen.findByText("3 videos answered");
+    expect(note()).toBeNull();
+    fireEvent.click(checkbox("Red"));
+    expect(note()).toBeNull();
+    fireEvent.click(checkbox("Round"));
+    expect(note()).toHaveTextContent(
+      "Target performer needs attention where the chosen answers apply. Check the earliest and latest videos before applying, or narrow the batch with a date filter.",
+    );
+    expect(within(note()!).getByRole("list", { name: "Needs attention" })).toHaveTextContent(
+      "Shape: Flagged: Shape changed",
+    );
+    // Beside the answers, not above them, so ticking never moves them; announced politely.
+    const answersField = screen.getByRole("group", { name: "Answers" });
+    expect(
+      answersField.compareDocumentPosition(note()!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(answersField.contains(note())).toBe(false);
+    const live = note()!.closest('[aria-live="polite"]')!;
+    expect(live).not.toBeNull();
+    fireEvent.click(checkbox("Round"));
+    expect(note()).toBeNull();
+    // The live region stays, empty, for the next warning.
+    expect(live).toBeInTheDocument();
+    fireEvent.click(checkbox("Round"));
+    fireEvent.click(button("Preview all matches"));
+    await screen.findByText("Preview ready. No tags have been changed.");
+    const links = within(note()!);
+    expect(links.getByRole("link", { name: "Earliest · Scene · 2019-05-01" })).toHaveAttribute(
+      "href",
+      "/video/1",
+    );
+    expect(links.getByRole("link", { name: "Latest · Late · 2021-02-03" })).toBeInTheDocument();
+  });
+
+  it("warns where the focused performer's answers are mixed, an answer group included", async () => {
+    mount(shaped, []);
+    fireEvent.click(openButton());
+    await screen.findByText("3 videos answered");
+    fireEvent.click(checkbox("Round"));
+    expect(note()).toBeNull();
+    fireEvent.click(checkbox("Shiny"));
+    expect(within(note()!).getByRole("list", { name: "Needs attention" })).toHaveTextContent(
+      "Finish: Mixed: Plain 2 · Shiny 1",
+    );
+    // The group has a row of its own among the existing answers, with its Mixed badge.
+    const answers = within(screen.getByRole("region", { name: "Existing answers" }));
+    expect(answers.getByRole("list", { name: "Finish" })).toHaveTextContent("Plain2, 2 videos");
+    expect(answers.getAllByText("Mixed")).toHaveLength(1);
+  });
+
+  it("marks the flagged category among the existing answers", async () => {
+    mount(shaped, [shape]);
+    fireEvent.click(openButton());
+    const answers = within(screen.getByRole("region", { name: "Existing answers" }));
+    const flag = await answers.findByTitle("Flagged: Shape changed");
+    expect(flag.closest(".dq-answer-group")).toHaveTextContent("Shape");
+    expect(flag).toHaveTextContent("Flagged: Shape changed");
+    expect(answers.getAllByTitle(/^Flagged/)).toHaveLength(1);
+  });
+
+  it("warns about neither flags nor mixed answers without a focused performer", async () => {
+    mount(shaped);
+    fireEvent.click(openButton());
+    await screen.findByText("3 videos answered");
+    fireEvent.click(checkbox("Round"));
+    fireEvent.click(checkbox("Shiny"));
+    expect(note()).toBeNull();
+    // The existing answers still show where they differ.
+    expect(
+      within(screen.getByRole("region", { name: "Existing answers" })).getByText("Mixed"),
+    ).toBeInTheDocument();
+  });
+
+  it("lists a whole-review flag with the categories once the list is needed", async () => {
+    mount(shaped, [wholeFlag("Changed"), shape]);
+    fireEvent.click(openButton());
+    // Flags for the whole review read as they always have, above the answers from the start.
+    await waitFor(() =>
+      expect(note()).toHaveTextContent("Target performer is flagged: Changed."),
+    );
+    fireEvent.click(checkbox("Round"));
+    const [top, side] = screen.getAllByRole("note");
+    expect(top).toHaveTextContent("Target performer is flagged: Changed.");
+    expect(within(side).getByRole("list", { name: "Needs attention" })).toHaveTextContent(
+      "Shape: Flagged: Shape changed",
+    );
+    // What to check is said once, above.
+    expect(side).toHaveTextContent("Target performer needs attention where the chosen answers apply.");
+    expect(side).not.toHaveTextContent("Check the earliest");
+    // The preview's warning holds both, with the earliest and latest items.
+    fireEvent.click(button("Preview all matches"));
+    await screen.findByText("Preview ready. No tags have been changed.");
+    const list = within(note()!).getByRole("list", { name: "Needs attention" });
+    expect(within(list).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Whole review: Flagged: Changed",
+      "Shape: Flagged: Shape changed",
+    ]);
+  });
 });
 
 it("waits out Cove's query cache before previewing again after a run, and refreshes existing answers", async () => {

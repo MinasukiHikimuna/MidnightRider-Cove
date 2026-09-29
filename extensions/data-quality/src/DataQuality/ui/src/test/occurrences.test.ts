@@ -12,8 +12,10 @@ import {
 } from "../occurrences";
 import {
   parseReviews,
+  performerFlags,
   queueSignature,
   reviewValidation,
+  withPerformerFlags,
   type OccurrenceReview,
 } from "../model";
 
@@ -816,6 +818,67 @@ it("accepts the missing-at-least-one condition and performer flag tags, rejectin
         JSON.stringify([{ ...rule, occurrence: { ...rule.occurrence, flagPerformerTagIds } }]),
       ),
     ).toThrow();
+});
+
+it("keeps performer flag pairs as saved and refuses malformed or repeated pairs", () => {
+  const rule: OccurrenceReview = {
+    ...occurrenceReview,
+    occurrence: {
+      ...occurrenceReview.occurrence,
+      performerFlags: [{ tagId: 5 }, { tagId: 5, categoryTagId: 9 }, { tagId: 6, categoryTagId: 9 }],
+    },
+  };
+  expect(reviewValidation(rule)).toBe("");
+  expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
+  for (const performerFlags of [
+    [{ tagId: 0 }],
+    [{ tagId: 5, categoryTagId: 0 }],
+    [{ tagId: 5, categoryTagId: "9" }],
+    [{ tagId: 5, categoryTagId: null }],
+    [{ tagId: 5 }, { tagId: 5 }],
+    [{ tagId: 5, categoryTagId: 9 }, { tagId: 5, categoryTagId: 9 }],
+    [5],
+    [null],
+    { tagId: 5 },
+  ])
+    expect(() =>
+      parseReviews(
+        JSON.stringify([{ ...rule, occurrence: { ...rule.occurrence, performerFlags } }]),
+      ),
+    ).toThrow();
+});
+
+it("reads older flag tags as whole-review flags and saves flags in the pairs alone", () => {
+  const settings = {
+    ...occurrenceReview.occurrence,
+    performerFlags: [{ tagId: 5, categoryTagId: 9 }, { tagId: 6 }],
+    flagPerformerTagIds: [6, 7],
+  };
+  expect(performerFlags(occurrenceReview.occurrence)).toEqual([]);
+  expect(performerFlags({ flagPerformerTagIds: [7, 8] })).toEqual([{ tagId: 7 }, { tagId: 8 }]);
+  // A tag saved both ways is one whole-review flag.
+  expect(performerFlags(settings)).toEqual([
+    { tagId: 5, categoryTagId: 9 },
+    { tagId: 6 },
+    { tagId: 7 },
+  ]);
+  const saved = withPerformerFlags(settings, [
+    ...performerFlags(settings),
+    { tagId: 5, categoryTagId: 9 },
+    { tagId: 8, categoryTagId: undefined },
+  ]);
+  expect(saved).not.toHaveProperty("flagPerformerTagIds");
+  expect(saved.performerFlags).toEqual([
+    { tagId: 5, categoryTagId: 9 },
+    { tagId: 6 },
+    { tagId: 7 },
+    { tagId: 8 },
+  ]);
+  // No flags: neither field.
+  const cleared = withPerformerFlags(settings, []);
+  expect(cleared).not.toHaveProperty("performerFlags");
+  expect(cleared).not.toHaveProperty("flagPerformerTagIds");
+  expect(cleared.conditionTagIds).toEqual(settings.conditionTagIds);
 });
 
 it("reads no scenes for a condition that needs tags before any are chosen", async () => {

@@ -136,7 +136,16 @@ export function currentTags(
  * for again when the actions change; until then previews treat only its parent as removed.
  */
 export function useTagTrees(actions: readonly ReviewAction[]): TagTrees {
-  const key = removalTreeParents(actions)
+  return useResolvedTrees(removalTreeParents(actions));
+}
+
+/**
+ * These tags, each mapped to itself and all of its descendants, each resolved once for as long as
+ * the calling view stays mounted. A tree that cannot be read is asked for again when the tags
+ * change; a tag whose tree is not resolved yet is missing from the map.
+ */
+export function useResolvedTrees(parents: readonly number[]): TagTrees {
+  const key = [...new Set(parents)]
     .sort((left, right) => left - right)
     .join(",");
   const [trees, setTrees] = useState<TagTrees>(() => new Map());

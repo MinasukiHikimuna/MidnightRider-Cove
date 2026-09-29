@@ -22,10 +22,12 @@ import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
 import type { MediaReview, MediaReviewAction, OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
 import { rankingSignature, type PerformerRanking } from "../performerRanking";
+import { clearProfiles } from "../performerProfiles";
 configure({ asyncUtilTimeout: 3000 });
 const api = vi.hoisted(() => ({
   findMedia: vi.fn(),
   request: vi.fn(),
+  resolveTagTree: vi.fn(),
   resolvePerformers: vi.fn(),
   loadOccurrencePage: vi.fn(),
   readTags: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock("../api", async (original) => ({
   ...(await original<typeof import("../api")>()),
   findMedia: api.findMedia,
   request: api.request,
+  resolveTagTree: api.resolveTagTree,
   mediaCoverUrl: () => "/cover",
   mediaStreamUrl: () => "/stream",
 }));
@@ -123,6 +126,7 @@ const third = {
 let state: TagState;
 beforeEach(() => {
   vi.resetAllMocks();
+  clearProfiles();
   window.history.replaceState(null, "", "/data-quality?review=r");
   state = { ids: [], names: [], absent: [] };
   api.readTags.mockImplementation(async () => structuredClone(state));
@@ -145,6 +149,8 @@ beforeEach(() => {
     totalCount: 2,
   });
   api.request.mockResolvedValue({ name: "Choice" });
+  // A tree resolves to its parent alone unless a test says otherwise.
+  api.resolveTagTree.mockImplementation(async (ids: number[]) => ids);
   panels.loadPerformerAnswers.mockResolvedValue({ answered: 0, groups: [] });
 });
 function open(
@@ -1113,13 +1119,13 @@ const ranked = (rule: OccurrenceReview, first = 12): PerformerRanking => ({
   signature: rankingSignature(rule),
   candidatesKey: "",
   candidates: [
-    { id: 11, name: "First performer", total: 20, flags: [] },
-    { id: 12, name: "Second performer", total: 4, flags: ["Changed"] },
+    { id: 11, name: "First performer", total: 20, tags: [] },
+    { id: 12, name: "Second performer", total: 4, tags: [{ id: 7, name: "Changed" }, { id: 8, name: "Other" }] },
   ],
   cursor: 2,
   ranked: [
-    { id: 11, name: "First performer", count: first, total: 20, flags: [] },
-    { id: 12, name: "Second performer", count: 3, total: 4, flags: ["Changed"] },
+    { id: 11, name: "First performer", count: first, total: 20, tags: [] },
+    { id: 12, name: "Second performer", count: 3, total: 4, tags: [{ id: 7, name: "Changed" }, { id: 8, name: "Other" }] },
   ],
   limit: 50,
   complete: true,
@@ -1138,6 +1144,7 @@ it("ranks performers beside the queue and focuses the queue on one without savin
       performerFilter: { gender: "FEMALE" },
       condition: "excludesAll",
       conditionTagIds: [30, 40],
+      flagPerformerTagIds: [7],
     },
   };
   panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
@@ -1236,6 +1243,249 @@ it("shows the focused performer's existing answers and flags, and batches only t
   expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(11), expect.any(AbortSignal));
 });
 
+describe("category attention", () => {
+  const profileReads = (id: number) =>
+    api.request.mock.calls.filter(([path]) => path === `/api/performers/${id}`).length;
+  const panel = () => within(screen.getByRole("complementary", { name: "Current item" }));
+  const attention = () =>
+    within(panel().getByRole("list", { name: "Needs attention" }))
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+  const flaggedKeys = () =>
+    [...document.querySelectorAll<HTMLElement>(".dq-pad-tile[data-attention]")].map(
+      (tile) => tile.title,
+    );
+  // Sizes and a colour; a flag tag for colour on the first performer's profile.
+  const sized: OccurrenceReview = {
+    ...review,
+    actions: [
+      { id: "small", label: "Small", steps: [{ mode: "ADD", tagIds: [31] }] },
+      { id: "medium", label: "Medium", steps: [{ mode: "ADD", tagIds: [32] }] },
+      { id: "red", label: "Red", steps: [{ mode: "ADD", tagIds: [41] }] },
+    ],
+    occurrence: {
+      ...review.occurrence,
+      condition: "excludesAll",
+      conditionTagIds: [30, 40],
+      performerFlags: [{ tagId: 7, categoryTagId: 40 }],
+    },
+  };
+  const profiles: Record<string, unknown> = {
+    "/api/performers/11": { name: "First performer", tags: [{ id: 7, name: "Colour changed" }] },
+    "/api/performers/12": { name: "Second performer", tags: [{ id: 5, name: "Unrelated" }] },
+    "/api/tags/40": { id: 40, name: "Colour" },
+    "/api/tags/21": { id: 21, name: "One" },
+  };
+  beforeEach(() => {
+    api.request.mockImplementation(async (path: string) => profiles[path] ?? { name: "Choice" });
+    api.resolveTagTree.mockImplementation(async ([id]: number[]) => (id === 40 ? [40, 41, 42] : [id]));
+  });
+
+  it("lists where the focused performer needs attention and marks the keys and answers it concerns", async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+    panels.loadPerformerAnswers.mockResolvedValue({
+      answered: 3,
+      groups: [
+        {
+          id: 30,
+          name: "Size",
+          members: [30, 31, 32],
+          tags: [{ id: 32, name: "Medium", count: 40 }, { id: 31, name: "Small", count: 12 }],
+        },
+        { id: 40, name: "Colour", members: [40, 41, 42], tags: [{ id: 41, name: "Red", count: 3 }] },
+      ],
+    });
+    window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+    open(sized); await ready();
+    await waitFor(() =>
+      expect(attention()).toEqual([
+        "ColourFlagged: Colour changed",
+        "SizeMixed: Medium\u00a040 · Small\u00a012",
+      ]),
+    );
+    // Keys whose actions change a category that needs attention carry a flag.
+    expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]);
+    expect(screen.getByRole("button", { name: "q Small" })).toHaveAccessibleDescription(
+      "+ Choice. Needs attention: Size (Mixed: Medium\u00a040 · Small\u00a012)",
+    );
+    // The flag sits on the category it affects among the existing answers, Mixed where they differ.
+    const answers = within(screen.getByRole("region", { name: "Existing answers" }));
+    expect(answers.getByTitle("Flagged: Colour changed").closest(".dq-answer-group")).toHaveTextContent(
+      "Colour",
+    );
+    expect(answers.getByText("Mixed").closest(".dq-answer-group")).toHaveTextContent("Size");
+    // The focus chip names the category the flag affects.
+    expect(screen.getByRole("group", { name: "Performer focus" })).toHaveTextContent(
+      "Flagged: Colour changed (affects Colour)",
+    );
+    // One profile read for the focus, none more for the item column.
+    expect(profileReads(11)).toBe(1);
+    // The batch warns only once a chosen answer changes such a category.
+    fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Apply to all matching occurrences" }));
+    await dialog.findByText("3 videos answered");
+    expect(dialog.queryByRole("note")).toBeNull();
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Red" }));
+    expect(dialog.getByRole("note")).toHaveTextContent("Colour: Flagged: Colour changed");
+    expect(dialog.getByRole("note")).not.toHaveTextContent("Size");
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Small" }));
+    expect(dialog.getByRole("note")).toHaveTextContent("Size: Mixed: Medium 40 · Small 12");
+  });
+
+  it("flags the performer on screen from one profile read each, without mixed answers unfocused", async () => {
+    api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 3 });
+    open(sized); await ready();
+    await waitFor(() => expect(attention()).toEqual(["ColourFlagged: Colour changed"]));
+    expect(flaggedKeys()).toEqual(["Red"]);
+    fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    await waitFor(() => expect(profileReads(12)).toBe(1));
+    expect(panel().queryByRole("list", { name: "Needs attention" })).toBeNull();
+    expect(flaggedKeys()).toEqual([]);
+    // The first performer's next item uses the profile read before.
+    fireEvent.click(screen.getByRole("button", { name: "First performer — Next scene" }));
+    await screen.findByRole("heading", { name: "Reviewing First performer" });
+    await waitFor(() => expect(attention()).toEqual(["ColourFlagged: Colour changed"]));
+    expect(profileReads(11)).toBe(1);
+    expect(profileReads(12)).toBe(1);
+    // Mixed answers need a focus: no existing answers are read without one.
+    expect(panels.loadPerformerAnswers).not.toHaveBeenCalled();
+  });
+
+  it("reads no profile without flags", async () => {
+    open({ ...sized, occurrence: { ...sized.occurrence, performerFlags: undefined } }); await ready();
+    fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(profileReads(11) + profileReads(12)).toBe(0);
+  });
+
+  it("abandons a profile read when another performer is shown first, and reads it again later", async () => {
+    const signals: AbortSignal[] = [];
+    api.request.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/api/performers/11") {
+        signals.push(options!.signal!);
+        return new Promise(() => {});
+      }
+      return Promise.resolve(profiles[path] ?? { name: "Choice" });
+    });
+    open(sized); await ready();
+    await waitFor(() => expect(signals).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(signals[0].aborted).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /^First performer$/ }));
+    await screen.findByRole("heading", { name: "Reviewing First performer" });
+    await waitFor(() => expect(signals).toHaveLength(2));
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it("keeps the focused performer's mixed answers while they are read again after a write", async () => {
+    panels.loadPerformerAnswers.mockResolvedValueOnce({
+      answered: 3,
+      groups: [
+        {
+          id: 30,
+          name: "Size",
+          members: [30, 31, 32],
+          tags: [{ id: 32, name: "Medium", count: 40 }, { id: 31, name: "Small", count: 12 }],
+        },
+      ],
+    });
+    // The read after the write never lands.
+    panels.loadPerformerAnswers.mockImplementation(() => new Promise(() => {}));
+    api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
+    window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+    open(sized); await ready();
+    await waitFor(() => expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]));
+    fireEvent.click(screen.getByRole("button", { name: "e Red" }));
+    await screen.findByRole("heading", { name: "Reviewing First performer" });
+    await waitFor(() => expect(panels.loadPerformerAnswers).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await ready();
+    expect(screen.getByRole("link", { name: /Next scene/ })).toBeInTheDocument();
+    expect(attention()).toEqual([
+      "ColourFlagged: Colour changed",
+      "SizeMixed: Medium\u00a040 · Small\u00a012",
+    ]);
+    expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]);
+    expect(within(screen.getByRole("region", { name: "Existing answers" })).getByText("Mixed")).toBeInTheDocument();
+  });
+
+  it("keeps the mixed answers read before when reading them again fails, and says so", async () => {
+    panels.loadPerformerAnswers.mockResolvedValueOnce({
+      answered: 3,
+      groups: [
+        {
+          id: 30,
+          name: "Size",
+          members: [30, 31, 32],
+          tags: [{ id: 32, name: "Medium", count: 40 }, { id: 31, name: "Small", count: 12 }],
+        },
+      ],
+    });
+    panels.loadPerformerAnswers.mockRejectedValue(new Error("Answers offline"));
+    api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
+    window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+    open(sized); await ready();
+    await waitFor(() => expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]));
+    fireEvent.click(screen.getByRole("button", { name: "e Red" }));
+    expect(
+      await within(screen.getByRole("region", { name: "Existing answers" })).findByRole(
+        "alert",
+        {},
+        { timeout: 3000 },
+      ),
+    ).toHaveTextContent("Could not load existing answers. Answers offline");
+    expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]);
+  });
+
+  it("matches flags changed in the editor against the ranking's profiles at once", async () => {
+    panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+    open({ ...review, occurrence: { ...review.occurrence, performerFlags: [{ tagId: 7 }] } });
+    await ready();
+    const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+    fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+    await queue.findByRole("button", { name: "Second performer, 3 matching videos. Flagged: Changed" });
+    fireEvent.click(queue.getByRole("button", { name: "Scenes" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    await waitFor(() => expect(attention()).toEqual(["Flagged: Changed"]));
+    // Flag the ranking performer's other profile tag for a category, in the editor's draft.
+    fireEvent.click(screen.getByRole("button", { name: "Edit review" }));
+    const drawer = within(await screen.findByRole("dialog", { name: "Edit review" }));
+    fireEvent.change(drawer.getByRole("textbox", { name: "Add a performer flag" }), {
+      target: { value: "8" },
+    });
+    fireEvent.change(drawer.getAllByRole("textbox", { name: /^Affects,/ })[1], {
+      target: { value: "21" },
+    });
+    await waitFor(() => expect(attention()).toEqual(["Flagged: Changed", "OneFlagged: Other"]));
+    // Known from the ranking: no profile read, and nobody counted again.
+    expect(profileReads(12)).toBe(0);
+    expect(panels.extendRanking).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the affected categories in the performer list and reads no profile the ranking has", async () => {
+    panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
+    open({ ...review, occurrence: { ...review.occurrence, performerFlags: [{ tagId: 7, categoryTagId: 21 }] } });
+    await ready();
+    const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+    fireEvent.click(queue.getByRole("button", { name: "Performers" }));
+    const flagged = await queue.findByRole("button", {
+      name: "Second performer, 3 matching videos. Flagged: Changed (affects One)",
+    });
+    expect(flagged).toHaveAttribute("title", "Flagged: Changed (affects One)");
+    // No mixed answers in the list: the list reads no existing answers.
+    expect(panels.loadPerformerAnswers).not.toHaveBeenCalled();
+    fireEvent.click(queue.getByRole("button", { name: "Scenes" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Second performer$/ }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    await waitFor(() => expect(attention()).toEqual(["OneFlagged: Changed"]));
+    // The action adds tag 21, which the flag's category holds.
+    expect(flaggedKeys()).toEqual(["Observation"]);
+    expect(profileReads(12)).toBe(0);
+  });
+});
+
 it("recounts the saved performer in the ranking instead of ranking again", async () => {
   panels.extendRanking.mockImplementation(async (rule: OccurrenceReview) => ranked(rule));
   panels.countPerformer.mockResolvedValue(11);
@@ -1307,7 +1557,7 @@ it("shows more performers on request and retries a failed ranking with Refresh",
   panels.extendRanking.mockRejectedValueOnce(new Error("Performers offline"));
   panels.extendRanking.mockImplementation(async (rule: OccurrenceReview, _base: unknown, limit: number) => ({
     ...ranked(rule),
-    candidates: [...ranked(rule).candidates, { id: 13, name: "Third performer", total: 2, flags: [] }],
+    candidates: [...ranked(rule).candidates, { id: 13, name: "Third performer", total: 2, tags: [] }],
     limit,
   }));
   open(); await ready();
@@ -1365,7 +1615,7 @@ it("never shows the previous performer while the next focused one loads", async 
     path === "/api/performers/12" ? new Promise(() => {}) : Promise.resolve({ name: "First performer" }),
   );
   window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
-  open(); await ready();
+  open({ ...review, occurrence: { ...review.occurrence, flagPerformerTagIds: [7] } }); await ready();
   const focus = await screen.findByRole("group", { name: "Performer focus" });
   await waitFor(() => expect(focus).toHaveTextContent("Only First performer"));
   const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
@@ -1407,7 +1657,7 @@ it("stops counting for criteria no longer shown and lends the loaded performers 
 it("discards a recount when a count started meanwhile, then counts again", async () => {
   panels.extendRanking.mockImplementationOnce(async (rule: OccurrenceReview) => ({
     ...ranked(rule),
-    candidates: [...ranked(rule).candidates, { id: 13, name: "Third performer", total: 2, flags: [] }],
+    candidates: [...ranked(rule).candidates, { id: 13, name: "Third performer", total: 2, tags: [] }],
   }));
   let showMoreSignal!: AbortSignal;
   panels.extendRanking.mockImplementationOnce(
