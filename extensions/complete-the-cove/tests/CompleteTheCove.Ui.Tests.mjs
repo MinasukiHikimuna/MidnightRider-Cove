@@ -457,6 +457,30 @@ test("filters ignored videos with Cove's native boolean criterion", async () => 
   assert.match(source, /video\.isIgnored \? Eye : EyeOff/);
 });
 
+test("missing videos support bulk selection and mass ignore", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+
+  assert.match(source, /type: "checkbox"/);
+  assert.match(source, /complete-the-cove-card-select/);
+  assert.match(source, /selectedIds: selected/);
+  assert.match(source, /onSelectAll: \(\) => setSelected\(new Set\(data\.items\.map\(\(video\) => video\.id\)\)\)/);
+  assert.match(source, /"Ignore selected"/);
+  assert.match(source, /"Unignore selected"/);
+  assert.match(source, /\$\{API\}\/videos\/ignore/);
+  assert.match(source, /videoIds: ids, ignored/);
+  assert.match(source, /if \(selecting\) \{ onSelect\?\.\(video\.id\); return; \}/);
+});
+
+test("missing video cards expose a quick ignore toggle", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+
+  assert.match(source, /complete-the-cove-card-ignore/);
+  assert.match(source, /\$\{API\}\/videos\/\$\{video\.id\}\/ignore/);
+  assert.match(source, /method: video\.isIgnored \? "DELETE" : "POST"/);
+  assert.match(source, /Ignore this video/);
+  assert.match(source, /onToggleIgnored\?\.\(video\)/);
+});
+
 test("settings select multiple configured metadata providers", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const manifest = JSON.parse(await readFile(new URL("../src/CompleteTheCove/extension.json", import.meta.url), "utf8"));
@@ -492,4 +516,16 @@ test("refresh controls use a split button for all or one enabled provider", asyn
   assert.doesNotMatch(source, /disabled: refreshing \|\| enabled\.length === 0/);
   assert.match(stylesheet, /\.complete-the-cove-refresh-group/);
   assert.match(stylesheet, /\.complete-the-cove-refresh-menu/);
+});
+
+test("entity pages expose an ignore-this tab", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+
+  assert.match(source, /function EntityIgnoreTab\(/);
+  assert.match(source, /IgnorePerformerTab: \(props\) => h\(EntityIgnoreTab, \{ \.\.\.props, type: "performer" \}\)/);
+  assert.match(source, /IgnoreStudioTab: \(props\) => h\(EntityIgnoreTab, \{ \.\.\.props, type: "studio" \}\)/);
+  assert.match(source, /IgnoreTagTab: \(props\) => h\(EntityIgnoreTab, \{ \.\.\.props, type: "tag" \}\)/);
+  assert.match(source, /const url = `\$\{API\}\/entities\/\$\{type\}\/\$\{entityId\}\/ignore`/);
+  assert.match(source, /method: state\?\.ignored \? "DELETE" : "POST"/);
+  assert.match(source, /Ignore This/);
 });

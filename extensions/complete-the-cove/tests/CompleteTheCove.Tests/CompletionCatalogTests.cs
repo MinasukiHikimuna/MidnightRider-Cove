@@ -176,6 +176,65 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task SetIgnoredManyAsync_flags_only_requested_videos()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        var settings = new CompleteSettings(new HashSet<string>());
+        await catalog.RefreshAsync(new FakeDiscovery(Video("a"), Video("b"), Video("c")), settings, null, null, new ProgressStub(), default);
+        var ids = await db.Set<CompletionVideo>().AsNoTracking().OrderBy(x => x.Id).Select(x => x.Id).ToArrayAsync();
+        Assert.Equal(3, ids.Length);
+
+        Assert.Equal(2, await catalog.SetIgnoredManyAsync(ids.Take(2), true, default));
+        var flags = await db.Set<CompletionVideo>().AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.IsIgnored);
+        Assert.True(flags[ids[0]]);
+        Assert.True(flags[ids[1]]);
+        Assert.False(flags[ids[2]]);
+
+        Assert.Equal(1, await catalog.SetIgnoredManyAsync([ids[2]], true, default));
+        Assert.Equal(3, await db.Set<CompletionVideo>().CountAsync(x => x.IsIgnored));
+        Assert.Equal(0, await catalog.SetIgnoredManyAsync([], true, default));
+        Assert.Equal(1, await catalog.SetIgnoredManyAsync([ids[0], ids[0]], false, default));
+        Assert.Equal(2, await db.Set<CompletionVideo>().CountAsync(x => x.IsIgnored));
+    }
+
+    [Fact]
+    public async Task SetEntityIgnoredAsync_flags_only_videos_linked_to_the_entity()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        var settings = new CompleteSettings(new HashSet<string>());
+        await catalog.RefreshAsync(new FakeDiscovery(Video("a"), Video("b"), Video("c"), Video("d")), settings, null, null, new ProgressStub(), default);
+        var videos = await db.Set<CompletionVideo>().OrderBy(x => x.Id)
+            .Include(x => x.Performers).Include(x => x.Tags).ToListAsync();
+        Assert.Equal(4, videos.Count);
+        videos[0].Performers[0].CovePerformerId = 11;
+        videos[1].Performers[0].CovePerformerId = 11;
+        videos[2].CoveStudioId = 7;
+        videos[3].Tags[0].CoveTagId = 9;
+        await db.SaveChangesAsync();
+
+        Assert.False(await catalog.IsEntityIgnoredAsync(CompletionTargetType.Performer, 11, default));
+        Assert.Equal(2, await catalog.SetEntityIgnoredAsync(CompletionTargetType.Performer, 11, true, default));
+        Assert.True(await catalog.IsEntityIgnoredAsync(CompletionTargetType.Performer, 11, default));
+        Assert.Equal(1, await catalog.SetEntityIgnoredAsync(CompletionTargetType.Studio, 7, true, default));
+        Assert.Equal(1, await catalog.SetEntityIgnoredAsync(CompletionTargetType.Tag, 9, true, default));
+        Assert.Equal(4, await db.Set<CompletionVideo>().CountAsync(x => x.IsIgnored));
+
+        // Unignoring the entity removes the override but keeps the flagged videos;
+        // re-ignoring updates nothing because they are already flagged.
+        Assert.Equal(1, await catalog.SetEntityIgnoredAsync(CompletionTargetType.Performer, 11, false, default));
+        Assert.False(await catalog.IsEntityIgnoredAsync(CompletionTargetType.Performer, 11, default));
+        Assert.Equal(4, await db.Set<CompletionVideo>().CountAsync(x => x.IsIgnored));
+        Assert.Equal(0, await catalog.SetEntityIgnoredAsync(CompletionTargetType.Performer, 11, true, default));
+        Assert.Equal(0, await catalog.SetEntityIgnoredAsync(CompletionTargetType.Tag, 1234, false, default));
+    }
+
+    [Fact]
     public async Task Refresh_batches_writes_and_leaves_unchanged_video_graphs_untouched()
     {
         await using var db = CreateDb();
@@ -260,11 +319,18 @@ public sealed class CompletionCatalogTests
         Assert.Contains(manifest.Pages, x => x.Route == "missing-scenes" && !x.ShowInNav && x.ComponentName == "LegacyMissingVideosPage");
         Assert.Contains(manifest.Pages, x => x.Route == "missing-scene" && !x.ShowInNav && x.ComponentName == "LegacyMissingVideoDetailPage");
         Assert.Equal("list-checks", manifest.Pages.Single(x => x.Route == "missing-videos").Icon);
-        Assert.All(manifest.Tabs, tab => Assert.Equal("Missing Videos", tab.Label));
-        Assert.Equal(["performer", "studio", "tag"], manifest.Tabs.Select(x => x.PageType).ToArray());
+        Assert.Equal(
+            ["Missing Videos", "Ignore This", "Missing Videos", "Ignore This", "Missing Videos", "Ignore This"],
+            manifest.Tabs.Select(x => x.Label).ToArray());
+        Assert.Equal(
+            ["performer", "performer", "studio", "studio", "tag", "tag"],
+            manifest.Tabs.Select(x => x.PageType).ToArray());
         Assert.Collection(manifest.Tabs,
             tab => Assert.Equal(["extensions.configure", "performers.read"], Assert.IsType<string[]>(tab.RequiredPermissions)),
+            tab => Assert.Equal(["extensions.configure", "performers.read"], Assert.IsType<string[]>(tab.RequiredPermissions)),
             tab => Assert.Equal(["extensions.configure", "studios.read"], Assert.IsType<string[]>(tab.RequiredPermissions)),
+            tab => Assert.Equal(["extensions.configure", "studios.read"], Assert.IsType<string[]>(tab.RequiredPermissions)),
+            tab => Assert.Equal(["extensions.configure", "tags.read"], Assert.IsType<string[]>(tab.RequiredPermissions)),
             tab => Assert.Equal(["extensions.configure", "tags.read"], Assert.IsType<string[]>(tab.RequiredPermissions)));
     }
 
@@ -368,7 +434,13 @@ public sealed class CompletionCatalogTests
             .ToArray();
 
         Assert.Equal(4, targetEndpoints.Length);
-        Assert.All(targetEndpoints, endpoint =>
+        var ignoreRoute = $"/api/plugins/com.midnightrider.complete-the-cove/entities/{routeType}/{{entityId:int}}/ignore";
+        var ignoreEndpoints = endpoints.Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText == ignoreRoute)
+            .ToArray();
+        Assert.Equal(3, ignoreEndpoints.Length);
+        Assert.All(targetEndpoints.Concat(ignoreEndpoints), endpoint =>
         {
             var permission = Assert.Single(endpoint.Metadata.OfType<CovePermissionRequirementMetadata>());
             Assert.Equal([Permissions.ExtensionsConfigure, readPermission], permission.Permissions);
@@ -414,9 +486,14 @@ public sealed class CompletionCatalogTests
             "008_ignored_scenes",
             "009_provider_completion_progress",
             "010_video_terminology",
+            "011_canonical_endpoint_dedup",
+            "012_ignored_entities",
         ], migrations.Select(migration => migration.Name).ToArray());
 
         var migration = Assert.Single(migrations, migration => migration.Name == "010_video_terminology").UpSql;
+        var dedup = Assert.Single(migrations, item => item.Name == "011_canonical_endpoint_dedup").UpSql;
+        Assert.Contains("complete_the_cove_orphan_blobs", dedup);
+        Assert.Contains("split_part(", dedup);
         Assert.Contains("complete_the_cove_scenes RENAME TO complete_the_cove_videos", migration);
         Assert.Contains("pg_get_serial_sequence", migration);
         Assert.Contains("complete_the_cove_videos_Id_seq", migration);
@@ -508,6 +585,96 @@ public sealed class CompletionCatalogTests
             "https://fansdb.xyz/graphql");
 
         Assert.Empty(discoveries);
+    }
+
+    [Fact]
+    public void Discovery_registry_collapses_query_string_variants_of_one_source()
+    {
+        var configuration = new Cove.Core.Interfaces.CoveConfiguration();
+        configuration.Scraping.MetadataServers =
+        [
+            new() { Name = "TPDB", Endpoint = "https://theporndb.net/graphql", ApiKey = "one" },
+            new() { Name = "TPDB Scenes", Endpoint = "https://theporndb.net/graphql?type=Scene", ApiKey = "one" },
+            new() { Name = "TPDB Movies", Endpoint = "https://theporndb.net/graphql?type=Movie", ApiKey = "one" },
+            new() { Name = "TPDB JAV", Endpoint = "https://theporndb.net/graphql?type=JAV", ApiKey = "one" },
+            new() { Name = "StashDB", Endpoint = "https://stashdb.org/graphql", ApiKey = "two" },
+        ];
+
+        var discoveries = CompletionDiscoveryProviders.CreateConfigured(configuration);
+
+        Assert.Equal(["https://theporndb.net/graphql", "https://stashdb.org/graphql"],
+            discoveries.Select(x => x.Endpoint).ToArray());
+        Assert.IsType<TpdbDiscoveryClient>(discoveries[0]);
+        Assert.IsType<StashBoxDiscoveryClient>(discoveries[1]);
+        foreach (var discovery in discoveries.OfType<IDisposable>()) discovery.Dispose();
+
+        var scoped = CompletionDiscoveryProviders.CreateConfigured(
+            configuration, null, "https://theporndb.net/graphql?type=Movie");
+        var scopedDiscovery = Assert.Single(scoped);
+        Assert.Equal("https://theporndb.net/graphql", scopedDiscovery.Endpoint);
+        Assert.IsAssignableFrom<IDisposable>(scopedDiscovery).Dispose();
+    }
+
+    [Fact]
+    public void Canonical_endpoint_strips_query_string_focus_filters()
+    {
+        Assert.Equal("https://theporndb.net/graphql", CompletionCatalog.CanonicalEndpoint("https://theporndb.net/graphql?type=Scene"));
+        Assert.Equal("https://theporndb.net/graphql", CompletionCatalog.CanonicalEndpoint("HTTPS://THEPORNDB.NET/graphql/?type=Movie"));
+        Assert.Equal("https://theporndb.net/graphql", CompletionCatalog.CanonicalEndpoint("https://theporndb.net/graphql"));
+        Assert.Equal("https://stashdb.org/graphql", CompletionCatalog.CanonicalEndpoint("https://stashdb.org/graphql?query=x#frag"));
+        Assert.Equal("https://example.test", CompletionCatalog.CanonicalEndpoint("https://example.test?x=1"));
+    }
+
+    [Fact]
+    public async Task Synchronize_target_sources_collapses_query_string_variants()
+    {
+        await using var db = CreateDb();
+        db.Add(new Cove.Core.Entities.Performer { Id = 1, Name = "Perf" });
+        db.Add(new Cove.Core.Entities.PerformerRemoteId { PerformerId = 1, Endpoint = "https://stashdb.org/graphql", RemoteId = "perf-1" });
+        db.Add(Target(1, "perf-1"));
+        db.Add(new CompletionTarget
+        {
+            EntityType = CompletionTargetType.Performer,
+            EntityId = 1,
+            DisplayName = "Perf",
+            RemoteEndpoint = "https://stashdb.org/graphql?type=Scene",
+            RemoteId = "perf-1"
+        });
+        await db.SaveChangesAsync();
+
+        var catalog = Catalog(db);
+        await catalog.SynchronizeTargetSourcesAsync(
+            ["https://stashdb.org/graphql", "https://stashdb.org/graphql?type=Scene"], default);
+
+        var target = Assert.Single(await db.Set<CompletionTarget>().ToListAsync());
+        Assert.Equal("https://stashdb.org/graphql", target.RemoteEndpoint);
+    }
+
+    [Fact]
+    public async Task Refresh_from_query_string_endpoint_variants_keeps_one_catalog_row_per_source()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "perf-1"));
+        db.Add(new CompletionTarget
+        {
+            EntityType = CompletionTargetType.Performer,
+            EntityId = 1,
+            DisplayName = "Perf",
+            RemoteEndpoint = "https://stashdb.org/graphql?type=Scene",
+            RemoteId = "perf-1"
+        });
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        var settings = new CompleteSettings(new HashSet<string>());
+
+        await catalog.RefreshAsync(new FakeDiscovery(Video("scene-1")), settings, null, null, new ProgressStub(), default);
+        await catalog.RefreshAsync(
+            new FakeDiscovery(Video("scene-1")) { Endpoint = "https://stashdb.org/graphql?type=Scene" },
+            settings, null, null, new ProgressStub(), default);
+
+        var video = Assert.Single(await db.Set<CompletionVideo>().ToListAsync());
+        Assert.Equal("https://stashdb.org/graphql", video.RemoteEndpoint);
+        Assert.Equal("scene-1", video.RemoteId);
     }
 
     [Fact]
@@ -1145,6 +1312,43 @@ public sealed class CompletionCatalogTests
     }
 
     [Fact]
+    public async Task Refresh_dedupes_repeated_remote_performer_and_tag_ids_from_the_provider()
+    {
+        await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
+        var video = new SourceVideo(0, "Video", "CODE", "Details", null, "2026-01-02", false, false, null,
+            ["https://example.test/video"], [new RemoteKey("https://stashdb.org/graphql", "dup-video")],
+            new SourceStudio(0, "Studio", false, null, false, [], [], [new RemoteKey("https://stashdb.org/graphql", "studio")]),
+            [SrcTag("Tag", "tag"), SrcTag("Tag Alias", "tag")],
+            [Perf("Performer", "perf"), Perf("Performer Alias", "perf")]);
+        var catalog = Catalog(db);
+
+        await catalog.RefreshAsync(new FakeDiscovery(video), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+        await catalog.RefreshAsync(new FakeDiscovery(video), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+
+        var stored = await db.Set<CompletionVideo>().AsNoTracking().Include(x => x.Performers).Include(x => x.Tags).SingleAsync();
+        Assert.Equal(["Performer"], stored.Performers.Select(p => p.Name).ToArray());
+        Assert.Equal("perf", stored.Performers[0].RemoteId);
+        Assert.Equal(["Tag"], stored.Tags.Select(t => t.Name).ToArray());
+        Assert.Equal("tag", stored.Tags[0].RemoteId);
+    }
+
+    [Fact]
+    public async Task Failed_refresh_does_not_replay_failed_writes_and_keeps_the_error()
+    {
+        await using var db = CreateDb(); db.Add(Target(1, "one")); await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        db.ThrowOnNextSave = true;
+
+        var totals = await catalog.RefreshAsync(new FakeDiscovery(Video("video")), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+
+        Assert.Equal(1, totals.Failed);
+        Assert.Empty(await db.Set<CompletionVideo>().ToListAsync());
+        var target = await db.Set<CompletionTarget>().SingleAsync();
+        Assert.Equal("Database save failed.", target.LastRefreshError);
+        Assert.NotNull(target.LastRefreshAt);
+    }
+
+    [Fact]
     public async Task Cover_download_rejects_untrusted_redirect_and_non_images()
     {
         using var redirect = new CoverDownloadClient("stashdb.org", new DelegateHandler(_ =>
@@ -1185,6 +1389,10 @@ public sealed class CompletionCatalogTests
         new SourceStudio(0, "Studio", false, null, false, [], [], [new RemoteKey("https://stashdb.org/graphql", "studio")]),
         [new SourceTag(0, "Tag", null, null, false, [], [new RemoteKey("https://stashdb.org/graphql", "tag")], false)],
         [new SourcePerformer(0, "Performer", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], [], [new RemoteKey("https://stashdb.org/graphql", "performer")])]);
+    private static SourcePerformer Perf(string name, string remoteId) =>
+        new(0, name, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], [], [new RemoteKey("https://stashdb.org/graphql", remoteId)]);
+    private static SourceTag SrcTag(string name, string remoteId) =>
+        new(0, name, null, null, false, [], [new RemoteKey("https://stashdb.org/graphql", remoteId)], false);
     private static CompletionVideo FilterVideo(
         string id,
         IReadOnlyList<string> performerIds,
@@ -1267,10 +1475,18 @@ public sealed class CompletionCatalogTests
 
     private sealed class TestDb(DbContextOptions options) : DbContext(options)
     {
+        // ResolveIdentityAsync reads Cove entities directly; map the lightest
+        // one (Performer) and ignore its collection navigations.
         public int SaveCalls { get; private set; }
         public int CatalogWrites { get; private set; }
+        public bool ThrowOnNextSave { get; set; }
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            if (ThrowOnNextSave)
+            {
+                ThrowOnNextSave = false;
+                return Task.FromException<int>(new InvalidOperationException("Database save failed."));
+            }
             SaveCalls++;
             ChangeTracker.DetectChanges();
             CatalogWrites += ChangeTracker.Entries().Count(entry => entry.Entity is not CompletionTarget
@@ -1280,6 +1496,16 @@ public sealed class CompletionCatalogTests
         protected override void OnModelCreating(ModelBuilder builder)
         {
             new CompleteTheCoveExtension().ConfigureModel(builder);
+            builder.Entity<Cove.Core.Entities.Performer>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+                entity.Ignore(x => x.Urls);
+                entity.Ignore(x => x.Aliases);
+                entity.Ignore(x => x.PerformerTags);
+                entity.Ignore(x => x.VideoPerformers);
+                entity.Ignore(x => x.ImagePerformers);
+                entity.Ignore(x => x.GalleryPerformers);
+            });
             builder.Entity<Cove.Core.Entities.VideoRemoteId>(entity =>
             {
                 entity.HasKey(x => x.Id);
@@ -1304,7 +1530,7 @@ public sealed class CompletionCatalogTests
     }
     private sealed class FakeDiscovery(params SourceVideo[] videos) : ICompletionDiscovery
     {
-        public string Endpoint => "https://stashdb.org/graphql";
+        public string Endpoint { get; set; } = "https://stashdb.org/graphql";
         public Task<IReadOnlyList<SourceVideo>> DiscoverAsync(CompletionTarget target, CancellationToken ct) => Task.FromResult<IReadOnlyList<SourceVideo>>(videos);
     }
     private sealed class ThrowingDiscovery : ICompletionDiscovery
