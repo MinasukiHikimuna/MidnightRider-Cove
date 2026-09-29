@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BatchOccurrenceDialog } from "../BatchOccurrenceDialog";
 import { ReviewTagBadge, WithoutTagImagePreviews } from "../TagDisplay";
 import type { AttentionEntry } from "../attention";
+import type { TagTrees } from "../effectPreview";
 import type { OccurrenceReview } from "../model";
 import {
   ConflictingAnswersError,
@@ -139,7 +140,11 @@ const wholeFlag = (name: string): AttentionEntry => ({
   flags: [name],
   mixed: [],
 });
-function mount(rule: OccurrenceReview = review, performerAttention?: AttentionEntry[]) {
+function mount(
+  rule: OccurrenceReview = review,
+  performerAttention?: AttentionEntry[],
+  trees?: TagTrees,
+) {
   const onOpen = vi.fn(),
     onClose = vi.fn(),
     onWrite = vi.fn();
@@ -148,6 +153,7 @@ function mount(rule: OccurrenceReview = review, performerAttention?: AttentionEn
       review={rule}
       disabled={false}
       performerAttention={performerAttention}
+      trees={trees}
       onOpen={onOpen}
       onClose={onClose}
       onWrite={onWrite}
@@ -733,14 +739,17 @@ it("warns about a flagged performer while the answers are chosen and shows their
   expect(within(flag).queryByRole("link")).not.toBeInTheDocument();
   const answers = within(screen.getByRole("region", { name: "Existing answers" }));
   expect(await answers.findByText("2 videos answered")).toBeInTheDocument();
-  expect(answers.getByText("Mixed")).toBeInTheDocument();
   expect(answers.getByRole("list", { name: "Size" })).toHaveTextContent("Small1, 1 video");
+  // Nothing says Size takes one answer: its counts show without Mixed.
+  expect(answers.queryByText("Mixed")).toBeNull();
   fireEvent.click(checkbox("Answer"));
   fireEvent.click(button("Preview all matches"));
   await screen.findByText("Preview ready. No tags have been changed.");
   expect(
-    within(screen.getByRole("region", { name: "Existing answers" })).getByText("Mixed"),
-  ).toBeInTheDocument();
+    within(screen.getByRole("region", { name: "Existing answers" })).getByRole("list", {
+      name: "Size",
+    }),
+  ).toHaveTextContent("Medium1, 1 video");
   expect(mocks.answers).toHaveBeenCalledTimes(1);
 });
 
@@ -837,6 +846,11 @@ describe("category attention", () => {
     const answers = within(screen.getByRole("region", { name: "Existing answers" }));
     expect(answers.getByRole("list", { name: "Finish" })).toHaveTextContent("Plain2, 2 videos");
     expect(answers.getAllByText("Mixed")).toHaveLength(1);
+    expect(answers.getByText("Mixed")).toHaveTextContent(/^Mixed$/);
+    expect(answers.getByText("Mixed")).toHaveAttribute(
+      "title",
+      "This performer has different answers in this group.",
+    );
   });
 
   it("marks the flagged category among the existing answers", async () => {
@@ -886,6 +900,86 @@ describe("category attention", () => {
       "Whole review: Flagged: Changed",
       "Shape: Flagged: Shape changed",
     ]);
+  });
+
+  describe("only in categories that take one answer", () => {
+    const round = { id: "round", label: "Round", steps: [{ mode: "ADD" as const, tagIds: [11] }] };
+    const existing = () => within(screen.getByRole("region", { name: "Existing answers" }));
+    beforeEach(() => {
+      mocks.answers.mockResolvedValue({
+        answered: 4,
+        groups: [
+          {
+            id: 10,
+            name: "Shape",
+            members: [10, 11, 12, 13],
+            tags: [
+              { id: 11, name: "Round", count: 2 },
+              { id: 13, name: "Striped", count: 2 },
+              { id: 12, name: "Square", count: 1 },
+            ],
+          },
+        ],
+      });
+    });
+
+    it("counts a condition category holding several answers without Mixed or a warning", async () => {
+      mount({ ...review, actions: [round] }, []);
+      fireEvent.click(openButton());
+      await screen.findByText("4 videos answered");
+      expect(existing().getByRole("list", { name: "Shape" })).toHaveTextContent("Square1, 1 video");
+      expect(existing().queryByText("Mixed")).toBeNull();
+      fireEvent.click(checkbox("Round"));
+      expect(note()).toBeNull();
+    });
+
+    it("warns where an only-one answer covers the category from a tree above it", async () => {
+      const onlyOne = {
+        ...round,
+        steps: [...round.steps, { mode: "REMOVE_TREE" as const, tagIds: [1] }],
+      };
+      mount({ ...review, actions: [onlyOne] }, [], new Map([[1, [1, 10, 11, 12, 13]]]));
+      fireEvent.click(openButton());
+      await screen.findByText("4 videos answered");
+      expect(existing().getByText("Mixed")).toHaveAttribute(
+        "title",
+        "This performer has different answers in this category.",
+      );
+      fireEvent.click(checkbox("Round"));
+      expect(within(note()!).getByRole("list", { name: "Needs attention" })).toHaveTextContent(
+        "Shape: Mixed: Round 2 · Striped 2 · Square 1",
+      );
+    });
+
+    it("marks the category where an answer group inside it is mixed, and warns for its answers", async () => {
+      mount(
+        {
+          ...review,
+          actions: [
+            { ...round, group: "Form" },
+            { id: "square", label: "Square", group: "Form", steps: [{ mode: "ADD", tagIds: [12] }] },
+            { id: "striped", label: "Striped", steps: [{ mode: "ADD", tagIds: [13] }] },
+          ],
+        },
+        [],
+      );
+      fireEvent.click(openButton());
+      await screen.findByText("4 videos answered");
+      // The group shows inside Shape, whose row carries its Mixed badge naming the group, in
+      // words that every reader gets, not in the tooltip alone.
+      expect(existing().queryByRole("list", { name: "Form" })).toBeNull();
+      const mixed = existing().getByText("Mixed");
+      expect(mixed.closest(".dq-answer-group")).toHaveTextContent("Shape");
+      expect(mixed).toHaveTextContent(/^Mixed in Form$/);
+      expect(mixed).toHaveAttribute("title", "This performer has different answers in Form.");
+      // Another answer in Shape is not part of the mix.
+      fireEvent.click(checkbox("Striped"));
+      expect(note()).toBeNull();
+      fireEvent.click(checkbox("Square"));
+      expect(within(note()!).getByRole("list", { name: "Needs attention" })).toHaveTextContent(
+        "Form: Mixed: Round 2 · Square 1",
+      );
+    });
   });
 });
 

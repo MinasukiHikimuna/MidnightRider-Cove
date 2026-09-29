@@ -2347,13 +2347,16 @@
   min-width: 0;
   overflow-wrap: break-word;
 }
-/* A flag's names can be long: they end in an ellipsis, in full in the tooltip. */
-.dq-answer-category .dq-answer-flag {
+/* A flag's names, or a mixed group's, can be long: they end in an ellipsis, in full in the
+   tooltip. */
+.dq-answer-category .dq-answer-flag,
+.dq-answer-category .dq-answer-mixed {
   min-width: 0;
   flex: 0 1 auto;
   overflow: hidden;
 }
-.dq-answer-flag-names {
+.dq-answer-flag-names,
+.dq-answer-mixed-names {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5107,6 +5110,11 @@ textarea.dq-input {
 .dq-action-field > .dq-select {
   min-width: 0;
   flex: 1 1 auto;
+}
+/* Under the field's input: the width of the field name and the gap after it. */
+.dq-action-field-help {
+  margin-top: 4px;
+  padding-left: calc(84px + 12px);
 }
 .dq-steps {
   display: flex;

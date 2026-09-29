@@ -1,6 +1,12 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
-import { answerCategories, loadPerformerAnswers, type AnswerSummary } from "../performerAnswers";
+import {
+  answerCategories,
+  loadPerformerAnswers,
+  oneAnswerCategory,
+  type AnswerSummary,
+} from "../performerAnswers";
+import { mixedAttention } from "../attention";
 import type { MediaReviewAction, OccurrenceReview } from "../model";
 
 const fetchMock = vi.mocked(extensionFetch);
@@ -197,6 +203,16 @@ const answer = (id: string, group: string | undefined, tag: number): MediaReview
   ...(group === undefined ? {} : { group }),
   steps: [{ mode: "ADD", tagIds: [tag] }],
 });
+/** An answer as "Only one per performer" makes it: add the tag, remove the rest of a tree. */
+const onlyOne = (id: string, tag: number, tree: number): MediaReviewAction => ({
+  id,
+  label: id,
+  steps: [
+    { mode: "ADD", tagIds: [tag] },
+    { mode: "REMOVE_TREE", tagIds: [tree] },
+  ],
+});
+const NO_TREES = new Map<number, number[]>();
 
 it("gives answer groups outside the condition categories rows of their own", () => {
   const actions = [
@@ -211,7 +227,7 @@ it("gives answer groups outside the condition categories rows of their own", () 
     // Ungrouped: stays with the other review tags.
     answer("note", undefined, 60),
   ];
-  const rows = answerCategories(summary, actions);
+  const rows = answerCategories(summary, actions, NO_TREES);
   expect(rows.map((row) => [row.key, row.kind, row.name])).toEqual([
     ["tag:30", "condition", "Size"],
     ["tag:40", "condition", "Kind"],
@@ -226,31 +242,47 @@ it("gives answer groups outside the condition categories rows of their own", () 
   expect(rows[3].tags).toEqual([]);
   expect(rows[4].tags).toEqual([held(60, 1)]);
   expect(rows[4].members).toEqual([60]);
+  // A group takes one answer: two there are mixed, as in the group inside Size; the rest never are.
+  expect(rows.map((row) => row.mixed.map((found) => found.key))).toEqual([
+    ["group:measure"],
+    [],
+    ["group:finish"],
+    [],
+    [],
+  ]);
+  expect(rows[2].mixed).toEqual([
+    { key: "group:finish", name: "Finish", members: [50, 51], tags: [held(50, 4), held(51, 2)] },
+  ]);
 });
 
 it("counts a group's answers wherever the performer holds them, a group across categories too", () => {
   // One answer in Size, one in Kind: no single category holds the group.
-  const rows = answerCategories(summary, [answer("a", "Mixed up", 32), answer("b", "Mixed up", 41)]);
+  const rows = answerCategories(
+    summary,
+    [answer("a", "Mixed up", 32), answer("b", "Mixed up", 41)],
+    NO_TREES,
+  );
   expect(rows.map((row) => row.key)).toEqual(["tag:30", "tag:40", "group:mixed up", "other"]);
   expect(rows[2].tags).toEqual([held(32, 5), held(41, 3)]);
+  // Mixed in the group, while each category keeps one of its answers and several are allowed.
+  expect(rows.map((row) => row.mixed.length)).toEqual([0, 0, 1, 0]);
 });
 
 it("keeps the rows as they were without answer groups, and names the rest alone", () => {
-  expect(answerCategories(summary, [answer("a", undefined, 50)]).map((row) => row.key)).toEqual([
-    "tag:30",
-    "tag:40",
-    "other",
-  ]);
+  expect(
+    answerCategories(summary, [answer("a", undefined, 50)], NO_TREES).map((row) => row.key),
+  ).toEqual(["tag:30", "tag:40", "other"]);
   const alone: AnswerSummary = {
     answered: 1,
     groups: [{ id: null, name: "Review tags", members: [50], tags: [held(50, 1)] }],
   };
-  expect(answerCategories(alone, []).map((row) => row.name)).toEqual(["Review tags"]);
+  expect(answerCategories(alone, [], NO_TREES).map((row) => row.name)).toEqual(["Review tags"]);
   // With a group row before them, the rest are the other review tags.
   expect(
     answerCategories(
       { ...alone, groups: [{ id: null, name: "Review tags", members: [50, 51], tags: [held(50, 1)] }] },
       [answer("x", "Finish", 51)],
+      NO_TREES,
     ).map((row) => row.name),
   ).toEqual(["Finish", "Other review tags"]);
   // The rest only shows while it holds answers.
@@ -258,6 +290,124 @@ it("keeps the rows as they were without answer groups, and names the rest alone"
     answerCategories(
       { answered: 0, groups: [{ id: null, name: "Review tags", members: [50], tags: [] }] },
       [],
+      NO_TREES,
     ),
   ).toEqual([]);
+});
+
+it("counts the answers of a category that holds several at once without mixing them", () => {
+  // Size holds two answers, but nothing says it takes one: no only-one answer, no group.
+  const rows = answerCategories(
+    summary,
+    [answer("small", undefined, 31), answer("large", undefined, 32)],
+    NO_TREES,
+  );
+  expect(rows[0]).toMatchObject({ key: "tag:30", tags: [held(32, 5), held(31, 2)], mixed: [] });
+  // Answers in two different groups inside it are no mix either.
+  const split = answerCategories(
+    summary,
+    [answer("small", "Width", 31), answer("large", "Height", 32)],
+    NO_TREES,
+  );
+  expect(split[0].mixed).toEqual([]);
+});
+
+it("finds the condition categories that take one answer from their only-one answers", () => {
+  const size = [30, 31, 32];
+  // The category's own tree: known before the tree is resolved.
+  expect(oneAnswerCategory(30, size, [onlyOne("small", 31, 30)], NO_TREES)).toBe(true);
+  // A tree above the category counts once it is resolved and holds the whole category.
+  const above = [onlyOne("small", 31, 1)];
+  expect(oneAnswerCategory(30, size, above, NO_TREES)).toBe(false);
+  expect(oneAnswerCategory(30, size, above, new Map([[1, [1, 30, 31, 32, 40]]]))).toBe(true);
+  expect(oneAnswerCategory(30, size, above, new Map([[1, [1, 31, 32]]]))).toBe(false);
+  // A tree under the category holds only part of it.
+  expect(oneAnswerCategory(30, size, [onlyOne("small", 31, 31)], new Map([[31, [31]]]))).toBe(false);
+  // Mark present adds too.
+  const present: MediaReviewAction = {
+    id: "present",
+    label: "present",
+    steps: [
+      { mode: "MARK_PRESENT", tagIds: [32] },
+      { mode: "REMOVE_TREE", tagIds: [30] },
+    ],
+  };
+  expect(oneAnswerCategory(30, size, [present], NO_TREES)).toBe(true);
+  // The same answer must add a tag of the category and remove its tree.
+  expect(oneAnswerCategory(30, size, [onlyOne("red", 41, 30)], NO_TREES)).toBe(false);
+  const clear: MediaReviewAction = {
+    id: "clear",
+    label: "clear",
+    steps: [{ mode: "REMOVE_TREE", tagIds: [30] }],
+  };
+  expect(oneAnswerCategory(30, size, [clear], NO_TREES)).toBe(false);
+  expect(oneAnswerCategory(30, size, [answer("small", undefined, 31), clear], NO_TREES)).toBe(false);
+  // A plain removal of the category's tag is no tree removal.
+  const remove: MediaReviewAction = {
+    id: "remove",
+    label: "remove",
+    steps: [
+      { mode: "ADD", tagIds: [31] },
+      { mode: "REMOVE", tagIds: [30] },
+    ],
+  };
+  expect(oneAnswerCategory(30, size, [remove], NO_TREES)).toBe(false);
+});
+
+it("mixes the answers of a condition category that takes one answer, and only then", () => {
+  const actions = [onlyOne("small", 31, 1), onlyOne("large", 32, 1)];
+  // Until the tree above Size is known, Size holds several answers.
+  expect(answerCategories(summary, actions, NO_TREES)[0].mixed).toEqual([]);
+  const rows = answerCategories(summary, actions, new Map([[1, [1, 30, 31, 32]]]));
+  expect(rows[0].mixed).toEqual([
+    { key: "tag:30", name: "Size", members: [30, 31, 32], tags: [held(32, 5), held(31, 2)] },
+  ]);
+  // Kind takes one answer too, but holds one.
+  expect(
+    answerCategories(summary, [...actions, onlyOne("one", 41, 40)], NO_TREES)[1].mixed,
+  ).toEqual([]);
+  // Taking one answer, the whole category counts, a group inside it included, once.
+  const grouped = answerCategories(
+    summary,
+    [
+      onlyOne("small", 31, 30),
+      { ...onlyOne("large", 32, 30), group: "Measure" },
+      answer("s", "Measure", 31),
+    ],
+    NO_TREES,
+  );
+  expect(grouped[0].mixed.map((found) => found.key)).toEqual(["tag:30"]);
+});
+
+it("names a group inside nested condition categories once, after the one taking one answer", () => {
+  // Condition category 30 holds 31 and more; 31 is a condition category too, whose answers,
+  // generated with "Only one per performer", remove its tree and form its group.
+  const nested: AnswerSummary = {
+    answered: 4,
+    groups: [
+      {
+        id: 30,
+        name: "Outer",
+        members: [30, 31, 32, 33, 34],
+        tags: [held(32, 3), held(34, 2), held(33, 1)],
+      },
+      { id: 31, name: "Inner", members: [31, 32, 33], tags: [held(32, 3), held(33, 1)] },
+    ],
+  };
+  const actions = [
+    { ...onlyOne("a", 32, 31), group: "Inner" },
+    { ...onlyOne("b", 33, 31), group: "Inner" },
+  ];
+  for (const trees of [NO_TREES, new Map([[31, [31, 32, 33]]])]) {
+    const rows = answerCategories(nested, actions, trees);
+    // Outer holds several answers and is mixed through the group; Inner takes one answer.
+    expect(rows.map((row) => row.mixed.map((found) => found.key))).toEqual([
+      ["group:inner"],
+      ["tag:31"],
+    ]);
+    // Needing attention once, by the category.
+    expect(mixedAttention(rows).map((entry) => [entry.key, entry.name])).toEqual([
+      ["tag:31", "Inner"],
+    ]);
+  }
 });

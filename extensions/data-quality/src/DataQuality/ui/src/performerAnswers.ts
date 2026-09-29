@@ -1,5 +1,6 @@
 import { request, type TagInfo } from "./api";
 import { actionGroups } from "./answerGroups";
+import type { TagTrees } from "./effectPreview";
 import {
   reviewMediaKind,
   tagsAddedBy,
@@ -120,6 +121,17 @@ export async function loadPerformerAnswers(
   };
 }
 
+/** Two or more different answers the performer holds in a category that takes one answer. */
+export interface MixedAnswers {
+  /** The category's key: its row's, or "group:<key>" for an answer group inside a row. */
+  key: string;
+  name: string;
+  /** The category's tags: an answer that changes one of them touches the mixed answers. */
+  members: readonly number[];
+  /** The answers the performer holds there, most frequent first. */
+  tags: AnswerCount[];
+}
+
 /** One row of a performer's existing answers: a category and the answers they hold there. */
 export interface AnswerCategory {
   /** "tag:<condition tag id>", "group:<answer group key>", or "other" for the other review tags. */
@@ -130,45 +142,113 @@ export interface AnswerCategory {
   members: readonly number[];
   /** The answers the performer holds here, most frequent first. */
   tags: AnswerCount[];
+  /**
+   * Where the row's answers are mixed. Only a category that takes one answer can be: the row
+   * itself when it is an answer group or a one-answer condition category (oneAnswerCategory),
+   * otherwise each answer group inside the condition category. Empty when none is mixed: a
+   * category that holds several answers at once shows its counts without being mixed.
+   */
+  mixed: MixedAnswers[];
+}
+
+/**
+ * Whether a condition category holds one answer at a time: some action adds (Add tags or Mark
+ * present) a tag of the category and removes a tree that holds the whole category, the category's
+ * own tag or one above it, as "Only one per performer" generates. The trees are the review's tree
+ * removals as resolved so far (see useTagTrees); before a tree is known, only a removal of the
+ * category's own tag counts.
+ */
+export function oneAnswerCategory(
+  categoryId: number,
+  members: readonly number[],
+  actions: readonly MediaReviewAction[],
+  trees: TagTrees,
+): boolean {
+  const inside = new Set([categoryId, ...members]);
+  const holdsCategory = (parent: number) => {
+    if (parent === categoryId) return true;
+    const tree = trees.get(parent);
+    if (!tree) return false;
+    const removed = new Set(tree);
+    return [...inside].every((id) => removed.has(id));
+  };
+  return actions.some(
+    (action) =>
+      [...tagsAddedBy(action)].some((id) => inside.has(id)) &&
+      action.steps.some(
+        (step) => step.mode === "REMOVE_TREE" && step.tagIds.some(holdsCategory),
+      ),
+  );
 }
 
 /**
  * A performer's answers per category: each condition category, then each answer group that no
  * single condition category holds entirely (its answers being the tags its actions add), then the
- * review's other tags. A group inside a condition category shows there already. Two or more
- * answers in a condition category or a group are mixed answers (see attention.ts).
+ * review's other tags. A group inside a condition category shows there already, and makes that
+ * row mixed when it is (AnswerCategory.mixed). `trees` are the review's tree removals as resolved
+ * so far, which tell the condition categories that take one answer (oneAnswerCategory).
  */
 export function answerCategories(
   summary: AnswerSummary,
   actions: readonly MediaReviewAction[],
+  trees: TagTrees,
 ): AnswerCategory[] {
   const held = new Map<number, AnswerCount>();
   for (const group of summary.groups) for (const tag of group.tags) held.set(tag.id, tag);
+  const heldOf = (ids: readonly number[]) =>
+    ids.flatMap((id) => held.get(id) ?? []).sort(byFrequency);
   const members = (group: AnswerGroup) => group.members ?? group.tags.map((tag) => tag.id);
-  const rows: AnswerCategory[] = summary.groups
-    .filter((group) => group.id !== null)
-    .map((group) => ({
-      key: `tag:${group.id}`,
-      kind: "condition",
-      name: group.name,
-      members: members(group),
-      tags: group.tags,
-    }));
-  const conditions = rows.map((row) => new Set(row.members));
-  const grouped = new Set<number>();
-  for (const group of actionGroups(actions)) {
+  // Each answer group with its answers, the tags its actions add, and those the performer holds.
+  const groups = actionGroups(actions).flatMap((group) => {
     const answers = [
       ...new Set(group.actions.flatMap((index) => [...tagsAddedBy(actions[index])])),
     ];
-    if (!answers.length || conditions.some((tags) => answers.every((id) => tags.has(id))))
-      continue;
-    answers.forEach((id) => grouped.add(id));
+    return answers.length ? [{ ...group, answers, tags: heldOf(answers) }] : [];
+  });
+  // Two or more answers in a category that takes one.
+  const mixed = (category: MixedAnswers): MixedAnswers[] =>
+    category.tags.length > 1 ? [category] : [];
+  const rows: AnswerCategory[] = summary.groups
+    .filter((group): group is AnswerGroup & { id: number } => group.id !== null)
+    .map((group) => {
+      const key = `tag:${group.id}`;
+      const memberIds = members(group);
+      const inside = new Set(memberIds);
+      return {
+        key,
+        kind: "condition",
+        name: group.name,
+        members: memberIds,
+        tags: group.tags,
+        mixed: oneAnswerCategory(group.id, memberIds, actions, trees)
+          ? mixed({ key, name: group.name, members: memberIds, tags: group.tags })
+          : // A category that holds several answers is mixed where a group inside it is.
+            groups
+              .filter((answerGroup) => answerGroup.answers.every((id) => inside.has(id)))
+              .flatMap((answerGroup) =>
+                mixed({
+                  key: `group:${answerGroup.key}`,
+                  name: answerGroup.name,
+                  members: answerGroup.answers,
+                  tags: answerGroup.tags,
+                }),
+              ),
+      };
+    });
+  const conditions = rows.map((row) => new Set(row.members));
+  const grouped = new Set<number>();
+  for (const group of groups) {
+    if (conditions.some((tags) => group.answers.every((id) => tags.has(id)))) continue;
+    group.answers.forEach((id) => grouped.add(id));
+    const key = `group:${group.key}`;
     rows.push({
-      key: `group:${group.key}`,
+      key,
       kind: "group",
       name: group.name,
-      members: answers,
-      tags: answers.flatMap((id) => held.get(id) ?? []).sort(byFrequency),
+      members: group.answers,
+      tags: group.tags,
+      // An answer group is one question: it takes one answer.
+      mixed: mixed({ key, name: group.name, members: group.answers, tags: group.tags }),
     });
   }
   const other = summary.groups.find((group) => group.id === null);
@@ -180,6 +260,7 @@ export function answerCategories(
       name: rows.length ? "Other review tags" : "Review tags",
       members: members(other).filter((id) => !grouped.has(id)),
       tags: rest,
+      mixed: [],
     });
   return rows;
 }

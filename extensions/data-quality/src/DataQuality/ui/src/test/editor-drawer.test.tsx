@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -795,6 +795,24 @@ it("gives an action a group, suggesting the review's other groups, trimmed when 
   // A copy answers the same group.
   fireEvent.click(within(drawer).getByRole("button", { name: "Duplicate Kept" }));
   expect(latest.actions[1]).toMatchObject({ label: "Kept copy", group: "First question" });
+});
+
+it("says under the group field that a group takes one answer, and in occurrence reviews what that marks", () => {
+  const { drawer, tab } = open(video);
+  tab("Actions");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Expand Kept" }));
+  expect(within(drawer).getByRole("combobox", { name: "Group" })).toHaveAccessibleDescription(
+    "A group is one question with one answer per item.",
+  );
+  cleanup();
+  const occurrences = open(occurrence);
+  occurrences.tab("Actions");
+  fireEvent.click(within(occurrences.drawer).getByRole("button", { name: "Expand Kept" }));
+  expect(
+    within(occurrences.drawer).getByRole("combobox", { name: "Group" }),
+  ).toHaveAccessibleDescription(
+    "A group is one question with one answer per item; a chosen performer holding two different answers is marked Mixed.",
+  );
 });
 
 it("offers media reviews Stay until every group is answered in the Actions tab, and tag reviews no groups", () => {

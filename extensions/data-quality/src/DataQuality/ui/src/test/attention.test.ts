@@ -80,21 +80,34 @@ it("groups a performer's flags by the category they affect, the whole review fir
   ]);
 });
 
+const NBSP = "\u00a0";
 const answers = (...counts: Array<[number, string, number]>) =>
   counts.map(([id, name, count]) => ({ id, name, count }));
+/** A row whose answers are not mixed, or mixed in the categories given. */
 const row = (
   key: string,
   kind: AnswerCategory["kind"],
   members: number[],
   tags: ReturnType<typeof answers>,
-): AnswerCategory => ({ key, kind, name: key, members, tags });
+  mixed: AnswerCategory["mixed"] = [],
+): AnswerCategory => ({ key, kind, name: key, members, tags, mixed });
+/** A row taking one answer, as answerCategories gives it: mixed with two or more answers. */
+const oneAnswer = (
+  key: string,
+  kind: AnswerCategory["kind"],
+  members: number[],
+  tags: ReturnType<typeof answers>,
+): AnswerCategory =>
+  row(key, kind, members, tags, tags.length > 1 ? [{ key, name: key, members, tags }] : []);
 
-it("finds mixed answers where a category holds a second distinct answer, with the counts", () => {
+it("finds mixed answers where a category taking one answer holds a second one, with the counts", () => {
   const rows = [
-    row("tag:10", "condition", [10, 11, 12], answers([11, "Round", 40], [12, "Square", 12])),
-    row("tag:20", "condition", [20, 21, 22], answers([21, "Red", 30])),
-    row("group:size", "group", [31, 32], answers([31, "Small", 2], [32, "Large", 1])),
-    row("group:none", "group", [41, 42], []),
+    oneAnswer("tag:10", "condition", [10, 11, 12], answers([11, "Round", 40], [12, "Square", 12])),
+    oneAnswer("tag:20", "condition", [20, 21, 22], answers([21, "Red", 30])),
+    // A category holding several answers at once shows its counts without being mixed.
+    row("tag:60", "condition", [60, 61, 62], answers([61, "Left", 5], [62, "Right", 3])),
+    oneAnswer("group:size", "group", [31, 32], answers([31, "Small", 2], [32, "Large", 1])),
+    oneAnswer("group:none", "group", [41, 42], []),
     // The review's other tags are no category: different tags there are no mixed answers.
     row("other", "other", [51, 52], answers([51, "One", 3], [52, "Two", 1])),
   ];
@@ -111,11 +124,78 @@ it("finds mixed answers where a category holds a second distinct answer, with th
   expect(attentionReasons(mixed[1])).toEqual(["Mixed: Small\u00a02 · Large\u00a01"]);
 });
 
+it("takes a mixed answer group inside a category holding several answers as its own entry", () => {
+  const form = {
+    key: "group:form",
+    name: "Form",
+    members: [11, 12],
+    tags: answers([11, "Round", 4], [12, "Square", 1]),
+  };
+  const shape = row(
+    "tag:10",
+    "condition",
+    [10, 11, 12, 13],
+    answers([11, "Round", 4], [13, "Striped", 2], [12, "Square", 1]),
+    [form],
+  );
+  // The same group inside two overlapping categories counts once.
+  expect(mixedAttention([shape, { ...shape, key: "tag:9" }])).toHaveLength(1);
+  // Named after the group, with its answers alone: the category's other answers are not mixed.
+  const [entry] = mixedAttention([shape]);
+  expect(entry).toEqual({
+    key: "group:form",
+    name: "Form",
+    tagIds: [11, 12],
+    flags: [],
+    mixed: answers([11, "Round", 4], [12, "Square", 1]),
+  });
+  expect(attentionReasons(entry)).toEqual([`Mixed: Round${NBSP}4 · Square${NBSP}1`]);
+  // So an answer elsewhere in the category touches nothing mixed.
+  expect(touches(action([{ mode: "ADD", tagIds: [13] }]), entry, new Map())).toBe(false);
+  expect(touches(action([{ mode: "ADD", tagIds: [12] }]), entry, new Map())).toBe(true);
+  // A flag on that category whose tree is not known stays so beside the group's answers.
+  const unknown = () => ({ name: "Shape", tagIds: [10], resolved: false });
+  const joined = combineAttention(
+    flagAttention([{ tagId: 7, categoryTagId: 10 }], profile, unknown),
+    mixedAttention([shape]),
+  );
+  expect(joined.map((item) => [item.key, item.unresolved])).toEqual([
+    ["tag:10", true],
+    ["group:form", undefined],
+  ]);
+});
+
+it("leaves a mixed group to a condition category taking one answer that holds it too", () => {
+  // Condition category 10 holds several answers; 20 inside it takes one answer, and the group
+  // generated with its only-one answers holds 21 and 22, inside both.
+  const held = answers([21, "One", 2], [22, "Two", 1]);
+  const group = { key: "group:inner", name: "Inner", members: [21, 22], tags: held };
+  const outer = row(
+    "tag:10",
+    "condition",
+    [10, 20, 21, 22, 23],
+    answers([21, "One", 2], [23, "Other", 2], [22, "Two", 1]),
+    [group],
+  );
+  const inner = oneAnswer("tag:20", "condition", [20, 21, 22], held);
+  // Said once, by the category; the outer row still carries its badge (its mixed list).
+  expect(mixedAttention([outer, inner]).map((entry) => entry.key)).toEqual(["tag:20"]);
+  expect(outer.mixed).toEqual([group]);
+  // Without such a category the group speaks for itself.
+  expect(mixedAttention([outer]).map((entry) => entry.key)).toEqual(["group:inner"]);
+  // Another group's answers do not cover it either.
+  const other = oneAnswer("group:wide", "group", [21, 22, 23], held);
+  expect(mixedAttention([outer, other]).map((entry) => entry.key)).toEqual([
+    "group:inner",
+    "group:wide",
+  ]);
+});
+
 it("joins a flag and mixed answers on the same category, the whole review first", () => {
   const flagged = flagAttention(flags, profile, category);
   const mixed = mixedAttention([
-    row("tag:10", "condition", [10, 11, 12, 13], answers([11, "Round", 4], [12, "Square", 1])),
-    row("group:size", "group", [31, 32], answers([31, "Small", 2], [32, "Large", 1])),
+    oneAnswer("tag:10", "condition", [10, 11, 12, 13], answers([11, "Round", 4], [12, "Square", 1])),
+    oneAnswer("group:size", "group", [31, 32], answers([31, "Small", 2], [32, "Large", 1])),
   ]);
   const combined = combineAttention(mixed, flagged);
   expect(combined.map((item) => item.key)).toEqual(["review", "tag:10", "group:size", "tag:20"]);
@@ -206,11 +286,11 @@ it("counts a flag category whose tree is not known as touched by any chosen answ
   expect(categoriesTouched(action([{ mode: "ADD", tagIds: [10] }]), [shape], new Map())).toEqual([
     shape,
   ]);
-  // Mixed answers bring the category's tags: then it is known.
+  // Mixed answers of a category taking one answer bring its tags: then it is known.
   const [joined] = combineAttention(
     [shape],
     mixedAttention([
-      row("tag:10", "condition", [10, 11, 12], answers([11, "Round", 2], [12, "Square", 1])),
+      oneAnswer("tag:10", "condition", [10, 11, 12], answers([11, "Round", 2], [12, "Square", 1])),
     ]),
   );
   expect(joined.unresolved).toBeUndefined();

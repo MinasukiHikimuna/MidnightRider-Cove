@@ -338,11 +338,15 @@ export function BatchOccurrenceDialog({
   disabled: boolean;
   /**
    * The focused performer this batch targets: where their flags ask for attention. The dialog adds
-   * the categories where their existing answers are mixed, and warns when the chosen answers touch
-   * any of them (a flag for the whole review always). Without a focus there is no warning.
+   * the categories that take one answer where their existing answers are mixed, and warns when the
+   * chosen answers touch any of them (a flag for the whole review always). Without a focus there
+   * is no warning.
    */
   performerAttention?: readonly AttentionEntry[];
-  /** The review's resolved tree removals, so answers read "− rest of <tree>" as elsewhere. */
+  /**
+   * The review's resolved tree removals, so answers read "− rest of <tree>" as elsewhere and the
+   * existing answers know the condition categories that take one answer.
+   */
   trees?: TagTrees;
   onOpen(): void;
   onClose(wrote: boolean): void;
@@ -690,11 +694,13 @@ export function BatchOccurrenceDialog({
         ? combineAttention(
             performerAttention,
             answers.summary
-              ? mixedAttention(answerCategories(answers.summary, displayReview.actions))
+              ? mixedAttention(
+                  answerCategories(answers.summary, displayReview.actions, trees ?? NO_TREES),
+                )
               : [],
           )
         : [],
-    [performerAttention, answers.summary, displayReview.actions],
+    [performerAttention, answers.summary, displayReview.actions, trees],
   );
   const touched = touchedAttention(chosen, attention, trees ?? NO_TREES);
   // Flags on the focused performer's categories, for their existing answers.
@@ -918,6 +924,7 @@ export function BatchOccurrenceDialog({
                 {...answers}
                 mediaKind={mediaKind}
                 actions={displayReview.actions}
+                trees={trees}
                 flags={answerFlags}
                 className="dq-batch-card"
               />
@@ -1124,6 +1131,7 @@ export function BatchOccurrenceDialog({
               {...answers}
               mediaKind={mediaKind}
               actions={displayReview.actions}
+              trees={trees}
               flags={answerFlags}
               className="dq-batch-card"
             />

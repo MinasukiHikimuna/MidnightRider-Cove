@@ -32,6 +32,7 @@ import { actionEffectParts, actionTagIds } from "./FindAction";
 import { ActionKeyButton } from "./KeyPicker";
 import {
   hasContradictoryAssessments,
+  isOccurrenceReview,
   NO_ACTION_KEY,
   reviewEntityType,
   validAction,
@@ -390,6 +391,7 @@ export function ActionsEditor({
                     <MediaActionDetail
                       action={action}
                       groupNames={groupNames}
+                      occurrence={isOccurrenceReview(review)}
                       saving={saving}
                       stepKey={stepKey}
                       rememberStepKey={(next, previous) =>
@@ -596,50 +598,63 @@ function ungrouped(action: MediaReviewAction): MediaReviewAction {
 /**
  * The action's answer group: free text, suggesting the groups the review's other actions name.
  * Names match trimmed and ignoring case; leaving the field trims the name, and an empty one is no
- * group.
+ * group. A group is one question that takes one answer, which its help says; in occurrence reviews
+ * that is also what lets a performer's answers there count as mixed (performerAnswers.ts).
  */
 function GroupField({
   action,
   groupNames,
+  occurrence,
   onChange,
 }: {
   action: MediaReviewAction;
   groupNames: readonly string[];
+  occurrence: boolean;
   onChange(action: MediaReviewAction): void;
 }) {
   const listId = useId();
+  const helpId = useId();
   const own = groupKey(action.group);
   const set = (value: string) => onChange(value ? { ...action, group: value } : ungrouped(action));
   return (
-    <label className="dq-action-field">
-      <span className="dq-action-field-name">Group</span>
-      <input
-        className="dq-input dq-action-group-input"
-        list={listId}
-        placeholder="No group"
-        autoComplete="off"
-        spellCheck={false}
-        value={action.group ?? ""}
-        onChange={(event) => set(event.target.value)}
-        onBlur={(event) => {
-          const trimmed = event.target.value.trim();
-          if (trimmed !== event.target.value) set(trimmed);
-        }}
-      />
-      <datalist id={listId}>
-        {groupNames
-          .filter((name) => groupKey(name) !== own)
-          .map((name) => (
-            <option key={name} value={name} />
-          ))}
-      </datalist>
-    </label>
+    <div className="dq-action-group-field">
+      <label className="dq-action-field">
+        <span className="dq-action-field-name">Group</span>
+        <input
+          className="dq-input dq-action-group-input"
+          list={listId}
+          placeholder="No group"
+          autoComplete="off"
+          spellCheck={false}
+          aria-describedby={helpId}
+          value={action.group ?? ""}
+          onChange={(event) => set(event.target.value)}
+          onBlur={(event) => {
+            const trimmed = event.target.value.trim();
+            if (trimmed !== event.target.value) set(trimmed);
+          }}
+        />
+        <datalist id={listId}>
+          {groupNames
+            .filter((name) => groupKey(name) !== own)
+            .map((name) => (
+              <option key={name} value={name} />
+            ))}
+        </datalist>
+      </label>
+      <p className="dq-actions-hint dq-action-field-help" id={helpId}>
+        {occurrence
+          ? "A group is one question with one answer per item; a chosen performer holding two different answers is marked Mixed."
+          : "A group is one question with one answer per item."}
+      </p>
+    </div>
   );
 }
 
 function MediaActionDetail({
   action,
   groupNames,
+  occurrence,
   saving,
   stepKey,
   rememberStepKey,
@@ -648,6 +663,8 @@ function MediaActionDetail({
   action: MediaReviewAction;
   /** The groups the review's actions name, as the group field's suggestions. */
   groupNames: readonly string[];
+  /** An occurrence review's action, whose groups also decide where answers can be mixed. */
+  occurrence: boolean;
   saving: boolean;
   stepKey(step: ReviewStep): string;
   rememberStepKey(next: ReviewStep, previous: ReviewStep): void;
@@ -669,7 +686,12 @@ function MediaActionDetail({
   return (
     <>
       <LabelField action={action} onChange={(label) => onChange({ ...action, label })} />
-      <GroupField action={action} groupNames={groupNames} onChange={onChange} />
+      <GroupField
+        action={action}
+        groupNames={groupNames}
+        occurrence={occurrence}
+        onChange={onChange}
+      />
       <div className="dq-action-field dq-action-field-top" role="group" aria-labelledby={stepsLabel}>
         <span className="dq-action-field-name" id={stepsLabel}>
           Steps

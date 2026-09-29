@@ -1,13 +1,14 @@
 import type { TagTrees } from "./effectPreview";
 import type { MediaReviewAction, PerformerFlag } from "./model";
-import type { AnswerCategory, AnswerCount } from "./performerAnswers";
+import type { AnswerCategory, AnswerCount, MixedAnswers } from "./performerAnswers";
 
 /**
  * Category-aware attention: a performer can need attention in a category of an occurrence review,
  * for one of two reasons. A flag: a tag on the performer's profile that the review's performer
  * flags name, paired with the category it affects (a tag and everything under it, or the whole
- * review). Mixed answers: the answers the performer already holds in a category (a condition
- * category or an answer group, see answerCategories) differ, two or more of them. Answers that
+ * review). Mixed answers: the performer already holds two or more answers in a category that takes
+ * one answer (an answer group, or a condition category an "only one" action covers, see
+ * answerCategories); a category that holds several answers at once is never mixed. Answers that
  * add, remove or mark absent a tag of such a category touch it, which is where the review shows
  * the reasons: the batch dialog's warning, the pad's keys and the answer groups' checklist.
  */
@@ -119,18 +120,31 @@ export function flagAttention(
 
 /**
  * The categories where the performer's existing answers differ: any second distinct answer in a
- * condition category or an answer group. The review's other tags are no category.
+ * category that takes one answer (AnswerCategory.mixed), each once. In a condition category that
+ * holds several answers at once, that is an answer group inside it, whose own answers count,
+ * unless a condition category taking one answer holds the group too and says so already (a
+ * condition category inside another).
  */
 export function mixedAttention(categories: readonly AnswerCategory[]): AttentionEntry[] {
-  return categories
-    .filter((category) => category.kind !== "other" && category.tags.length > 1)
-    .map((category) => ({
-      key: category.key,
-      name: category.name,
-      tagIds: category.members,
-      flags: [],
-      mixed: category.tags,
-    }));
+  const found = categories.flatMap((category) => category.mixed);
+  const covered = (group: MixedAnswers) =>
+    group.key.startsWith("group:") &&
+    found.some(
+      (category) =>
+        category.key.startsWith("tag:") &&
+        group.members.every((id) => category.members.includes(id)),
+    );
+  const entries = new Map<string, AttentionEntry>();
+  for (const item of found)
+    if (!entries.has(item.key) && !covered(item))
+      entries.set(item.key, {
+        key: item.key,
+        name: item.name,
+        tagIds: item.members,
+        flags: [],
+        mixed: item.tags,
+      });
+  return [...entries.values()];
 }
 
 /**

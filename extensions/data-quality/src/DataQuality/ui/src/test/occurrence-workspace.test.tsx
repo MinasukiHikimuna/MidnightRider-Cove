@@ -1225,7 +1225,8 @@ it("shows the focused performer's existing answers and flags, and batches only t
   const size = await answers.findByRole("list", { name: "Size" });
   expect(size).toHaveTextContent("Small1, 1 video");
   expect(size).toHaveTextContent("Medium1, 1 video");
-  expect(answers.getByText("Mixed")).toBeInTheDocument();
+  // Nothing says Size takes one answer (no only-one answer, no group): counts, no Mixed.
+  expect(answers.queryByText("Mixed")).toBeNull();
   // The item column flags the focused performer too.
   expect(screen.getByRole("complementary", { name: "Current item" })).toHaveTextContent("Flagged: Changed");
   const answerLoads = panels.loadPerformerAnswers.mock.calls.length;
@@ -1255,12 +1256,13 @@ describe("category attention", () => {
     [...document.querySelectorAll<HTMLElement>(".dq-pad-tile[data-attention]")].map(
       (tile) => tile.title,
     );
-  // Sizes and a colour; a flag tag for colour on the first performer's profile.
+  // Sizes, one answer each as an answer group, and a colour; a flag tag for colour on the first
+  // performer's profile.
   const sized: OccurrenceReview = {
     ...review,
     actions: [
-      { id: "small", label: "Small", steps: [{ mode: "ADD", tagIds: [31] }] },
-      { id: "medium", label: "Medium", steps: [{ mode: "ADD", tagIds: [32] }] },
+      { id: "small", label: "Small", group: "Size", steps: [{ mode: "ADD", tagIds: [31] }] },
+      { id: "medium", label: "Medium", group: "Size", steps: [{ mode: "ADD", tagIds: [32] }] },
       { id: "red", label: "Red", steps: [{ mode: "ADD", tagIds: [41] }] },
     ],
     occurrence: {
@@ -1330,6 +1332,153 @@ describe("category attention", () => {
     expect(dialog.getByRole("note")).not.toHaveTextContent("Size");
     fireEvent.click(dialog.getByRole("checkbox", { name: "Small" }));
     expect(dialog.getByRole("note")).toHaveTextContent("Size: Mixed: Medium 40 · Small 12");
+  });
+
+  // The focused performer holds two sizes and a colour.
+  const twoSizes = {
+    answered: 3,
+    groups: [
+      {
+        id: 30,
+        name: "Size",
+        members: [30, 31, 32],
+        tags: [{ id: 32, name: "Medium", count: 40 }, { id: 31, name: "Small", count: 12 }],
+      },
+      { id: 40, name: "Colour", members: [40, 41, 42], tags: [{ id: 41, name: "Red", count: 3 }] },
+    ],
+  };
+
+  it("counts a category holding several answers without Mixed, attention, key marks or warnings", async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+    panels.loadPerformerAnswers.mockResolvedValue(twoSizes);
+    window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+    // The sizes without their group: nothing says Size takes one answer.
+    open({ ...sized, actions: sized.actions.map(({ group: _group, ...action }) => action) });
+    await ready();
+    const answers = within(await screen.findByRole("region", { name: "Existing answers" }));
+    const size = await answers.findByRole("list", { name: "Size" });
+    expect(size).toHaveTextContent("Medium40, 40 videos");
+    expect(size).toHaveTextContent("Small12, 12 videos");
+    expect(answers.queryByText("Mixed")).toBeNull();
+    // Only the flag asks for attention, and only the key that touches its category is marked.
+    await waitFor(() => expect(attention()).toEqual(["ColourFlagged: Colour changed"]));
+    expect(flaggedKeys()).toEqual(["Red"]);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "q Small" })).toHaveAccessibleDescription("+ Choice"),
+    );
+    // The batch warns about the flag's category alone.
+    fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Apply to all matching occurrences" }));
+    await dialog.findByText("3 videos answered");
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Small" }));
+    expect(dialog.queryByRole("note")).toBeNull();
+    expect(dialog.queryByText("Mixed")).toBeNull();
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Red" }));
+    expect(dialog.getByRole("note")).toHaveTextContent("Colour: Flagged: Colour changed");
+    expect(dialog.getByRole("note")).not.toHaveTextContent("Size");
+  });
+
+  it("marks a category holding several answers where a group inside it is mixed, and only that group's keys", async () => {
+    panels.loadPerformerAnswers.mockResolvedValue({
+      answered: 3,
+      groups: [
+        {
+          id: 30,
+          name: "Size",
+          members: [30, 31, 32, 33],
+          tags: [
+            { id: 32, name: "Medium", count: 40 },
+            { id: 33, name: "Striped", count: 20 },
+            { id: 31, name: "Small", count: 12 },
+          ],
+        },
+      ],
+    });
+    window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+    open({
+      ...sized,
+      stayUntilGroupsAnswered: true,
+      actions: [
+        { id: "small", label: "Small", group: "Width", steps: [{ mode: "ADD", tagIds: [31] }] },
+        { id: "medium", label: "Medium", group: "Width", steps: [{ mode: "ADD", tagIds: [32] }] },
+        // In Size too, but no answer to the width question.
+        { id: "striped", label: "Striped", steps: [{ mode: "ADD", tagIds: [33] }] },
+      ],
+      occurrence: { ...sized.occurrence, conditionTagIds: [30], performerFlags: undefined },
+    });
+    await ready();
+    await waitFor(() => expect(attention()).toEqual(["WidthMixed: Medium\u00a040 · Small\u00a012"]));
+    expect(flaggedKeys()).toEqual(["Small", "Medium"]);
+    expect(screen.getByRole("button", { name: "e Striped" })).toHaveAccessibleDescription("+ Choice");
+    // The row is Size's, its badge naming the group.
+    const badge = within(screen.getByRole("region", { name: "Existing answers" })).getByText("Mixed");
+    expect(badge.closest(".dq-answer-group")).toHaveTextContent("Size");
+    expect(badge).toHaveTextContent(/^Mixed in Width$/);
+    // The group's checklist entry carries the flag.
+    const groups = within(screen.getByRole("list", { name: "Answer groups" })).getAllByRole(
+      "listitem",
+    );
+    expect(groups.map((item) => item.dataset.attention ?? "")).toEqual(["true"]);
+    expect(groups[0]).toHaveTextContent("Width, needs attention: Width (Mixed: Medium 40 · Small 12)");
+  });
+
+  it("takes one answer in a category whose answers remove a tree above it, once that tree is known", async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+    panels.loadPerformerAnswers.mockResolvedValue(twoSizes);
+    // Tag 3 holds all of Size: its answers came from "Only one per performer" on a tag above it.
+    // Its tree is read when the test says so.
+    const treeReads: Array<(ids: number[]) => void> = [];
+    api.resolveTagTree.mockImplementation(([id]: number[]) =>
+      id === 3
+        ? new Promise<number[]>((resolve) => treeReads.push(resolve))
+        : Promise.resolve(id === 40 ? [40, 41, 42] : [id]),
+    );
+    const onlyOne = (id: string, label: string, tag: number): MediaReviewAction => ({
+      id,
+      label,
+      steps: [
+        { mode: "ADD", tagIds: [tag] },
+        { mode: "REMOVE_TREE", tagIds: [3] },
+      ],
+    });
+    window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
+    open({
+      ...sized,
+      actions: [onlyOne("small", "Small", 31), onlyOne("medium", "Medium", 32), sized.actions[2]],
+    });
+    await ready();
+    // Until then Size holds several answers as far as the review knows: counts, nothing mixed.
+    const size = await within(
+      await screen.findByRole("region", { name: "Existing answers" }),
+    ).findByRole("list", { name: "Size" });
+    expect(size).toHaveTextContent("Small12, 12 videos");
+    await waitFor(() => expect(attention()).toEqual(["ColourFlagged: Colour changed"]));
+    expect(flaggedKeys()).toEqual(["Red"]);
+    expect(
+      within(screen.getByRole("region", { name: "Existing answers" })).queryByText("Mixed"),
+    ).toBeNull();
+    expect(treeReads.length).toBeGreaterThan(0);
+    await act(async () => treeReads.forEach((resolve) => resolve([3, 30, 31, 32])));
+    await waitFor(() =>
+      expect(attention()).toEqual([
+        "ColourFlagged: Colour changed",
+        "SizeMixed: Medium\u00a040 · Small\u00a012",
+      ]),
+    );
+    expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]);
+    const answers = within(screen.getByRole("region", { name: "Existing answers" }));
+    expect(answers.getByText("Mixed").closest(".dq-answer-group")).toHaveTextContent("Size");
+    expect(answers.getByText("Mixed")).toHaveAttribute(
+      "title",
+      "This performer has different answers in this category.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Apply to all matching occurrences" }));
+    await dialog.findByText("3 videos answered");
+    expect(dialog.queryByRole("note")).toBeNull();
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Medium" }));
+    expect(dialog.getByRole("note")).toHaveTextContent("Size: Mixed: Medium 40 · Small 12");
+    expect(dialog.getByRole("note")).not.toHaveTextContent("Colour");
   });
 
   it("flags the performer on screen from one profile read each, without mixed answers unfocused", async () => {

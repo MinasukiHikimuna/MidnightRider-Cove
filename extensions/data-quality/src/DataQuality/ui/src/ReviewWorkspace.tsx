@@ -1310,9 +1310,11 @@ export function ReviewWorkspace({
   );
   const shownFlagTags =
     shownKnown ?? (shownProfile ? performerFlagTags(flags, shownProfile) : []);
+  // The review's tree removals: previews and, for mixed answers, the categories taking one answer.
+  const trees = useTagTrees(definition.actions);
   const focusMixed =
     focusAnswers.summary && query.performerFocus
-      ? mixedAttention(answerCategories(focusAnswers.summary, definition.actions))
+      ? mixedAttention(answerCategories(focusAnswers.summary, definition.actions, trees))
       : [];
   const focusFlagEntries = flagAttention(flags, focusInfo?.flags ?? [], flagCategory);
   const shownEntries = combineAttention(
@@ -1346,7 +1348,6 @@ export function ReviewWorkspace({
   const previewStore = useRef<ActionPreviewStore | null>(null);
   previewStore.current ??= createActionPreviewStore();
   const preview = previewStore.current;
-  const trees = useTagTrees(definition.actions);
   const actionTagIds = useMemo(
     () => definition.actions.flatMap((action) => action.steps.flatMap((step) => step.tagIds)),
     [definition.actions],
@@ -1942,6 +1943,7 @@ export function ReviewWorkspace({
                     {...focusAnswers}
                     mediaKind={mediaKind}
                     actions={definition.actions}
+                    trees={trees}
                     flags={focusAttention}
                   />
                 )}
