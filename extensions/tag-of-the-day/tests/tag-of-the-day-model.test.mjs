@@ -157,6 +157,24 @@ test("moments are stable per seed", () => {
   assert.notDeepEqual(pickMoments(segments, [], 4, 11), pickMoments(segments, [], 4, stableSeed("other")));
 });
 
+test("every segment is equally likely to lead the moments", () => {
+  // One segment per video, so spreading across videos keeps the shuffled order and only the shuffle decides.
+  for (const size of [4, 6, 12]) {
+    const segments = Array.from({ length: size }, (_, index) => segment(index + 1, 100 + index));
+    const draws = 20_000;
+    for (const source of ["only", "any"]) {
+      const firsts = new Map();
+      for (let draw = 0; draw < draws; draw += 1) {
+        const [first] = pickMoments(segments, [], 3, stableSeed(`day-${draw}`, "instance", "moments", 0), source);
+        firsts.set(first.videoId, (firsts.get(first.videoId) ?? 0) + 1);
+      }
+      const expected = draws / size;
+      assert.equal(firsts.size, size);
+      for (const count of firsts.values()) assert.ok(Math.abs(count - expected) < expected * 0.25, `${source}, ${size} segments: ${[...firsts.values()].join(" ")}`);
+    }
+  }
+});
+
 test("tagged videos fill in for missing moments without repeating a video", () => {
   const moments = pickMoments([segment(1, 100)], [video(100), video(200), video(300)], 3, 1);
   assert.deepEqual(moments.map((moment) => [moment.kind, moment.videoId]), [["segment", 100], ["video", 200], ["video", 300]]);

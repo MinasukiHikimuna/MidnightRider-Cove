@@ -1,7 +1,7 @@
 {
   "id": "com.midnightrider.tag-of-the-day",
   "name": "Tag of the Day",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A home dashboard widget that features one of your tags each day with its media, description, and tagged moments.",
   "author": "MidnightRider",
   "kind": "extension",
