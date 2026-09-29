@@ -990,17 +990,28 @@ export function DataQualityPage({
   // Edit on the reviews list (or a review just created) opens a card grid review's drawer once
   // its queue has loaded. Such requests come with the review's own URL, which chooseReview writes
   // without query state; should one ever meet a queue URL that cannot be read, which stops the
-  // load, it is dropped rather than left to open the drawer much later.
+  // load, it is dropped rather than left to open the drawer much later. A copy that opens while
+  // the review it came from still saves its queue waits for that save (see openGridEditor).
   useEffect(() => {
     if (!editRequest || usesWorkspace || !review) return;
     if (queueUrlError) {
       setEditRequest(0);
       return;
     }
-    if (pending || gridEditor || loadedFor !== `${review.id}:${queryRevision}`) return;
+    if (pending || gridEditor || queueSaving || loadedFor !== `${review.id}:${queryRevision}`)
+      return;
     setEditRequest(0);
     openGridEditor();
-  }, [editRequest, usesWorkspace, review?.id, loadedFor, pending, queryRevision, queueUrlError]);
+  }, [
+    editRequest,
+    usesWorkspace,
+    review?.id,
+    loadedFor,
+    pending,
+    queueSaving,
+    queryRevision,
+    queueUrlError,
+  ]);
 
   useEffect(() => {
     if (!videoReview || usesWorkspace || !progressReady || queueLoading || queueError || pending || deferredNavigation.current || readyQueryRevision.current !== queryRevision) return;
@@ -1629,11 +1640,22 @@ export function DataQualityPage({
   async function duplicate(source: Review) {
     if (listLocked || !canConfigure) return;
     setPageNotice(null);
-    const copy = duplicateReview(source, reviews, crypto.randomUUID());
+    const id = crypto.randomUUID();
+    let copy!: Review;
     const startedOn = activeId;
     setDuplicating(true);
     try {
-      if (!(await updateReviews([...reviews, copy]))) throw new Error("Could not save reviews.");
+      // The copy is of the review as saved when the duplicate's turn comes, and its name is free
+      // among the reviews saved then: a save of the review that ran first is in the copy too.
+      const saved = await updateReviews((current) => {
+        copy = duplicateReview(
+          current.find((item) => item.id === source.id) ?? source,
+          current,
+          id,
+        );
+        return [...current, copy];
+      });
+      if (!saved) throw new Error("Could not save reviews.");
       // The review's own navigation waits while the copy saves, but the browser's Back and
       // Forward do not: somewhere else by now, the page stays there and says what was saved.
       if (!mountedRef.current) return;
@@ -1661,7 +1683,8 @@ export function DataQualityPage({
     }
     setCreating({ ...creating, saving: true, error: "" });
     try {
-      if (!(await updateReviews([...reviews, created]))) throw new Error("Could not save reviews.");
+      if (!(await updateReviews((current) => [...current, created])))
+        throw new Error("Could not save reviews.");
       if (!mountedRef.current) return;
       setCreating(null);
       editReview(created.id);
@@ -1693,7 +1716,7 @@ export function DataQualityPage({
     const successor = rest[Math.min(order.indexOf(target.id), rest.length - 1)];
     setDeleting({ review: target, pending: true });
     try {
-      if (!(await updateReviews(reviews.filter((item) => item.id !== target.id))))
+      if (!(await updateReviews((current) => current.filter((item) => item.id !== target.id))))
         throw new Error("Could not save reviews.");
       // Deleting the open review leaves it for the list, which starts at its heading.
       listFocus.current =
@@ -1716,10 +1739,18 @@ export function DataQualityPage({
     setImporting(true);
     try {
       const imported = await readReviewFile(file);
-      const merged = mergeReviews(reviews, imported);
-      const added = merged.length - reviews.length;
+      // What the file adds is decided against the reviews saved when the import's turn comes.
+      let added = 0;
+      if (
+        imported.length &&
+        !(await updateReviews((current) => {
+          const merged = mergeReviews(current, imported);
+          added = merged.length - current.length;
+          return added ? merged : current;
+        }))
+      )
+        throw new Error("Could not save reviews.");
       const kept = imported.length - added;
-      if (added && !(await updateReviews(merged))) throw new Error("Could not save reviews.");
       setPageNotice({
         alert: false,
         text: !imported.length
@@ -1805,27 +1836,64 @@ export function DataQualityPage({
     ];
   }
 
-  async function updateReviews(next: Review[]): Promise<boolean> {
+  /**
+   * Saves a change to the reviews. The change is applied to the list as last saved when the save's
+   * turn comes (see saveReviews), never to this render's copy of it, so a duplicate, an import or a
+   * deletion started while another save runs keeps that save's change, and the other way round.
+   */
+  async function updateReviews(change: (current: Review[]) => Review[]): Promise<boolean> {
     if (!storageKey) return false;
-    const normalized = next.map(withoutPreferredCardSize);
-    try {
-      await saveReviews(storageKey, normalized);
-    } catch (error) {
-      throw error;
-    }
-    setReviews(normalized);
-    if (activeId && !normalized.some((item) => item.id === activeId)) leaveForList();
-    const updated = normalized.find((item) => item.id === activeId);
-    if (updated && savedReview) {
+    let before: Review[] = [];
+    const saved = await saveReviews(storageKey, (current) => {
+      before = current;
+      const next = change(current);
+      return next === current ? current : next.map(withoutPreferredCardSize);
+    });
+    setReviews(saved);
+    // A save can outlast the page (Cove shows another page by then): it leaves nothing to follow.
+    if (!mountedRef.current) return true;
+    // The review open when the save lands, which need not be the one open when it began.
+    const openId = activeIdRef.current;
+    if (openId && !saved.some((item) => item.id === openId)) leaveForList();
+    const previous = before.find((item) => item.id === openId);
+    const updated = saved.find((item) => item.id === openId);
+    if (updated && previous) {
       // The header's Single | Grid switch lasts the visit, until the review's own layout changes.
-      if ((updated.view.reviewMode ?? "single") !== (savedReview.view.reviewMode ?? "single"))
+      if ((updated.view.reviewMode ?? "single") !== (previous.view.reviewMode ?? "single"))
         setLayoutOverride(null);
-      if (updated.view.displayMode !== savedReview.view.displayMode)
+      if (updated.view.displayMode !== previous.view.displayMode)
         setDisplayMode(initialDisplayMode(updated));
     }
     // Every save of the open review stores the queue's own criteria, so the queue and its URL
     // stay as they are; whoever saved says what remains temporary (see pressedBinsAfterSave).
     return true;
+  }
+
+  /** Saves one review's new definition in its place, over whatever else was saved meanwhile. */
+  function saveReview(updated: Review): Promise<boolean> {
+    return updateReviews((current) => withReview(current, updated));
+  }
+
+  /**
+   * A save asked for by the open review's view (its drawer or Save to review), which says how it
+   * went. A duplicate saved just before it opens its copy while this save waits its turn: when
+   * the view that asked is gone by then, a failure is said under the page's header instead.
+   */
+  function saveFromView(updated: Review): Promise<boolean> {
+    return saveReview(updated).catch((error: unknown) => {
+      if (activeIdRef.current !== updated.id) reportLeftSaveFailure(updated, error);
+      throw error;
+    });
+  }
+
+  /**
+   * A save of a review the page has left meanwhile failed: the page says so under its header,
+   * naming the review as saved (a failed rename never showed its new name anywhere).
+   */
+  function reportLeftSaveFailure(target: Review, error: unknown) {
+    if (!mountedRef.current) return;
+    const name = reviewsRef.current.find((item) => item.id === target.id)?.name ?? target.name;
+    setPageNotice({ text: `“${name}” was not saved. ${listSaveFailure(error)}`, alert: true });
   }
 
   if (reviewsLoading)
@@ -1990,7 +2058,7 @@ export function DataQualityPage({
           onBusy={setPending}
           editRequest={editRequest}
           onEditRequestHandled={() => setEditRequest(0)}
-          onSaveDefaults={canConfigure ? updated => updateReviews(reviews.map(item => item.id === updated.id ? updated : item)) : undefined}
+          onSaveDefaults={canConfigure ? saveFromView : undefined}
           pageControls={{
             onBack: showAllReviews,
             moreItems: (edit) => openReviewMenuItems(savedReview ?? review, edit),
@@ -2193,21 +2261,19 @@ export function DataQualityPage({
     const live = review;
     const updated = savableQueue;
     // The queue's controls wait while this saves (see gridSaving), so the queue still shows the
-    // criteria saved when the save lands.
+    // criteria saved when the save lands. A duplicate saved just before it may have opened its
+    // copy by then: the copy's view is left as it is, and a failure is said under the header.
     setQueueSaving(true);
-    void updateReviews(
-      reviews.map((item) => (item.id === updated.id ? updated : item)),
-    )
+    void saveReview(updated)
       .then((saved) => {
-        if (!saved) return;
+        if (!saved || activeIdRef.current !== updated.id) return;
         setTemporaryReview(pressedBinsAfterSave(updated, live));
         setMessage("Queue saved to this review.");
       })
-      .catch((error) =>
-        setActionError(
-          error instanceof Error ? error.message : "Could not save queue.",
-        ),
-      )
+      .catch((error) => {
+        if (activeIdRef.current !== updated.id) reportLeftSaveFailure(updated, error);
+        else setActionError(error instanceof Error ? error.message : "Could not save queue.");
+      })
       .finally(() => setQueueSaving(false));
   }
 
@@ -2297,8 +2363,11 @@ export function DataQualityPage({
     }
     setGridEditor((editor) => editor && { ...editor, saving: true, error: "" });
     try {
-      if (!(await updateReviews(reviews.map((item) => (item.id === updated.id ? updated : item)))))
-        throw new Error("Could not save reviews.");
+      if (!(await saveReview(updated))) throw new Error("Could not save reviews.");
+      // The browser's Back and Forward do not wait for the save. When the page has left the
+      // review (or Cove the page) by then, the review is saved, and nothing of its view is left
+      // to update: above all, the URL now belongs to what the page shows.
+      if (!mountedRef.current || activeIdRef.current !== updated.id) return;
       // The saved review holds the queue's criteria now, but never its bins. (The toolbar and
       // bins wait while the drawer saves, so the queue is still the one saved.)
       setTemporaryReview(pressedBinsAfterSave(updated, live));
@@ -2314,6 +2383,10 @@ export function DataQualityPage({
       setMessage("Review saved.");
       closeGridEditor();
     } catch (error) {
+      if (activeIdRef.current !== updated.id) {
+        reportLeftSaveFailure(updated, error);
+        return;
+      }
       setGridEditor(
         (editor) =>
           editor && {
@@ -2761,6 +2834,15 @@ function toggleOne(current: Set<number>, id: number) {
   if (next.has(id)) next.delete(id);
   else next.add(id);
   return next;
+}
+
+/**
+ * The saved reviews with one review's new definition in its place. A review deleted meanwhile is
+ * not brought back: its save fails instead.
+ */
+function withReview(current: Review[], updated: Review): Review[] {
+  if (!current.some((item) => item.id === updated.id)) throw new Error("This review was deleted.");
+  return current.map((item) => (item.id === updated.id ? updated : item));
 }
 
 function withoutPreferredCardSize(review: Review): Review {

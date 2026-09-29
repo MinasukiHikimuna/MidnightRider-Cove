@@ -17,6 +17,7 @@ import {
   createActionPreviewStore,
   mobilePreviewHandlers,
   useActionPreview,
+  useEndPreviewOnLayoutChange,
   type ActionPreviewStore,
 } from "./ActionPad";
 import { actionEffectParts, actionTagIds } from "./FindAction";
@@ -83,6 +84,7 @@ export function ActionBar({
   const baseId = useId();
   const names = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
   const [preview] = useState(() => createActionPreviewStore<ReviewAction>());
+  useEndPreviewOnLayoutChange(preview, mobile);
   const bar = useRef<HTMLElement>(null);
   const stacked = useStackedLayout(bar, actions, !mobile);
   // The positions of the keyed actions, one line per keyboard row, in key order.

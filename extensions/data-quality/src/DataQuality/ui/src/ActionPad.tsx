@@ -1,6 +1,8 @@
 import {
   useId,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
   type FocusEvent as ReactFocusEvent,
   type PointerEvent as ReactPointerEvent,
@@ -66,6 +68,19 @@ export function createActionPreviewStore<A = MediaReviewAction>(): ActionPreview
 
 export function useActionPreview<A>(store: ActionPreviewStore<A>): A | null {
   return useSyncExternalStore(store.subscribe, store.get, store.get);
+}
+
+/**
+ * Ends the preview when the window crosses the phone breakpoint: the tile or button it came from
+ * is gone with the layout, and no pointer leaving it or blur will say so.
+ */
+export function useEndPreviewOnLayoutChange<A>(store: ActionPreviewStore<A>, mobile: boolean) {
+  const layout = useRef(mobile);
+  useLayoutEffect(() => {
+    if (layout.current === mobile) return;
+    layout.current = mobile;
+    store.set(null);
+  }, [store, mobile]);
 }
 
 /**
@@ -218,16 +233,27 @@ function GroupChecklist({
       {(statuses ?? groups).map((group) => {
         const answers = statuses ? (group as GroupStatus).answers : null;
         const state = !answers ? "unknown" : answers.length ? "answered" : "open";
+        const answer = answers?.map((index) => actions[index].label).join(", ");
         return (
-          <li key={group.key} className="dq-group" data-state={state}>
+          <li
+            key={group.key}
+            className="dq-group"
+            data-state={state}
+            // In full, for a name or answer the header cuts short.
+            title={
+              state === "answered"
+                ? `${group.name}: ${answer}`
+                : state === "open"
+                  ? `${group.name}: not answered yet`
+                  : group.name
+            }
+          >
             <span className="dq-group-name">{group.name}</span>
             {state === "answered" && (
               <>
                 <Check aria-hidden="true" />
                 <span className="dq-sr-only">, answered:</span>{" "}
-                <span className="dq-group-answer">
-                  {answers!.map((index) => actions[index].label).join(", ")}
-                </span>
+                <span className="dq-group-answer">{answer}</span>
               </>
             )}
             {state === "open" && (
@@ -314,6 +340,7 @@ export function ActionPad({
   const keys = useReviewKeyLabels();
   const keyMap = useActionKeyMap(actions);
   const mobile = useMobileLayout();
+  useEndPreviewOnLayoutChange(preview, mobile);
   const baseId = useId();
   const names = useTagNames(
     useMemo(() => actions.flatMap((item) => item.steps.flatMap((step) => step.tagIds)), [actions]),
@@ -510,45 +537,58 @@ export function ActionPad({
     );
   }
 
+  const shiftHint = (
+    <span className="dq-pad-hint">
+      <kbd className="dq-key">Shift</kbd>
+      <span>+ key applies and stays</span>
+    </span>
+  );
+  const headerFind = !bottomRow && (
+    <button
+      type="button"
+      className="dq-pad-find-button"
+      aria-label={extra ? `Find action, ${extra} more` : "Find action"}
+      aria-keyshortcuts={keys.find}
+      disabled={findDisabled}
+      onClick={onFind}
+    >
+      <KeyCap binding={keys.find} />
+      <span aria-hidden="true">Find action</span>
+    </button>
+  );
   return (
     <section
       className={`dq-pad${paused ? " dq-pad-paused" : ""}`}
       aria-label={paused ? "Actions, paused while editing" : "Actions"}
       aria-busy={busy || undefined}
     >
-      <div className="dq-pad-header">
+      <div className={`dq-pad-header${checklist ? " dq-pad-header-groups" : ""}`}>
         {paused ? (
           pausedNote
         ) : (
-          <>
-            <PadEffectLine
-              actions={actions}
-              keyMap={keyMap}
-              names={names}
-              tags={tags}
-              trees={trees}
-              preview={preview}
-              findKey={keys.find}
-            />
-            {checklist}
-            <span className="dq-pad-hint">
-              <kbd className="dq-key">Shift</kbd>
-              <span>+ key applies and stays</span>
-            </span>
-          </>
+          <PadEffectLine
+            actions={actions}
+            keyMap={keyMap}
+            names={names}
+            tags={tags}
+            trees={trees}
+            preview={preview}
+            findKey={keys.find}
+          />
         )}
-        {!bottomRow && (
-          <button
-            type="button"
-            className="dq-pad-find-button"
-            aria-label={extra ? `Find action, ${extra} more` : "Find action"}
-            aria-keyshortcuts={keys.find}
-            disabled={findDisabled}
-            onClick={onFind}
-          >
-            <KeyCap binding={keys.find} />
-            <span aria-hidden="true">Find action</span>
-          </button>
+        {checklist ? (
+          // The checklist, then the hint and Find action, on the header's second line, under the
+          // effect line: the pad keeps its height as answers of any length come in.
+          <div className="dq-pad-header-end">
+            {checklist}
+            {shiftHint}
+            {headerFind}
+          </div>
+        ) : (
+          <>
+            {!paused && shiftHint}
+            {headerFind}
+          </>
         )}
       </div>
       {rows.map((row) => (

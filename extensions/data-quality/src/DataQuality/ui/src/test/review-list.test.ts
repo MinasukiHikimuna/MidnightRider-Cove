@@ -89,6 +89,19 @@ it("names a copy after its review, numbering it past the copies already there", 
   expect(copyName("Copyist", reviews)).toBe("Copyist copy");
 });
 
+it("keeps a trailing copy or copy N in the name when no review has the name without it", () => {
+  // A year after "copy" is part of this name: no review is called "Clips".
+  expect(copyName("Clips copy 2024", reviews)).toBe("Clips copy 2024 copy");
+  expect(copyName("Clips copy", reviews)).toBe("Clips copy copy");
+  expect(
+    copyName("Clips copy 2024", [...reviews, review("f", "Clips copy 2024 copy")]),
+  ).toBe("Clips copy 2024 copy 2");
+  // With a review of that name (as names are compared), the ending is a copy's number after all.
+  const clips = [...reviews, review("f", " clips "), review("g", "Clips copy 2024")];
+  expect(copyName("Clips copy 2024", clips)).toBe("Clips copy");
+  expect(copyName("Clips copy", [...clips, review("h", "Clips copy")])).toBe("Clips copy 2");
+});
+
 it("duplicates a review under a new id and its copy's name, sharing nothing with it", () => {
   const source = { ...review("a", "review 9"), actions: [{ id: "x", label: "X", steps: [] }] } as Review;
   const copy = duplicateReview(source, reviews, "new-id");

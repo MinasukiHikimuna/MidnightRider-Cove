@@ -123,13 +123,21 @@ export function loadReviews(): ReturnType<typeof loadAccountReviews> {
   return result;
 }
 
+interface Account {
+  user: { id: string | number };
+  permissions: string[];
+}
 async function loadAccountReviews() {
-  const me = await request<{
-    user: { id: string | number };
-    permissions: string[];
-  }>("/api/auth/me");
+  const me = await request<Account>("/api/auth/me");
+  const storageKey = `cove-data-quality-v2:${String(me.user.id)}`;
+  // A load waits for the saves still running, like any save: otherwise it could keep the
+  // configuration as it was before one of them, and that save's own change would later look like
+  // another browser's (or a queued save would build on the older list).
+  return serial(storageKey, () => readAccountReviews(me, storageKey));
+}
+
+async function readAccountReviews(me: Account, storageKey: string) {
   const userId = String(me.user.id);
-  const storageKey = `cove-data-quality-v2:${userId}`;
   const readable = has(me.permissions, "savedfilters.read");
   const writable = readable && has(me.permissions, "savedfilters.write");
   const records = readable
@@ -334,15 +342,24 @@ async function persist(key: string, next: Configuration) {
   }
 }
 
+/**
+ * Saves a change to the reviews: `change` gets the list as last saved and returns the list to
+ * save, or the list it was given to save nothing. Saves run one at a time, and each change is
+ * applied when its turn comes, so saves started together (a duplicate while the queue is saved to
+ * its review, say) all land, whichever starts first. Resolves with the list saved.
+ */
 export function saveReviews(
   key: string,
-  reviews: Review[],
-): Promise<void> {
-  parseReviews(JSON.stringify(reviews));
+  change: (current: Review[]) => Review[],
+): Promise<Review[]> {
   return serial(key, async () => {
     const session = sessions.get(key);
     if (!session) throw new Error("Reload reviews before saving.");
-    const removed = session.config.reviews
+    const current = session.config.reviews;
+    const reviews = change(current);
+    if (reviews === current) return current;
+    parseReviews(JSON.stringify(reviews));
+    const removed = current
       .filter((review) => !reviews.some((next) => next.id === review.id))
       .map((review) => review.id);
     await persist(key, {
@@ -352,6 +369,7 @@ export function saveReviews(
         ...new Set([...session.config.deletedIds, ...removed]),
       ].filter((id) => !reviews.some((review) => review.id === id)),
     });
+    return reviews;
   });
 }
 

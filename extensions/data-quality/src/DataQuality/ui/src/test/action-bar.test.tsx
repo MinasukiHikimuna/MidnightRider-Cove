@@ -256,6 +256,20 @@ describe("phone-sized windows", () => {
     expect(within(region).getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
   });
 
+  it("ends a preview when the window crosses the breakpoint, which takes its tile away", () => {
+    setViewportWidth(1024);
+    api.request.mockResolvedValue({ name: "Tag" });
+    const { region } = bar(actions(2), { hints: undefined });
+    fireEvent.mouseEnter(within(region).getByRole("button", { name: "q Action 1" }));
+    expect(region.querySelector(".dq-bar-effect")).toHaveTextContent(/Action 1/);
+    act(() => setViewportWidth(390));
+    expect(region.querySelector(".dq-bar-effect")).toBeNull();
+    act(() => within(region).getByRole("button", { name: "Action 2" }).focus());
+    expect(region.querySelector(".dq-bar-effect")).toHaveTextContent(/Action 2/);
+    act(() => setViewportWidth(1024));
+    expect(region.querySelector(".dq-bar-effect")).toBeNull();
+  });
+
   it("pauses every button, Find included, while the review is edited", () => {
     setViewportWidth(390);
     api.request.mockResolvedValue({ name: "Tag" });

@@ -206,6 +206,10 @@ function KeyPicker({
         aria-label={`Key for ${name}`}
         className="dq-key-picker"
         onKeyDown={handleKey}
+        // A press anywhere in the panel, its title, a gap or an unavailable key included, leaves
+        // focus where it is, so the arrow keys and Esc stay with the picker rather than the drawer.
+        // A click still chooses.
+        onMouseDown={(event) => event.preventDefault()}
       >
         <p className="dq-key-picker-title">
           Key for <strong>{name}</strong>
@@ -241,13 +245,17 @@ function KeyPicker({
               })}
               {rowIndex === ACTION_KEY_ROWS.length - 1 &&
                 PREVIEW_KEYS.map((key) => (
+                  // Unavailable, yet not disabled: a browser gives a disabled button no press for
+                  // the panel to keep, and moves focus out of the picker. This one chooses nothing
+                  // and is never focused (the arrow keys and Tab pass it by).
                   <button
                     key={key}
                     type="button"
                     className="dq-key-choice dq-key-choice-free"
                     aria-label={`${keyName(key)}: not available, it steps through the grid preview`}
                     title="Steps through the grid preview"
-                    disabled
+                    aria-disabled="true"
+                    tabIndex={-1}
                   >
                     <span className="dq-key-choice-head">
                       <KeyCap binding={key} />

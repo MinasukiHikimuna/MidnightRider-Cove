@@ -1787,14 +1787,31 @@
     transition: none;
   }
 }
+/* Forced colours drop the knob and the fill, both backgrounds: system colours draw them, a filled
+   track with its knob at the end meaning on. */
+@media (forced-colors: active) {
+  .dq-stay-track {
+    border-color: ButtonText;
+    background: ButtonFace;
+    forced-color-adjust: none;
+  }
+  .dq-stay-track::after {
+    background: ButtonText;
+  }
+  .dq-stay-switch[aria-checked="true"] .dq-stay-track {
+    border-color: Highlight;
+    background: Highlight;
+  }
+  .dq-stay-switch[aria-checked="true"] .dq-stay-track::after {
+    background: HighlightText;
+  }
+}
 /* Answer groups (answerGroups.ts), while a review waits for them: the pad header's checklist, a
    check and the answer for each answered group and a ring for each open one, and an accent edge
    and tint on the actions of the open groups (the checklist and each tile's description say it in
    words too). Phone-sized windows put the checklist over the buttons, wrapping. */
 .dq-group-checklist {
   display: flex;
-  /* In a tight header the effect line gives up its room first; the list takes at most 60 %. */
-  max-width: 60%;
   flex: none;
   align-items: center;
   gap: 4px 8px;
@@ -1831,6 +1848,42 @@
   color: var(--color-foreground);
   font-weight: 600;
 }
+/* In the pad's header the effect line has the first line to itself; the checklist, then the Shift
+   hint and Find action at the far end, take a second line (.dq-pad-header-end). Always, and not only
+   when they would not fit beside the effect line: how long the answers are changes from item to
+   item, and the pad's height, with the player above it and the tiles under the pointer, must not.
+   Names and answers that do not fit share the room and end in an ellipsis (each group's tooltip
+   has its name and answer in full). */
+.dq-pad-header-groups {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.dq-pad-header-groups > .dq-pad-effect {
+  flex-basis: 100%;
+}
+.dq-pad-header-end {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 10px;
+}
+.dq-pad-header-end > .dq-group-checklist {
+  min-width: 0;
+  flex: 0 1 auto;
+  margin-right: auto;
+}
+.dq-pad-header-end .dq-group {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.dq-pad-header-end .dq-group-name,
+.dq-pad-header-end .dq-group-answer {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .dq-group-ring {
   width: 10px;
   height: 10px;
@@ -1864,7 +1917,6 @@
 /* Phones: the list wraps, so a wider gap parts the groups instead of dots that would start a line,
    and a long answer wraps within its group. */
 .dq-pad-mobile .dq-group-checklist {
-  max-width: none;
   flex-wrap: wrap;
   column-gap: 16px;
   font-size: 0.8125rem;
@@ -4501,7 +4553,7 @@ textarea.dq-input {
   background: transparent;
   color: var(--color-muted);
 }
-.dq-key-choice:disabled {
+.dq-key-choice[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -4509,7 +4561,7 @@ textarea.dq-input {
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 14%, var(--color-card));
 }
-.dq-key-choice:hover:not(:disabled),
+.dq-key-choice:hover:not([aria-disabled="true"]),
 .dq-key-picker-choice:hover {
   border-color: var(--color-accent);
 }
@@ -4549,6 +4601,69 @@ textarea.dq-input {
   margin: 0 0 0 auto;
   color: var(--color-muted);
   font-size: 0.75rem;
+}
+/* Forced colours drop the tint that marks the action's own key and the choice it has (Auto or No
+   key): they are filled with the selection colours instead. */
+@media (forced-colors: active) {
+  .dq-key-choice-own,
+  .dq-key-picker-choice[aria-pressed="true"] {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+  .dq-key-choice-own .dq-key {
+    border-color: HighlightText;
+    background: Highlight;
+    color: HighlightText;
+  }
+  .dq-key-choice-own svg,
+  .dq-key-picker-choice[aria-pressed="true"] span {
+    color: HighlightText;
+  }
+  .dq-key-choice-own:hover:not([aria-disabled="true"]) {
+    border-color: Highlight;
+  }
+  .dq-key-choice-own:focus-visible,
+  .dq-key-picker-choice[aria-pressed="true"]:focus-visible {
+    outline-color: CanvasText;
+  }
+}
+/* Phone-sized windows (MOBILE_QUERY in viewport.ts): each keyboard row's keys flow in a grid of
+   touch-sized keys, wide enough for their key caps and two short lines of the holder's name, the
+   rows a little further apart. The keys scroll within about half the window, so Auto and No key,
+   as tall as a touch target, stay close under them. */
+@media (max-width: 760px) {
+  .dq-key-picker-keys {
+    max-height: min(26rem, 45dvh);
+    gap: 12px;
+    /* Room for the focus ring of the keys at its edges. */
+    padding: 3px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .dq-key-picker-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr));
+    gap: 6px;
+  }
+  .dq-key-picker-row[data-indent] {
+    padding-left: 0;
+  }
+  .dq-key-choice {
+    width: auto;
+    height: auto;
+    min-height: 3.5rem;
+    padding: 5px 6px;
+  }
+  .dq-key-choice-label {
+    font-size: 0.75rem;
+    line-height: 15px;
+  }
+  .dq-key-picker-choice {
+    min-height: 44px;
+    align-items: center;
+  }
 }
 .dq-action-row-summary {
   display: flex;

@@ -20,8 +20,15 @@ import {
   testKeyboardConflicts,
 } from "./runtime-components";
 import { setViewportWidth } from "./viewport";
+import type { Review } from "../model";
 
-const { api, review } = vi.hoisted(() => ({
+const { account, api, review } = vi.hoisted(() => ({
+  // The account's reviews as the page's saves leave them (see applySave).
+  account: {
+    loaded: [] as Review[],
+    lastSaved: null as Review[] | null,
+    written: [] as Array<Review[] | undefined>,
+  },
   api: {
     loadReviews: vi.fn(),
     loadProgress: vi.fn(),
@@ -81,6 +88,12 @@ it("compares equivalent object filters independently of key order", () => {
 vi.mock("../api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api")>()),
   ...api,
+  // The list the page loads is the account's until the page saves a change to it.
+  loadReviews: (...args: unknown[]) =>
+    api.loadReviews(...args).then((result: { reviews?: Review[] } | undefined) => {
+      account.loaded = result?.reviews ?? [];
+      return result;
+    }),
   videoCoverUrl: (video: { id: number }) => `/cover-${video.id}.jpg`,
   videoPreviewStatusUrl: (id: number) => `/preview-${id}/status`,
   videoPreviewUrl: (id: number) => `/preview-${id}.mp4`,
@@ -150,7 +163,10 @@ beforeEach(() => {
   api.runTagReviewAction.mockReset().mockResolvedValue(undefined);
   api.loadProgress.mockReset().mockResolvedValue(null);
   api.saveProgress.mockReset().mockResolvedValue(undefined);
-  api.saveReviews.mockReset().mockResolvedValue(undefined);
+  account.loaded = [];
+  account.lastSaved = null;
+  account.written = [];
+  api.saveReviews.mockReset().mockImplementation(saveToTestAccount);
   api.resolveTagTree.mockReset().mockResolvedValue([]);
   api.getConfirmedAbsentTagsFieldStatus.mockReset().mockResolvedValue({
     kind: "ready",
@@ -212,6 +228,47 @@ beforeEach(() => {
     },
   );
 });
+
+/**
+ * The page hands saveReviews a change which, as in storage.ts, applies to the list saved last (at
+ * first, the list the page loaded); a change that keeps the list saves nothing. What each call
+ * saved is kept by call.
+ */
+function applySave(change: (current: Review[]) => Review[], call: number): Review[] {
+  const current = account.lastSaved ?? account.loaded;
+  const next = change(current);
+  if (next !== current) {
+    account.lastSaved = next;
+    account.written[call] = next;
+  }
+  return next;
+}
+async function saveToTestAccount(_key: string, change: (current: Review[]) => Review[]) {
+  return applySave(change, api.saveReviews.mock.calls.length - 1);
+}
+
+/** Holds the next save until the returned function lets it write, as a slow account would. */
+function holdNextSave(): () => void {
+  let write!: () => void;
+  api.saveReviews.mockImplementationOnce(
+    (_key: string, change: (current: Review[]) => Review[]) => {
+      const call = api.saveReviews.mock.calls.length - 1;
+      return new Promise((resolve) => (write = () => resolve(applySave(change, call))));
+    },
+  );
+  return () => write();
+}
+
+/**
+ * The reviews that save call `call` (from 0) wrote, or the last save wrote. Loosely typed, as the
+ * mock's calls were: tests read the fields of whichever kind of review they saved.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function savedList(call?: number): any[] {
+  const list = call === undefined ? account.lastSaved : account.written[call];
+  if (!list) throw new Error(`Save ${call ?? "(last)"} wrote nothing.`);
+  return list;
+}
 
 /** In an open review (single-item workspace or grid), chooses an item of the header's More menu. */
 async function chooseFromMore(item: string) {
@@ -473,7 +530,7 @@ describe("Data Quality extension page", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create & configure" }));
     await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-    const created = api.saveReviews.mock.calls[0][1][0];
+    const created = savedList(0)[0];
     expect(created).toMatchObject({
       entityType: "tag",
       name: "Group tags",
@@ -713,7 +770,7 @@ describe("Data Quality extension page", () => {
     expect(within(drawer).getByLabelText("Entity type")).toBeDisabled();
     expect(within(drawer).getByLabelText("Entity type")).toHaveValue("tag");
     expect(within(drawer).getByLabelText("Review name")).toHaveValue("Review tags copy");
-    expect(api.saveReviews.mock.calls[0][1][1]).toEqual({
+    expect(savedList(0)[1]).toEqual({
       ...tagReview,
       id: expect.any(String),
       name: "Review tags copy",
@@ -1041,7 +1098,7 @@ it("imports the reviews a file adds, keeps the ones already listed, and says so"
   chooseImportFile(JSON.stringify([{ ...review, name: "Changed elsewhere" }, added]));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
   // The listed review keeps its own version; the new one is added after it.
-  expect(api.saveReviews.mock.calls[0][1]).toEqual([review, added]);
+  expect(savedList(0)).toEqual([review, added]);
   await waitFor(() =>
     expect(announced()).toBe("Imported 1 review. 1 review already in the list stays as it is."),
   );
@@ -1059,12 +1116,12 @@ it("imports the reviews a file adds, keeps the ones already listed, and says so"
     ]),
   );
   expect(await screen.findAllByRole("cell", { name: "2 matching videos" })).toHaveLength(2);
-  // The same file again adds nothing and saves nothing.
+  // The same file again adds nothing and saves nothing (its change keeps the saved list).
   chooseImportFile(JSON.stringify([added]));
   await waitFor(() =>
     expect(announced()).toBe("Nothing imported: the reviews in this file are already in the list."),
   );
-  expect(api.saveReviews).toHaveBeenCalledTimes(1);
+  expect(account.written.filter(Boolean)).toHaveLength(1);
   expect(api.findMedia).toHaveBeenCalledTimes(3);
 });
 
@@ -1171,7 +1228,7 @@ it("deletes a review from its row after an in-page confirmation, then focuses th
   dialog = screen.getByRole("dialog", { name: "Delete review?" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Delete review" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  expect(api.saveReviews).toHaveBeenCalledWith("reviews", [reviews[0], reviews[2]]);
+  expect(savedList()).toEqual([reviews[0], reviews[2]]);
   expect(listedReviews()).toEqual(["Alpha", "Gamma"]);
   expect(screen.getByRole("link", { name: /Gamma/ })).toHaveFocus();
   expect(announced()).toBe("Deleted “Beta”.");
@@ -1240,7 +1297,7 @@ it("deletes the open review from its More menu and returns to the list's heading
   fireEvent.click(screen.getByRole("button", { name: "Delete review" }));
   const heading = await screen.findByRole("heading", { name: "Data Quality" });
   await waitFor(() => expect(heading).toHaveFocus());
-  expect(api.saveReviews).toHaveBeenCalledWith("reviews", [other]);
+  expect(savedList()).toEqual([other]);
   expect(listedReviews()).toEqual(["Other review"]);
   expect(window.location.search).toBe("");
   expect(announced()).toBe("Deleted “Review”.");
@@ -1256,7 +1313,7 @@ it("duplicates a review from its row at once under a free copy name, then opens 
   // No dialog asks for a name first.
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
-  const [original, kept, copy] = api.saveReviews.mock.calls[0][1];
+  const [original, kept, copy] = savedList(0);
   expect([original, kept]).toEqual([review, earlier]);
   expect(copy).toEqual({ ...review, id: expect.any(String), name: "Review copy 2" });
   expect(copy.id).not.toBe(review.id);
@@ -1433,7 +1490,7 @@ it("keeps a review in view while its duplicate saves, and stays where Back went 
   const entries = freshHistory("/data-quality");
   api.loadReviews.mockResolvedValue({ reviews: [review], storageKey: "reviews", canWrite: true });
   let finish!: () => void;
-  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  finish = holdNextSave();
   render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("region", { name: "Reviews" });
   fireEvent.click(screen.getByRole("link", { name: /Review/ }));
@@ -1462,7 +1519,7 @@ it("leaves the URL alone when a duplicate finishes saving after the page is gone
   const entries = freshHistory("/data-quality");
   api.loadReviews.mockResolvedValue({ reviews: [review], storageKey: "reviews", canWrite: true });
   let finish!: () => void;
-  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  finish = holdNextSave();
   const page = render(<DataQualityPage onNavigate={vi.fn()} />);
   await screen.findByRole("region", { name: "Reviews" });
   chooseFromRow("Review", "Duplicate");
@@ -1672,7 +1729,7 @@ it("duplicates and reorders actions with fixed positional shortcuts", async () =
   });
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-  const saved = api.saveReviews.mock.calls[0][1][0];
+  const saved = savedList(0)[0];
   expect(saved.actions.map((action: { label: string }) => action.label)).toEqual([
     "Apply copy",
     "Apply",
@@ -1763,7 +1820,7 @@ it("adds actions generated from a parent tag's children after the existing ones"
     { mode: "REMOVE_TREE", tagIds: [40] },
   ];
   // Each answers the group named after the parent.
-  expect(api.saveReviews.mock.calls[0][1][0].actions).toEqual([
+  expect(savedList(0)[0].actions).toEqual([
     review.actions[0],
     { id: expect.any(String), label: "Bedroom", steps: onlyOne(42), group: "Rooms" },
     { id: expect.any(String), label: "Kitchen", steps: onlyOne(41), group: "Rooms" },
@@ -1799,7 +1856,7 @@ it("saves explicitly reordered tag operations", async () => {
   });
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-  expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
+  expect(savedList(0)[0].actions[0].steps).toEqual([
     { mode: "REMOVE", tagIds: [4] },
     { mode: "ADD", tagIds: [3] },
   ]);
@@ -1818,7 +1875,7 @@ it("edits and saves all tag assessment modes", async () => {
   fireEvent.change(operation, { target: { value: "MARK_ABSENT" } });
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-  expect(api.saveReviews.mock.calls[0][1][0].actions[0].steps).toEqual([
+  expect(savedList(0)[0].actions[0].steps).toEqual([
     { mode: "MARK_ABSENT", tagIds: [3] },
   ]);
 });
@@ -1840,7 +1897,7 @@ it("keeps edits across review sections and saves the combined draft", async () =
   expect(screen.getByLabelText("Description")).toHaveValue("Check metadata");
   fireEvent.click(screen.getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-  expect(api.saveReviews.mock.calls[0][1][0]).toMatchObject({
+  expect(savedList(0)[0]).toMatchObject({
     description: "Check metadata",
     view: {
       objectFilter: { organized: true },
@@ -1941,7 +1998,7 @@ it("saves card parent tags and the preferred multi-video layout from the rule ed
   fireEvent.change(within(drawer).getByRole("textbox", { name: "Add a parent tag for card tags" }), { target: { value: "100" } });
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-  const saved = api.saveReviews.mock.calls.at(-1)?.[1][0];
+  const saved = savedList()[0];
   expect(saved.view.reviewMode).toBe("multiple");
   expect(saved.presentation.annotationParents).toEqual([100]);
   expect(saved.presentation.annotations).toContain("tags");
@@ -1976,7 +2033,7 @@ it("edits an existing multi-video rule without losing its card presentation", as
   fireEvent.change(parents, { target: { value: "101" } });
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  expect(api.saveReviews.mock.calls.at(-1)?.[1][0].presentation.annotationParents).toEqual([101]);
+  expect(savedList()[0].presentation.annotationParents).toEqual([101]);
   await screen.findByRole("article", { name: "Video 1" });
 });
 
@@ -2011,7 +2068,7 @@ it("keeps newly saved queue criteria when the editor switches to single video", 
   await waitFor(() => expect(save).toBeEnabled());
   fireEvent.click(save);
   await screen.findByRole("heading", { name: "Reviewing this video" });
-  expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.objectFilter).toEqual({ organized: true });
+  expect(savedList()[0].view.objectFilter).toEqual({ organized: true });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
   expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
   expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
@@ -2027,7 +2084,7 @@ it("keeps a Single visit of a Grid review after saving it, until the saved layou
   fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Updated description" } });
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument());
-  expect(api.saveReviews.mock.calls.at(-1)?.[1][0]).toMatchObject({
+  expect(savedList()[0]).toMatchObject({
     description: "Updated description",
     view: { reviewMode: "multiple" },
   });
@@ -2040,7 +2097,7 @@ it("keeps a Single visit of a Grid review after saving it, until the saved layou
   fireEvent.click(within(drawer).getByRole("tab", { name: "Appearance" }));
   fireEvent.click(within(drawer).getByRole("radio", { name: "Single video" }));
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
-  await waitFor(() => expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.reviewMode).toBe("single"));
+  await waitFor(() => expect(savedList()[0].view.reviewMode).toBe("single"));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument());
   expect(screen.getByRole("heading", { name: "Reviewing this video" })).toBeInTheDocument();
   // Grid is a visit again, and saving Grid as the layout keeps the grid.
@@ -2051,7 +2108,7 @@ it("keeps a Single visit of a Grid review after saving it, until the saved layou
   expect(within(drawer).getByRole("radio", { name: "Single video" })).toBeChecked();
   fireEvent.click(within(drawer).getByRole("radio", { name: "Grid" }));
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
-  await waitFor(() => expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.reviewMode).toBe("multiple"));
+  await waitFor(() => expect(savedList()[0].view.reviewMode).toBe("multiple"));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument());
   expect(screen.getByRole("article", { name: "Video 1" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
@@ -2217,7 +2274,7 @@ it("saves the select-all-on-load preference from the rule editor", async () => {
   fireEvent.click(option);
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalled());
-  expect(api.saveReviews.mock.calls.at(-1)?.[1][0].view.selectAllOnLoad).toBe(true);
+  expect(savedList()[0].view.selectAllOnLoad).toBe(true);
 });
 
 it("keeps a hand-trimmed selection trimmed after an action, but reselects after applying to the whole page", async () => {
@@ -3075,7 +3132,7 @@ it("saves the grid's draft with the toolbar's criteria, keeping the drawer open 
   await waitFor(() =>
     expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument(),
   );
-  expect(api.saveReviews.mock.calls.at(-1)?.[1][0]).toMatchObject({
+  expect(savedList()[0]).toMatchObject({
     description: "Checked in the grid",
     view: { filter: { q: "draft", page: 1 }, reviewMode: "multiple", startFrom: "end" },
   });
@@ -3106,7 +3163,7 @@ function binnedReview(reviewMode: "single" | "multiple") {
     canWrite: true,
   });
 }
-const savedView = (call: number) => api.saveReviews.mock.calls[call][1][0].view;
+const savedView = (call: number) => savedList(call)[0].view;
 
 it("counts a search made before the grid's drawer opened as unsaved, which Cancel leaves unsaved and Save keeps", async () => {
   openGrid(numberedActions(2));
@@ -3166,7 +3223,7 @@ it("never saves a queue tag bin, from the grid's drawer or Save to review, and k
   expect(within(drawer).getByText("Unsaved changes")).toBeInTheDocument();
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
-  expect(api.saveReviews.mock.calls[0][1][0].description).toBe("Binned");
+  expect(savedList(0)[0].description).toBe("Binned");
   expect(savedView(0).objectFilter).toEqual({});
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument());
   // The bin stays pressed on the queue, which still differs by it alone.
@@ -3202,7 +3259,7 @@ it("holds the grid's queue controls while Save to review saves, which writes onc
   const save = await screen.findByRole("button", { name: "Save to review" });
   await waitFor(() => expect(save).toBeEnabled());
   let finish!: () => void;
-  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  finish = holdNextSave();
   fireEvent.click(save);
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
   // Nothing reshapes the queue being saved meanwhile: no search, page, bin or Reset, no second
@@ -3482,7 +3539,7 @@ it("opens a video grid review straight from a tag review without drawing the tag
 
 it("holds the grid's queue controls while the drawer saves, and keeps Save focused", async () => {
   let finish!: () => void;
-  api.saveReviews.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  finish = holdNextSave();
   openGrid(numberedActions(2));
   await screen.findByRole("article", { name: "Video 1" });
   const drawer = await openEditor();
@@ -3652,7 +3709,7 @@ it("duplicates the open review from its More menu at once, opening the copy in i
   await screen.findByRole("heading", { name: "Reviewing this video" });
   await chooseFromMore("Duplicate");
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
-  const [original, copy] = api.saveReviews.mock.calls[0][1];
+  const [original, copy] = savedList(0);
   expect(original).toEqual(review);
   expect(copy).toEqual({ ...review, id: expect.any(String), name: "Review copy" });
   const drawer = await screen.findByRole("dialog", { name: "Edit review" });

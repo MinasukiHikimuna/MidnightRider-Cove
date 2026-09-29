@@ -455,6 +455,24 @@ describe("phone-sized windows", () => {
     expect(preview.get()).toBeNull();
   });
 
+  it("ends a preview when the window crosses the breakpoint, which takes its tile away", async () => {
+    setViewportWidth(1024);
+    const actions = numbered(2);
+    const { container, preview } = pad(actions);
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "q Action 1" }).parentElement!);
+    await waitFor(() => expect(effectLine(container)).toHaveTextContent(/Action 1/));
+    // The tile under the pointer goes with the keyboard layout, and no pointer leaves it.
+    act(() => setViewportWidth(390));
+    expect(preview.get()).toBeNull();
+    expect(effectLine(container)).toHaveTextContent(/^2 actions$/);
+    // The other way round too: a button focused on the phone layout goes with it.
+    act(() => screen.getByRole("button", { name: "Action 2" }).focus());
+    expect(preview.get()).toBe(actions[1]);
+    act(() => setViewportWidth(1024));
+    expect(preview.get()).toBeNull();
+    expect(effectLine(container)).not.toHaveTextContent(/Action 2/);
+  });
+
   it("says its buttons wait while the review is edited, and previews none of them", () => {
     setViewportWidth(390);
     const { preview } = pad(numbered(2), { paused: true, disabled: () => true });
@@ -510,6 +528,37 @@ describe("answer groups", () => {
     );
     expect(screen.getByRole("button", { name: "q Kind one" })).toHaveAccessibleDescription("+ Tag 1");
     expect(screen.getByRole("button", { name: "y Next one" })).toHaveAccessibleDescription("Skip");
+  });
+
+  it("keeps the checklist, the Shift hint and Find action together, each group's full text in its tooltip", () => {
+    const { container } = pad(grouped, {
+      waitForGroups: true,
+      tags: { ids: [1, 2], names: [], absent: [] },
+    });
+    const header = container.querySelector<HTMLElement>(".dq-pad-header")!;
+    expect(header).toHaveClass("dq-pad-header-groups");
+    // Together on the header's second line, under the effect line.
+    const end = header.querySelector<HTMLElement>(":scope > .dq-pad-header-end")!;
+    expect([...end.children].map((child) => child.className)).toEqual([
+      "dq-group-checklist",
+      "dq-pad-hint",
+      "dq-pad-find-button",
+    ]);
+    // A name or answer cut short by the header is there in full.
+    expect(
+      within(end).getAllByRole("listitem").map((item) => item.getAttribute("title")),
+    ).toEqual(["Kind: Kind one, Kind two", "Size: not answered yet"]);
+  });
+
+  it("leaves the header of a review without groups as it was", () => {
+    const { container } = pad(numbered(2));
+    const header = container.querySelector<HTMLElement>(".dq-pad-header")!;
+    expect(header).not.toHaveClass("dq-pad-header-groups");
+    expect([...header.children].map((child) => child.className)).toEqual([
+      "dq-pad-effect dq-pad-summary",
+      "dq-pad-hint",
+      "dq-pad-find-button",
+    ]);
   });
 
   it("names the groups alone until the item's tags are known", () => {

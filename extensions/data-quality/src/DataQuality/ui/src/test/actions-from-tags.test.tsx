@@ -17,8 +17,8 @@ const response = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
 
 const videoReview: VideoReview = {
-  id: "locations",
-  name: "Locations",
+  id: "shapes",
+  name: "Shapes",
   description: "",
   view: {
     filter: { page: 1, perPage: 40 },
@@ -26,7 +26,7 @@ const videoReview: VideoReview = {
     displayMode: "grid",
     searchMode: "text",
   },
-  actions: [{ id: "indoors", label: "Indoors", steps: [{ mode: "ADD", tagIds: [2] }] }],
+  actions: [{ id: "circle", label: "Circle", steps: [{ mode: "ADD", tagIds: [2] }] }],
 };
 const audioReview: AudioReview = { ...videoReview, entityType: "audio" };
 const occurrenceReview: OccurrenceReview = {
@@ -46,17 +46,17 @@ const occurrenceReview: OccurrenceReview = {
 
 const tags: Record<number, { name: string; parents: number[]; videoCount: number; audioCount: number; occurrences: number }> = {
   1: { name: "Generic", parents: [], videoCount: 0, audioCount: 0, occurrences: 0 },
-  2: { name: "Indoors", parents: [1], videoCount: 4390, audioCount: 1, occurrences: 0 },
-  3: { name: "Outdoors", parents: [1, 10, 30], videoCount: 1608, audioCount: 7, occurrences: 0 },
+  2: { name: "Circle", parents: [1], videoCount: 4390, audioCount: 1, occurrences: 0 },
+  3: { name: "Square", parents: [1, 10, 30], videoCount: 1608, audioCount: 7, occurrences: 0 },
   10: { name: "Specific", parents: [], videoCount: 0, audioCount: 0, occurrences: 0 },
-  11: { name: "Kitchen", parents: [10], videoCount: 284, audioCount: 0, occurrences: 0 },
-  12: { name: "Bedroom", parents: [10], videoCount: 1107, audioCount: 0, occurrences: 0 },
-  13: { name: "Attic", parents: [10], videoCount: 284, audioCount: 0, occurrences: 0 },
-  20: { name: "Pubic Hair", parents: [], videoCount: 0, audioCount: 0, occurrences: 0 },
-  21: { name: "Hairy", parents: [20], videoCount: 1302, audioCount: 0, occurrences: 3 },
-  22: { name: "Trimmed", parents: [20], videoCount: 3342, audioCount: 0, occurrences: 71 },
-  23: { name: "Shaved", parents: [20], videoCount: 2, audioCount: 0, occurrences: 109 },
-  30: { name: "Open air", parents: [], videoCount: 0, audioCount: 0, occurrences: 0 },
+  11: { name: "Pentagon", parents: [10], videoCount: 284, audioCount: 0, occurrences: 0 },
+  12: { name: "Octagon", parents: [10], videoCount: 1107, audioCount: 0, occurrences: 0 },
+  13: { name: "Hexagon", parents: [10], videoCount: 284, audioCount: 0, occurrences: 0 },
+  20: { name: "Weather", parents: [], videoCount: 0, audioCount: 0, occurrences: 0 },
+  21: { name: "Sunny", parents: [20], videoCount: 1302, audioCount: 0, occurrences: 3 },
+  22: { name: "Cloudy", parents: [20], videoCount: 3342, audioCount: 0, occurrences: 71 },
+  23: { name: "Rainy", parents: [20], videoCount: 2, audioCount: 0, occurrences: 109 },
+  30: { name: "Polygons", parents: [], videoCount: 0, audioCount: 0, occurrences: 0 },
 };
 let failParent: number | null;
 
@@ -92,10 +92,10 @@ it("loads a parent's direct children with their video counts, most used first", 
   expect(group.parent).toEqual({ id: 10, name: "Specific" });
   // Ties fall back to the name, so equally used tags keep a stable order.
   expect(group.children).toEqual([
-    { id: 3, name: "Outdoors", uses: 1608 },
-    { id: 12, name: "Bedroom", uses: 1107 },
-    { id: 13, name: "Attic", uses: 284 },
-    { id: 11, name: "Kitchen", uses: 284 },
+    { id: 3, name: "Square", uses: 1608 },
+    { id: 12, name: "Octagon", uses: 1107 },
+    { id: 13, name: "Hexagon", uses: 284 },
+    { id: 11, name: "Pentagon", uses: 284 },
   ]);
   const find = fetchMock.mock.calls.find(([path]) => path === "/api/tags/find")!;
   expect(JSON.parse(String(find[1]?.body)).objectFilter).toEqual({
@@ -105,16 +105,16 @@ it("loads a parent's direct children with their video counts, most used first", 
 });
 
 it("orders audio reviews by audio counts", async () => {
-  expect(names(await loadChildTagGroup(audioReview, 1))).toEqual(["Outdoors", "Indoors"]);
+  expect(names(await loadChildTagGroup(audioReview, 1))).toEqual(["Square", "Circle"]);
 });
 
 it("orders occurrence reviews by how often performers' appearances carry each tag", async () => {
   const group = await loadChildTagGroup(occurrenceReview, 20);
-  // Video tag counts would put Shaved last; appearances put it first.
+  // Video tag counts would put Rainy last; appearances put it first.
   expect(group.children).toEqual([
-    { id: 23, name: "Shaved", uses: 109 },
-    { id: 22, name: "Trimmed", uses: 71 },
-    { id: 21, name: "Hairy", uses: 3 },
+    { id: 23, name: "Rainy", uses: 109 },
+    { id: 22, name: "Cloudy", uses: 71 },
+    { id: 21, name: "Sunny", uses: 3 },
   ]);
   const counts = fetchMock.mock.calls.filter(([path]) => String(path).endsWith("/aggregate"));
   expect(counts.map(([path]) => path)).toEqual([
@@ -149,10 +149,10 @@ it("pages through parents with more children than one page holds", async () => {
 });
 
 it("offers a tag with two chosen parents once, under the first, and remembers both parents", () => {
-  const generic = { parent: { id: 1, name: "Generic" }, children: [{ id: 3, name: "Outdoors", uses: 1 }] };
-  const specific = { parent: { id: 10, name: "Specific" }, children: [{ id: 3, name: "Outdoors", uses: 1 }, { id: 11, name: "Kitchen", uses: 1 }] };
-  expect(distinctChildGroups([generic, specific]).map(names)).toEqual([["Outdoors"], ["Kitchen"]]);
-  expect(distinctChildGroups([specific, generic]).map(names)).toEqual([["Outdoors", "Kitchen"], []]);
+  const generic = { parent: { id: 1, name: "Generic" }, children: [{ id: 3, name: "Square", uses: 1 }] };
+  const specific = { parent: { id: 10, name: "Specific" }, children: [{ id: 3, name: "Square", uses: 1 }, { id: 11, name: "Pentagon", uses: 1 }] };
+  expect(distinctChildGroups([generic, specific]).map(names)).toEqual([["Square"], ["Pentagon"]]);
+  expect(distinctChildGroups([specific, generic]).map(names)).toEqual([["Square", "Pentagon"], []]);
   expect([...parentsOfChildren([generic, specific])]).toEqual([
     [3, [1, 10]],
     [11, [10]],
@@ -162,9 +162,9 @@ it("offers a tag with two chosen parents once, under the first, and remembers bo
 it("keys a group by the requested parent even when the server answers with another id", async () => {
   const original = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation((path, init) =>
-    path === "/api/tags/20" ? response({ id: 99, name: "Pubic Hair" }) : original(path, init),
+    path === "/api/tags/20" ? response({ id: 99, name: "Weather" }) : original(path, init),
   );
-  expect((await loadChildTagGroup(videoReview, 20)).parent).toEqual({ id: 20, name: "Pubic Hair" });
+  expect((await loadChildTagGroup(videoReview, 20)).parent).toEqual({ id: 20, name: "Weather" });
 });
 
 it("stops counting appearances after the first failed count", async () => {
@@ -200,16 +200,16 @@ it("treats added and marked-present tags as covered, but not removed or absent o
 });
 
 it("builds an adding action, and an only-one action that also removes the parents' trees", () => {
-  const child = { id: 23, name: "Shaved" };
+  const child = { id: 23, name: "Rainy" };
   const plain = childTagAction(child, []);
   const onlyOne = childTagAction(child, [20]);
   expect(childTagAction(child, [20, 30]).steps).toEqual([
     { mode: "ADD", tagIds: [23] },
     { mode: "REMOVE_TREE", tagIds: [20, 30] },
   ]);
-  expect(plain).toMatchObject({ label: "Shaved", steps: [{ mode: "ADD", tagIds: [23] }] });
+  expect(plain).toMatchObject({ label: "Rainy", steps: [{ mode: "ADD", tagIds: [23] }] });
   expect(onlyOne).toMatchObject({
-    label: "Shaved",
+    label: "Rainy",
     steps: [
       { mode: "ADD", tagIds: [23] },
       { mode: "REMOVE_TREE", tagIds: [20] },
@@ -224,19 +224,19 @@ it("adds the ticked children of several parents in order, skipping ones an actio
   fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), { target: { value: "1,10" } });
   const generic = await screen.findByRole("group", { name: "Generic" });
   const specific = await screen.findByRole("group", { name: "Specific" });
-  // Indoors already has an action, so it starts unticked; Outdoors is offered under Generic only.
-  expect(within(generic).getByRole("checkbox", { name: /Indoors/ })).not.toBeChecked();
-  expect(within(generic).getByText(/Already in “Indoors”/)).toBeInTheDocument();
-  expect(within(generic).getByRole("checkbox", { name: /Outdoors/ })).toBeChecked();
+  // Circle already has an action, so it starts unticked; Square is offered under Generic only.
+  expect(within(generic).getByRole("checkbox", { name: /Circle/ })).not.toBeChecked();
+  expect(within(generic).getByText(/Already in “Circle”/)).toBeInTheDocument();
+  expect(within(generic).getByRole("checkbox", { name: /Square/ })).toBeChecked();
   expect(within(generic).getByText(/Also under “Specific”/)).toBeInTheDocument();
-  expect(within(specific).queryByRole("checkbox", { name: /Outdoors/ })).not.toBeInTheDocument();
+  expect(within(specific).queryByRole("checkbox", { name: /Square/ })).not.toBeInTheDocument();
   expect(
     within(specific).getAllByRole("checkbox", { name: /videos/ }).map((box) => box.closest("label")!.textContent),
-  ).toEqual(["Bedroom 1,107 videos", "Attic 284 videos", "Kitchen 284 videos"]);
+  ).toEqual(["Octagon 1,107 videos", "Hexagon 284 videos", "Pentagon 284 videos"]);
   expect(screen.getByRole("button", { name: "Add 4 actions" })).toBeEnabled();
 
   fireEvent.click(within(specific).getByRole("button", { name: "Select none of the child tags of Specific" }));
-  fireEvent.click(within(specific).getByRole("checkbox", { name: /Kitchen/ }));
+  fireEvent.click(within(specific).getByRole("checkbox", { name: /Pentagon/ }));
   fireEvent.click(within(generic).getByRole("checkbox", { name: /Only one per video/ }));
   fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
   expect(onAdd).toHaveBeenCalledTimes(1);
@@ -244,7 +244,7 @@ it("adds the ticked children of several parents in order, skipping ones an actio
   expect(onAdd.mock.calls[0][0]).toEqual([
     {
       id: expect.any(String),
-      label: "Outdoors",
+      label: "Square",
       steps: [
         { mode: "ADD", tagIds: [3] },
         { mode: "REMOVE_TREE", tagIds: [1] },
@@ -253,7 +253,7 @@ it("adds the ticked children of several parents in order, skipping ones an actio
     },
     {
       id: expect.any(String),
-      label: "Kitchen",
+      label: "Pentagon",
       steps: [{ mode: "ADD", tagIds: [11] }],
       group: "Specific",
     },
@@ -277,10 +277,10 @@ it("names each generated action's group after its parent, spelled as the review 
   expect(
     onAdd.mock.calls[0][0].map((action: MediaReviewAction) => [action.label, action.group]),
   ).toEqual([
-    ["Outdoors", "Generic"],
-    ["Bedroom", "specific"],
-    ["Attic", "specific"],
-    ["Kitchen", "specific"],
+    ["Square", "Generic"],
+    ["Octagon", "specific"],
+    ["Hexagon", "specific"],
+    ["Pentagon", "specific"],
   ]);
   expect(parentGroupName("  Other ", review.actions)).toBe("Other");
   expect(childTagAction({ id: 23, name: "Child" }, [], "  Parent ")).toMatchObject({ group: "Parent" });
@@ -290,11 +290,11 @@ it("names each generated action's group after its parent, spelled as the review 
 it("words the only-one choice per performer in occurrence reviews and shows appearance counts", async () => {
   render(<ActionsFromTags review={occurrenceReview} disabled={false} onAdd={vi.fn()} onCancel={vi.fn()} />);
   fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), { target: { value: "20" } });
-  const group = await screen.findByRole("group", { name: "Pubic Hair" });
+  const group = await screen.findByRole("group", { name: "Weather" });
   expect(
-    within(group).getByRole("checkbox", { name: "Only one per performer: each action removes every other tag in the Pubic Hair tree" }),
+    within(group).getByRole("checkbox", { name: "Only one per performer: each action removes every other tag in the Weather tree" }),
   ).not.toBeChecked();
-  expect(within(group).getByRole("checkbox", { name: /Shaved 109 videos/ })).toBeChecked();
+  expect(within(group).getByRole("checkbox", { name: /Rainy 109 videos/ })).toBeChecked();
   expect(screen.getByText(/most used on performers first/)).toBeInTheDocument();
 });
 
@@ -306,7 +306,7 @@ it("reports a parent that failed to load and retries it", async () => {
   expect(screen.getByRole("button", { name: "Add actions" })).toBeDisabled();
   failParent = null;
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await screen.findByRole("group", { name: "Pubic Hair" });
+  await screen.findByRole("group", { name: "Weather" });
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   expect(screen.getByRole("button", { name: "Add 3 actions" })).toBeEnabled();
 });
@@ -323,7 +323,7 @@ it("forgets a parent that is removed again and cancels its pending load", async 
   fireEvent.change(parents, { target: { value: "10,20" } });
   fireEvent.change(parents, { target: { value: "20" } });
   expect(signals.map((signal) => signal.aborted)).toEqual([true]);
-  await screen.findByRole("group", { name: "Pubic Hair" });
+  await screen.findByRole("group", { name: "Weather" });
   expect(screen.queryByRole("group", { name: "Specific" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add 3 actions" })).toBeEnabled();
 });
@@ -335,11 +335,11 @@ it("removes the tree of every only-one parent a shared child belongs to", async 
   const generic = await screen.findByRole("group", { name: "Generic" });
   const specific = await screen.findByRole("group", { name: "Specific" });
   fireEvent.click(within(specific).getByRole("button", { name: "Select none of the child tags of Specific" }));
-  // Outdoors is listed under Generic, but Specific's choice applies to it as well.
+  // Square is listed under Generic, but Specific's choice applies to it as well.
   fireEvent.click(within(specific).getByRole("checkbox", { name: /Only one per video/ }));
   fireEvent.click(screen.getByRole("button", { name: "Add 1 action" }));
   expect(onAdd.mock.calls[0][0][0]).toMatchObject({
-    label: "Outdoors",
+    label: "Square",
     steps: [
       { mode: "ADD", tagIds: [3] },
       { mode: "REMOVE_TREE", tagIds: [10] },
@@ -368,7 +368,7 @@ it("waits for every chosen parent before adding, because an earlier one decides 
   release();
   await screen.findByRole("group", { name: "Generic" });
   expect(screen.getByRole("status")).toHaveTextContent("");
-  // Outdoors moved to Generic, the first parent, and Indoors has an action already.
+  // Square moved to Generic, the first parent, and Circle has an action already.
   expect(screen.getByRole("button", { name: "Add 4 actions" })).toBeEnabled();
 });
 
@@ -376,7 +376,7 @@ it("disables every control while the review is saving", async () => {
   const props = { review: videoReview, onAdd: vi.fn(), onCancel: vi.fn() };
   const { rerender } = render(<ActionsFromTags {...props} disabled={false} />);
   fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), { target: { value: "20" } });
-  const group = await screen.findByRole("group", { name: "Pubic Hair" });
+  const group = await screen.findByRole("group", { name: "Weather" });
   rerender(<ActionsFromTags {...props} disabled />);
   expect(screen.getByPlaceholderText("Search parent tags...")).toBeDisabled();
   for (const control of [
@@ -392,12 +392,12 @@ it("offers the only-one choice of a parent whose children are all listed earlier
   render(<ActionsFromTags review={videoReview} disabled={false} onAdd={onAdd} onCancel={vi.fn()} />);
   const parents = screen.getByPlaceholderText("Search parent tags...");
   fireEvent.change(parents, { target: { value: "1,30" } });
-  const openAir = await screen.findByRole("group", { name: "Open air" });
-  expect(within(openAir).getByText("Every child tag is already listed under an earlier parent.")).toBeInTheDocument();
-  fireEvent.click(within(openAir).getByRole("checkbox", { name: /Only one per video/ }));
+  const polygons = await screen.findByRole("group", { name: "Polygons" });
+  expect(within(polygons).getByText("Every child tag is already listed under an earlier parent.")).toBeInTheDocument();
+  fireEvent.click(within(polygons).getByRole("checkbox", { name: /Only one per video/ }));
   fireEvent.click(screen.getByRole("button", { name: "Add 1 action" }));
   expect(onAdd.mock.calls[0][0][0]).toMatchObject({
-    label: "Outdoors",
+    label: "Square",
     steps: [
       { mode: "ADD", tagIds: [3] },
       { mode: "REMOVE_TREE", tagIds: [30] },
@@ -405,7 +405,7 @@ it("offers the only-one choice of a parent whose children are all listed earlier
   });
   fireEvent.change(parents, { target: { value: "1" } });
   fireEvent.change(parents, { target: { value: "1,30" } });
-  const again = await screen.findByRole("group", { name: "Open air" });
+  const again = await screen.findByRole("group", { name: "Polygons" });
   expect(within(again).getByRole("checkbox", { name: /Only one per video/ })).not.toBeChecked();
   fireEvent.click(screen.getByRole("button", { name: "Add 1 action" }));
   expect(onAdd.mock.calls[1][0][0].steps).toEqual([{ mode: "ADD", tagIds: [3] }]);
@@ -424,11 +424,11 @@ it("keeps a child's tick when an earlier parent loads later and takes the child 
   render(<ActionsFromTags review={videoReview} disabled={false} onAdd={vi.fn()} onCancel={vi.fn()} />);
   fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), { target: { value: "1,10" } });
   const specific = await screen.findByRole("group", { name: "Specific" });
-  fireEvent.click(within(specific).getByRole("checkbox", { name: /Outdoors/ }));
+  fireEvent.click(within(specific).getByRole("checkbox", { name: /Square/ }));
   release();
   const generic = await screen.findByRole("group", { name: "Generic" });
-  expect(within(generic).getByRole("checkbox", { name: /Outdoors/ })).not.toBeChecked();
-  // Bedroom, Attic and Kitchen; Indoors has an action and Outdoors stays unticked.
+  expect(within(generic).getByRole("checkbox", { name: /Square/ })).not.toBeChecked();
+  // Octagon, Hexagon and Pentagon; Circle has an action and Square stays unticked.
   expect(screen.getByRole("button", { name: "Add 3 actions" })).toBeEnabled();
 });
 

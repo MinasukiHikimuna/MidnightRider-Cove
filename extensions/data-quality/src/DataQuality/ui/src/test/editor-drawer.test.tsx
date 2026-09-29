@@ -578,8 +578,14 @@ it("pins a key, swaps with the action holding it, and sets Auto or No key from t
   expect(within(map).getByRole("button", { name: "Q: this action, Auto" })).toHaveFocus();
   expect(within(map).getByRole("button", { name: "W: Swapped, Auto" })).toBeEnabled();
   expect(within(map).getByRole("button", { name: "S: free" })).toBeEnabled();
-  expect(within(map).getByRole("button", { name: /^N: not available/ })).toBeDisabled();
-  expect(within(map).getByRole("button", { name: /^M: not available/ })).toBeDisabled();
+  for (const unavailable of [/^N: not available/, /^M: not available/]) {
+    const key = within(map).getByRole("button", { name: unavailable });
+    expect(key).toHaveAttribute("aria-disabled", "true");
+    expect(key).toHaveAttribute("tabindex", "-1");
+    fireEvent.click(key);
+  }
+  expect(picker()).toBe(map);
+  expect(shortcuts()).toEqual([undefined, undefined, undefined]);
   expect(within(map).getByRole("button", { name: /^Auto/ })).toHaveAttribute("aria-pressed", "true");
   // A free key pins the action there; the picker closes and hands focus back to the key.
   fireEvent.click(within(map).getByRole("button", { name: "S: free" }));
@@ -662,6 +668,42 @@ it("works the key picker from the keyboard, and Esc closes only the picker", asy
   fireEvent.click(button);
   fireEvent.mouseDown(document.querySelector(".dq-key-picker-backdrop")!);
   expect(picker()).toBeNull();
+  expect(button).toHaveFocus();
+});
+
+it("keeps focus in the key picker when its title, a gap or its note is clicked", async () => {
+  const user = userEvent.setup();
+  const { drawer, tab, onCancel } = open(video);
+  tab("Actions");
+  const button = keyButton(drawer, "Swapped");
+  await user.click(button);
+  const map = picker()!;
+  const focused = () => (document.activeElement as HTMLElement).getAttribute("aria-label");
+  expect(focused()).toBe("W: this action, Auto");
+  // A click on the title leaves focus on the picker's key, where the arrow keys keep working.
+  await user.click(map.querySelector(".dq-key-picker-title")!);
+  expect(focused()).toBe("W: this action, Auto");
+  await user.keyboard("{ArrowRight}");
+  expect(focused()).toBe("E: Absent, Auto");
+  // So does a click between the keys, on the note under the choices or on a key it does not
+  // offer, which chooses nothing.
+  await user.click(map.querySelector(".dq-key-picker-keys")!);
+  await user.click(map.querySelector(".dq-key-picker-hint")!);
+  await user.click(within(map).getByRole("button", { name: /^N: not available/ }));
+  expect(focused()).toBe("E: Absent, Auto");
+  expect(picker()).toBe(map);
+  // Esc then closes only the picker: the drawer stays, asking nothing, and nothing changed.
+  await user.keyboard("{Escape}");
+  expect(picker()).toBeNull();
+  expect(onCancel).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog", { name: "Discard unsaved changes?" })).toBeNull();
+  expect(button).toHaveFocus();
+  expect(shortcuts()).toEqual([undefined, undefined, undefined]);
+  // A click on a key still chooses it.
+  await user.click(button);
+  await user.click(within(picker()!).getByRole("button", { name: "S: free" }));
+  expect(picker()).toBeNull();
+  expect(shortcuts()).toEqual([undefined, "s", undefined]);
   expect(button).toHaveFocus();
 });
 

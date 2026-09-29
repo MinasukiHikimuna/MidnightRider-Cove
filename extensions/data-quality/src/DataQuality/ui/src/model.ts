@@ -641,14 +641,19 @@ export function mergeReviews(...sources: Review[][]): Review[] {
 /**
  * The name of a review's copy: "<name> copy", else "<name> copy 2", "<name> copy 3", …, the first
  * that no review has (names compared trimmed, ignoring case). A copy's copy numbers on from the
- * same name: "<name> copy" gives "<name> copy 2", not "<name> copy copy".
+ * same name, "<name> copy" giving "<name> copy 2" rather than "<name> copy copy", while a review
+ * named "<name>" is there; otherwise a trailing " copy" or " copy N" belongs to the name itself
+ * ("<name> copy 2024" gives "<name> copy 2024 copy").
  */
 export function copyName(name: string, reviews: readonly Review[]): string {
-  const taken = new Set(reviews.map((review) => review.name.trim().toLocaleLowerCase()));
-  const base = `${name.trim().replace(/ copy(?: \d+)?$/i, "")} copy`;
+  const key = (value: string) => value.trim().toLocaleLowerCase();
+  const taken = new Set(reviews.map((review) => key(review.name)));
+  const trimmed = name.trim();
+  const stem = trimmed.replace(/ copy(?: \d+)?$/i, "");
+  const base = `${stem !== trimmed && taken.has(key(stem)) ? stem : trimmed} copy`;
   for (let number = 1; ; number++) {
     const candidate = number === 1 ? base : `${base} ${number}`;
-    if (!taken.has(candidate.toLocaleLowerCase())) return candidate;
+    if (!taken.has(key(candidate))) return candidate;
   }
 }
 
