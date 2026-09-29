@@ -162,6 +162,18 @@ test("selections are stable per seed and never exceed the count", () => {
   assert.equal(selectMoments(pool.slice(0, 2), 6, 42).length, 2);
 });
 
+test("every moment is equally likely to be featured first", () => {
+  // The pool is ordered newest like first, so a biased shuffle keeps featuring the same recent moment.
+  for (const size of [4, 6, 36]) {
+    const pool = Array.from({ length: size }, (_, index) => ({ id: index }));
+    const draws = 20_000;
+    const firsts = new Array(size).fill(0);
+    for (let seed = 1; seed <= draws; seed += 1) firsts[selectMoments(pool, 6, seed)[0].id] += 1;
+    const expected = draws / size;
+    for (const count of firsts) assert.ok(Math.abs(count - expected) < expected * 0.25, `size ${size}: ${firsts.join(" ")}`);
+  }
+});
+
 // One liked moment per video, liked the given number of seconds into the shared test session.
 const scanHistory = (likedAtSeconds) => ({ likeHistory: [at(likedAtSeconds)], sessions: [session()], events: [pause(likedAtSeconds - 8, 800)] });
 const scanner = (videoIds, { visible = videoIds, withMoment = videoIds } = {}) => {
