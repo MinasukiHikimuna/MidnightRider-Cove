@@ -1630,6 +1630,164 @@
   }
 }
 
+/* Phone-sized windows (MOBILE_QUERY in viewport.ts; the components add these classes): the pad,
+   the grid's bar and the preview's bar are plain grids of touch-sized buttons in key order, without
+   key caps, empty keys or row offsets, so labels get the room. The keyboard rows' groups stay a
+   little further apart than the buttons within them. */
+.dq-mobile-actions {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+.dq-mobile-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 6px;
+}
+.dq-mobile-tile {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+  color: var(--color-foreground);
+  font-size: 0.8125rem;
+  line-height: 16px;
+  text-align: left;
+}
+/* Up to three lines, breaking inside a word only when it cannot fit a line of its own. */
+.dq-mobile-label {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.dq-mobile-tile .dq-pad-marker {
+  max-width: 100%;
+}
+.dq-mobile-tile:focus-visible {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card));
+}
+/* Only where something hovers: on touch screens :hover sticks to the last button tapped. */
+@media (hover: hover) {
+  .dq-mobile-tile:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card));
+  }
+}
+.dq-mobile-tile:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.dq-mobile-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* While a write or load runs the buttons only pause, as the tiles do. */
+.dq-pad[aria-busy="true"] .dq-mobile-tile:disabled,
+.dq-bar-tiles[aria-busy="true"] .dq-mobile-tile:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+.dq-pad-paused .dq-mobile-actions {
+  opacity: 0.35;
+}
+.dq-mobile-find {
+  background: var(--color-surface);
+  color: var(--color-secondary);
+}
+.dq-mobile-find-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-foreground);
+}
+.dq-mobile-find-name svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dq-mobile-more {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+/* No Apply and stay tabs to make room for above the first row. The paused note wraps beside the
+   Stay switch instead of running under it. */
+.dq-pad-mobile .dq-pad-header {
+  margin-bottom: 0;
+}
+.dq-pad-mobile .dq-pad-paused-note {
+  white-space: normal;
+}
+/* Stay on this item: the phone-sized pad's switch, as tall as a touch target. */
+.dq-stay-switch {
+  display: inline-flex;
+  min-height: 44px;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 0 2px 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+}
+.dq-stay-track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  border: 1px solid var(--dq-key-border);
+  border-radius: 10px;
+  background: var(--dq-key-bg);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.dq-stay-track::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-secondary);
+  content: "";
+  transition: transform 0.15s;
+}
+.dq-stay-switch[aria-checked="true"] {
+  color: var(--color-foreground);
+}
+.dq-stay-switch[aria-checked="true"] .dq-stay-track {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+.dq-stay-switch[aria-checked="true"] .dq-stay-track::after {
+  background: white;
+  transform: translateX(14px);
+}
+.dq-stay-switch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dq-stay-track,
+  .dq-stay-track::after {
+    transition: none;
+  }
+}
+
 /* The current item's column: sections scroll, Edit tags and Skip stay at the bottom. */
 .dq-review-panel {
   grid-area: panel;
@@ -2377,6 +2535,35 @@
 .dq-bar-stacked .dq-bar-hints {
   margin-left: auto;
 }
+/* Phone-sized windows: the summary, then any note, then the buttons, which scroll within about a
+   third of the window so the cards (or the preview's player) keep the rest. Select all and Clear
+   become touch-sized and lose their key caps. */
+.dq-bar-mobile .dq-bar-divider,
+.dq-bar-mobile .dq-bar-summary .dq-key {
+  display: none;
+}
+.dq-bar-mobile .dq-bar-summary {
+  flex: 1 1 100%;
+}
+.dq-bar-mobile .dq-bar-summary .dq-text-button {
+  min-height: 44px;
+}
+.dq-bar-mobile .dq-bar-hints {
+  flex: 1 1 100%;
+  max-width: none;
+  text-align: left;
+}
+.dq-bar-mobile .dq-bar-tiles {
+  order: 3;
+  flex: 1 1 100%;
+  gap: 14px;
+  max-height: 34dvh;
+  /* Room for the focus ring inside the scrolling area. */
+  margin: -4px;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 /* What the tile under the pointer or with focus does, just above the bar. */
 .dq-bar-effect {
   position: absolute;
@@ -2659,6 +2846,28 @@
   border-width: 1px 0 0;
   border-radius: 0;
   box-shadow: none;
+}
+/* Phone-sized windows: less margin around the preview, touch-sized buttons, and the title on a
+   line of its own under the step, Selected, open and close buttons. */
+.dq-preview-mobile {
+  padding: 8px;
+}
+.dq-preview-mobile .dq-preview-button {
+  min-width: 44px;
+  height: 44px;
+}
+.dq-preview-mobile .dq-preview-header {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  padding: 8px 10px;
+}
+.dq-preview-mobile .dq-preview-title {
+  order: 1;
+  flex-basis: 100%;
+  margin-left: 0;
+}
+.dq-preview-mobile .dq-preview-select {
+  margin-left: auto;
 }
 
 .dq-card-tag-bins { display: flex; flex-wrap: wrap; gap: .3rem; padding: .5rem; border: 1px solid var(--color-border); border-top: 0; border-radius: 0 0 .375rem .375rem; background: var(--color-card); }
@@ -3554,6 +3763,10 @@
   flex: none;
   color: var(--color-foreground);
   text-align: center;
+}
+/* Phone-sized windows: no key caps, and rows as tall as a touch target. */
+.dq-find-mobile .dq-find-list button {
+  min-height: 44px;
 }
 
 /* Edit review: a drawer over the right-hand column of the single-item workspace or the card grid.

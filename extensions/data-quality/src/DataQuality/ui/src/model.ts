@@ -461,6 +461,15 @@ export function tagsAddedBy(action: MediaReviewAction): Set<number> {
   );
 }
 
+/**
+ * Whether applying the action can stay on the item: an action without steps changes nothing and
+ * only moves on, so it has no Apply and stay pin and the Stay on this item switch leaves it moving
+ * on.
+ */
+export function canApplyAndStay(action: ReviewAction): boolean {
+  return "steps" in action && action.steps.length > 0;
+}
+
 export function hasAssessmentSteps(action: ReviewAction): boolean {
   if (!("steps" in action)) return false;
   return action.steps.some((step) => isAssessmentMode(step.mode));

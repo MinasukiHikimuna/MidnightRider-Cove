@@ -11,6 +11,7 @@ import { Search } from "@cove/runtime/lucide-react";
 import type { TagTrees } from "./effectPreview";
 import {
   ACTION_KEYS,
+  canApplyAndStay,
   tagsAddedBy,
   type ActionKey,
   type ReviewAction,
@@ -18,6 +19,7 @@ import {
 } from "./model";
 import { useActionKeyMap } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
+import { useMobileLayout } from "./viewport";
 
 export interface EffectPart {
   text: string;
@@ -92,7 +94,7 @@ export function actionTagIds(actions: readonly ReviewAction[]): number[] {
  * Find action: type part of an action's name, choose with ↑/↓, Enter applies and advances,
  * Shift+Enter applies and stays where the view can stay, Esc closes. Lists every action, the
  * keyed ones in key order and then the rest in review order, so actions without a key stay
- * reachable from the keyboard.
+ * reachable from the keyboard. Phone-sized windows leave out the key caps and key hints.
  */
 export function FindAction({
   actions,
@@ -100,6 +102,7 @@ export function FindAction({
   trees,
   isDisabled,
   canStay = true,
+  tapStays = false,
   onApply,
   onClose,
 }: {
@@ -110,9 +113,15 @@ export function FindAction({
   isDisabled?(action: ReviewAction): boolean;
   /** False where applying always moves on (the grid and its preview). */
   canStay?: boolean;
+  /**
+   * A tapped or clicked action applies and stays, as the single-item review's Stay on this item
+   * switch asks; Enter still moves on.
+   */
+  tapStays?: boolean;
   onApply(action: ReviewAction, stay: boolean): void;
   onClose(): void;
 }) {
+  const mobile = useMobileLayout();
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -199,7 +208,7 @@ export function FindAction({
         ref={root}
         role="dialog"
         aria-label="Find an action"
-        className="dq-find-action"
+        className={`dq-find-action${mobile ? " dq-find-mobile" : ""}`}
         onKeyDown={handleKey}
         // A click anywhere in the panel, even on a disabled row or the hints, keeps typing,
         // the arrow keys and Esc in the search field.
@@ -226,7 +235,7 @@ export function FindAction({
               setHighlight(0);
             }}
           />
-          <kbd aria-hidden="true">Esc</kbd>
+          {!mobile && <kbd aria-hidden="true">Esc</kbd>}
         </label>
         {rows.length ? (
           <ul
@@ -245,9 +254,11 @@ export function FindAction({
                   tabIndex={-1}
                   aria-selected={position === active}
                   disabled={isDisabled?.(row.action) ?? false}
-                  onClick={(event) => apply(row, event.shiftKey)}
+                  onClick={(event) =>
+                    apply(row, event.shiftKey || (tapStays && canApplyAndStay(row.action)))
+                  }
                 >
-                  {row.key ? (
+                  {mobile ? null : row.key ? (
                     <kbd>{row.key}</kbd>
                   ) : (
                     <span className="dq-find-no-key" aria-hidden="true">
@@ -273,21 +284,23 @@ export function FindAction({
             No action matches “{query.trim()}”.
           </p>
         )}
-        <p className="dq-find-hints" aria-hidden="true">
-          <span>
-            <kbd>Enter</kbd> applies
-          </span>
-          {canStay && (
+        {!mobile && (
+          <p className="dq-find-hints" aria-hidden="true">
             <span>
-              <kbd>Shift</kbd>
-              <kbd>Enter</kbd> applies and stays
+              <kbd>Enter</kbd> applies
             </span>
-          )}
-          <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> choose
-          </span>
-        </p>
+            {canStay && (
+              <span>
+                <kbd>Shift</kbd>
+                <kbd>Enter</kbd> applies and stays
+              </span>
+            )}
+            <span>
+              <kbd>↑</kbd>
+              <kbd>↓</kbd> choose
+            </span>
+          </p>
+        )}
       </div>
     </>
   );

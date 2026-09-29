@@ -122,9 +122,9 @@ function drawerTabs(review: Review, legacyChoices: boolean): DrawerTab[] {
 }
 
 /**
- * Asks before Esc or Close throw away unsaved changes: a small modal over the page whose Keep
- * editing (focused, and what Esc means here) returns to the drawer and whose Discard closes it as
- * Cancel does.
+ * Asks before Esc, Close or Cancel throw away unsaved changes: a small modal over the page whose
+ * Keep editing (focused, and what Esc means here) returns to the drawer and whose Discard closes
+ * it, restoring the view from before editing.
  */
 function DiscardChangesDialog({
   onKeepEditing,
@@ -174,8 +174,8 @@ function DiscardChangesDialog({
  * Edit review: a drawer over the right-hand column. The header's toolbar, Scope and the queue stay
  * live beside it as the draft's preview (their criteria are the draft's), while the review's
  * actions pause. Review, Appearance and Actions hold the rest of the definition; Save review keeps
- * everything, Cancel restores the view from before editing. Esc and Close do the same at once while
- * nothing has changed, and ask first when something has.
+ * everything, Cancel restores the view from before editing. Cancel, Esc and Close do so at once
+ * while nothing has changed, and ask first when something has.
  */
 export function EditorDrawer({
   draft,
@@ -228,7 +228,8 @@ export function EditorDrawer({
   const [problem, setProblem] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reveal, setReveal] = useState(0);
-  // Esc or Close with unsaved changes asks first; Keep editing hands focus back to what had it.
+  // Esc, Close or Cancel with unsaved changes asks first; Keep editing hands focus back to what had
+  // it.
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const discardOpener = useRef<HTMLElement | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
@@ -243,8 +244,8 @@ export function EditorDrawer({
     const opener = discardOpener.current;
     discardOpener.current = null;
     if (!opener) return;
-    // Back where Esc or Close was pressed; the drawer itself when that is gone, disabled or outside
-    // it (some browsers do not focus a clicked button), so Esc keeps reaching the drawer.
+    // Back where Esc, Close or Cancel was pressed; the drawer itself when that is gone, disabled or
+    // outside it (some browsers do not focus a clicked button), so Esc keeps reaching the drawer.
     const usable =
       opener.isConnected &&
       !!aside.current?.contains(opener) &&
@@ -252,7 +253,7 @@ export function EditorDrawer({
     (usable ? opener : aside.current)?.focus({ preventScroll: true });
   }, [confirmingDiscard]);
 
-  /** Esc and Close: without changes the drawer closes as Cancel does, with changes it asks first. */
+  /** Esc, Close and Cancel: without changes the drawer closes at once, with changes it asks first. */
   function requestClose() {
     if (saving || confirmingDiscard) return;
     if (!dirty) {
@@ -439,7 +440,7 @@ export function EditorDrawer({
                 : "Unsaved changes"
               : ""}
           </p>
-          <button type="button" className="dq-button" disabled={saving} onClick={onCancel}>
+          <button type="button" className="dq-button" disabled={saving} onClick={requestClose}>
             Cancel
           </button>
           {/* Not disabled while saving: a disabled button would drop focus to the page, where a

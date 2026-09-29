@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -18,6 +19,7 @@ import {
   testGlobalShortcuts,
   testKeyboardConflicts,
 } from "./runtime-components";
+import { setViewportWidth } from "./viewport";
 
 const { api, review } = vi.hoisted(() => ({
   api: {
@@ -2944,7 +2946,14 @@ it("edits a grid review in a drawer beside the cards, with actions paused, and C
   await screen.findByRole("article", { name: "Video 3" });
   expect(screen.getByText("Previewing the draft")).toBeInTheDocument();
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
+  // Cancel asks first, as Esc and Close do; Discard confirms it.
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
   expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
   // The queue as it was, with its selection and focused card, and its URL; nothing was saved.
   expect(screen.getByRole("article", { name: "Video 1" })).toHaveAttribute("aria-current", "true");
@@ -3087,8 +3096,14 @@ it("counts a search made before the grid's drawer opened as unsaved, which Cance
   const confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
   fireEvent.click(within(confirm).getByRole("button", { name: "Keep editing" }));
   expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
+  // Cancel asks the same.
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
-  // Cancel saves nothing, and the queue keeps its temporary search.
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
+  // Discarding saves nothing, and the queue keeps its temporary search.
   expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
   expect(api.saveReviews).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
@@ -3252,6 +3267,11 @@ it("counts a search made before the workspace's drawer opened as unsaved, which 
   fireEvent(confirm, new Event("cancel", { cancelable: true }));
   expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
   expect(api.saveReviews).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
   expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
@@ -3312,10 +3332,15 @@ it("keeps the grid's temporary criteria apart from the saved ones in a Single vi
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[1].q).toBe("temporary"));
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
   expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
-  // The drawer counts the search as unsaved; Cancel leaves it so.
+  // The drawer counts the search as unsaved; Cancel (after Discard) leaves it so.
   const drawer = await openEditor();
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
   // Reset goes back to the saved criteria, not to the grid's.
   const reset = await screen.findByRole("button", { name: "Reset" });
   await waitFor(() => expect(reset).toBeEnabled());
@@ -3650,4 +3675,61 @@ it("keeps a saving new review's dialog open on a second Esc, and hands focus bac
   expect(name).toBeEnabled();
   expect(name).toHaveFocus();
   expect(name).toHaveValue("Pending review");
+});
+
+describe("phone-sized windows", () => {
+  it("gives the grid's bar and the preview plain buttons without key caps or key hints", async () => {
+    setViewportWidth(390);
+    const preview = await openPreview();
+    // The grid's bar under the cards.
+    const gridBar = document.querySelector<HTMLElement>(".dq-bar-dock .dq-action-bar")!;
+    expect(gridBar).toHaveClass("dq-bar-mobile");
+    expect(within(gridBar).getByRole("button", { name: "Action 1" })).toBeInTheDocument();
+    expect(gridBar.querySelector(".dq-bar-tiles kbd")).toBeNull();
+    expect(gridBar).not.toHaveTextContent("Arrows move");
+    // The preview: its title on a line of its own, no key caps on its steps, no key hints.
+    expect(preview).toHaveClass("dq-preview-mobile");
+    const previous = within(preview).getByRole("button", { name: "Previous video" });
+    const next = within(preview).getByRole("button", { name: "Next video" });
+    expect(previous.querySelector("kbd")).toBeNull();
+    expect(next.querySelector("kbd")).toBeNull();
+    expect(next).toHaveAttribute("aria-keyshortcuts", "m");
+    expect(preview).not.toHaveTextContent("N M previous / next");
+    expect(preview).not.toHaveTextContent("Enter or Esc closes");
+    const bar = within(preview).getByRole("region", { name: "Actions" });
+    expect(bar).toHaveClass("dq-bar-mobile");
+    expect(bar.querySelector(".dq-bar-tiles kbd")).toBeNull();
+    expect(within(bar).getByRole("button", { name: "Find" })).toHaveTextContent(/^Find$/);
+    // A tap applies the action to this video.
+    fireEvent.click(within(bar).getByRole("button", { name: "Action 1" }));
+    await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+    expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 1");
+  });
+
+  it("keeps Stay on this item from view to view until the page reloads, and never stores it", async () => {
+    setViewportWidth(390);
+    const storedBefore = [Object.keys(localStorage), Object.keys(sessionStorage)];
+    openGrid();
+    await screen.findByRole("article", { name: "Video 1" });
+    await switchLayout("Single");
+    await screen.findByRole("heading", { name: "Reviewing this video" });
+    const toggle = await screen.findByRole("switch", { name: "Stay on this item" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    await switchLayout("Grid");
+    await screen.findByRole("article", { name: "Video 1" });
+    expect(screen.queryByRole("switch", { name: "Stay on this item" })).not.toBeInTheDocument();
+    await switchLayout("Single");
+    await screen.findByRole("heading", { name: "Reviewing this video" });
+    expect(await screen.findByRole("switch", { name: "Stay on this item" })).toBeChecked();
+    expect([Object.keys(localStorage), Object.keys(sessionStorage)]).toEqual(storedBefore);
+    // A reload starts with it off.
+    cleanup();
+    openGrid();
+    await screen.findByRole("article", { name: "Video 1" });
+    await switchLayout("Single");
+    await screen.findByRole("heading", { name: "Reviewing this video" });
+    expect(await screen.findByRole("switch", { name: "Stay on this item" })).not.toBeChecked();
+  });
 });

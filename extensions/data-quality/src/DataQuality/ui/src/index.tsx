@@ -112,6 +112,7 @@ import {
 import { newReview, NewReviewDialog, type ReviewDraft } from "./NewReviewDialog";
 import { downloadReviews, exportReview, readReviewFile } from "./reviewFiles";
 import { useReviewKeyLabels, useReviewKeys } from "./reviewKeys";
+import { useMobileLayout } from "./viewport";
 import {
   queryKeys,
   readQuery,
@@ -381,6 +382,9 @@ export function DataQualityPage({
   // A request to open the active review's editor drawer (Edit on the list, a created review);
   // whichever view shows the review opens it once its queue has loaded, then clears the request.
   const [editRequest, setEditRequest] = useState(0);
+  // The single-item review's Stay on this item switch (phone-sized windows), kept here so it lasts
+  // from review to review until the page reloads; it is never stored.
+  const [stayOnTap, setStayOnTap] = useState(false);
   // The grid's editor drawer: the review's definition being edited (its queue criteria stay the
   // live queue's), and the save state.
   const [gridEditor, setGridEditor] = useState<{
@@ -1996,6 +2000,8 @@ export function DataQualityPage({
             notices: pageNotices,
             busy: duplicating,
           }}
+          stayOnTap={stayOnTap}
+          onStayOnTapChange={setStayOnTap}
         />
       ) : review ? (
         renderGridReview(review)
@@ -2648,14 +2654,13 @@ export function DataQualityPage({
                     </button>
                   </>
                 }
-                hints={
-                  notes.length
-                    ? notes.join(" ")
-                    : tagReview
-                      ? "Arrows move · Space selects · Enter opens"
-                      : gridEditor
-                        ? "Arrows move · Space selects"
-                        : "Arrows move · Space selects · Enter previews"
+                hints={notes.length ? notes.join(" ") : undefined}
+                keyHints={
+                  tagReview
+                    ? "Arrows move · Space selects · Enter opens"
+                    : gridEditor
+                      ? "Arrows move · Space selects"
+                      : "Arrows move · Space selects · Enter previews"
                 }
                 notices={
                   showsError || message ? (
@@ -3056,6 +3061,8 @@ function ReviewPreview({
   onFindOpenChange(open: boolean): void;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
+  // Phone-sized windows: no key caps or key hints, and the title takes a line of its own.
+  const mobile = useMobileLayout();
   const playerControls = useRef<{
     toggle(): void;
     seekBy(seconds: number): void;
@@ -3181,7 +3188,8 @@ function ReviewPreview({
     root.focus({ preventScroll: true });
   }
   // A focused control that a running action or the last video disables drops focus to the page,
-  // which would leave the preview's keys dead until a click back in. Once the browser has done so
+  // which would leave the preview's keys dead until a click back in, and so does a focused bar
+  // button that goes when the window crosses the phone-sized width. Once the browser has done so
   // (it does at the next rendering update), focus returns to the preview.
   useEffect(() => {
     if (findOpen) return;
@@ -3200,7 +3208,7 @@ function ReviewPreview({
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
     };
-  }, [findOpen, pending, refreshing, hasNext, hasPrevious, video.id]);
+  }, [findOpen, pending, refreshing, hasNext, hasPrevious, video.id, mobile]);
   const target = selectedCount
     ? `the ${selectedCount} selected video${selectedCount === 1 ? "" : "s"}`
     : "this video";
@@ -3211,7 +3219,7 @@ function ReviewPreview({
       role="dialog"
       aria-modal="true"
       aria-label={`Review preview: ${title}`}
-      className="dq-preview"
+      className={`dq-preview${mobile ? " dq-preview-mobile" : ""}`}
       onKeyDown={trapFocus}
       onKeyDownCapture={handlePlayerKey}
       onMouseDown={(event) => {
@@ -3231,7 +3239,7 @@ function ReviewPreview({
             onClick={onPrevious}
           >
             <ChevronLeft aria-hidden="true" />
-            <KeyCap binding="n" hidden />
+            {!mobile && <KeyCap binding="n" hidden />}
           </button>
           <button
             type="button"
@@ -3242,7 +3250,7 @@ function ReviewPreview({
             disabled={!hasNext || pending || refreshing}
             onClick={onNext}
           >
-            <KeyCap binding="m" hidden />
+            {!mobile && <KeyCap binding="m" hidden />}
             <ChevronRight aria-hidden="true" />
           </button>
           <div className="dq-preview-title">
@@ -3322,14 +3330,16 @@ function ReviewPreview({
             {error}
           </p>
         )}
-        <p className="dq-preview-hints">
-          <span>Space play / pause</span>
-          <span>← → ±60 s · Alt ±10 s · Shift ±5 s</span>
-          <span>, . ±10 %</span>
-          <span>↑ ↓ volume</span>
-          <span>N M previous / next</span>
-          <span>Enter or Esc closes</span>
-        </p>
+        {!mobile && (
+          <p className="dq-preview-hints">
+            <span>Space play / pause</span>
+            <span>← → ±60 s · Alt ±10 s · Shift ±5 s</span>
+            <span>, . ±10 %</span>
+            <span>↑ ↓ volume</span>
+            <span>N M previous / next</span>
+            <span>Enter or Esc closes</span>
+          </p>
+        )}
         <ActionBar
           className="dq-action-bar-docked"
           actions={review.actions}

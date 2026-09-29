@@ -407,17 +407,46 @@ it("refuses an incomplete draft and shows where it is incomplete", () => {
 
 const discardDialog = () => screen.queryByRole("dialog", { name: "Discard unsaved changes?" });
 
-it("closes at once with Esc or Close while nothing has changed, and with Cancel always", () => {
+it("closes at once with Esc, Close or Cancel while nothing has changed", () => {
   const { drawer, onCancel } = open(video);
   fireEvent.keyDown(drawer, { key: "Escape" });
   expect(onCancel).toHaveBeenCalledTimes(1);
   fireEvent.click(within(drawer).getByRole("button", { name: "Close editor" }));
   expect(onCancel).toHaveBeenCalledTimes(2);
-  // Cancel discards unsaved changes without asking: it says what it does.
-  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Changed" } });
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
   expect(onCancel).toHaveBeenCalledTimes(3);
   expect(discardDialog()).toBeNull();
+  // A change undone is no change: Cancel closes at once again.
+  const description = within(drawer).getByLabelText("Description");
+  fireEvent.change(description, { target: { value: "Changed" } });
+  fireEvent.change(description, { target: { value: video.description } });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  expect(onCancel).toHaveBeenCalledTimes(4);
+  expect(discardDialog()).toBeNull();
+});
+
+it("asks before Cancel discards unsaved changes, as Esc and Close do", () => {
+  const { drawer, onCancel } = open(video);
+  fireEvent.change(within(drawer).getByLabelText("Description"), { target: { value: "Changed" } });
+  const cancel = within(drawer).getByRole("button", { name: "Cancel" });
+  cancel.focus();
+  fireEvent.click(cancel);
+  let dialog = discardDialog()!;
+  expect(dialog).toHaveTextContent("Closing the editor leaves the review as it was last saved.");
+  expect(within(dialog).getByRole("button", { name: "Keep editing" })).toHaveFocus();
+  expect(onCancel).not.toHaveBeenCalled();
+  // Keep editing hands focus back to Cancel and keeps the draft.
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+  expect(discardDialog()).toBeNull();
+  expect(cancel).toHaveFocus();
+  expect(within(drawer).getByLabelText("Description")).toHaveValue("Changed");
+  expect(onCancel).not.toHaveBeenCalled();
+  // Discard cancels the edit.
+  fireEvent.click(cancel);
+  dialog = discardDialog()!;
+  fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+  expect(discardDialog()).toBeNull();
+  expect(onCancel).toHaveBeenCalledTimes(1);
 });
 
 it("asks before Esc or Close discard unsaved changes, and Keep editing returns to where they were", () => {

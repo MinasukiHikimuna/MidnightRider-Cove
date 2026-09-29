@@ -1,7 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ActionBar } from "../ActionBar";
+import { KeyCap } from "../ActionPad";
 import type { MediaReviewAction, TagReviewAction } from "../model";
+import { setViewportWidth } from "./viewport";
+// The bar's own styles, for what phone-sized windows hide (jsdom applies them, without layout).
+import "../styles.css";
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("../api", async (original) => ({
@@ -171,4 +175,97 @@ it("pauses every tile, Find action included, and says why while the review is ed
   fireEvent.click(tile);
   expect(onApply).not.toHaveBeenCalled();
   expect(onFind).not.toHaveBeenCalled();
+});
+
+describe("phone-sized windows", () => {
+  const keysOf = (group: HTMLElement) =>
+    [...group.querySelectorAll<HTMLElement>("button")].map((tile) => tile.getAttribute("aria-keyshortcuts"));
+  const summary = (
+    <>
+      <p className="dq-bar-target">2 selected</p>
+      <button type="button" className="dq-text-button">
+        Select all
+        <KeyCap binding="Ctrl/⌘A" hidden />
+      </button>
+    </>
+  );
+
+  it("shows plain buttons in key order under the summary, one group per keyboard row, without key caps or key hints", async () => {
+    setViewportWidth(390);
+    api.request.mockImplementation(async (path: string) => ({ name: `Tag ${path.split("/").at(-1)}` }));
+    const list = actions(5);
+    list[0] = { ...list[0], shortcut: "s" };
+    list[4] = { ...list[4], shortcut: "a" };
+    list.push({ id: "none", label: "Hidden", steps: [], shortcut: "none" });
+    const { region, onApply, onFind } = bar(list, { summary, hints: undefined, keyHints: "Arrows move" });
+    expect(region).toHaveClass("dq-bar-mobile");
+    expect(region).not.toHaveClass("dq-bar-stacked");
+    expect(region.querySelector(".dq-bar-line")).toBeNull();
+    const groups = [...region.querySelectorAll<HTMLElement>(".dq-bar-tiles .dq-mobile-group")];
+    expect(groups).toHaveLength(2);
+    expect(keysOf(groups[0])).toEqual(["q", "w", "e"]);
+    expect(keysOf(groups[1])).toEqual(["a", "s", "-"]);
+    // Labels without keys; Find named Find, without the - key's cap.
+    const first = within(groups[0]).getByRole("button", { name: "Action 2" });
+    await waitFor(() => expect(first).toHaveAccessibleDescription("+ Tag 101"));
+    const find = within(groups[1]).getByRole("button", { name: "Find, 1 more" });
+    expect(find).toHaveTextContent(/^Find1 more$/);
+    expect(region.querySelector(".dq-bar-tiles kbd")).toBeNull();
+    // The summary's key caps are hidden, and the keyboard hints left out.
+    expect(within(region).getByRole("button", { name: /Select all/ }).querySelector("kbd")).not.toBeVisible();
+    expect(region).not.toHaveTextContent("Arrows move");
+    // Under a mouse, never on touch, the effect line above the bar shows without a key cap, and a
+    // tap ends it.
+    fireEvent.pointerEnter(first, { pointerType: "touch" });
+    fireEvent.mouseEnter(first);
+    expect(region.querySelector(".dq-bar-effect")).toBeNull();
+    fireEvent.pointerEnter(first, { pointerType: "mouse" });
+    expect(region.querySelector(".dq-bar-effect")).toHaveTextContent(/^Action 2\+ Tag 101$/);
+    fireEvent.click(first);
+    expect(onApply).toHaveBeenCalledWith(list[1]);
+    expect(region.querySelector(".dq-bar-effect")).toBeNull();
+    fireEvent.click(find);
+    expect(onFind).toHaveBeenCalledTimes(1);
+    // Touch-sized buttons in a list that scrolls within part of the window.
+    expect(parseFloat(getComputedStyle(first).minHeight)).toBeGreaterThanOrEqual(44);
+    expect(getComputedStyle(region.querySelector(".dq-bar-tiles")!).overflowY).toBe("auto");
+  });
+
+  it("keeps notes, which say why actions cannot run", () => {
+    setViewportWidth(390);
+    api.request.mockResolvedValue({ name: "Tag" });
+    const { region } = bar(actions(1), { hints: "Needs write permission.", keyHints: "Arrows move" });
+    expect(within(region).getByText("Needs write permission.")).toBeInTheDocument();
+    expect(region).not.toHaveTextContent("Arrows move");
+  });
+
+  it("switches between the keyboard rows and the buttons at 760 px", () => {
+    setViewportWidth(761);
+    api.request.mockResolvedValue({ name: "Tag" });
+    const { region } = bar(actions(3), { hints: undefined, keyHints: "Arrows move" });
+    expect(region).not.toHaveClass("dq-bar-mobile");
+    expect(within(region).getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
+    expect(region).toHaveTextContent("Arrows move");
+    act(() => setViewportWidth(760));
+    expect(region).toHaveClass("dq-bar-mobile");
+    expect(within(region).getByRole("button", { name: "Action 1" })).toBeInTheDocument();
+    expect(region.querySelector(".dq-bar-tiles kbd")).toBeNull();
+    expect(region).not.toHaveTextContent("Arrows move");
+    act(() => setViewportWidth(1024));
+    expect(region).not.toHaveClass("dq-bar-mobile");
+    expect(within(region).getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
+  });
+
+  it("pauses every button, Find included, while the review is edited", () => {
+    setViewportWidth(390);
+    api.request.mockResolvedValue({ name: "Tag" });
+    const { region, onApply } = bar(actions(2), { paused: true });
+    expect(region).toHaveClass("dq-bar-mobile dq-bar-paused");
+    expect(within(region).getByText("Actions are paused while you edit the review")).toBeInTheDocument();
+    const tile = within(region).getByRole("button", { name: "Action 1" });
+    expect(tile).toBeDisabled();
+    expect(within(region).getByRole("button", { name: "Find" })).toBeDisabled();
+    fireEvent.click(tile);
+    expect(onApply).not.toHaveBeenCalled();
+  });
 });

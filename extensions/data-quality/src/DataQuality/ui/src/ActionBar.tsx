@@ -11,15 +11,20 @@ import {
 import { Pencil, Search } from "@cove/runtime/lucide-react";
 import {
   KeyCap,
+  MobileActionGroups,
+  MobileFindButton,
+  actionsByKeyRow,
   createActionPreviewStore,
+  mobilePreviewHandlers,
   useActionPreview,
   type ActionPreviewStore,
 } from "./ActionPad";
 import { actionEffectParts, actionTagIds } from "./FindAction";
 import type { TagTrees } from "./effectPreview";
-import { ACTION_KEY_ROWS, type ActionKeyMap, type ReviewAction } from "./model";
+import type { ActionKeyMap, ReviewAction } from "./model";
 import { useActionKeyMap, useReviewKeyLabels } from "./reviewKeys";
 import { useTagNames } from "./tagNames";
+import { useMobileLayout } from "./viewport";
 
 type TagGroups = ReadonlyArray<{ id: number; name: string }>;
 
@@ -29,7 +34,8 @@ type TagGroups = ReadonlyArray<{ id: number; name: string }>;
  * keyboard row that holds actions, in key order (a long line wraps), and Find action, which also
  * reaches the actions without a key. Tiles share the pad's key caps and effect wording: pointing
  * at or focusing one shows what it changes above the bar, and the tile carries the same text as
- * its description.
+ * its description. Phone-sized windows get the pad's plain groups of buttons instead
+ * (MobileActionGroups), under the summary, without key caps or key hints.
  */
 export function ActionBar({
   actions,
@@ -41,6 +47,7 @@ export function ActionBar({
   onFind,
   summary,
   hints,
+  keyHints,
   notices,
   status,
   className = "",
@@ -58,8 +65,10 @@ export function ActionBar({
   onFind(): void;
   /** What the actions apply to, and any selection controls. */
   summary: ReactNode;
-  /** Right-hand hint or note. */
+  /** Right-hand note, such as why some actions cannot run. */
   hints?: ReactNode;
+  /** Keyboard hints, shown when there is no note; phone-sized windows leave them out. */
+  keyHints?: ReactNode;
   /** Messages shown just above the bar. */
   notices?: ReactNode;
   /** Read out while an action runs. */
@@ -70,15 +79,14 @@ export function ActionBar({
 }) {
   const keys = useReviewKeyLabels();
   const keyMap = useActionKeyMap(actions);
+  const mobile = useMobileLayout();
   const baseId = useId();
   const names = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
   const [preview] = useState(() => createActionPreviewStore<ReviewAction>());
   const bar = useRef<HTMLElement>(null);
-  const stacked = useStackedLayout(bar, actions);
+  const stacked = useStackedLayout(bar, actions, !mobile);
   // The positions of the keyed actions, one line per keyboard row, in key order.
-  const lines = ACTION_KEY_ROWS.map((row) =>
-    row.flatMap((key) => keyMap.actionOn.get(key) ?? []),
-  ).filter((line) => line.length > 0);
+  const lines = actionsByKeyRow(keyMap);
   if (!lines.length && actions.length) lines.push([]);
   const keyed = lines.flat();
   const extra = actions.length - keyed.length;
@@ -94,17 +102,57 @@ export function ActionBar({
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) preview.clear(action);
     },
   });
+  const hint = hints ?? (mobile ? undefined : keyHints);
+  const mobileTile = (index: number) => {
+    const action = actions[index];
+    return (
+      <button
+        key={action.id}
+        type="button"
+        className="dq-mobile-tile"
+        title={action.label}
+        aria-keyshortcuts={keyMap.keys[index] || undefined}
+        aria-describedby={`${baseId}-effect-${index}`}
+        disabled={paused || isDisabled(action)}
+        onClick={() => {
+          // A tap that focused the button leaves no preview behind.
+          preview.clear(action);
+          onApply(action);
+        }}
+        {...(paused ? {} : mobilePreviewHandlers(preview, action))}
+      >
+        <span className="dq-mobile-label">{action.label}</span>
+      </button>
+    );
+  };
 
   return (
     <section
       ref={bar}
-      className={`dq-action-bar${stacked ? " dq-bar-stacked" : ""}${busy ? " dq-bar-busy" : ""}${paused ? " dq-bar-paused" : ""}${className ? ` ${className}` : ""}`}
+      className={`dq-action-bar${mobile ? " dq-bar-mobile" : stacked ? " dq-bar-stacked" : ""}${busy ? " dq-bar-busy" : ""}${paused ? " dq-bar-paused" : ""}${className ? ` ${className}` : ""}`}
       aria-label="Actions"
     >
       <div className="dq-bar-summary">{summary}</div>
       <span className="dq-bar-divider" aria-hidden="true" />
-      <div className="dq-bar-tiles" aria-busy={busy || undefined}>
-        {lines.map((line, lineIndex) => (
+      <div
+        className={`dq-bar-tiles${mobile ? " dq-mobile-actions" : ""}`}
+        aria-busy={busy || undefined}
+      >
+        {mobile && actions.length > 0 && (
+          <MobileActionGroups
+            groups={lines}
+            renderAction={mobileTile}
+            find={
+              <MobileFindButton
+                extra={extra}
+                findKey={keys.find}
+                disabled={paused}
+                onFind={onFind}
+              />
+            }
+          />
+        )}
+        {!mobile && lines.map((line, lineIndex) => (
           <div key={lineIndex} className="dq-bar-line">
             {line.map((index) => {
               const action = actions[index];
@@ -146,7 +194,7 @@ export function ActionBar({
         ))}
         {!actions.length && <p className="dq-bar-empty">This review has no actions.</p>}
       </div>
-      {hints && <p className="dq-bar-hints">{hints}</p>}
+      {hint && <p className="dq-bar-hints">{hint}</p>}
       {/* Paused, the tiles preview nothing: the line above the bar says why they wait instead. */}
       {paused ? (
         <p className="dq-bar-effect dq-bar-paused-note">
@@ -161,6 +209,7 @@ export function ActionBar({
           names={names}
           tagGroups={tagGroups}
           trees={trees}
+          showKey={!mobile}
         />
       )}
       {notices && <div className="dq-bar-notices">{notices}</div>}
@@ -185,11 +234,16 @@ export function ActionBar({
  * on a single line. Every width compared is the content's own, the same in both layouts, so the
  * choice never flips back and forth.
  */
-function useStackedLayout(bar: RefObject<HTMLElement | null>, actions: readonly ReviewAction[]) {
+function useStackedLayout(
+  bar: RefObject<HTMLElement | null>,
+  actions: readonly ReviewAction[],
+  /** False for the phone-sized layout, which always puts the summary over the buttons. */
+  enabled: boolean,
+) {
   const [stacked, setStacked] = useState(false);
   useLayoutEffect(() => {
     const element = bar.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
+    if (!element || !enabled || typeof ResizeObserver === "undefined") return;
     const summary = element.querySelector<HTMLElement>(".dq-bar-summary");
     const measure = () => {
       const style = getComputedStyle(element);
@@ -244,11 +298,14 @@ function useStackedLayout(bar: RefObject<HTMLElement | null>, actions: readonly 
       live = false;
       observer.disconnect();
     };
-  }, [bar, actions]);
+  }, [bar, actions, enabled]);
   return stacked;
 }
 
-/** Above the bar while a tile is pointed at or focused: "Q Label + Tag − rest of Tree". */
+/**
+ * Above the bar while a tile is pointed at or focused: "Q Label + Tag − rest of Tree", without the
+ * key cap in phone-sized windows.
+ */
 function BarEffect({
   actions,
   keyMap,
@@ -256,6 +313,7 @@ function BarEffect({
   names,
   tagGroups,
   trees,
+  showKey,
 }: {
   actions: readonly ReviewAction[];
   keyMap: ActionKeyMap;
@@ -263,6 +321,7 @@ function BarEffect({
   names: Record<number, string | null>;
   tagGroups?: TagGroups;
   trees?: TagTrees;
+  showKey: boolean;
 }) {
   const action = useActionPreview(preview);
   const index = action ? actions.indexOf(action) : -1;
@@ -270,7 +329,7 @@ function BarEffect({
   const binding = keyMap.keys[index];
   return (
     <p className="dq-bar-effect" aria-hidden="true">
-      {binding && <KeyCap binding={binding} />}
+      {binding && showKey && <KeyCap binding={binding} />}
       <strong>{action.label}</strong>
       {actionEffectParts(action, names, tagGroups, trees).map((part, position) => (
         <span key={position} data-effect-tone={part.tone}>

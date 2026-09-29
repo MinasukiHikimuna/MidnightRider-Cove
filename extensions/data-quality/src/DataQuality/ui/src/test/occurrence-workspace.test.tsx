@@ -17,6 +17,7 @@ import {
   testPlayerShortcuts,
   testVideoControls,
 } from "./runtime-components";
+import { setViewportWidth } from "./viewport";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
 import type { OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
@@ -1019,6 +1020,7 @@ it("moves between queue pages with the header pager and its go-to field", async 
 });
 
 it("cancels rule criteria without changing saved defaults or the selected partner", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   const save = vi.fn();
   const rendered = open(review, true, save);
   await ready();
@@ -1031,7 +1033,13 @@ it("cancels rule criteria without changing saved defaults or the selected partne
   await waitFor(() => expect(screen.getByRole("button", { name: "Save review" })).toBeEnabled());
   fireEvent.keyDown(document.body, { key: "q", code: "KeyQ" });
   expect(api.applyTags).not.toHaveBeenCalled();
+  // With unsaved changes Cancel asks first, as Esc and Close do.
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(window.location.search).toBe(before);
   expect(save).not.toHaveBeenCalled();
@@ -1616,6 +1624,7 @@ it("continues into the preceding page when Apply & stay clamps a removed last sc
 
 
 it("restores the pinned cursor when cancelling a rule edit after a queue reload", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   api.loadOccurrencePage.mockResolvedValueOnce({ items: [first, second, third], totalCount: 2 });
   api.loadOccurrencePage.mockResolvedValue({ items: [first, third], totalCount: 2 });
   const rendered = open(); await ready();
@@ -1630,6 +1639,11 @@ it("restores the pinned cursor when cancelling a rule edit after a queue reload"
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "draft" } });
   await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads));
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("link", { name: "Next scene" });
@@ -1987,6 +2001,7 @@ it("keeps the header, Scope and queue live beside the drawer while its actions a
 });
 
 it("previews the draft's keys on the paused pad while the drawer is open", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   const save = vi.fn().mockResolvedValue(true);
   const rule = { ...review, actions: numberedActions(2) };
   const rendered = open(rule, true, save);
@@ -2003,8 +2018,13 @@ it("previews the draft's keys on the paused pad while the drawer is open", async
   expect(rows).toHaveLength(2);
   expect(within(rows[0]).getByRole("button", { name: "q Action 1" })).toBeDisabled();
   expect(within(rows[1]).getByRole("button", { name: "a Action 2" })).toBeDisabled();
-  // Cancel drops the draft and its placement.
+  // Cancel drops the draft and its placement, once Discard confirms it.
   fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
   await ready();
   expect(screen.getByRole("button", { name: "w Action 2" })).toBeEnabled();
   expect(activeTestKeys()).toContain("local:w");
@@ -2274,4 +2294,87 @@ it("names occurrence tags from their applications", async () => {
   await ready();
   const chips = within(screen.getByRole("list", { name: "Current tags" })).getAllByRole("listitem");
   expect(chips.map((chip) => chip.textContent)).toEqual(["Same", "Same"]);
+});
+
+it("offers Stay on this item at phone widths: tapped actions, in the pad or in Find, apply and stay, and keys keep their meaning", async () => {
+  setViewportWidth(390);
+  open({ ...review, actions: numberedActions(3) });
+  await ready();
+  const pad = screen.getByRole("region", { name: "Actions" });
+  expect(pad).toHaveClass("dq-pad-mobile");
+  expect(pad.querySelector("kbd")).toBeNull();
+  const toggle = within(pad).getByRole("switch", { name: "Stay on this item" });
+  expect(toggle).not.toBeChecked();
+  fireEvent.click(toggle);
+  expect(toggle).toBeChecked();
+  // A tapped action applies and stays on the performer.
+  fireEvent.click(within(pad).getByRole("button", { name: "Action 1" }));
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe("Action 1");
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
+  // So does an action tapped in Find, which shows no key caps or key hints here.
+  fireEvent.click(within(pad).getByRole("button", { name: "Find" }));
+  const find = await screen.findByRole("dialog", { name: "Find an action" });
+  expect(find.querySelector("kbd")).toBeNull();
+  expect(find).not.toHaveTextContent("applies and stays");
+  fireEvent.click(findOptions()[1]);
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  expect(appliedLabel(1)).toBe("Action 2");
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
+  // Keys keep their meaning: q applies and moves on.
+  fireEvent.keyDown(document.body, { key: "q" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(3));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+});
+
+it("keeps Enter in Find and actions without steps moving on while Stay on this item is on", async () => {
+  setViewportWidth(390);
+  open({ ...review, actions: [...numberedActions(2), { id: "next", label: "Next one", steps: [] }] });
+  await ready();
+  const pad = screen.getByRole("region", { name: "Actions" });
+  fireEvent.click(within(pad).getByRole("switch", { name: "Stay on this item" }));
+  // Enter is the keyboard's, and moves on as always.
+  fireEvent.click(within(pad).getByRole("button", { name: "Find" }));
+  const search = await screen.findByRole("combobox", { name: "Find an action" });
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  expect(appliedLabel()).toBe("Action 1");
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  await ready();
+  // An action without steps, tapped in Find, moves on too: staying would do nothing at all.
+  fireEvent.click(within(screen.getByRole("region", { name: "Actions" })).getByRole("button", { name: "Find" }));
+  await screen.findByRole("dialog", { name: "Find an action" });
+  fireEvent.click(findOptions().find((option) => option.textContent?.includes("Next one"))!);
+  await waitFor(() => expect(screen.queryByRole("heading", { name: "Reviewing Second performer" })).not.toBeInTheDocument());
+  expect(api.applyTags).toHaveBeenCalledTimes(1);
+});
+
+it("lets taps in Find move on in wider windows even with Stay on this item left on", async () => {
+  setViewportWidth(390);
+  open({ ...review, actions: numberedActions(2) });
+  await ready();
+  fireEvent.click(within(screen.getByRole("region", { name: "Actions" })).getByRole("switch", { name: "Stay on this item" }));
+  act(() => setViewportWidth(1024));
+  expect(screen.queryByRole("switch", { name: "Stay on this item" })).not.toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: "-" });
+  await screen.findByRole("dialog", { name: "Find an action" });
+  fireEvent.click(findOptions()[0]);
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+});
+
+it("moves on after a tapped action while Stay on this item is off, and shows no switch in wider windows", async () => {
+  setViewportWidth(390);
+  open({ ...review, actions: numberedActions(2) });
+  await ready();
+  const pad = screen.getByRole("region", { name: "Actions" });
+  expect(within(pad).getByRole("switch", { name: "Stay on this item" })).not.toBeChecked();
+  fireEvent.click(within(pad).getByRole("button", { name: "Action 2" }));
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  act(() => setViewportWidth(1024));
+  expect(screen.queryByRole("switch", { name: "Stay on this item" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
 });

@@ -1,8 +1,10 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionPad, createActionPreviewStore } from "../ActionPad";
 import type { MediaKind, MediaReviewAction } from "../model";
 import type { TagState } from "../reviewTags";
+import { setViewportWidth } from "./viewport";
 // The pad's own styles, for where its controls sit (jsdom applies them, without layout).
 import "../styles.css";
 
@@ -286,4 +288,182 @@ it("says its actions wait while the review is edited, and previews none of them"
   expect(tile).toBeDisabled();
   fireEvent.mouseEnter(tile.parentElement!);
   expect(preview.get()).toBeNull();
+});
+
+describe("phone-sized windows", () => {
+  const mobileTiles = (group: HTMLElement) =>
+    [...group.querySelectorAll<HTMLElement>("button")].map((tile) => tile.getAttribute("aria-keyshortcuts"));
+
+  it("lays the actions out as plain buttons in key order, one group per keyboard row, without key caps or empty keys", async () => {
+    setViewportWidth(390);
+    const actions = numbered(14);
+    actions[0] = { ...actions[0], shortcut: "å" };
+    actions[11] = { ...actions[11], shortcut: "a" };
+    actions[12] = { ...actions[12], shortcut: "s" };
+    actions[13] = { ...actions[13], shortcut: "none" };
+    actions.push({ id: "absent", label: "Not visible", steps: [{ mode: "MARK_ABSENT", tagIds: [2] }], shortcut: "z" });
+    const { container, onApply, onFind } = pad(actions);
+    const region = screen.getByRole("region", { name: "Actions" });
+    expect(region).toHaveClass("dq-pad-mobile");
+    // No key caps, empty or fixed keys, keyboard row offsets or Apply and stay pins.
+    expect(region.querySelector("kbd")).toBeNull();
+    expect(region.querySelector(".dq-pad-row, .dq-pad-slot, .dq-pad-pin")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Apply and stay/ })).not.toBeInTheDocument();
+    // In key order: the Auto actions around the pin on å, a and s alone, then z and Find.
+    const groups = [...region.querySelectorAll<HTMLElement>(".dq-mobile-group")];
+    expect(groups).toHaveLength(3);
+    expect(mobileTiles(groups[0])).toEqual(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"]);
+    expect(mobileTiles(groups[1])).toEqual(["a", "s"]);
+    expect(mobileTiles(groups[2])).toEqual(["z", "-"]);
+    // Labels without their keys, the absence marker kept; the keys still work and are announced.
+    expect(within(groups[0]).getByRole("button", { name: "Action 2" })).toHaveAttribute("aria-keyshortcuts", "q");
+    expect(within(groups[0]).getByRole("button", { name: "Action 1" })).toHaveAttribute("aria-keyshortcuts", "å");
+    expect(within(groups[2]).getByRole("button", { name: "Not visible absent" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Action 14/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(groups[1]).getByRole("button", { name: "Action 12" })).toHaveAccessibleDescription("+ Tag 111"),
+    );
+    // Find is named Find, as it reads, without the - key's cap, and counts the action without a key.
+    const find = within(groups[2]).getByRole("button", { name: "Find, 1 more" });
+    expect(find).toHaveTextContent(/^Find1 more$/);
+    fireEvent.click(find);
+    expect(onFind).toHaveBeenCalledTimes(1);
+    // The count alone above the buttons, with no key hints.
+    expect(effectLine(container)).toHaveTextContent(/^15 actions$/);
+    expect(region).not.toHaveTextContent("applies and stays");
+    // A tap applies and moves on.
+    fireEvent.click(within(groups[1]).getByRole("button", { name: "Action 12" }));
+    expect(onApply).toHaveBeenCalledWith(actions[11], false);
+    // Touch-sized buttons whose labels may take up to three lines, groups further apart than the
+    // buttons within them.
+    const tile = within(groups[1]).getByRole("button", { name: "Action 12" });
+    expect(parseFloat(getComputedStyle(tile).minHeight)).toBeGreaterThanOrEqual(44);
+    expect(getComputedStyle(tile.querySelector(".dq-mobile-label")!).getPropertyValue("-webkit-line-clamp")).toBe("3");
+    const between = parseFloat(getComputedStyle(region.querySelector(".dq-mobile-actions")!).gap);
+    const inGroup = parseFloat(getComputedStyle(groups[0]).gap);
+    expect(inGroup).toBeGreaterThan(0);
+    expect(between).toBeGreaterThan(inGroup);
+    // Find alone when no action has a key.
+    cleanup();
+    pad([{ id: "none", label: "Hidden", steps: [], shortcut: "none" }]);
+    const only = screen.getByRole("region", { name: "Actions" }).querySelectorAll(".dq-mobile-group");
+    expect(only).toHaveLength(1);
+    expect(within(only[0] as HTMLElement).getAllByRole("button")).toEqual([
+      screen.getByRole("button", { name: "Find, 1 more" }),
+    ]);
+  });
+
+  it("switches between the keyboard layout and the buttons at 760 px", () => {
+    setViewportWidth(761);
+    pad(numbered(13));
+    const region = () => screen.getByRole("region", { name: "Actions" });
+    expect(region()).not.toHaveClass("dq-pad-mobile");
+    expect(screen.getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
+    expect(region().querySelectorAll(".dq-pad-free").length).toBeGreaterThan(0);
+    act(() => setViewportWidth(760));
+    expect(region()).toHaveClass("dq-pad-mobile");
+    expect(screen.getByRole("button", { name: "Action 1" })).toBeInTheDocument();
+    expect(region().querySelector("kbd, .dq-pad-free")).toBeNull();
+    act(() => setViewportWidth(1280));
+    expect(region()).not.toHaveClass("dq-pad-mobile");
+    expect(screen.getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
+  });
+
+  it("offers Stay on this item: taps then apply and stay, while an action without steps still moves on", () => {
+    setViewportWidth(390);
+    const actions: MediaReviewAction[] = [
+      { id: "a", label: "Present", steps: [{ mode: "ADD", tagIds: [1] }] },
+      { id: "c", label: "Next", steps: [] },
+    ];
+    const onApply = vi.fn();
+    function Harness() {
+      const [stay, setStay] = useState(false);
+      return (
+        <ActionPad
+          actions={actions}
+          mediaKind="video"
+          isDisabled={() => false}
+          busy={false}
+          tags={null}
+          trees={new Map()}
+          preview={createActionPreviewStore()}
+          onApply={onApply}
+          onFind={() => {}}
+          findDisabled={false}
+          stayOnTap={stay}
+          onStayOnTapChange={setStay}
+        />
+      );
+    }
+    render(<Harness />);
+    const toggle = screen.getByRole("switch", { name: "Stay on this item" });
+    expect(toggle).not.toBeChecked();
+    expect(parseFloat(getComputedStyle(toggle).minHeight)).toBeGreaterThanOrEqual(44);
+    const present = screen.getByRole("button", { name: "Present" });
+    fireEvent.click(present);
+    fireEvent.click(present, { shiftKey: true });
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    fireEvent.click(present);
+    // Staying on an item with an action that changes nothing would do nothing at all.
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(present);
+    expect(onApply.mock.calls).toEqual([
+      [actions[0], false],
+      [actions[0], true],
+      [actions[0], true],
+      [actions[1], false],
+      [actions[0], false],
+    ]);
+    // Wider windows have no switch, and a click there moves on even with it left on.
+    fireEvent.click(toggle);
+    act(() => setViewportWidth(1024));
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "q Present" }));
+    expect(onApply).toHaveBeenLastCalledWith(actions[0], false);
+    // Back at phone width the switch shows it is still on.
+    act(() => setViewportWidth(390));
+    expect(screen.getByRole("switch", { name: "Stay on this item" })).toBeChecked();
+  });
+
+  it("previews under a mouse or with focus, never on touch, without a key cap, and a tap ends the preview", async () => {
+    setViewportWidth(390);
+    const { container, preview } = pad(numbered(2));
+    const tile = screen.getByRole("button", { name: "Action 1" });
+    // A touch "entering" the button, and the mouse events a browser makes up for it, preview
+    // nothing: on iOS a page changing then can swallow the tap.
+    fireEvent.pointerEnter(tile, { pointerType: "touch" });
+    fireEvent.mouseEnter(tile);
+    expect(preview.get()).toBeNull();
+    fireEvent.pointerEnter(tile, { pointerType: "mouse" });
+    expect(preview.get()).not.toBeNull();
+    await waitFor(() => expect(effectLine(container)).toHaveTextContent(/^Action 1\+ Tag 100$/));
+    expect(effectLine(container).querySelector("kbd")).toBeNull();
+    fireEvent.pointerLeave(tile, { pointerType: "mouse" });
+    expect(preview.get()).toBeNull();
+    // A tap that focused the button (as Android does) leaves no preview for the next item.
+    act(() => tile.focus());
+    expect(preview.get()).not.toBeNull();
+    fireEvent.click(tile);
+    expect(preview.get()).toBeNull();
+    act(() => tile.blur());
+    expect(preview.get()).toBeNull();
+  });
+
+  it("says its buttons wait while the review is edited, and previews none of them", () => {
+    setViewportWidth(390);
+    const { preview } = pad(numbered(2), { paused: true, disabled: () => true });
+    const region = screen.getByRole("region", { name: "Actions, paused while editing" });
+    expect(region).toHaveClass("dq-pad-mobile dq-pad-paused");
+    expect(region).toHaveTextContent("Actions are paused while you edit the review");
+    const tile = screen.getByRole("button", { name: "Action 1" });
+    expect(tile).toBeDisabled();
+    fireEvent.pointerEnter(tile, { pointerType: "mouse" });
+    expect(preview.get()).toBeNull();
+    expect(screen.getByRole("button", { name: "Find" })).toBeDisabled();
+    // The note wraps beside the Stay switch rather than running under it.
+    expect(getComputedStyle(region.querySelector(".dq-pad-paused-note")!).whiteSpace).toBe("normal");
+  });
 });

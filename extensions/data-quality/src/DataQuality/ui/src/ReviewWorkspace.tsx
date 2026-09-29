@@ -83,6 +83,7 @@ import { useReviewKeys } from "./reviewKeys";
 import { useTags } from "./tagNames";
 import { ReviewTagBadge } from "./TagDisplay";
 import { sortTagsForDisplay } from "./tagOrder";
+import { useMobileLayout } from "./viewport";
 import {
   defaultQuery,
   effectiveReview,
@@ -308,6 +309,8 @@ export function ReviewWorkspace({
   editRequest = 0,
   onEditRequestHandled,
   pageControls,
+  stayOnTap: pageStayOnTap,
+  onStayOnTapChange,
 }: {
   review: MediaReview;
   canWrite: boolean;
@@ -319,6 +322,12 @@ export function ReviewWorkspace({
   /** Called once a request has opened the editor, so a later mount does not open it again. */
   onEditRequestHandled?(): void;
   pageControls?: WorkspacePageControls;
+  /**
+   * Phone-sized windows: Stay on this item, held by the page so it lasts from review to review
+   * until the page reloads. Without it the workspace keeps its own.
+   */
+  stayOnTap?: boolean;
+  onStayOnTapChange?(stay: boolean): void;
 }) {
   const mediaKind: MediaKind = reviewMediaKind(saved);
   const labels = mediaLabel(mediaKind);
@@ -408,6 +417,12 @@ export function ReviewWorkspace({
   }, [editing]);
   const [performerDialog, setPerformerDialog] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  // Touch has neither Shift nor the pad's hover pin: in phone-sized windows the pad's Stay on this
+  // item switch makes a tapped action, in the pad or in Find action, apply and stay.
+  const mobile = useMobileLayout();
+  const [ownStayOnTap, setOwnStayOnTap] = useState(false);
+  const stayOnTap = pageStayOnTap ?? ownStayOnTap;
+  const setStayOnTap = onStayOnTapChange ?? setOwnStayOnTap;
   useEffect(() => {
     if (loading || performerDialog || !filterReturnFocus.current) return;
     const frame = requestAnimationFrame(() => {
@@ -1642,6 +1657,8 @@ export function ReviewWorkspace({
                   onFind={() => setFindOpen(true)}
                   findDisabled={editing || !!ruleDraft}
                   paused={!!ruleDraft}
+                  stayOnTap={stayOnTap}
+                  onStayOnTapChange={setStayOnTap}
                 />
               ) : (
                 isOccurrenceReview(saved) &&
@@ -1984,6 +2001,7 @@ export function ReviewWorkspace({
           actions={saved.actions}
           trees={trees}
           isDisabled={(action) => actionBlocked(action as MediaReviewAction)}
+          tapStays={mobile && stayOnTap}
           onApply={(action, stay) => {
             setFindOpen(false);
             void execute(action as MediaReviewAction, stay);
