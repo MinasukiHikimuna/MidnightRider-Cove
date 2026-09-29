@@ -1,0 +1,11 @@
+{
+  "id": "com.midnightrider.merge-opportunities",
+  "name": "MergeOpportunities",
+  "tagPrefix": "com.midnightrider.merge-opportunities/",
+  "solution": "MergeOpportunities.slnx",
+  "project": "src/MergeOpportunities/MergeOpportunities.csproj",
+  "manifest": "src/MergeOpportunities/extension.json",
+  "readme": "README.md",
+  "ui": "src/MergeOpportunities/ui",
+  "uiTest": "tests/MergeOpportunities.Ui.Tests.mjs"
+}

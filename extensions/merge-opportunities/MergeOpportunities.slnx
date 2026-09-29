@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MergeOpportunities/MergeOpportunities.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MergeOpportunities.Tests/MergeOpportunities.Tests.csproj" />
+  </Folder>
+</Solution>
