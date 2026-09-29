@@ -46,23 +46,27 @@ public static class CompletionDiscoveryProviders
         IReadOnlySet<string>? selectedEndpoints = null,
         string? requestedEndpoint = null)
     {
-        var requested = string.IsNullOrWhiteSpace(requestedEndpoint) ? null : CompletionCatalog.NormalizeEndpoint(requestedEndpoint);
+        var requested = string.IsNullOrWhiteSpace(requestedEndpoint) ? null : CompletionCatalog.CanonicalEndpoint(requestedEndpoint);
         return SelectServers(configuration, selectedEndpoints)
-            .Where(server => requested is null || string.Equals(CompletionCatalog.NormalizeEndpoint(server.Endpoint), requested, StringComparison.OrdinalIgnoreCase))
+            .Where(server => requested is null || string.Equals(CompletionCatalog.CanonicalEndpoint(server.Endpoint), requested, StringComparison.OrdinalIgnoreCase))
+            // Query-string variants of one endpoint (e.g. ?type=Movie) are the same source;
+            // keep the first configured spelling so the catalog holds one row per source.
+            .GroupBy(server => CompletionCatalog.CanonicalEndpoint(server.Endpoint))
+            .Select(group => group.First())
             .Select(server => (Server: server, Provider: Providers.FirstOrDefault(provider => provider.Supports(server))))
             .Where(item => item.Provider is not null)
             .Select(item => item.Provider!.Create(item.Server)).ToList();
     }
     public static IReadOnlyList<string> SupportedEndpoints(CoveConfiguration configuration, IReadOnlySet<string>? selectedEndpoints = null) => SelectServers(configuration, selectedEndpoints)
-        .Where(server => Providers.Any(provider => provider.Supports(server))).Select(server => CompletionCatalog.NormalizeEndpoint(server.Endpoint)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        .Where(server => Providers.Any(provider => provider.Supports(server))).Select(server => CompletionCatalog.CanonicalEndpoint(server.Endpoint)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     public static IReadOnlyList<MetadataServerInstance> SupportedServers(CoveConfiguration configuration) => configuration.Scraping.MetadataServers
         .Where(server => Providers.Any(provider => provider.Supports(server)))
-        .DistinctBy(server => CompletionCatalog.NormalizeEndpoint(server.Endpoint), StringComparer.OrdinalIgnoreCase).ToList();
+        .DistinctBy(server => CompletionCatalog.CanonicalEndpoint(server.Endpoint), StringComparer.OrdinalIgnoreCase).ToList();
     private static IEnumerable<MetadataServerInstance> SelectServers(CoveConfiguration configuration, IReadOnlySet<string>? selectedEndpoints)
     {
-        var selected = selectedEndpoints?.Select(CompletionCatalog.NormalizeEndpoint).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = selectedEndpoints?.Select(CompletionCatalog.CanonicalEndpoint).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return configuration.Scraping.MetadataServers
-            .Where(server => selected is null || selected.Count == 0 || selected.Contains(CompletionCatalog.NormalizeEndpoint(server.Endpoint)));
+            .Where(server => selected is null || selected.Count == 0 || selected.Contains(CompletionCatalog.CanonicalEndpoint(server.Endpoint)));
     }
 }
 
@@ -76,7 +80,7 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
     {
         if (!Uri.TryCreate(server.Endpoint, UriKind.Absolute, out var serverUri) || serverUri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException($"The configured {server.Name} endpoint must use HTTPS.");
-        _endpoint = CompletionCatalog.NormalizeEndpoint(server.Endpoint);
+        _endpoint = CompletionCatalog.CanonicalEndpoint(server.Endpoint);
         _http = handler is null ? new HttpClient() : new HttpClient(handler);
         _http.BaseAddress = serverUri;
         _http.DefaultRequestHeaders.Add("ApiKey", server.ApiKey);

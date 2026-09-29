@@ -16,7 +16,7 @@ public sealed class TpdbDiscoveryClient : ICompletionDiscovery, IDisposable
         if (!Uri.TryCreate(server.Endpoint, UriKind.Absolute, out var serverUri) || serverUri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException($"The configured {server.Name} endpoint must use HTTPS.");
 
-        _endpoint = CompletionCatalog.NormalizeEndpoint(server.Endpoint);
+        _endpoint = CompletionCatalog.CanonicalEndpoint(server.Endpoint);
         _http = handler is null ? new HttpClient() : new HttpClient(handler);
         _http.BaseAddress = new Uri("https://api.theporndb.net/");
         if (!string.IsNullOrWhiteSpace(server.ApiKey))

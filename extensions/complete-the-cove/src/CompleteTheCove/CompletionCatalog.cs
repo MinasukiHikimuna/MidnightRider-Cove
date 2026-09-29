@@ -76,7 +76,7 @@ public sealed class CompletionCatalog(
 
     public async Task<CompletionTarget> TrackAsync(CompletionTargetType type, int entityId, string endpoint, CancellationToken ct)
     {
-        endpoint = NormalizeEndpoint(endpoint);
+        endpoint = CanonicalEndpoint(endpoint);
         var existing = await db.Set<CompletionTarget>()
             .FirstOrDefaultAsync(x => x.EntityType == type && x.EntityId == entityId && x.RemoteEndpoint == endpoint, ct);
         var identity = await ResolveIdentityAsync(type, entityId, endpoint, ct)
@@ -119,7 +119,7 @@ public sealed class CompletionCatalog(
     public async Task SynchronizeTargetSourcesAsync(IReadOnlyList<string> endpoints, CancellationToken ct,
         CompletionTargetType? targetType = null, int? entityId = null)
     {
-        var normalizedEndpoints = endpoints.Select(NormalizeEndpoint).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var normalizedEndpoints = endpoints.Select(CanonicalEndpoint).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var targets = db.Set<CompletionTarget>().AsQueryable();
         if (targetType.HasValue) targets = targets.Where(x => x.EntityType == targetType && x.EntityId == entityId);
         var staleTargets = await targets
@@ -134,7 +134,7 @@ public sealed class CompletionCatalog(
             .Select(x => new { x.EntityType, x.EntityId }).Distinct().ToListAsync(ct);
         foreach (var selection in selections)
         {
-            foreach (var endpoint in endpoints)
+            foreach (var endpoint in normalizedEndpoints)
             {
                 if (await ResolveIdentityAsync(selection.EntityType, selection.EntityId, endpoint, ct) is null) continue;
                 await TrackAsync(selection.EntityType, selection.EntityId, endpoint, ct);
@@ -162,6 +162,48 @@ public sealed class CompletionCatalog(
         return true;
     }
 
+    public async Task<int> SetIgnoredManyAsync(IEnumerable<int> videoIds, bool ignored, CancellationToken ct)
+    {
+        var ids = videoIds.Distinct().ToArray();
+        if (ids.Length == 0) return 0;
+        var videos = await db.Set<CompletionVideo>().Where(x => ids.Contains(x.Id)).ToListAsync(ct);
+        foreach (var video in videos) video.IsIgnored = ignored;
+        await db.SaveChangesAsync(ct);
+        return videos.Count;
+    }
+
+    public async Task<bool> IsEntityIgnoredAsync(CompletionTargetType type, int entityId, CancellationToken ct) =>
+        await db.Set<CompletionIgnoredEntity>().AsNoTracking()
+            .AnyAsync(x => x.EntityType == type && x.CoveEntityId == entityId, ct);
+
+    public async Task<int> SetEntityIgnoredAsync(CompletionTargetType type, int entityId, bool ignored, CancellationToken ct)
+    {
+        var row = await db.Set<CompletionIgnoredEntity>()
+            .FirstOrDefaultAsync(x => x.EntityType == type && x.CoveEntityId == entityId, ct);
+        if (ignored)
+        {
+            if (row is null)
+                db.Add(new CompletionIgnoredEntity { EntityType = type, CoveEntityId = entityId });
+            // Flag every catalog video that references this Cove entity so the
+            // override applies immediately, without waiting for the next refresh.
+            var videos = type switch
+            {
+                CompletionTargetType.Studio => db.Set<CompletionVideo>().Where(x => x.CoveStudioId == entityId),
+                CompletionTargetType.Performer => db.Set<CompletionVideo>().Where(x => x.Performers.Any(p => p.CovePerformerId == entityId)),
+                _ => db.Set<CompletionVideo>().Where(x => x.Tags.Any(t => t.CoveTagId == entityId)),
+            };
+            var toFlag = await videos.Where(x => !x.IsIgnored).ToListAsync(ct);
+            foreach (var video in toFlag) video.IsIgnored = true;
+            await db.SaveChangesAsync(ct);
+            return toFlag.Count;
+        }
+
+        if (row is null) return 0;
+        db.Remove(row);
+        await db.SaveChangesAsync(ct);
+        return 1;
+    }
+
     public async Task<RefreshTotals> RefreshAsync(
         ICompletionDiscovery discovery,
         CompleteSettings settings,
@@ -171,7 +213,7 @@ public sealed class CompletionCatalog(
         CancellationToken ct)
     {
         var query = db.Set<CompletionTarget>().AsTracking();
-        var endpoint = NormalizeEndpoint(discovery.Endpoint);
+        var endpoint = CanonicalEndpoint(discovery.Endpoint);
         query = query.Where(x => x.RemoteEndpoint == endpoint);
         if (targetType.HasValue) query = query.Where(x => x.EntityType == targetType && x.EntityId == entityId);
         var targets = await query.OrderBy(x => x.Id).ToListAsync(ct);
@@ -212,6 +254,13 @@ public sealed class CompletionCatalog(
             }
             catch (Exception ex)
             {
+                // A failed SaveChanges leaves the partial graph that caused it
+                // in the tracker; without this, the per-target error save below
+                // replays the failed writes and fails the whole job. Detach
+                // everything except targets so only the error state is
+                // persisted and later targets keep their tracked state.
+                foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.Entity is not CompletionTarget).ToArray())
+                    entry.State = EntityState.Detached;
                 target.LastRefreshAt = DateTime.UtcNow;
                 target.LastRefreshError = SafeError(ex);
                 totals = totals with { Failed = totals.Failed + 1 };
@@ -248,7 +297,12 @@ public sealed class CompletionCatalog(
 
         var priorLinks = await db.Set<CompletionVideoTarget>().AsNoTracking().Include(x => x.Video).ThenInclude(video => video!.Tags)
             .Where(x => x.TargetId == target.Id).ToListAsync(ct);
-        endpoint = NormalizeEndpoint(endpoint);
+        endpoint = CanonicalEndpoint(endpoint);
+        var ignoredEntities = await db.Set<CompletionIgnoredEntity>().AsNoTracking()
+            .Select(x => new { x.EntityType, x.CoveEntityId }).ToListAsync(ct);
+        var ignoredPerformers = ignoredEntities.Where(x => x.EntityType == CompletionTargetType.Performer).Select(x => x.CoveEntityId).ToHashSet();
+        var ignoredStudios = ignoredEntities.Where(x => x.EntityType == CompletionTargetType.Studio).Select(x => x.CoveEntityId).ToHashSet();
+        var ignoredTags = ignoredEntities.Where(x => x.EntityType == CompletionTargetType.Tag).Select(x => x.CoveEntityId).ToHashSet();
         var keepVideoIds = new HashSet<int>();
         var priorVideoIds = priorLinks.Select(x => x.VideoId).ToHashSet();
         var coverHost = new Uri(endpoint).Host;
@@ -271,6 +325,7 @@ public sealed class CompletionCatalog(
                 var remoteId = source.RemoteIds.First(key => SameProvider(key.Endpoint, endpoint)).RemoteId;
                 existing.TryGetValue(remoteId, out var video);
                 video = UpsertVideo(source, endpoint, remoteId, video, identities);
+                ApplyEntityIgnores(video, ignoredPerformers, ignoredStudios, ignoredTags);
                 if (!priorVideoIds.Contains(video.Id))
                     db.Add(new CompletionVideoTarget { Video = video, Target = target });
                 saved.Add(video);
@@ -352,18 +407,31 @@ public sealed class CompletionCatalog(
         video.ParentStudioName = source.Studio?.Parent?.Name;
         var changed = before != (video.Title, video.Code, video.Details, video.ReleaseDate, video.StudioRemoteId,
             video.StudioName, video.CoveStudioId, video.ParentStudioRemoteId, video.ParentStudioName);
-        var performers = source.Performers.Select(x => new CompletionVideoPerformer
+        // Providers can credit the same remote performer or tag more than once
+        // on one video (TPDB does); the (VideoId, RemoteId) keys allow only one
+        // row each, so keep the first occurrence of each remote id.
+        var performerRows = source.Performers
+            .Select(x => (Source: x, RemoteId: x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty))
+            .GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+        var performers = performerRows.Select(x => new CompletionVideoPerformer
         {
-            RemoteId = x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty,
-            CovePerformerId = identities.Performers.TryGetValue(x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty, out var performerId) ? performerId : null,
-            Name = x.Name,
-            Disambiguation = x.Disambiguation,
+            RemoteId = x.RemoteId,
+            CovePerformerId = identities.Performers.TryGetValue(x.RemoteId, out var performerId) ? performerId : null,
+            Name = x.Source.Name,
+            Disambiguation = x.Source.Disambiguation,
         }).ToList();
-        var tags = source.Tags.Select(x => new CompletionVideoTag
+        var tagRows = source.Tags
+            .Select(x => (Source: x, RemoteId: x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty))
+            .GroupBy(x => x.RemoteId, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+        var tags = tagRows.Select(x => new CompletionVideoTag
         {
-            RemoteId = x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty,
-            CoveTagId = identities.Tags.TryGetValue(x.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty, out var tagId) ? tagId : null,
-            Name = x.Name,
+            RemoteId = x.RemoteId,
+            CoveTagId = identities.Tags.TryGetValue(x.RemoteId, out var tagId) ? tagId : null,
+            Name = x.Source.Name,
         }).ToList();
         var urls = source.Urls.Where(IsSafeExternalUrl).Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(x => new CompletionVideoUrl { Url = x }).ToList();
@@ -387,6 +455,14 @@ public sealed class CompletionCatalog(
         }
         if (changed) video.UpdatedAt = DateTime.UtcNow;
         return video;
+    }
+
+    private static void ApplyEntityIgnores(CompletionVideo video, HashSet<int> performers, HashSet<int> studios, HashSet<int> tags)
+    {
+        if (video.CoveStudioId is { } studioId && studios.Contains(studioId)
+            || video.Performers.Any(p => p.CovePerformerId is { } performerId && performers.Contains(performerId))
+            || video.Tags.Any(t => t.CoveTagId is { } tagId && tags.Contains(tagId)))
+            video.IsIgnored = true;
     }
 
     private static (string, int?, string, string?) PerformerKey(CompletionVideoPerformer x) =>
@@ -467,6 +543,31 @@ public sealed class CompletionCatalog(
     public static string NormalizeEndpoint(string endpoint) => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
         ? new UriBuilder(uri) { Scheme = uri.Scheme.ToLowerInvariant(), Host = uri.Host.ToLowerInvariant() }.Uri.AbsoluteUri.TrimEnd('/')
         : endpoint.Trim().TrimEnd('/');
+
+    /// <summary>
+    /// The identity of a metadata source is its scheme, host, and path. Query strings are
+    /// client-side focus filters (e.g. theporndb.net/graphql?type=Movie), not distinct sources,
+    /// so catalog rows are keyed by the endpoint without its query string.
+    /// </summary>
+    public static string CanonicalEndpoint(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint)) return endpoint;
+        if (Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            return new UriBuilder(uri)
+                {
+                    Scheme = uri.Scheme.ToLowerInvariant(),
+                    Host = uri.Host.ToLowerInvariant(),
+                    Query = string.Empty,
+                    Fragment = string.Empty
+                }.Uri.AbsoluteUri.TrimEnd('/');
+        }
+
+        var trimmed = endpoint.Trim();
+        var queryIndex = trimmed.IndexOf('?');
+        return (queryIndex < 0 ? trimmed : trimmed[..queryIndex]).TrimEnd('/');
+    }
 
     private static string ProviderKey(string endpoint)
     {

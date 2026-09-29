@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace CompleteTheCove;
 
@@ -28,15 +29,16 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     private static readonly TargetSurface[] TargetSurfaces =
     [
         new("performer", CompletionTargetType.Performer, EntityKinds.Performer,
-            Permissions.PerformersRead, "MissingPerformerVideosTab"),
+            Permissions.PerformersRead, "MissingPerformerVideosTab", "IgnorePerformerTab"),
         new("studio", CompletionTargetType.Studio, EntityKinds.Studio,
-            Permissions.StudiosRead, "MissingStudioVideosTab"),
+            Permissions.StudiosRead, "MissingStudioVideosTab", "IgnoreStudioTab"),
         new("tag", CompletionTargetType.Tag, EntityKinds.Tag,
-            Permissions.TagsRead, "MissingTagVideosTab"),
+            Permissions.TagsRead, "MissingTagVideosTab", "IgnoreTagTab"),
     ];
 
     private IServiceScopeFactory? _scopes;
     private CoveConfiguration? _configuration;
+    private Task? _orphanBlobDrain;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
     public override UIManifest GetUIManifest()
@@ -53,6 +55,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         foreach (var target in TargetSurfaces)
         {
             manifest.AddTab(CreateTab(target));
+            manifest.AddTab(CreateIgnoreTab(target));
         }
 
         return manifest
@@ -67,6 +70,11 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         $"/api/plugins/com.midnightrider.complete-the-cove/targets/{target.RouteType}/{{entityId}}/count", "puzzle")
     { RequiredPermissions = [Permissions.ExtensionsConfigure, target.ReadPermission] };
 
+    private static UITabContribution CreateIgnoreTab(TargetSurface target) => new(
+        "ignore-this", "Ignore This", target.RouteType, "com.midnightrider.complete-the-cove", target.IgnoreComponentName, 86,
+        null, "eye-off")
+    { RequiredPermissions = [Permissions.ExtensionsConfigure, target.ReadPermission] };
+
     public override void ConfigureServices(IServiceCollection services, ExtensionContext context) =>
         services.AddScoped<CompletionCatalog>();
 
@@ -74,7 +82,47 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     {
         _scopes = services.GetRequiredService<IServiceScopeFactory>();
         _configuration = services.GetRequiredService<CoveConfiguration>();
+        // Draining the blobs parked by migration 011 runs the host's per-blob reference
+        // count against every entity table, so 100k blobs would stall extension startup
+        // (and its endpoints) for hours if awaited. Run it in the background instead; it is
+        // idempotent and resumes from whatever rows are left after a restart.
+        _orphanBlobDrain ??= DrainOrphanBlobsAsync(
+            services.GetRequiredService<ILogger<CompleteTheCoveExtension>>(), CancellationToken.None);
         return Task.CompletedTask;
+    }
+
+    private async Task DrainOrphanBlobsAsync(ILogger logger, CancellationToken ct)
+    {
+        // Migration 011 moves cover blobs orphaned by endpoint-variant dedup into
+        // complete_the_cove_orphan_blobs. The blob store is file-based, so delete the
+        // files through the host's blob service here instead of in SQL.
+        try
+        {
+            await using var scope = _scopes!.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<DbContext>();
+            var blobs = scope.ServiceProvider.GetRequiredService<IBlobService>();
+            var orphanIds = await db.Database.SqlQueryRaw<string>(
+                "SELECT \"BlobId\" FROM complete_the_cove_orphan_blobs").ToListAsync(ct);
+            for (var i = 0; i < orphanIds.Count; i += 500)
+            {
+                var chunk = orphanIds.GetRange(i, Math.Min(500, orphanIds.Count - i));
+                foreach (var blobId in chunk)
+                    await blobs.DeleteBlobAsync(blobId, ct);
+                // EF's raw-SQL parameters do not map List<string> to text[], so build an
+                // escaped IN list instead (BlobIds are host-generated GUID strings).
+                var ids = string.Join(", ", chunk.Select(id => $"'{id.Replace("'", "''")}'"));
+                await db.Database.ExecuteSqlRawAsync(
+                    $"DELETE FROM complete_the_cove_orphan_blobs WHERE \"BlobId\" IN ({ids})", ct);
+            }
+
+            if (orphanIds.Count > 0)
+                logger.LogInformation("Drained {Count} orphaned cover blobs from Complete the Cove", orphanIds.Count);
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: rows remain in complete_the_cove_orphan_blobs and are retried on the next start.
+            logger.LogWarning(ex, "Could not drain orphaned Complete the Cove cover blobs; will retry on next start");
+        }
     }
 
     protected override void DefineJobs() => Job(
@@ -238,6 +286,12 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
             entity.HasOne(x => x.Video).WithMany(x => x.Urls).HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.VideoId, x.Url }).IsUnique();
         });
+        builder.Entity<CompletionIgnoredEntity>(entity =>
+        {
+            entity.ToTable("complete_the_cove_ignored_entities");
+            entity.HasKey(x => new { x.EntityType, x.CoveEntityId });
+            entity.Property(x => x.EntityType).HasConversion<int>();
+        });
     }
 
     protected override void DefineMigrations()
@@ -398,6 +452,167 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         ALTER INDEX IF EXISTS ix_complete_the_cove_scene_performer_cove_id RENAME TO ix_complete_the_cove_video_performer_cove_id;
         ALTER INDEX IF EXISTS ix_complete_the_cove_scene_tag_cove_id RENAME TO ix_complete_the_cove_video_tag_cove_id;
         """);
+        Migration("011_canonical_endpoint_dedup", """
+        -- Query-string variants of one metadata endpoint (e.g. theporndb.net/graphql?type=Movie)
+        -- are the same source; catalog rows were stored once per variant. Merge them, keeping
+        -- the un-queried variant (the broadest catalog) and the lowest Id as a tie-break.
+        CREATE TABLE IF NOT EXISTS complete_the_cove_orphan_blobs (
+          "BlobId" text PRIMARY KEY
+        );
+
+        CREATE TEMP TABLE ctc_011_dup_videos AS
+        SELECT dup_id, keeper_id
+        FROM (
+          SELECT v."Id" AS dup_id,
+                 first_value(v."Id") OVER (
+                   PARTITION BY split_part(v."RemoteEndpoint", '?', 1), lower(v."RemoteId")
+                   ORDER BY (v."RemoteEndpoint" NOT LIKE '%?%') DESC, v."Id" ASC
+                 ) AS keeper_id
+          FROM complete_the_cove_videos v
+        ) AS ranked
+        WHERE dup_id <> keeper_id;
+
+        -- Pick one survivor link per (keeper video, target) first: a self-joining
+        -- subquery does not see rows updated earlier in the same statement, so at
+        -- most one link per group may be re-pointed.
+        CREATE TEMP TABLE ctc_011_video_link_keep AS
+        SELECT dup_video_id, target_id, keeper_video_id
+        FROM (
+          SELECT lt."VideoId" AS dup_video_id,
+                 lt."TargetId" AS target_id,
+                 d.keeper_id AS keeper_video_id,
+                 row_number() OVER (PARTITION BY lt."TargetId", d.keeper_id ORDER BY lt."VideoId") AS rn
+          FROM complete_the_cove_video_targets lt
+          JOIN ctc_011_dup_videos d ON lt."VideoId" = d.dup_id
+        ) AS ranked
+        WHERE rn = 1;
+
+        UPDATE complete_the_cove_video_targets AS t
+        SET "VideoId" = k.keeper_video_id
+        FROM ctc_011_video_link_keep k
+        WHERE t."VideoId" = k.dup_video_id AND t."TargetId" = k.target_id
+          AND NOT EXISTS (
+            SELECT 1 FROM complete_the_cove_video_targets t2
+            WHERE t2."VideoId" = k.keeper_video_id AND t2."TargetId" = k.target_id);
+
+        DELETE FROM complete_the_cove_video_targets AS t
+        USING ctc_011_dup_videos d
+        WHERE t."VideoId" = d.dup_id;
+
+        UPDATE complete_the_cove_videos AS k
+        SET "IsIgnored" = k."IsIgnored" OR d.any_ignored
+        FROM (
+          SELECT d.keeper_id, bool_or(v."IsIgnored") AS any_ignored
+          FROM ctc_011_dup_videos d
+          JOIN complete_the_cove_videos v ON v."Id" = d.dup_id
+          GROUP BY d.keeper_id
+        ) AS d
+        WHERE k."Id" = d.keeper_id;
+
+        INSERT INTO complete_the_cove_orphan_blobs ("BlobId")
+        SELECT DISTINCT v."CoverBlobId"
+        FROM complete_the_cove_videos v
+        JOIN ctc_011_dup_videos d ON d.dup_id = v."Id"
+        WHERE v."CoverBlobId" IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM complete_the_cove_videos k
+            WHERE k."Id" = d.keeper_id AND k."CoverBlobId" = v."CoverBlobId")
+        ON CONFLICT ("BlobId") DO NOTHING;
+
+        DELETE FROM complete_the_cove_videos AS v
+        USING ctc_011_dup_videos d
+        WHERE v."Id" = d.dup_id;
+
+        CREATE TEMP TABLE ctc_011_dup_targets AS
+        SELECT dup_id, keeper_id
+        FROM (
+          SELECT t."Id" AS dup_id,
+                 first_value(t."Id") OVER (
+                   PARTITION BY t."EntityType", t."EntityId", split_part(t."RemoteEndpoint", '?', 1)
+                   ORDER BY (t."RemoteEndpoint" NOT LIKE '%?%') DESC, t."Id" ASC
+                 ) AS keeper_id
+          FROM complete_the_cove_targets t
+        ) AS ranked
+        WHERE dup_id <> keeper_id;
+
+        CREATE TEMP TABLE ctc_011_target_link_keep AS
+        SELECT dup_target_id, video_id, keeper_target_id
+        FROM (
+          SELECT lt."TargetId" AS dup_target_id,
+                 lt."VideoId" AS video_id,
+                 m.keeper_id AS keeper_target_id,
+                 row_number() OVER (PARTITION BY lt."VideoId", m.keeper_id ORDER BY lt."TargetId") AS rn
+          FROM complete_the_cove_video_targets lt
+          JOIN ctc_011_dup_targets m ON lt."TargetId" = m.dup_id
+        ) AS ranked
+        WHERE rn = 1;
+
+        UPDATE complete_the_cove_video_targets AS t
+        SET "TargetId" = k.keeper_target_id
+        FROM ctc_011_target_link_keep k
+        WHERE t."TargetId" = k.dup_target_id AND t."VideoId" = k.video_id
+          AND NOT EXISTS (
+            SELECT 1 FROM complete_the_cove_video_targets t2
+            WHERE t2."VideoId" = k.video_id AND t2."TargetId" = k.keeper_target_id);
+
+        DELETE FROM complete_the_cove_video_targets AS t
+        USING ctc_011_dup_targets d
+        WHERE t."TargetId" = d.dup_id;
+
+        CREATE TEMP TABLE ctc_011_target_errors AS
+        SELECT keeper_id, last_error
+        FROM (
+          SELECT d.keeper_id,
+                 t."LastRefreshError" AS last_error,
+                 row_number() OVER (PARTITION BY d.keeper_id ORDER BY t."LastRefreshAt" DESC NULLS LAST) AS rn
+          FROM ctc_011_dup_targets d
+          JOIN complete_the_cove_targets t ON t."Id" = d.dup_id
+          WHERE t."LastRefreshError" IS NOT NULL
+        ) AS ranked
+        WHERE rn = 1;
+
+        UPDATE complete_the_cove_targets AS k
+        SET "LastRefreshAt" = g.last_refresh_at,
+            "LastRefreshError" = COALESCE(k."LastRefreshError", e.last_error),
+            "LastSuccessfulRefreshAt" = g.last_successful_refresh_at,
+            "EligibleVideoCount" = g.eligible_video_count,
+            "OwnedVideoCount" = g.owned_video_count
+        FROM (
+          SELECT d.keeper_id,
+                 max(t."LastRefreshAt") AS last_refresh_at,
+                 max(t."LastSuccessfulRefreshAt") AS last_successful_refresh_at,
+                 max(t."EligibleVideoCount") AS eligible_video_count,
+                 max(t."OwnedVideoCount") AS owned_video_count
+          FROM ctc_011_dup_targets d
+          JOIN complete_the_cove_targets t ON t."Id" = d.dup_id OR t."Id" = d.keeper_id
+          GROUP BY d.keeper_id
+        ) AS g
+        LEFT JOIN ctc_011_target_errors AS e ON e.keeper_id = g.keeper_id
+        WHERE k."Id" = g.keeper_id;
+
+        DELETE FROM complete_the_cove_targets AS t
+        USING ctc_011_dup_targets d
+        WHERE t."Id" = d.dup_id;
+
+        UPDATE complete_the_cove_videos
+        SET "RemoteEndpoint" = split_part("RemoteEndpoint", '?', 1)
+        WHERE "RemoteEndpoint" LIKE '%?%';
+        UPDATE complete_the_cove_targets
+        SET "RemoteEndpoint" = split_part("RemoteEndpoint", '?', 1)
+        WHERE "RemoteEndpoint" LIKE '%?%';
+
+        DROP TABLE ctc_011_video_link_keep;
+        DROP TABLE ctc_011_target_link_keep;
+        DROP TABLE ctc_011_dup_videos;
+        DROP TABLE ctc_011_dup_targets;
+        DROP TABLE ctc_011_target_errors;
+        """);
+        Migration("012_ignored_entities", """
+        CREATE TABLE IF NOT EXISTS complete_the_cove_ignored_entities (
+          "EntityType" integer NOT NULL, "CoveEntityId" integer NOT NULL,
+          "CreatedAt" timestamptz NOT NULL,
+          PRIMARY KEY ("EntityType", "CoveEntityId"));
+        """);
     }
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
@@ -406,6 +621,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapPost("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, true, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapDelete("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}/ignore", (int id, CompletionCatalog catalog, CancellationToken ct) => SetIgnored(id, false, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapPost("/api/plugins/com.midnightrider.complete-the-cove/videos/ignore", (BulkIgnoreRequest body, CompletionCatalog catalog, CancellationToken ct) => SetIgnoredMany(body, catalog, ct)).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/videos/{id:int}/cover", GetCover).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/scenes", ListVideos).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/scenes/{id:int}", GetVideo).RequireCovePermission(Permissions.ExtensionsConfigure);
@@ -420,7 +636,25 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         foreach (var target in TargetSurfaces)
         {
             MapTarget(endpoints, target);
+            MapEntityIgnore(endpoints, target);
         }
+    }
+
+    private static void MapEntityIgnore(IEndpointRouteBuilder endpoints, TargetSurface target)
+    {
+        var route = $"/api/plugins/com.midnightrider.complete-the-cove/entities/{target.RouteType}/{{entityId:int}}/ignore";
+        ApplyTargetAccessPolicy(
+            endpoints.MapGet(route, (int entityId, CompletionCatalog catalog, CancellationToken ct) =>
+                GetEntityIgnored(target.TargetType, entityId, catalog, ct)),
+            target);
+        ApplyTargetAccessPolicy(
+            endpoints.MapPost(route, (int entityId, CompletionCatalog catalog, CancellationToken ct) =>
+                SetEntityIgnored(target.TargetType, entityId, true, catalog, ct)),
+            target);
+        ApplyTargetAccessPolicy(
+            endpoints.MapDelete(route, (int entityId, CompletionCatalog catalog, CancellationToken ct) =>
+                SetEntityIgnored(target.TargetType, entityId, false, catalog, ct)),
+            target);
     }
 
     private static void MapTarget(IEndpointRouteBuilder endpoints, TargetSurface target)
@@ -683,7 +917,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         var selected = CompleteSettings.From(configuration).SelectedMetadataEndpoints;
         return Results.Ok(CompletionDiscoveryProviders.SupportedServers(configuration).Select(server =>
         {
-            var endpoint = CompletionCatalog.NormalizeEndpoint(server.Endpoint);
+            var endpoint = CompletionCatalog.CanonicalEndpoint(server.Endpoint);
             return new
             {
                 name = string.IsNullOrWhiteSpace(server.Name) ? new Uri(server.Endpoint).Host : server.Name,
@@ -714,6 +948,13 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     { await catalog.UntrackAsync(type, entityId, ct); return Results.NoContent(); }
     private static async Task<IResult> SetIgnored(int id, bool ignored, CompletionCatalog catalog, CancellationToken ct) =>
         await catalog.SetIgnoredAsync(id, ignored, ct) ? Results.NoContent() : Results.NotFound();
+
+    private static async Task<IResult> SetIgnoredMany(BulkIgnoreRequest body, CompletionCatalog catalog, CancellationToken ct) =>
+        Results.Ok(new { updated = await catalog.SetIgnoredManyAsync(body.VideoIds ?? Array.Empty<int>(), body.Ignored, ct) });
+    private static async Task<IResult> GetEntityIgnored(CompletionTargetType type, int entityId, CompletionCatalog catalog, CancellationToken ct) =>
+        Results.Ok(new { ignored = await catalog.IsEntityIgnoredAsync(type, entityId, ct) });
+    private static async Task<IResult> SetEntityIgnored(CompletionTargetType type, int entityId, bool ignored, CompletionCatalog catalog, CancellationToken ct) =>
+        Results.Ok(new { ignored, updated = await catalog.SetEntityIgnoredAsync(type, entityId, ignored, ct) });
     private static int ParseInt(string? value, int fallback) => int.TryParse(value, out var parsed) ? parsed : fallback;
 }
 
@@ -722,7 +963,10 @@ internal sealed record TargetSurface(
     CompletionTargetType TargetType,
     string EntityKind,
     string ReadPermission,
-    string ComponentName);
+    string ComponentName,
+    string IgnoreComponentName);
+
+internal sealed record BulkIgnoreRequest(IReadOnlyList<int>? VideoIds, bool Ignored);
 
 internal sealed class RangedJobProgress(Cove.Plugins.IJobProgress parent, double start, double end) : Cove.Plugins.IJobProgress
 {

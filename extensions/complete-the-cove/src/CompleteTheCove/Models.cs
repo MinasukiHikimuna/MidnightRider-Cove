@@ -122,3 +122,10 @@ public sealed class CompletionVideoUrl
     public CompletionVideo? Video { get; set; }
     public required string Url { get; set; }
 }
+
+public sealed class CompletionIgnoredEntity
+{
+    public CompletionTargetType EntityType { get; set; }
+    public int CoveEntityId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

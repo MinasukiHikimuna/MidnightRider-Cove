@@ -32,7 +32,12 @@ function providerLabel(endpoint) {
 }
 
 function normalizeProviderEndpoint(endpoint) {
-  try { return new URL(endpoint.trim()).href.replace(/\/$/, ""); }
+  try {
+    const url = new URL(endpoint.trim());
+    url.search = "";
+    url.hash = "";
+    return url.href.replace(/\/$/, "");
+  }
   catch { return endpoint.trim().replace(/\/$/, ""); }
 }
 
@@ -43,6 +48,10 @@ function remoteVideoUrl(video) {
     if (url.hostname.includes("theporndb.net")) return `https://theporndb.net/scenes/${video.remoteId}`;
   } catch { /* ignore malformed provider endpoints */ }
   return null;
+}
+
+function entityPageUrl(target) {
+  return Number.isInteger(target.entityId) && target.entityId > 0 ? `/${target.type}/${target.entityId}` : "/";
 }
 
 const DEFAULT_CATALOG_FILTERS = Object.freeze({
@@ -315,12 +324,13 @@ function MissingBanner() {
   return h("div", { className: "complete-the-cove-missing-banner", "aria-label": "Missing video" }, "MISSING");
 }
 
-function MissingVideoCard({ video, onNavigate }) {
+function MissingVideoCard({ video, onNavigate, selected = false, selecting = false, onSelect, ignoreBusy = false, onToggleIgnored }) {
   const performers = video.performers || [];
   const tags = video.tags || [];
   const title = video.title || "Untitled video";
   const openVideo = (event) => {
     event?.preventDefault();
+    if (selecting) { onSelect?.(video.id); return; }
     navigateUrl(missingVideoDetailUrl(video.id));
   };
   return h("div", {
@@ -339,6 +349,8 @@ function MissingVideoCard({ video, onNavigate }) {
         ? h("img", { key: "cover", src: video.coverUrl, alt: `Cover for ${title}`, loading: "lazy", className: "complete-the-cove-card-preview-image h-full w-full object-cover" })
         : h("div", { key: "placeholder", className: "flex h-full items-center justify-center text-muted" }, h(Puzzle, { className: "h-8 w-8" })),
     ]),
+    h("input", { key: "select", type: "checkbox", checked: selected, onClick: (event) => event.stopPropagation(), onChange: () => onSelect?.(video.id), "aria-label": `Select ${title}`, className: "complete-the-cove-card-select" }),
+    h("button", { key: "ignore", type: "button", disabled: ignoreBusy, title: video.isIgnored ? "Unignore this video" : "Ignore this video", "aria-label": video.isIgnored ? `Unignore ${title}` : `Ignore ${title}`, onClick: (event) => { event.stopPropagation(); onToggleIgnored?.(video); }, className: "complete-the-cove-card-ignore" }, [h(video.isIgnored ? Eye : EyeOff, { key: "icon", className: "h-3.5 w-3.5" })]),
     h("div", { key: "body", className: "complete-the-cove-card-body card-body flex min-h-0 flex-1 flex-col gap-1.5 border-t border-border/50 px-2.5 pb-2 pt-2" }, [
       h("div", { key: "heading" }, [
         h("p", { key: "title", className: "complete-the-cove-card-title card-title line-clamp-2 font-semibold leading-snug text-foreground", title }, title),
@@ -592,6 +604,10 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [ignoreBusyId, setIgnoreBusyId] = useState(null);
+  const selecting = selected.size > 0;
   useEffect(() => { writeCatalogFilters(filters); }, [filters]);
   useEffect(() => {
     const onPopState = () => setFilters(readCatalogFilters());
@@ -599,6 +615,7 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   const query = useMemo(() => catalogApiQuery(filters, scope), [filters, scope?.type, scope?.entityId]);
+  useEffect(() => { setSelected(new Set()); }, [query]);
   useEffect(() => { let cancelled = false; const requestQuery = query; request(`${API}/videos?${requestQuery}`).then((value) => { if (!cancelled) { setData({ ...value, query: requestQuery }); setError(""); } }).catch((err) => !cancelled && setError(err.message)); return () => { cancelled = true; }; }, [query, reloadVersion]);
   useEffect(() => { request(`${API}/facets?ignored=${encodeURIComponent(filters.ignored)}`).then(setFacets).catch(() => {}); }, [filters.ignored, reloadVersion]);
   useEffect(() => { request(`${API}/providers`).then(setProviders).catch(() => {}); }, []);
@@ -634,6 +651,27 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
       onRefreshed?.();
     } catch (err) { setError(err.message); } finally { setRefreshing(false); }
   }
+  const toggleSelection = (id) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  async function bulkSetIgnored(ignored) {
+    const ids = [...selected];
+    if (!ids.length || bulkBusy) return;
+    setBulkBusy(true); setError("");
+    try {
+      await request(`${API}/videos/ignore`, { method: "POST", body: JSON.stringify({ videoIds: ids, ignored }) });
+      setSelected(new Set());
+      setReloadVersion((current) => current + 1);
+    } catch (err) { setError(err.message); } finally { setBulkBusy(false); }
+  }
+  const showIgnore = filters.ignored !== "ignored";
+  const showUnignore = filters.ignored !== "not-ignored";
+  async function toggleIgnored(video) {
+    if (ignoreBusyId) return;
+    setIgnoreBusyId(video.id); setError("");
+    try {
+      await request(`${API}/videos/${video.id}/ignore`, { method: video.isIgnored ? "DELETE" : "POST" });
+      setReloadVersion((current) => current + 1);
+    } catch (err) { setError(err.message); } finally { setIgnoreBusyId(null); }
+  }
   return h(ListPage, {
     title: "Missing Videos",
     pageKey: "complete-the-cove-missing-videos",
@@ -663,8 +701,15 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
     objectFilter,
     onObjectFilterChange: (next) => setFilters((current) => ({ ...applyCatalogObjectFilter(current, next), page: 1 })),
     renderOperations: allowRefresh ? () => h(RefreshSplitButton, { providers, refresh, refreshing }) : undefined,
+    selectedIds: selected,
+    onSelectAll: () => setSelected(new Set(data.items.map((video) => video.id))),
+    onSelectNone: () => setSelected(new Set()),
+    selectionActions: (showIgnore || showUnignore) ? h("div", { className: "flex items-center gap-3" }, [
+      showIgnore ? h("button", { key: "ignore", type: "button", disabled: bulkBusy, onClick: () => bulkSetIgnored(true), className: "text-xs text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-60" }, "Ignore selected") : null,
+      showUnignore ? h("button", { key: "unignore", type: "button", disabled: bulkBusy, onClick: () => bulkSetIgnored(false), className: "text-xs text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-60" }, "Unignore selected") : null,
+    ]) : null,
   }, data.items.length
-    ? h("div", { className: "complete-the-cove-content complete-the-cove-grid" }, data.items.map((video) => h(MissingVideoCard, { key: video.id, video, onNavigate })))
+    ? h("div", { className: "complete-the-cove-content complete-the-cove-grid" }, data.items.map((video) => h(MissingVideoCard, { key: video.id, video, onNavigate, selected: selected.has(video.id), selecting, onSelect: toggleSelection, ignoreBusy: ignoreBusyId === video.id, onToggleIgnored: toggleIgnored })))
     : h("div", { className: "complete-the-cove-content rounded-lg border border-dashed border-border p-12 text-center text-secondary" }, "No missing videos match this view."));
 }
 
@@ -698,7 +743,13 @@ function TargetRow({ target, providers, refreshKey, onRefresh, onOpen, onUntrack
   const refreshing = refreshKey === `${target.type}:${target.entityId}`;
   return h("div", { className: "complete-the-cove-target-row border-border bg-card" }, [
     h("button", { key: "main", type: "button", onClick: () => onOpen(target), className: "complete-the-cove-target-main text-left" }, [
-      h("span", { key: "name", className: "complete-the-cove-target-name font-medium text-foreground" }, target.displayName),
+      h("a", { key: "name", href: entityPageUrl(target), className: "complete-the-cove-target-name font-medium text-foreground underline decoration-accent/40 underline-offset-2 hover:decoration-accent", title: `Open ${target.displayName} in Cove`, onClick: (event) => {
+        event.stopPropagation();
+        if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
+          navigateUrl(entityPageUrl(target));
+        }
+      } }, target.displayName),
       h("span", { key: "count", className: "complete-the-cove-target-count text-accent" }, `${target.missingVideoCount.toLocaleString()} missing ${target.missingVideoCount === 1 ? "video" : "videos"}`),
       h("span", { key: "tracked", className: "complete-the-cove-target-meta text-muted" }, `Tracked ${formatDate(target.selectedAt)}`),
       h("span", { key: "refresh-state", className: `complete-the-cove-target-meta ${target.lastRefreshError ? "text-amber-300" : "text-muted"}` }, target.lastRefreshError || (target.lastRefreshAt ? `Last refreshed ${formatDateTime(target.lastRefreshAt)}` : "Not refreshed yet")),
@@ -812,6 +863,27 @@ function EntityTab({ entityId, type, onNavigate }) {
   return h("div", null, [h("div", { key: "status", className: "mb-4 rounded-lg border border-border bg-card p-3" }, [h("div", { key: "heading", className: "flex flex-wrap items-center justify-between gap-3" }, [h("div", { key: "copy" }, [h("div", { key: "title", className: "inline-flex items-center gap-2 text-sm font-medium" }, [state.tracked.lastRefreshError ? h(AlertTriangle, { key: "status-icon", className: "h-4 w-4 text-amber-400" }) : h(Check, { key: "status-icon", className: "h-4 w-4 text-green-400" }), "Tracked for completion"]), h("div", { key: "detail", className: "text-xs text-secondary" }, state.tracked.lastRefreshError || (state.tracked.lastRefreshAt ? `Last refreshed ${formatDateTime(state.tracked.lastRefreshAt)}` : "Not refreshed yet"))]), h("button", { key: "untrack", disabled: busy, onClick: toggle, className: "inline-flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm text-secondary hover:text-foreground" }, [h(X, { key: "icon", className: "h-4 w-4" }), "Untrack"])]), h(ProviderProgress, { key: "progress", providers: state.tracked.providers })]), h(VideoGrid, { key: "grid", scope: { type, entityId }, onNavigate })]);
 }
 
+function EntityIgnoreTab({ entityId, type }) {
+  const [state, setState] = useState(null); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const url = `${API}/entities/${type}/${entityId}/ignore`;
+  const load = () => request(url).then(setState).catch((err) => setError(err.message));
+  useEffect(() => { load(); }, [url]);
+  async function toggle() {
+    setBusy(true); setError("");
+    try { await request(url, { method: state?.ignored ? "DELETE" : "POST" }); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+  if (!state) return h("p", { className: "text-sm text-secondary" }, error || "Loading ignore state...");
+  const ignored = state.ignored === true;
+  return h("div", { className: "rounded-lg border border-border bg-card p-6 text-center" }, [
+    h(ignored ? Eye : EyeOff, { key: "icon", className: "mx-auto h-8 w-8 text-accent" }),
+    h("h3", { key: "title", className: "mt-3 text-lg font-semibold" }, ignored ? `This ${type} is ignored` : `Ignore this ${type}`),
+    h("p", { key: "help", className: "mx-auto mt-1 max-w-lg text-sm text-secondary" }, `Videos involving this ${type} are flagged as ignored, so they stop counting toward completion. Matching videos are flagged immediately and stay ignored on every catalog refresh.`),
+    error ? h("p", { key: "error", className: "mt-3 text-sm text-red-300" }, error) : null,
+    h("button", { key: "toggle", type: "button", disabled: busy, onClick: toggle, className: "mt-4 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" }, busy ? "Saving..." : ignored ? `Unignore this ${type}` : "Ignore This"),
+  ]);
+}
+
 function MissingVideoDetailPage({ id, onNavigate }) {
   const [video, setVideo] = useState(null); const [error, setError] = useState("");
   const [ignoreBusy, setIgnoreBusy] = useState(false); const [ignoreError, setIgnoreError] = useState("");
@@ -857,7 +929,7 @@ function LegacyMissingVideoDetailPage({ id }) {
 
 function CompleteTheCoveSettings() {
   const [value, setValue] = useState(""); const [providers, setProviders] = useState([]); const [selected, setSelected] = useState([]); const [message, setMessage] = useState(""); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
-  useEffect(() => { Promise.all([request("/api/plugins/com.midnightrider.complete-the-cove/config"), request("/api/plugins/com.midnightrider.complete-the-cove/providers")]).then(([config, available]) => { const configured = (config.selected_metadata_endpoints || "").split(",").map(normalizeProviderEndpoint).filter(Boolean); setValue(config.excluded_tags || ""); setProviders(available); setSelected(configured.length ? configured : available.map((item) => item.endpoint)); }).catch((err) => setMessage(err.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { Promise.all([request("/api/plugins/com.midnightrider.complete-the-cove/config"), request("/api/plugins/com.midnightrider.complete-the-cove/providers")]).then(([config, available]) => { const configured = [...new Set((config.selected_metadata_endpoints || "").split(",").map(normalizeProviderEndpoint).filter(Boolean))]; setValue(config.excluded_tags || ""); setProviders(available); setSelected(configured.length ? configured : available.map((item) => item.endpoint)); }).catch((err) => setMessage(err.message)).finally(() => setLoading(false)); }, []);
   function toggle(endpoint) { setSelected((current) => current.includes(endpoint) ? current.filter((item) => item !== endpoint) : [...current, endpoint]); }
   async function save() { setSaving(true); setMessage(""); try { await request("/api/plugins/com.midnightrider.complete-the-cove/config", { method: "POST", body: JSON.stringify({ excluded_tags: value, selected_metadata_endpoints: selected.join(",") }) }); setMessage("Settings saved. Refresh the catalog to apply provider changes."); } catch (err) { setMessage(err.message); } finally { setSaving(false); } }
   return h("div", { className: "space-y-4" }, [h("fieldset", { key: "providers", className: "space-y-2" }, [h("legend", { key: "legend", className: "text-sm font-medium" }, "Metadata providers"), h("p", { key: "help", className: "text-xs text-secondary" }, "Select one or more configured providers for tracking and catalog refreshes."), loading ? h("p", { key: "loading", className: "text-sm text-secondary" }, "Loading configured providers...") : providers.length === 0 ? h("p", { key: "empty", className: "text-sm text-secondary" }, "No compatible metadata providers are configured in Cove.") : null, ...providers.map((provider) => h("label", { key: provider.endpoint, className: "flex items-center gap-2 text-sm" }, [h("input", { key: "input", type: "checkbox", checked: selected.includes(provider.endpoint), onChange: () => toggle(provider.endpoint) }), h("span", { key: "name" }, provider.name), h("span", { key: "endpoint", className: "text-xs text-secondary" }, providerLabel(provider.endpoint))]))]), h("label", { key: "excluded", className: "block" }, [h("span", { key: "label", className: "block text-sm font-medium" }, "Excluded remote tags"), h("span", { key: "help", className: "block text-xs text-secondary" }, "Comma-separated exact tag names. Matching is case-insensitive."), h("input", { key: "input", value, onChange: (event) => setValue(event.target.value), placeholder: "Tag name, Another tag", className: "mt-2 w-full rounded-md border border-border bg-card px-3 py-2 text-sm" })]), h("div", { key: "actions", className: "flex items-center justify-end gap-3" }, [message ? h("span", { key: "message", className: "text-sm text-secondary" }, message) : null, h("button", { key: "save", disabled: loading || saving || selected.length === 0, onClick: save, className: "rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" }, saving ? "Saving..." : "Save")])]);
@@ -868,5 +940,8 @@ export default { components: {
   MissingPerformerVideosTab: (props) => h(EntityTab, { ...props, type: "performer" }),
   MissingStudioVideosTab: (props) => h(EntityTab, { ...props, type: "studio" }),
   MissingTagVideosTab: (props) => h(EntityTab, { ...props, type: "tag" }),
+  IgnorePerformerTab: (props) => h(EntityIgnoreTab, { ...props, type: "performer" }),
+  IgnoreStudioTab: (props) => h(EntityIgnoreTab, { ...props, type: "studio" }),
+  IgnoreTagTab: (props) => h(EntityIgnoreTab, { ...props, type: "tag" }),
   CompleteTheCoveSettings,
 } };

@@ -17,7 +17,7 @@ public sealed record CompleteSettings(
             raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase),
             selected.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(CompletionCatalog.NormalizeEndpoint)
+                .Select(CompletionCatalog.CanonicalEndpoint)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase));
     }
 
