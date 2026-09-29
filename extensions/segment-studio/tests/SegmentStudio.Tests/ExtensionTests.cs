@@ -442,7 +442,7 @@ public sealed class ExtensionTests
     public void DefinesCleanSchemaMigrations()
     {
         var migrations = CreateExtension().GetMigrations().ToArray();
-        Assert.Equal(5, migrations.Length);
+        Assert.Equal(6, migrations.Length);
         Assert.Equal("000_adopt_legacy_migration_owner", migrations[0].Name);
         var migration = migrations[1];
 
@@ -478,6 +478,12 @@ public sealed class ExtensionTests
         Assert.Equal("004_tag_delete_cascade", migrations[4].Name);
         Assert.Equal("003_remove_corresponding_tags", migrations[3].Name);
         Assert.Contains("DROP TABLE IF EXISTS segment_studio_corresponding_tag_mappings", migrations[3].UpSql);
+        Assert.Equal("005_delete_cascade_indexes", migrations[5].Name);
+        Assert.Contains("\"IX_segment_studio_items_video_id\"", migrations[5].UpSql);
+        Assert.Contains("\"IX_segment_studio_items_tag_id\"", migrations[5].UpSql);
+        Assert.Contains("\"IX_segment_studio_history_sessions_video_id\"", migrations[5].UpSql);
+        Assert.Contains("\"IX_segment_studio_segment_operations_item_id\"", migrations[5].UpSql);
+        Assert.Contains("\"IX_segment_studio_native_recycle_bin_tag_id\"", migrations[5].UpSql);
     }
 
     [Fact]

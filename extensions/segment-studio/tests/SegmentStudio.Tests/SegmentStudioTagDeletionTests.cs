@@ -38,7 +38,7 @@ public sealed partial class SegmentStudioBaselineMigrationTests
             }
             foreach (var migration in migrations)
                 await ApplyRecordedMigrationAsync(connection, migration, "com.midnightrider.segment-studio");
-            Assert.Equal(5, await CountAsync(connection, "SELECT count(*) FROM extension_migrations WHERE extension_id = 'com.midnightrider.segment-studio'"));
+            Assert.Equal(6, await CountAsync(connection, "SELECT count(*) FROM extension_migrations WHERE extension_id = 'com.midnightrider.segment-studio'"));
             if (legacyOwner)
                 Assert.Equal(3, await CountAsync(connection, "SELECT count(*) FROM extension_migrations WHERE extension_id = 'segment-studio'"));
             if (!upgrade)

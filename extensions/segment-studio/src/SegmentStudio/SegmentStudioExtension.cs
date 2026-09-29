@@ -157,6 +157,12 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         using var tagDeleteCascadeReader = new StreamReader(tagDeleteCascadeStream);
         Migration("004_tag_delete_cascade", tagDeleteCascadeReader.ReadToEnd());
 
+        using var deleteCascadeIndexesStream = typeof(SegmentStudioExtension).Assembly
+            .GetManifestResourceStream("SegmentStudio.SegmentStudioDeleteCascadeIndexes.sql")
+            ?? throw new InvalidOperationException(
+                "The embedded Segment Studio delete-cascade index migration is missing.");
+        using var deleteCascadeIndexesReader = new StreamReader(deleteCascadeIndexesStream);
+        Migration("005_delete_cascade_indexes", deleteCascadeIndexesReader.ReadToEnd());
     }
 
     public override UIManifest GetUIManifest()

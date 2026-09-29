@@ -28,6 +28,7 @@
     <EmbeddedResource Include="SegmentStudioAnalysisSourceTags.sql" />
     <EmbeddedResource Include="SegmentStudioRemoveCorrespondingTags.sql" />
     <EmbeddedResource Include="SegmentStudioTagDeleteCascade.sql" />
+    <EmbeddedResource Include="SegmentStudioDeleteCascadeIndexes.sql" />
   </ItemGroup>
 
 </Project>

@@ -557,6 +557,8 @@ public static class SegmentStudioModelConfiguration
             builder.Property(item => item.UpdatedAt).HasColumnName("updated_at");
             builder.HasIndex(item => item.NativeSegmentId).IsUnique();
             builder.HasIndex(item => item.ExtensionImageBlobId).IsUnique();
+            builder.HasIndex(item => item.VideoId);
+            builder.HasIndex(item => item.TagId);
             builder.HasOne<Segment>()
                 .WithMany()
                 .HasForeignKey(item => item.NativeSegmentId)
@@ -602,6 +604,7 @@ public static class SegmentStudioModelConfiguration
             builder.Property(entry => entry.UpdatedAt).HasColumnName("updated_at");
             builder.HasIndex(entry => new { entry.VideoId, entry.UpdatedAt });
             builder.HasIndex(entry => entry.ImageBlobId).IsUnique();
+            builder.HasIndex(entry => entry.TagId);
             builder.HasOne<Video>().WithMany().HasForeignKey(entry => entry.VideoId)
                 .OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<Tag>().WithMany().HasForeignKey(entry => entry.TagId)
@@ -623,6 +626,7 @@ public static class SegmentStudioModelConfiguration
             builder.Property(operation => operation.ComponentFingerprint).HasColumnName("component_fingerprint");
             builder.Property(operation => operation.CreatedAt).HasColumnName("created_at");
             builder.HasIndex(operation => operation.CreatedAt);
+            builder.HasIndex(operation => operation.ItemId);
             builder.HasOne<SegmentStudioItem>().WithMany().HasForeignKey(operation => operation.ItemId).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -722,6 +726,7 @@ public static class SegmentStudioModelConfiguration
             builder.Property(session => session.CreatedAt).HasColumnName("created_at");
             builder.Property(session => session.UpdatedAt).HasColumnName("updated_at");
             builder.HasIndex(session => new { session.UserId, session.VideoId, session.Mode }).IsUnique();
+            builder.HasIndex(session => session.VideoId);
             if (modelBuilder.Model.FindEntityType(typeof(User)) is not null)
             {
                 builder.HasOne<User>().WithMany()

@@ -84,12 +84,58 @@ public sealed partial class SegmentStudioBaselineMigrationTests
             Assert.Equal(1, await CountAsync(
                 connection,
                 "SELECT count(*) FROM tags t JOIN tag_groups g ON g.\"Id\" = t.\"TagGroupId\" WHERE t.\"Id\" = 20 AND g.\"Name\" = 'Existing native group'"));
+
+            // Foreign-key checks and actions find child rows with a generic "$1 = column"
+            // plan. Each must reach its dedicated index, not a partial or non-leading one.
+            await AssertForeignKeyLookupUsesIndexAsync(
+                connection, "segment_studio_items", "video_id", "IX_segment_studio_items_video_id");
+            await AssertForeignKeyLookupUsesIndexAsync(
+                connection, "segment_studio_items", "tag_id", "IX_segment_studio_items_tag_id");
+            await AssertForeignKeyLookupUsesIndexAsync(
+                connection, "segment_studio_history_sessions", "video_id", "IX_segment_studio_history_sessions_video_id");
+            await AssertForeignKeyLookupUsesIndexAsync(
+                connection, "segment_studio_segment_operations", "item_id", "IX_segment_studio_segment_operations_item_id");
+            await AssertForeignKeyLookupUsesIndexAsync(
+                connection, "segment_studio_native_recycle_bin", "tag_id", "IX_segment_studio_native_recycle_bin_tag_id");
         }
         finally
         {
             await using var dropSchema =
                 new NpgsqlCommand($"DROP SCHEMA \"{schema}\" CASCADE", admin);
             await dropSchema.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task AssertForeignKeyLookupUsesIndexAsync(
+        NpgsqlConnection connection,
+        string table,
+        string column,
+        string expectedIndex)
+    {
+        await using (var setup = new NpgsqlCommand(
+                         $"SET enable_seqscan = off; SET plan_cache_mode = force_generic_plan; PREPARE fk_lookup(integer) AS SELECT 1 FROM ONLY {table} WHERE $1 = {column} FOR KEY SHARE",
+                         connection))
+        {
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            var plan = new List<string>();
+            await using (var explain = new NpgsqlCommand("EXPLAIN EXECUTE fk_lookup(1)", connection))
+            await using (var reader = await explain.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    plan.Add(reader.GetString(0));
+            }
+
+            Assert.Contains(plan, line => line.Contains(expectedIndex, StringComparison.Ordinal));
+        }
+        finally
+        {
+            await using var cleanup = new NpgsqlCommand(
+                "DEALLOCATE fk_lookup; RESET enable_seqscan; RESET plan_cache_mode", connection);
+            await cleanup.ExecuteNonQueryAsync();
         }
     }
 
