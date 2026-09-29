@@ -1,0 +1,23 @@
+{
+  "id": "com.midnightrider.merge-opportunities",
+  "name": "Merge Opportunities",
+  "version": "0.1.1",
+  "description": "Finds duplicate performer and studio entities (same remote identity or same name across providers) and merges, attaches, or deletes them from one review page.",
+  "author": "MidnightRider",
+  "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "categories": [
+    "metadata",
+    "tools"
+  ],
+  "minCoveVersion": "1.4.1",
+  "entryDll": "MergeOpportunities.dll",
+  "jsBundle": "ui/MergeOpportunities.js",
+  "cssBundle": "ui/MergeOpportunities.css",
+  "dependencies": {},
+  "settings": [],
+  "permissions": {
+    "network": [],
+    "scraperRuntime": [],
+    "downloaderRuntime": []
+  }
+}

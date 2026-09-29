@@ -1,0 +1,548 @@
+.merge-opportunities-page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.merge-opportunities-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.merge-opportunities-title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.merge-opportunities-title-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-select {
+  min-height: 34px;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.5rem;
+  background: var(--color-input, #14171d);
+  color: inherit;
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-count {
+  margin-left: auto;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.75rem;
+}
+
+.merge-opportunities-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(239 68 68 / 40%);
+  border-radius: 0.5rem;
+  color: rgb(248 113 113);
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 3rem;
+  border: 1px dashed var(--color-border, #2a2f3a);
+  border-radius: 0.75rem;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.875rem;
+}
+
+.merge-opportunities-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
+  gap: 0.75rem;
+}
+
+.merge-opportunities-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-surface, #171a21) 90%, transparent);
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.merge-opportunities-row:hover {
+  border-color: color-mix(in srgb, var(--color-accent, #6c8cff) 60%, var(--color-border, #2a2f3a));
+}
+
+.merge-opportunities-row.decided {
+  opacity: 0.75;
+}
+
+.merge-opportunities-row-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--color-secondary, #9aa4b2);
+}
+
+.merge-opportunities-row-main {
+  min-width: 0;
+}
+
+.merge-opportunities-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.merge-opportunities-label {
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-opportunities-kind {
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.merge-opportunities-kind.kind-remote {
+  color: white;
+  background: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-kind.kind-name {
+  color: #0b0e14;
+  background: rgb(245 158 11);
+}
+
+.merge-opportunities-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.merge-opportunities-member-chip {
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.merge-opportunities-member-chip.orphan {
+  border-color: rgb(245 158 11 / 50%);
+}
+
+.merge-opportunities-chip-meta {
+  margin-left: 0.375rem;
+  color: var(--color-secondary, #9aa4b2);
+}
+
+.merge-opportunities-row-meta {
+  margin-top: 0.375rem;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.6875rem;
+}
+
+.merge-opportunities-review {
+  color: var(--color-accent, #6c8cff);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.merge-opportunities-decision {
+  padding: 0.1875rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.merge-opportunities-decision.d-merged,
+.merge-opportunities-decision.d-deleted,
+.merge-opportunities-decision.d-attached {
+  color: white;
+  background: rgb(22 163 74);
+}
+
+.merge-opportunities-decision.d-dismissed {
+  color: var(--color-secondary, #9aa4b2);
+  background: var(--color-card, #22262f);
+}
+
+.merge-opportunities-back {
+  margin-bottom: 0.75rem;
+}
+
+.merge-opportunities-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.merge-opportunities-back-btn:hover {
+  color: inherit;
+  border-color: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 1rem;
+}
+
+.merge-opportunities-detail-header .merge-opportunities-title {
+  font-size: 1.25rem;
+}
+
+.merge-opportunities-decision-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-decision-banner.d-merged,
+.merge-opportunities-decision-banner.d-deleted,
+.merge-opportunities-decision-banner.d-attached {
+  border-color: rgb(22 163 74 / 50%);
+  background: rgb(22 163 74 / 12%);
+}
+
+.merge-opportunities-decision-banner.d-dismissed {
+  border-color: var(--color-border, #2a2f3a);
+  background: var(--color-card, #22262f);
+  color: var(--color-secondary, #9aa4b2);
+}
+
+.merge-opportunities-notice {
+  margin-bottom: 1rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid rgb(22 163 74 / 40%);
+  border-radius: 0.5rem;
+  color: rgb(74 222 128);
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.merge-opportunities-member-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-surface, #171a21) 90%, transparent);
+}
+
+.merge-opportunities-member-card.selected {
+  border-color: var(--color-accent, #6c8cff);
+  box-shadow: 0 0 0 1px var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-target-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.75rem;
+}
+
+.merge-opportunities-member-img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  background: var(--color-card, #22262f);
+}
+
+.merge-opportunities-member-name {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.merge-opportunities-member-name:hover {
+  color: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-member-meta {
+  font-size: 0.75rem;
+}
+
+.merge-opportunities-orphan-flag {
+  color: rgb(245 158 11);
+  font-weight: 600;
+}
+
+.merge-opportunities-remote-ids {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+}
+
+.merge-opportunities-remote-ids.empty {
+  color: var(--color-secondary, #9aa4b2);
+}
+
+.merge-opportunities-remote-id {
+  overflow: hidden;
+  color: var(--color-secondary, #9aa4b2);
+  font-family: ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-opportunities-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  align-self: flex-start;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid rgb(239 68 68 / 50%);
+  border-radius: 0.5rem;
+  background: none;
+  color: rgb(248 113 113);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.merge-opportunities-delete-btn:hover:not(:disabled) {
+  background: rgb(239 68 68 / 12%);
+}
+
+.merge-opportunities-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.merge-opportunities-evidence {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.75rem;
+}
+
+.merge-opportunities-evidence h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.merge-opportunities-evidence-line {
+  margin: 0 0 0.5rem;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-evidence-line code {
+  color: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-scenes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.375rem;
+}
+
+.merge-opportunities-scene {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.merge-opportunities-scene-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-opportunities-scene-studio {
+  color: var(--color-secondary, #9aa4b2);
+  white-space: nowrap;
+}
+
+.merge-opportunities-scene-meta {
+  color: var(--color-secondary, #9aa4b2);
+  white-space: nowrap;
+}
+
+.merge-opportunities-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-top: 1rem;
+}
+
+.merge-opportunities-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 38px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.5rem;
+  background: var(--color-card, #22262f);
+  color: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.merge-opportunities-btn:hover:not(:disabled) {
+  border-color: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-btn.primary {
+  border-color: var(--color-accent, #6c8cff);
+  background: var(--color-accent, #6c8cff);
+  color: white;
+}
+
+.merge-opportunities-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.merge-opportunities-btn.secondary {
+  color: var(--color-secondary, #9aa4b2);
+}
+
+.merge-opportunities-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.merge-opportunities-search {
+  min-height: 34px;
+  min-width: 13rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.5rem;
+  background: var(--color-input, #14171d);
+  color: inherit;
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 34px;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-accent, #6c8cff);
+  border-radius: 0.5rem;
+  background: var(--color-accent, #6c8cff);
+  color: white;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.merge-opportunities-bulk-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.merge-opportunities-bulk-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.merge-opportunities-bulk-result {
+  margin-bottom: 1rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(22 163 74 / 40%);
+  border-radius: 0.5rem;
+  color: rgb(74 222 128);
+  font-size: 0.8125rem;
+}
+
+.merge-opportunities-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.375rem;
+}
+
+.merge-opportunities-row-btn {
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--color-border, #2a2f3a);
+  border-radius: 0.375rem;
+  background: none;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.merge-opportunities-row-btn:hover {
+  color: inherit;
+  border-color: var(--color-accent, #6c8cff);
+}
+
+.merge-opportunities-source-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-secondary, #9aa4b2);
+  font-size: 0.75rem;
+}

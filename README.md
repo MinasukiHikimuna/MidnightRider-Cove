@@ -18,6 +18,8 @@ descriptor under `extensions/<extension-id>/`.
 | Six Degrees of Johnny Sins | `extensions/six-degrees` | `com.midnightrider.six-degrees/v<version>` |
 | Blast From The Past | `extensions/blast-from-the-past` | `com.midnightrider.blast-from-the-past/v<version>` |
 | Tag of the Day | `extensions/tag-of-the-day` | `com.midnightrider.tag-of-the-day/v<version>` |
+| Data Quality | `extensions/data-quality` | `com.midnightrider.data-quality/v<version>` |
+| Merge Opportunities | `extensions/merge-opportunities` | `com.midnightrider.merge-opportunities/v<version>` |
 
 The root workflow reads each package's `release.json`, then restores, tests,
 packages, and releases only the extension selected by the pushed tag. Existing
