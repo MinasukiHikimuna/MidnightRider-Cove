@@ -2921,7 +2921,7 @@ it("toggles queue tag bins from the header's chip row", async () => {
   await waitFor(() =>
     expect(within(bins).getByRole("button", { name: "Bin A 2" })).toHaveAttribute("aria-pressed", "true"),
   );
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   // Pressed again, the bin lifts its narrowing and the queue is the saved one again.
   await waitFor(() => expect(within(bins).getByRole("button", { name: "Bin A 2" })).toBeEnabled());
   fireEvent.click(within(bins).getByRole("button", { name: "Bin A 2" }));
@@ -2929,7 +2929,7 @@ it("toggles queue tag bins from the header's chip row", async () => {
   await waitFor(() =>
     expect(within(bins).getByRole("button", { name: "Bin A 2" })).toHaveAttribute("aria-pressed", "false"),
   );
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
 });
 
 it("switches between Cards and Wall and keeps the host's view buttons out of the toolbar", async () => {
@@ -3137,7 +3137,7 @@ it("saves the grid's draft with the toolbar's criteria, keeping the drawer open 
     view: { filter: { q: "draft", page: 1 }, reviewMode: "multiple", startFrom: "end" },
   });
   // The saved review holds the queue's criteria now.
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
   expect(screen.getByText("Review saved.")).toBeInTheDocument();
 });
 
@@ -3173,7 +3173,7 @@ it("counts a search made before the grid's drawer opened as unsaved, which Cance
     target: { value: "temporary" },
   });
   await screen.findByRole("article", { name: "Video 3" });
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   let drawer = await openEditor();
   // Measured against the saved review, the queue's search is a change the drawer would save.
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
@@ -3193,14 +3193,14 @@ it("counts a search made before the grid's drawer opened as unsaved, which Cance
   expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
   expect(api.saveReviews).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   // Save keeps what the drawer showed as unsaved.
   drawer = await openEditor();
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
   expect(savedView(0).filter).toMatchObject({ q: "temporary" });
   await waitFor(() =>
-    expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument(),
+    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument(),
   );
 });
 
@@ -3213,8 +3213,9 @@ it("never saves a queue tag bin, from the grid's drawer or Save to review, and k
   fireEvent.click(bin());
   await waitFor(() => expect(bin()).toHaveAttribute("aria-pressed", "true"));
   // A bin alone leaves nothing to save: Reset lifts it, and Save to review is not offered.
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toHaveAccessibleDescription(
+    "Only the queue's tag bins differ from the saved review, and no save keeps them. Go back to the review's saved filters.",
+  );
   expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
   // Nor is it a change in the drawer, whose Save leaves it out.
   const drawer = await openEditor();
@@ -3229,7 +3230,7 @@ it("never saves a queue tag bin, from the grid's drawer or Save to review, and k
   // The bin stays pressed on the queue, which still differs by it alone.
   expect(bin()).toHaveAttribute("aria-pressed", "true");
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual(binFilter(30));
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
   // With a search as well, Save to review saves the search and not the bin.
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "kept" } });
@@ -3247,7 +3248,7 @@ it("never saves a queue tag bin, from the grid's drawer or Save to review, and k
   fireEvent.click(bin());
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({}));
   await waitFor(() => expect(bin()).toHaveAttribute("aria-pressed", "false"));
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
   expect(api.saveReviews).toHaveBeenCalledTimes(2);
 });
 
@@ -3279,8 +3280,117 @@ it("holds the grid's queue controls while Save to review saves, which writes onc
   // The queue is the saved one now, and its controls are back.
   expect(search).toHaveValue("first");
   expect(search).toBeEnabled();
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
   expect(api.findMedia.mock.calls.at(-1)?.[1].q).toBe("first");
+});
+
+it("puts the grid's Save to review and Reset after Cards/Wall, just before More, and says when the queue starts to differ", async () => {
+  openGrid(numberedActions(2));
+  await screen.findByRole("article", { name: "Video 1" });
+  const header = document.querySelector<HTMLElement>(".dq-grid-review header")!;
+  const trail = header.querySelector<HTMLElement>(".dq-review-header-trail")!;
+  const live = header.querySelector(":scope > [aria-live='polite']")!;
+  expect(within(trail).queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+  expect(live).toBeEmptyDOMElement();
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "narrow" } });
+  const reset = await within(trail).findByRole("button", { name: "Reset" });
+  const order = ["Single", "Grid", "Cards", "Wall", "Save to review", "Reset", "More review options"].map(
+    (name) => within(trail).getByRole("button", { name }),
+  );
+  expect(within(trail).getAllByRole("button")).toEqual(order);
+  expect(reset).toHaveAttribute(
+    "title",
+    "The queue differs from the saved review. Go back to the review's saved filters.",
+  );
+  expect(live).toHaveTextContent("The queue differs from the saved review.");
+  // Nothing else is left for a row of its own.
+  expect(header.querySelector(".dq-review-chips-end")).toBeNull();
+  // The editor drawer previews the draft instead, and its Save review keeps the queue. The queue
+  // still differs meanwhile, so closing the drawer has nothing new to announce.
+  const drawer = await openEditor();
+  expect(within(trail).queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+  expect(within(header).getByText("Previewing the draft")).toBeInTheDocument();
+  expect(live).toHaveTextContent("The queue differs from the saved review.");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard",
+    }),
+  );
+  expect(await within(trail).findByRole("button", { name: "Save to review" })).toBeInTheDocument();
+  expect(live).toHaveTextContent("The queue differs from the saved review.");
+  // Reset goes back to the saved review, and the buttons leave.
+  await waitFor(() => expect(within(trail).getByRole("button", { name: "Reset" })).toBeEnabled());
+  fireEvent.click(within(trail).getByRole("button", { name: "Reset" }));
+  await screen.findByText("Review queue defaults restored.");
+  expect(within(trail).queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
+  expect(live).toBeEmptyDOMElement();
+});
+
+it("hands focus to More after the grid's Save to review and Reset, which the reload leaves there", async () => {
+  openGrid(numberedActions(2));
+  await screen.findByRole("article", { name: "Video 1" });
+  const trail = document.querySelector<HTMLElement>(".dq-grid-review .dq-review-header-trail")!;
+  const more = within(trail).getByRole("button", { name: "More review options" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "kept" } });
+  const save = await within(trail).findByRole("button", { name: "Save to review" });
+  await waitFor(() => expect(save).toBeEnabled());
+  save.focus();
+  fireEvent.click(save);
+  await screen.findByText("Queue saved to this review.");
+  expect(within(trail).queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
+  await waitFor(() => expect(more).toHaveFocus());
+  // Reset hands focus to More too, and the reload it starts leaves it there: the new focused
+  // card is the one the keys act on.
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  await waitFor(() => expect(search).toBeEnabled());
+  // (Video 1 stays on the page, so its card is there for the reload to focus.)
+  api.findMedia.mockResolvedValue({ items: [video(1), video(3)], totalCount: 2 });
+  fireEvent.change(search, { target: { value: "again" } });
+  await screen.findByRole("article", { name: "Video 3" });
+  const reset = within(trail).getByRole("button", { name: "Reset" });
+  await waitFor(() => expect(reset).toBeEnabled());
+  api.findMedia.mockResolvedValue({ items: [video(1), video(2)], totalCount: 2 });
+  reset.focus();
+  fireEvent.click(reset);
+  await screen.findByText("Review queue defaults restored.");
+  await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() =>
+    expect(document.querySelector(".dq-review-card.focused")).toHaveAttribute("aria-label", "Video 1"),
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(more).toHaveFocus();
+});
+
+it("announces nothing when Single or Grid opens on a queue that already differs, only a new difference", async () => {
+  const live = () => document.querySelector(".dq-review-header > [aria-live='polite']")!;
+  const message = "The queue differs from the saved review.";
+  openGrid(numberedActions(2));
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "kept" } });
+  await screen.findByRole("button", { name: "Reset" });
+  expect(live()).toHaveTextContent(message);
+  // The workspace opens knowing its query differs.
+  await switchLayout("Single");
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  expect(await screen.findByRole("button", { name: "Reset" })).toBeInTheDocument();
+  expect(live()).toBeEmptyDOMElement();
+  // The grid learns it while reading the URL, which is no change either.
+  await switchLayout("Grid");
+  await screen.findByRole("article", { name: "Video 1" });
+  const reset = await screen.findByRole("button", { name: "Reset" });
+  await waitFor(() => expect(reset).toBeEnabled());
+  expect(live()).toBeEmptyDOMElement();
+  // Back to the saved queue and away from it again: that is announced.
+  fireEvent.click(reset);
+  await screen.findByText("Review queue defaults restored.");
+  const search = screen.getByRole("textbox", { name: "Search list" });
+  await waitFor(() => expect(search).toBeEnabled());
+  fireEvent.change(search, { target: { value: "again" } });
+  await screen.findByRole("button", { name: "Reset" });
+  expect(live()).toHaveTextContent(message);
 });
 
 it("opens Single video in the saved direction when one grid drawer save changes both", async () => {
@@ -3299,7 +3409,7 @@ it("opens Single video in the saved direction when one grid drawer save changes 
   // The workspace's query is the saved one: same direction, so nothing differs.
   expect(new URLSearchParams(window.location.search).get("startFrom")).toBe("end");
   await act(async () => {});
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
 });
 
 it("calls the grid's queue the saved one again once a cleared search matches it in all but form", async () => {
@@ -3308,11 +3418,10 @@ it("calls the grid's queue the saved one again once a cleared search matches it 
   await screen.findByRole("article", { name: "Video 1" });
   const search = screen.getByRole("textbox", { name: "Search list" });
   fireEvent.change(search, { target: { value: "temporary" } });
-  await screen.findByText("Queue differs from the saved review");
+  await screen.findByRole("button", { name: "Reset" });
   await waitFor(() => expect(search).toBeEnabled());
   fireEvent.change(search, { target: { value: "" } });
   await screen.findByText("Review queue defaults restored.");
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
 });
 
@@ -3324,7 +3433,7 @@ it("offers no grid Save to review while the queue fails to load, as the drawer's
     target: { value: "failing" },
   });
   await screen.findByText("Queue offline");
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   const save = screen.getByRole("button", { name: "Save to review" });
   expect(save).toBeDisabled();
   fireEvent.click(save);
@@ -3334,7 +3443,7 @@ it("offers no grid Save to review while the queue fails to load, as the drawer's
   await waitFor(() => expect(reset).toBeEnabled());
   fireEvent.click(reset);
   await waitFor(() =>
-    expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument(),
+    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument(),
   );
 });
 
@@ -3345,9 +3454,13 @@ it("counts a search made before the workspace's drawer opened as unsaved, which 
     target: { value: "temporary" },
   });
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[1].q).toBe("temporary"));
-  await screen.findByText("Queue differs from the saved review");
+  await screen.findByRole("button", { name: "Reset" });
   let drawer = await openEditor();
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
+  // The drawer hides Save to review and Reset, not the difference, which stays announced.
+  expect(document.querySelector(".dq-review-header > [aria-live='polite']")).toHaveTextContent(
+    "The queue differs from the saved review.",
+  );
   fireEvent.keyDown(within(drawer).getByLabelText("Review name"), { key: "Escape" });
   const confirm = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
   fireEvent(confirm, new Event("cancel", { cancelable: true }));
@@ -3360,13 +3473,13 @@ it("counts a search made before the workspace's drawer opened as unsaved, which 
   );
   expect(api.saveReviews).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
-  expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Reset" })).toBeInTheDocument();
   drawer = await openEditor();
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
   expect(savedView(0).filter).toMatchObject({ q: "temporary" });
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument());
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
 });
 
 it("never saves a queue tag bin carried into the workspace, from its drawer or Save to review", async () => {
@@ -3380,8 +3493,7 @@ it("never saves a queue tag bin carried into the workspace, from its drawer or S
   await screen.findByRole("heading", { name: "Reviewing this video" });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual(binFilter(30));
   // The bin narrows the queue, which Reset would lift, but there is nothing to save.
-  expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Reset" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
   const drawer = await openEditor();
   expect(within(drawer).queryByText(/Unsaved changes/)).not.toBeInTheDocument();
@@ -3401,7 +3513,7 @@ it("never saves a queue tag bin carried into the workspace, from its drawer or S
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument(),
   );
-  expect(screen.getByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   expect(JSON.parse(new URLSearchParams(window.location.search).get("filters")!)).toEqual(binFilter(30));
 });
 
@@ -3411,13 +3523,13 @@ it("keeps the grid's temporary criteria apart from the saved ones in a Single vi
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
     target: { value: "temporary" },
   });
-  await screen.findByText("Queue differs from the saved review");
+  await screen.findByRole("button", { name: "Reset" });
   await switchLayout("Single");
   await screen.findByRole("heading", { name: "Reviewing this video" });
   // The workspace gets the saved review, and the grid's search as its query.
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[1].q).toBe("temporary"));
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
-  expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Reset" })).toBeInTheDocument();
   // The drawer counts the search as unsaved; Cancel (after Discard) leaves it so.
   const drawer = await openEditor();
   expect(within(drawer).getByText("Unsaved changes, including the queue's criteria")).toBeInTheDocument();
@@ -3433,7 +3545,7 @@ it("keeps the grid's temporary criteria apart from the saved ones in a Single vi
   fireEvent.click(reset);
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[1].q).toBe(""));
   await waitFor(() =>
-    expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument(),
+    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument(),
   );
   expect(api.saveReviews).not.toHaveBeenCalled();
   // Save to review in the Single visit saves the queue and stays in Single.
@@ -3446,14 +3558,14 @@ it("keeps the grid's temporary criteria apart from the saved ones in a Single vi
   await screen.findByText("Queue saved to this review.");
   expect(screen.getByRole("heading", { name: "Reviewing this video" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Single" })).toHaveAttribute("aria-pressed", "true");
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
   // Back in the grid, a temporary search still shows as one.
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "again" } });
-  await screen.findByText("Queue differs from the saved review");
+  await screen.findByRole("button", { name: "Reset" });
   await switchLayout("Grid");
   await screen.findByRole("article", { name: "Video 1" });
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("again");
-  expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Reset" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save to review" })).toBeInTheDocument();
 });
 

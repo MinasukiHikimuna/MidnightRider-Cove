@@ -81,8 +81,8 @@ export function scopeSummary(
 
 /**
  * The occurrence queue's scope, behind one header button: which performers to review and which
- * of their occurrences (by occurrence tags). Changes apply to the queue at once; the chip row
- * offers saving them to the review.
+ * of their occurrences (by occurrence tags). Changes apply to the queue at once; the header's Save
+ * to review then keeps them in the review.
  */
 export function ScopePopover({
   scope,
@@ -106,13 +106,22 @@ export function ScopePopover({
   const names = useTagNames(scope.conditionTagIds);
   const summary = scopeSummary(scope, names);
   // Placed from the button each time it opens (and on resize): the header wraps on narrow
-  // windows, which can put the button at either edge.
+  // windows, which can put the button at either edge. It also follows the button along the
+  // header: a change made here can bring Save to review and Reset into the row after it, or the
+  // header can make room by hiding this button's summary.
   useLayoutEffect(() => {
-    if (!open || !button.current) return;
-    const place = () => button.current && setPlacement(placeUnder(button.current));
+    const element = button.current;
+    if (!open || !element) return;
+    const place = () => setPlacement(placeUnder(element));
     place();
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    const moving = [element, element.closest(".dq-review-header-trail"), element.closest("header")];
+    for (const target of moving) if (target) observer?.observe(target);
+    return () => {
+      window.removeEventListener("resize", place);
+      observer?.disconnect();
+    };
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -295,7 +304,7 @@ export function ScopePopover({
               <p>
                 {editing
                   ? "Applies to this queue at once, and Save review keeps it."
-                  : "Applies to this queue at once. Save it to the review from the filter row."}
+                  : "Applies to this queue at once; Save to review in the header keeps it."}
               </p>
               <button type="button" className="dq-button" onClick={close}>
                 Done

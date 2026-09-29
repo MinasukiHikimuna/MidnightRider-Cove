@@ -645,11 +645,14 @@
   border: 0;
   background: none;
 }
+/* Its controls wrap only where the trail has a line to itself that is still too narrow for them
+   (phones); elsewhere the header wraps before them, or keeps one row (see useOneRowHeader). */
 .dq-review-header-trail {
   order: 3;
   display: flex;
   min-width: 0;
   flex: 0 1 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -657,6 +660,78 @@
   order: 4;
   height: 0;
   flex-basis: 100%;
+}
+/* The chip row takes no room while it has nothing to show (no filter chips, performer focus, tag
+   bins or draft note): alone on its line, the zero-height break would still add the row gap. */
+.dq-review-header:not(
+    :has(
+      > .dq-review-toolbar > [role="region"],
+      > .dq-focus-chip,
+      > .dq-review-chips-after:not(:empty),
+      > .dq-review-chips-end
+    )
+  )
+  > .dq-review-header-break {
+  display: none;
+}
+/* Save to review and Reset, while the queue differs from the saved review: a quiet blue tint sets
+   them apart from the header's other buttons without reading as a warning. (Qualified by
+   .dq-header-button, whose own colours come later in this file.) */
+.dq-header-button.dq-queue-button {
+  position: relative;
+  border-color: color-mix(in srgb, var(--dq-add) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--dq-add) 10%, var(--color-card));
+}
+.dq-header-button.dq-queue-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dq-add) 80%, var(--color-border));
+  background: color-mix(in srgb, var(--dq-add) 16%, var(--color-card));
+}
+.dq-queue-button svg {
+  color: var(--dq-add);
+}
+/* Forced colours drop the tint, which only decorates: the buttons are there only while the queue
+   differs. Their border and icons keep the full button text colour. */
+@media (forced-colors: active) {
+  .dq-header-button.dq-queue-button {
+    border-color: ButtonText;
+  }
+  .dq-header-button.dq-queue-button:hover:not(:disabled) {
+    border-color: Highlight;
+  }
+  .dq-queue-button svg {
+    color: ButtonText;
+  }
+}
+/* What gives way while Save to review and Reset keep the header on one row (data-compact, set by
+   useOneRowHeader in ReviewHeader.tsx, lists the steps taken; it narrows the name itself). Hidden
+   labels stay the buttons' names for assistive technology; their titles say the rest. */
+.dq-review-header[data-compact~="summary"] .dq-scope-summary,
+.dq-review-header[data-compact~="range"]
+  .dq-review-toolbar
+  > div:first-of-type
+  > div:first-child
+  > span:first-child {
+  display: none;
+}
+.dq-review-header[data-compact~="queue"] .dq-queue-label,
+.dq-review-header[data-compact~="layout"] .dq-layout-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.dq-review-header[data-compact~="queue"] .dq-queue-button {
+  width: 32px;
+  justify-content: center;
+  padding: 0;
+}
+.dq-layout-switch button {
+  position: relative;
+}
+.dq-review-header[data-compact~="layout"] .dq-layout-switch button {
+  padding: 0 8px;
 }
 .dq-focus-chip {
   order: 5;
@@ -697,9 +772,6 @@
   }
   .dq-review-header-lead h1 {
     max-width: 14rem;
-  }
-  .dq-scope-summary {
-    max-width: 8rem;
   }
 }
 @media (max-width: 1599px) {
@@ -992,6 +1064,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* After the rule above, so this narrower cap wins in windows below 1800 px, where the header's
+   other widths narrow too (see "One header row at common widths"). */
+@media (max-width: 1799px) {
+  .dq-scope-summary {
+    max-width: 8rem;
+  }
+}
 /* Fixed and placed from its button when it opens (see ScopePopover); these are fallbacks. */
 .dq-scope-popover {
   position: fixed;
@@ -1084,7 +1163,7 @@
   font-size: 0.78125rem;
 }
 
-/* The chip row: performer focus, the host's filter chips, and the save/reset controls. */
+/* The chip row: performer focus, the host's filter chips, the grid's tag bins and the draft note. */
 .dq-focus-chip {
   display: inline-flex;
   flex: none;

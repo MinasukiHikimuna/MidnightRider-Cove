@@ -34,8 +34,6 @@ import {
   List,
   Loader2,
   Pencil,
-  RotateCcw,
-  Save,
   Trash2,
   X,
 } from "@cove/runtime/lucide-react";
@@ -2175,6 +2173,8 @@ export function DataQualityPage({
     target: Review,
     nextFilter: Record<string, unknown>,
     startFromEnd = false,
+    /** False when focus belongs elsewhere: Reset hands it to the header's More. */
+    focusTheCard = true,
   ) {
     const priorFocus = focusedRef.current;
     const priorIndex = Math.max(0, itemIds.indexOf(priorFocus ?? -1));
@@ -2196,7 +2196,7 @@ export function DataQualityPage({
       );
       const nextFocus = resumeFocus(ids, priorFocus, priorIndex);
       setFocusedId(nextFocus);
-      if (!previewOpenRef.current) focusCard(nextFocus, false);
+      if (focusTheCard && !previewOpenRef.current) focusCard(nextFocus, false);
     } catch {
       /* The query error keeps the retry control and old queue visible. */
     }
@@ -2239,10 +2239,13 @@ export function DataQualityPage({
     });
     setTemporaryReview(null);
     setMessage("Review queue defaults restored.");
+    // The header hands focus to More as the button leaves (as in the single-item view); the
+    // reload leaves it there, the new focused card still the one the keys act on.
     void resumeQueue(
       savedReview,
       targetFilter,
       savedReview.view.startFrom !== "beginning",
+      false,
     );
   }
 
@@ -2533,14 +2536,32 @@ export function DataQualityPage({
                   setDisplayMode(supportedDisplayMode(mode, entityType))
                 }
               />
-              <MoreMenu
-                disabled={pending || !!gridEditor}
-                items={openReviewMenuItems(savedReview ?? current, {
-                  onSelect: openGridEditor,
-                  disabled: queueLoading || queueUrlError || queueSaving || !canConfigure,
-                })}
-              />
             </>
+          }
+          trailingEnd={
+            <MoreMenu
+              disabled={pending || !!gridEditor}
+              items={openReviewMenuItems(savedReview ?? current, {
+                onSelect: openGridEditor,
+                disabled: queueLoading || queueUrlError || queueSaving || !canConfigure,
+              })}
+            />
+          }
+          // Unknown until the grid has read this review's query from the URL (see the load effect),
+          // so opening a grid on a differing queue is not announced as a change.
+          queueDiffers={progressReady ? temporaryReview?.id === activeId : undefined}
+          // While the drawer is open the queue is the draft's preview, which its Save review keeps.
+          queueChange={
+            !gridEditor && temporaryReview?.id === activeId
+              ? {
+                  // Tag bins alone leave nothing to save: a review never keeps them.
+                  onSave: savableQueueDiffers ? saveTemporaryQueue : undefined,
+                  saveDisabled:
+                    pending || queueLoading || !!queueError || gridSaving || !canConfigure,
+                  onReset: resetQueueToReviewDefaults,
+                  resetDisabled: pending || queueLoading || gridSaving,
+                }
+              : undefined
           }
           chipsAfter={
             videoReview?.presentation?.binParents?.length ? (
@@ -2555,38 +2576,7 @@ export function DataQualityPage({
             ) : undefined
           }
           chipsEnd={
-            gridEditor ? (
-              <span className="dq-defaults-note">Previewing the draft</span>
-            ) : temporaryReview?.id === activeId ? (
-              <>
-                <span className="dq-defaults-note">
-                  Queue differs from the saved review
-                </span>
-                {/* Tag bins alone leave nothing to save: a review never keeps them. */}
-                {savableQueueDiffers && (
-                  <button
-                    type="button"
-                    className="dq-text-button"
-                    title="Save the current queue criteria to this review"
-                    disabled={pending || queueLoading || !!queueError || gridSaving || !canConfigure}
-                    onClick={saveTemporaryQueue}
-                  >
-                    <Save aria-hidden="true" />
-                    Save to review
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="dq-text-button"
-                  title="Reset the queue to the review's saved criteria"
-                  disabled={pending || queueLoading || gridSaving}
-                  onClick={resetQueueToReviewDefaults}
-                >
-                  <RotateCcw aria-hidden="true" />
-                  Reset
-                </button>
-              </>
-            ) : undefined
+            gridEditor ? <span className="dq-defaults-note">Previewing the draft</span> : undefined
           }
         />
         {pageNotices}

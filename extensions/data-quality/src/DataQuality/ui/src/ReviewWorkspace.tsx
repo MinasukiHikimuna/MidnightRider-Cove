@@ -20,8 +20,6 @@ import {
   Film,
   Flag,
   Headphones,
-  RotateCcw,
-  Save,
   SkipForward,
   Tag,
 } from "@cove/runtime/lucide-react";
@@ -1448,6 +1446,17 @@ export function ReviewWorkspace({
                 onEditCriteria={() => setPerformerDialog(true)}
               />
             )}
+            {pageControls?.onGrid && (
+              <LayoutSwitch
+                mode="single"
+                disabled={busy || !!pageControls.busy}
+                onChange={() => pageControls.onGrid?.()}
+              />
+            )}
+          </>
+        }
+        trailingEnd={
+          <>
             {isOccurrenceReview(review) && canWrite && (
               <BatchOccurrenceDialog
                 review={review}
@@ -1474,13 +1483,6 @@ export function ReviewWorkspace({
                     });
                   } else endOperation();
                 }}
-              />
-            )}
-            {pageControls?.onGrid && (
-              <LayoutSwitch
-                mode="single"
-                disabled={busy || !!pageControls.busy}
-                onChange={() => pageControls.onGrid?.()}
               />
             )}
             {pageControls?.moreItems && (
@@ -1527,40 +1529,24 @@ export function ReviewWorkspace({
             </div>
           ) : undefined
         }
-        chipsEnd={
-          ruleDraft ? (
-            <span className="dq-defaults-note">Previewing the draft</span>
-          ) : queueDefaultsChanged ? (
-            <>
-              <span className="dq-defaults-note">Queue differs from the saved review</span>
-              {/* Tag bins alone leave nothing to save: a review never keeps them. */}
-              {savableQueueChanged && (
-                <button
-                  type="button"
-                  className="dq-text-button"
-                  title="Save the current queue criteria to this review"
-                  disabled={blocked || !onSaveDefaults}
-                  onClick={() => void saveQueryDefaults()}
-                >
-                  <Save aria-hidden="true" />
-                  Save to review
-                </button>
-              )}
-              <button
-                type="button"
-                className="dq-text-button"
-                title="Reset the queue to the review's saved criteria"
-                disabled={blocked}
-                onClick={() => {
+        queueDiffers={queueDefaultsChanged}
+        // While the drawer is open the queue is the draft's preview, which its Save review keeps.
+        queueChange={
+          !ruleDraft && queueDefaultsChanged
+            ? {
+                // Tag bins alone leave nothing to save: a review never keeps them.
+                onSave: savableQueueChanged ? () => void saveQueryDefaults() : undefined,
+                saveDisabled: blocked || !onSaveDefaults,
+                onReset: () => {
                   const defaults = defaultQuery(saved);
                   replaceQuery(defaults, defaults.startFrom === "end");
-                }}
-              >
-                <RotateCcw aria-hidden="true" />
-                Reset
-              </button>
-            </>
-          ) : undefined
+                },
+                resetDisabled: blocked,
+              }
+            : undefined
+        }
+        chipsEnd={
+          ruleDraft ? <span className="dq-defaults-note">Previewing the draft</span> : undefined
         }
       />
       {pageControls?.notices}

@@ -262,7 +262,7 @@ it("keeps the grid's duplicate when Save to review starts while it writes, and o
   expect(within(drawer).getByLabelText("Review name")).toHaveValue("Review copy");
   // The save was the other review's: the copy's view says nothing about it.
   expect(screen.queryByText("Queue saved to this review.")).not.toBeInTheDocument();
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
   expect(account().reviews).toEqual([
     { ...saved, view: { ...saved.view, filter: expect.objectContaining({ q: "temporary" }) } },
     copyOf(saved),
@@ -353,7 +353,7 @@ it("leaves another review's view alone when a Save to review lands after the pag
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Search list" })).toBeEnabled());
   expect(account().reviews[0]).toEqual(withSearch(saved, "temporary"));
   expect(screen.queryByText("Queue saved to this review.")).not.toBeInTheDocument();
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
 });
 
 it("stays where Back went when a grid drawer save lands later, keeping that visit's layout and URL", async () => {

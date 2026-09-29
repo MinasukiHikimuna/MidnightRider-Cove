@@ -19,7 +19,7 @@ import {
 } from "./runtime-components";
 import { setViewportWidth } from "./viewport";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
-import type { MediaReviewAction, OccurrenceReview, VideoReview } from "../model";
+import type { MediaReview, MediaReviewAction, OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
 import { rankingSignature, type PerformerRanking } from "../performerRanking";
 configure({ asyncUtilTimeout: 3000 });
@@ -2180,12 +2180,102 @@ it("tells video reviews that tags apply to the whole video and offers saving a c
   expect(screen.getByRole("heading", { name: "Reviewing this video" })).toBeInTheDocument();
   expect(screen.getByText("Tags apply to the whole video")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Scope/ })).not.toBeInTheDocument();
-  expect(screen.queryByText("Queue differs from the saved review")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "changed" } });
-  expect(await screen.findByText("Queue differs from the saved review")).toBeInTheDocument();
   const header = screen.getByRole("heading", { name: "Review" }).closest("header")!;
-  expect(within(header).getByRole("button", { name: "Save to review" })).toBeInTheDocument();
+  expect(await within(header).findByRole("button", { name: "Save to review" })).toBeInTheDocument();
   expect(within(header).getByRole("button", { name: "Reset" })).toBeInTheDocument();
+  expect(within(header).getByText("The queue differs from the saved review.")).toBeInTheDocument();
+});
+
+it("puts Save to review and Reset in the header row just before Batch… and More, and says when the queue starts to differ", async () => {
+  const save = vi.fn().mockResolvedValue(true);
+  render(
+    <ReviewWorkspace
+      review={review}
+      canWrite
+      onBusy={() => {}}
+      onSaveDefaults={save}
+      editRequest={0}
+      pageControls={{ onBack: vi.fn(), moreItems: () => [{ label: "Export", onSelect: vi.fn() }] }}
+    />,
+  );
+  await ready();
+  const header = screen.getByRole("heading", { name: "Review" }).closest("header")!;
+  const trail = header.querySelector<HTMLElement>(".dq-review-header-trail")!;
+  const live = header.querySelector(":scope > [aria-live='polite']")!;
+  expect(within(trail).queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+  expect(live).toBeEmptyDOMElement();
+  // A new scope makes the queue differ: the two buttons join the row, with nothing on a row of
+  // their own, and the change is announced.
+  const scope = openScope();
+  expect(scope.getByText("Applies to this queue at once; Save to review in the header keeps it.")).toBeInTheDocument();
+  fireEvent.change(scope.getByRole("combobox", { name: "Occurrence condition" }), {
+    target: { value: "isNull" },
+  });
+  fireEvent.click(scope.getByRole("button", { name: "Done" }));
+  const reset = await within(trail).findByRole("button", { name: "Reset" });
+  const order = [/^Scope/, "Save to review", "Reset", "Batch…", "More review options"].map((name) =>
+    within(trail).getByRole("button", { name }),
+  );
+  expect(within(trail).getAllByRole("button")).toEqual(order);
+  expect(order[1]).toHaveAccessibleDescription(
+    "The queue differs from the saved review. Save these filters to the review.",
+  );
+  expect(live).toHaveTextContent("The queue differs from the saved review.");
+  expect(header.querySelector(".dq-review-chips-end")).toBeNull();
+  // Reset takes them away again, and the next difference is announced anew. Focus goes to More
+  // once the queue has reloaded, not to the page.
+  await waitFor(() => expect(reset).toBeEnabled());
+  reset.focus();
+  fireEvent.click(reset);
+  await waitFor(() =>
+    expect(within(trail).queryByRole("button", { name: "Reset" })).not.toBeInTheDocument(),
+  );
+  expect(live).toBeEmptyDOMElement();
+  expect(save).not.toHaveBeenCalled();
+  const more = within(trail).getByRole("button", { name: "More review options" });
+  await waitFor(() => expect(more).toHaveFocus());
+});
+
+it("hands focus to More after Save to review, or back to it when the save fails", async () => {
+  const workspace = (saved: VideoReview) => (
+    <ReviewWorkspace
+      review={saved}
+      canWrite
+      onBusy={() => {}}
+      onSaveDefaults={save}
+      editRequest={0}
+      pageControls={{ onBack: vi.fn(), moreItems: () => [{ label: "Export", onSelect: vi.fn() }] }}
+    />
+  );
+  // As the page does, the view gets the review as saved.
+  const save = vi
+    .fn<(saved: MediaReview) => Promise<unknown>>()
+    .mockRejectedValueOnce(new Error("Storage offline"))
+    .mockImplementation(async (saved) => {
+      rerender(workspace(saved as VideoReview));
+      return true;
+    });
+  const { rerender } = render(workspace({ ...review, entityType: "video" } as VideoReview));
+  await ready();
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), { target: { value: "kept" } });
+  const header = screen.getByRole("heading", { name: "Review" }).closest("header")!;
+  let button = await within(header).findByRole("button", { name: "Save to review" });
+  await waitFor(() => expect(button).toBeEnabled());
+  button.focus();
+  fireEvent.click(button);
+  // The failed save keeps the buttons: focus is back on Save to review for another try.
+  expect(await screen.findByText("Could not save queue. Storage offline")).toBeInTheDocument();
+  button = within(header).getByRole("button", { name: "Save to review" });
+  await waitFor(() => expect(button).toBeEnabled());
+  expect(button).toHaveFocus();
+  fireEvent.click(button);
+  await screen.findByText("Queue saved to this review.");
+  expect(within(header).queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(within(header).getByRole("button", { name: "More review options" })).toHaveFocus(),
+  );
 });
 
 it("pauses the pad and its preview while tags are edited by hand", async () => {
@@ -2201,6 +2291,62 @@ it("pauses the pad and its preview while tags are edited by hand", async () => {
   // The current tags stay in view above the editor.
   expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Kept");
   expect(screen.getByRole("group", { name: "Edit occurrence tags" })).toBeInTheDocument();
+});
+
+it("keeps the open scope popover under its button when Save to review and Reset join the row", async () => {
+  // jsdom has no layout: the Scope button's right edge is what the popover is placed from, and
+  // only observers of an element that changed size hear about it.
+  const observers: Array<{ measure: () => void; targets: Element[] }> = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      entry: { measure: () => void; targets: Element[] };
+      constructor(measure: () => void) {
+        this.entry = { measure, targets: [] };
+        observers.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      disconnect() {
+        this.entry.targets = [];
+      }
+    },
+  );
+  try {
+    let right = 900;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const edge = this.classList.contains("dq-scope-button") ? right : 0;
+      return { top: 0, bottom: 32, left: edge - 100, right: edge, width: 100, height: 32, x: edge - 100, y: 0 } as DOMRect;
+    });
+    open();
+    await ready();
+    const button = screen.getByRole("button", { name: /^Scope/ });
+    const trail = button.closest(".dq-review-header-trail")!;
+    const scope = openScope();
+    const dialog = screen.getByRole("dialog", { name: "Queue scope" });
+    // A 600 px panel whose right edge is the button's.
+    expect(dialog.style.left).toBe("300px");
+    // It watches its button, the header's trail and the header.
+    expect(observers.find(({ targets }) => targets.includes(button))?.targets).toEqual(
+      expect.arrayContaining([button, trail, button.closest("header")]),
+    );
+    fireEvent.change(scope.getByRole("combobox", { name: "Occurrence condition" }), {
+      target: { value: "isNull" },
+    });
+    await screen.findByRole("button", { name: "Reset" });
+    // The two buttons after it grow the trail and move the button left; the popover follows it.
+    right = 700;
+    act(() =>
+      observers.filter(({ targets }) => targets.includes(trail)).forEach(({ measure }) => measure()),
+    );
+    expect(dialog.style.left).toBe("100px");
+    expect(screen.getByRole("dialog", { name: "Queue scope" })).toBe(dialog);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 it("closes the scope popover from outside it and keeps Tab inside it", async () => {
