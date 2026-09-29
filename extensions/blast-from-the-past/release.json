@@ -8,5 +8,5 @@
   "readme": "README.md",
   "ui": "src/BlastFromThePast/assets",
   "uiPackagePath": "assets",
-  "uiTest": "tests/blast-from-the-past-model.test.mjs"
+  "uiTest": "tests/*.test.mjs"
 }
