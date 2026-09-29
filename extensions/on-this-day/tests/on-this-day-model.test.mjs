@@ -59,6 +59,21 @@ test("seeded shuffles are stable per seed and keep every item", () => {
   assert.notDeepEqual(deterministicShuffle(items, seed), deterministicShuffle(items, stableSeed("2026-09-27", "instance", 1)));
 });
 
+test("every found year is equally likely to be featured", () => {
+  // Years arrive newest first, so a biased shuffle keeps featuring the most recent ones.
+  for (const size of [3, 5, 10]) {
+    const found = Array.from({ length: size }, (_, index) => ({ year: 2025 - index }));
+    const draws = 20_000;
+    const featured = new Map(found.map(({ year }) => [year, 0]));
+    for (let draw = 0; draw < draws; draw += 1) {
+      const { featuredYear } = selectMemories(found, 3, stableSeed(`day-${draw}`, "instance", "memories", 0));
+      featured.set(featuredYear, featured.get(featuredYear) + 1);
+    }
+    const expected = draws / size;
+    for (const count of featured.values()) assert.ok(Math.abs(count - expected) < expected * 0.25, `${size} years: ${[...featured.values()].join(" ")}`);
+  }
+});
+
 test("selected memories are listed newest first with the sample's first pick featured", () => {
   const found = [2025, 2023, 2019, 2014, 2009].map((year) => ({ year }));
   const seed = 42;

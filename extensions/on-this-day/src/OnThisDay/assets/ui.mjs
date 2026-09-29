@@ -36,12 +36,23 @@ export function stableSeed(...parts) {
   return (hash >>> 0) & 0x7fffffff;
 }
 
+// Mulberry32: a small seeded generator whose output is uniform in [0, 1). A plain LCG taken modulo the
+// range is not, because its low bits repeat in short cycles and favour the first items of the list.
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = Math.imul(state ^ (state >>> 15), state | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export function deterministicShuffle(items, seed) {
   const result = [...items];
-  let state = seed || 1;
+  const random = seededRandom(seed || 1);
   for (let index = result.length - 1; index > 0; index -= 1) {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-    const swapIndex = state % (index + 1);
+    const swapIndex = Math.floor(random() * (index + 1));
     [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
   }
   return result;
