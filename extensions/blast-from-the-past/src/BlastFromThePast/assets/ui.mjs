@@ -2,9 +2,9 @@ import React from "@cove/runtime/react";
 import { extensionFetch } from "@cove/runtime/api";
 
 const h = React.createElement;
+const CANDIDATES_ENDPOINT = "/api/plugins/com.midnightrider.blast-from-the-past/candidates";
 const HISTORY_CONCURRENCY = 4;
-const LIKED_PAGE_SIZE = 48;
-const LIKED_MAX_PAGES = 2;
+const VIDEO_BATCH_SIZE = 24;
 const POOL_TARGET = 36;
 
 // How far a like may sit from its session, and from the pause or playback it is matched to.
@@ -162,6 +162,29 @@ export function selectMoments(pool, count, seed) {
   return deterministicShuffle(pool, seed).slice(0, count);
 }
 
+// Scans the candidate videos in random order: loads a batch through findVideos, which drops videos the
+// viewer can no longer see, then reads their histories until there are enough moments to choose from.
+export async function scanCandidates(videoIds, seed, { findVideos, fetchHistory, target = POOL_TARGET, batchSize = VIDEO_BATCH_SIZE, concurrency = HISTORY_CONCURRENCY }) {
+  const order = deterministicShuffle(videoIds, seed);
+  const pool = [];
+  for (let offset = 0; offset < order.length && pool.length < target; offset += batchSize) {
+    const batch = order.slice(offset, offset + batchSize);
+    const byId = new Map((await findVideos(batch)).map((video) => [video.id, video]));
+    const videos = batch.map((id) => byId.get(id)).filter(Boolean);
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(concurrency, videos.length) }, async () => {
+      while (cursor < videos.length && pool.length < target) {
+        const video = videos[cursor];
+        cursor += 1;
+        const history = await fetchHistory(video.id);
+        if (history) pool.push(...collectMoments(video, history));
+      }
+    });
+    await Promise.all(workers);
+  }
+  return pool.sort((left, right) => right.likeAt - left.likeAt);
+}
+
 export function clipWindow(positionSec, durationSec, leadSeconds, clipSeconds) {
   const start = Math.max(0, positionSec - leadSeconds);
   const end = durationSec > 0 ? Math.min(durationSec, start + clipSeconds) : start + clipSeconds;
@@ -235,22 +258,25 @@ async function readJson(response) {
   let detail = "";
   try {
     const problem = await response.json();
-    detail = problem?.detail || problem?.title || "";
+    detail = problem?.detail || problem?.title || problem?.message || "";
   } catch {}
   throw new Error(detail || `Cove returned ${response.status}.`);
 }
 
-async function findLikedVideos(page, signal) {
+// The videos the viewer liked during one of their own playback sessions, found by the extension's endpoint.
+async function fetchCandidateIds(signal) {
+  const body = await readJson(await extensionFetch(CANDIDATES_ENDPOINT, { signal }));
+  return Array.isArray(body?.videoIds) ? body.videoIds : [];
+}
+
+async function findVideos(ids, signal) {
   const response = await extensionFetch("/api/videos/find", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      findFilter: { page, perPage: LIKED_PAGE_SIZE, sort: "last_played_at", direction: "desc" },
-      objectFilter: { likeCounterCriterion: { value: 0, modifier: "greaterThan" } },
-    }),
+    body: JSON.stringify({ findFilter: { page: 1, perPage: ids.length }, objectFilter: { ids } }),
     signal,
   });
-  return readJson(response);
+  return (await readJson(response)).items ?? [];
 }
 
 async function fetchHistory(videoId, signal) {
@@ -259,29 +285,12 @@ async function fetchHistory(videoId, signal) {
   return readJson(response);
 }
 
-// Recently played liked videos are the ones most likely to have playback sessions, so take those as
-// candidates, scan them in random order, and stop once there are enough moments to choose from.
 async function loadPool(seed, signal) {
-  const videos = [];
-  for (let page = 1; page <= LIKED_MAX_PAGES; page += 1) {
-    const response = await findLikedVideos(page, signal);
-    const items = response.items ?? [];
-    videos.push(...items);
-    if (items.length < LIKED_PAGE_SIZE) break;
-  }
-  const candidates = deterministicShuffle(videos, seed);
-  const pool = [];
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(HISTORY_CONCURRENCY, candidates.length) }, async () => {
-    while (cursor < candidates.length && pool.length < POOL_TARGET) {
-      const video = candidates[cursor];
-      cursor += 1;
-      const history = await fetchHistory(video.id, signal);
-      if (history) pool.push(...collectMoments(video, history));
-    }
+  const videoIds = await fetchCandidateIds(signal);
+  return scanCandidates(videoIds, seed, {
+    findVideos: (ids) => findVideos(ids, signal),
+    fetchHistory: (videoId) => fetchHistory(videoId, signal),
   });
-  await Promise.all(workers);
-  return pool.sort((left, right) => right.likeAt - left.likeAt);
 }
 
 function usePool(seed) {

@@ -1,7 +1,7 @@
 {
   "id": "com.midnightrider.blast-from-the-past",
   "name": "Blast From The Past",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A home dashboard widget that replays the moments in your viewing sessions that ended in a like.",
   "author": "MidnightRider",
   "kind": "extension",

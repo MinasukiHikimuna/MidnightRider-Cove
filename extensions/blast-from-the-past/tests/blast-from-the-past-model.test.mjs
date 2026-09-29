@@ -25,6 +25,7 @@ const {
   parseHistory,
   randomSeed,
   readSettings,
+  scanCandidates,
   selectMoments,
   scrubberMarks,
   spanLabel,
@@ -159,6 +160,61 @@ test("selections are stable per seed and never exceed the count", () => {
   assert.deepEqual(selectMoments(pool, 4, 42), selectMoments(pool, 4, 42));
   assert.equal(selectMoments(pool, 4, 42).length, 4);
   assert.equal(selectMoments(pool.slice(0, 2), 6, 42).length, 2);
+});
+
+// One liked moment per video, liked the given number of seconds into the shared test session.
+const scanHistory = (likedAtSeconds) => ({ likeHistory: [at(likedAtSeconds)], sessions: [session()], events: [pause(likedAtSeconds - 8, 800)] });
+const scanner = (videoIds, { visible = videoIds, withMoment = videoIds } = {}) => {
+  const calls = { find: [], history: [] };
+  const options = {
+    findVideos: async (ids) => {
+      calls.find.push(ids);
+      return ids.filter((id) => visible.includes(id)).reverse().map((id) => ({ id, title: `Video ${id}` }));
+    },
+    fetchHistory: async (id) => {
+      calls.history.push(id);
+      return withMoment.includes(id) ? scanHistory(100 + id) : { likeHistory: [], sessions: [], events: [] };
+    },
+  };
+  return { calls, options };
+};
+
+test("the scan skips candidates the viewer can no longer see and never reads their history", async () => {
+  const { calls, options } = scanner([1, 2, 3, 4], { visible: [1, 3, 4] });
+  const pool = await scanCandidates([1, 2, 3, 4], 42, options);
+  assert.deepEqual(pool.map((moment) => moment.video.id).sort(), [1, 3, 4]);
+  assert.equal(calls.history.includes(2), false);
+});
+
+test("the scan reads every candidate when moments are scarce, in batches", async () => {
+  const ids = Array.from({ length: 60 }, (_, index) => index + 1);
+  const { calls, options } = scanner(ids, { withMoment: [7, 59] });
+  const pool = await scanCandidates(ids, 42, { ...options, batchSize: 24 });
+  assert.deepEqual(calls.find.map((batch) => batch.length), [24, 24, 12]);
+  assert.deepEqual([...calls.history].sort((a, b) => a - b), ids);
+  assert.deepEqual(pool.map((moment) => moment.video.id).sort((a, b) => a - b), [7, 59]);
+});
+
+test("the scan stops once it has enough moments and lists the newest likes first", async () => {
+  const ids = Array.from({ length: 60 }, (_, index) => index + 1);
+  const { calls, options } = scanner(ids);
+  const pool = await scanCandidates(ids, 42, { ...options, target: 5, batchSize: 24, concurrency: 1 });
+  assert.equal(pool.length, 5);
+  assert.equal(calls.history.length, 5);
+  assert.equal(calls.find.length, 1);
+  assert.deepEqual(pool.map((moment) => moment.likeAt), [...pool.map((moment) => moment.likeAt)].sort((a, b) => b - a));
+});
+
+test("the scan order follows the seed", async () => {
+  const ids = Array.from({ length: 30 }, (_, index) => index + 1);
+  const first = scanner(ids);
+  const again = scanner(ids);
+  const other = scanner(ids);
+  await scanCandidates(ids, 42, { ...first.options, concurrency: 1 });
+  await scanCandidates(ids, 42, { ...again.options, concurrency: 1 });
+  await scanCandidates(ids, 7, { ...other.options, concurrency: 1 });
+  assert.deepEqual(first.calls.history, again.calls.history);
+  assert.notDeepEqual(first.calls.history, other.calls.history);
 });
 
 test("every load gets its own positive seed", () => {
