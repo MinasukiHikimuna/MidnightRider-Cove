@@ -26,6 +26,7 @@ import {
 } from "@cove/runtime/lucide-react";
 import type { TagGroup } from "./api";
 import { ActionsFromTags } from "./ActionsFromTags";
+import { actionGroups, groupKey, unanswerableGroups } from "./answerGroups";
 import type { TagTrees } from "./effectPreview";
 import { actionEffectParts, actionTagIds } from "./FindAction";
 import { ActionKeyButton } from "./KeyPicker";
@@ -88,12 +89,13 @@ function newAction(entityType: ReviewEntityType): ReviewAction {
 }
 
 /**
- * The review's actions as compact rows in review order: drag handle, key, label and what the
- * action changes, with duplicate, delete and expand. The key opens the key picker, which pins the
- * action to a key, leaves it to Auto (the next free key in keyboard order) or gives it none. One
- * action at a time opens in full to edit its label and ordered steps (or, in tag reviews, its
- * effect). Find an action narrows the rows by label; reordering, by dragging a handle or
- * Alt + ↑/↓ on it, works on the full list only.
+ * The review's actions as compact rows in review order: drag handle, key, label, answer group
+ * and what the action changes, with duplicate, delete and expand. The key opens the key picker,
+ * which pins the action to a key, leaves it to Auto (the next free key in keyboard order) or gives
+ * it none. One action at a time opens in full to edit its label, group and ordered steps (or, in
+ * tag reviews, its effect). Find an action narrows the rows by label; reordering, by dragging a
+ * handle or Alt + ↑/↓ on it, works on the full list only. Media reviews also choose here whether
+ * an item waits for every answer group (answerGroups.ts).
  */
 export function ActionsEditor({
   review,
@@ -122,6 +124,22 @@ export function ActionsEditor({
   const actions = review.actions as readonly ReviewAction[];
   const keyMap = useActionKeyMap(actions);
   const names = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
+  // The groups the actions name, each once as first spelled: the group field's suggestions.
+  const groupNames = useMemo(
+    () => (media ? actionGroups(actions as readonly MediaReviewAction[]).map((group) => group.name) : []),
+    [media, actions],
+  );
+  const staysForGroups = media && (review as MediaReview).stayUntilGroupsAnswered === true;
+  // A group none of whose actions can answer it would hold every item until skipped.
+  const unanswerable = useMemo(
+    () =>
+      new Set(
+        staysForGroups
+          ? unanswerableGroups(actions as readonly MediaReviewAction[]).map((group) => group.key)
+          : [],
+      ),
+    [staysForGroups, actions],
+  );
   const [filter, setFilter] = useState("");
   const [fromTags, setFromTags] = useState(false);
   // The confirmation lasts until the actions change again.
@@ -275,6 +293,29 @@ export function ActionsEditor({
           Choose a key on its key cap; Auto takes the next free key in this order. Drag a handle,
           or press Alt + ↑ / ↓, to reorder.
         </p>
+        {media && (
+          <div className="dq-actions-groups">
+            <label className="dq-checkbox">
+              <input
+                type="checkbox"
+                checked={staysForGroups}
+                aria-describedby={`${baseId}-groups-note`}
+                onChange={(event) =>
+                  onChange({
+                    ...review,
+                    stayUntilGroupsAnswered: event.target.checked ? true : undefined,
+                  } as Review)
+                }
+              />
+              Stay until every group is answered
+            </label>
+            <p className="dq-actions-hint" id={`${baseId}-groups-note`}>
+              {staysForGroups && !groupNames.length
+                ? "No action has a group yet: give the actions of each question the same group."
+                : "Single-item view: a plain action moves on once every group has an answer."}
+            </p>
+          </div>
+        )}
         <span role="status" className="dq-actions-status">
           {added?.actions === actions
             ? `Added ${added.count} action${added.count === 1 ? "" : "s"} at the end.`
@@ -332,6 +373,9 @@ export function ActionsEditor({
                     />
                   }
                   takenPin={keyMap.duplicatePins.has(index) ? action.shortcut : undefined}
+                  groupUnanswerable={
+                    "steps" in action && unanswerable.has(groupKey(action.group))
+                  }
                   effect={actionEffectParts(action, names, tagGroups, trees)}
                   open={open}
                   detailId={`${baseId}-detail-${action.id}`}
@@ -345,6 +389,7 @@ export function ActionsEditor({
                   {"steps" in action ? (
                     <MediaActionDetail
                       action={action}
+                      groupNames={groupNames}
                       saving={saving}
                       stepKey={stepKey}
                       rememberStepKey={(next, previous) =>
@@ -387,6 +432,7 @@ function ActionRow({
   entityType,
   keyButton,
   takenPin,
+  groupUnanswerable = false,
   effect,
   open,
   detailId,
@@ -404,6 +450,8 @@ function ActionRow({
   keyButton: ReactNode;
   /** A key the action is pinned to that an earlier action is pinned to as well. */
   takenPin?: string;
+  /** The review waits for its groups, and no action of this action's group can answer it. */
+  groupUnanswerable?: boolean;
   effect: ReturnType<typeof actionEffectParts>;
   open: boolean;
   detailId: string;
@@ -417,6 +465,7 @@ function ActionRow({
 }) {
   const name = action.label.trim() || "New action";
   const problem = actionProblem(action, entityType);
+  const group = "steps" in action && groupKey(action.group) ? action.group!.trim() : "";
   return (
     <div
       className={`dq-action-row${open ? " dq-action-row-open" : ""}${isOver ? " dq-drag-over" : ""}`}
@@ -441,6 +490,12 @@ function ActionRow({
           <span className="dq-action-row-label" title={name}>
             {name}
           </span>
+          {group && (
+            <span className="dq-action-row-group" title={`Group: ${group}`}>
+              <span className="dq-sr-only">Group: </span>
+              {group}
+            </span>
+          )}
           {!open && (
             <span className="dq-action-row-effect">
               {effect.map((part, position) => (
@@ -463,6 +518,15 @@ function ActionRow({
             >
               <AlertTriangle aria-hidden="true" />
               {`${takenPin.toLocaleUpperCase()} is pinned twice`}
+            </span>
+          )}
+          {groupUnanswerable && (
+            <span
+              className="dq-action-problem"
+              title="No action in this group adds a tag or marks one absent, so the group is never answered and items wait there until skipped."
+            >
+              <AlertTriangle aria-hidden="true" />
+              {`${group} can't be answered`}
             </span>
           )}
         </div>
@@ -523,14 +587,67 @@ function LabelField({
   );
 }
 
+/** The action without an answer group. */
+function ungrouped(action: MediaReviewAction): MediaReviewAction {
+  const { group: _group, ...rest } = action;
+  return rest;
+}
+
+/**
+ * The action's answer group: free text, suggesting the groups the review's other actions name.
+ * Names match trimmed and ignoring case; leaving the field trims the name, and an empty one is no
+ * group.
+ */
+function GroupField({
+  action,
+  groupNames,
+  onChange,
+}: {
+  action: MediaReviewAction;
+  groupNames: readonly string[];
+  onChange(action: MediaReviewAction): void;
+}) {
+  const listId = useId();
+  const own = groupKey(action.group);
+  const set = (value: string) => onChange(value ? { ...action, group: value } : ungrouped(action));
+  return (
+    <label className="dq-action-field">
+      <span className="dq-action-field-name">Group</span>
+      <input
+        className="dq-input dq-action-group-input"
+        list={listId}
+        placeholder="No group"
+        autoComplete="off"
+        spellCheck={false}
+        value={action.group ?? ""}
+        onChange={(event) => set(event.target.value)}
+        onBlur={(event) => {
+          const trimmed = event.target.value.trim();
+          if (trimmed !== event.target.value) set(trimmed);
+        }}
+      />
+      <datalist id={listId}>
+        {groupNames
+          .filter((name) => groupKey(name) !== own)
+          .map((name) => (
+            <option key={name} value={name} />
+          ))}
+      </datalist>
+    </label>
+  );
+}
+
 function MediaActionDetail({
   action,
+  groupNames,
   saving,
   stepKey,
   rememberStepKey,
   onChange,
 }: {
   action: MediaReviewAction;
+  /** The groups the review's actions name, as the group field's suggestions. */
+  groupNames: readonly string[];
   saving: boolean;
   stepKey(step: ReviewStep): string;
   rememberStepKey(next: ReviewStep, previous: ReviewStep): void;
@@ -552,6 +669,7 @@ function MediaActionDetail({
   return (
     <>
       <LabelField action={action} onChange={(label) => onChange({ ...action, label })} />
+      <GroupField action={action} groupNames={groupNames} onChange={onChange} />
       <div className="dq-action-field dq-action-field-top" role="group" aria-labelledby={stepsLabel}>
         <span className="dq-action-field-name" id={stepsLabel}>
           Steps

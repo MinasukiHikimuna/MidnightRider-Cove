@@ -29,6 +29,11 @@ interface ReviewActionBase {
 
 export interface MediaReviewAction extends ReviewActionBase {
   steps: ReviewStep[];
+  /**
+   * The answer group the action belongs to, such as one question with an action per answer (see
+   * answerGroups.ts). Names match trimmed and ignoring case; none, or only spaces, is no group.
+   */
+  group?: string;
 }
 
 export type TagReviewEffect =
@@ -50,7 +55,16 @@ interface ReviewBase {
   importNotes?: string[];
 }
 
-export interface VideoReview extends ReviewBase {
+/** Settings of the reviews whose actions write tags, which run in the single-item workspace. */
+interface MediaReviewSettings {
+  /**
+   * In the single-item workspace, a plain action moves on only once every answer group of the
+   * review's actions is answered on the item (see answerGroups.ts). Off when missing.
+   */
+  stayUntilGroupsAnswered?: boolean;
+}
+
+export interface VideoReview extends ReviewBase, MediaReviewSettings {
   entityType?: "video";
   actions: MediaReviewAction[];
   presentation?: {
@@ -71,7 +85,7 @@ export interface TagReview extends ReviewBase {
  * Audio reviews run one audio at a time: audios have nothing to show in a card grid, so the
  * multiple-item layouts, card annotations and tag bins stay video-only.
  */
-export interface AudioReview extends ReviewBase {
+export interface AudioReview extends ReviewBase, MediaReviewSettings {
   entityType: "audio";
   actions: MediaReviewAction[];
   presentation?: { cardSize?: number | null };
@@ -115,7 +129,7 @@ export function targetsAllPerformers(
   );
 }
 
-export interface OccurrenceReview extends ReviewBase {
+export interface OccurrenceReview extends ReviewBase, MediaReviewSettings {
   entityType: "performerOccurrence" | "audioPerformerOccurrence";
   actions: MediaReviewAction[];
   occurrence: {
@@ -537,6 +551,10 @@ export function parseReviews(raw: string | null): Review[] {
             review.importNotes.every(
               (note: unknown) => typeof note === "string",
             ))) &&
+        // Answer groups belong to actions that write tags; tag reviews have neither.
+        (review.stayUntilGroupsAnswered === undefined ||
+          (typeof review.stayUntilGroupsAnswered === "boolean" &&
+            review.entityType !== "tag")) &&
         Array.isArray(review.actions) &&
         review.actions.every(
           (action: ReviewAction) =>
@@ -547,6 +565,7 @@ export function parseReviews(raw: string | null): Review[] {
             (review.entityType === "tag"
               ? "effect" in action &&
                 !("steps" in action) &&
+                !("group" in action) &&
                 validAction(action, "tag")
               : "steps" in action &&
                 !("effect" in action) &&
@@ -554,6 +573,7 @@ export function parseReviews(raw: string | null): Review[] {
                 action.steps.every(
                   (step) => step && Array.isArray(step.tagIds),
                 ) &&
+                (action.group === undefined || typeof action.group === "string") &&
                 validAction(action, "video")),
         ),
     )

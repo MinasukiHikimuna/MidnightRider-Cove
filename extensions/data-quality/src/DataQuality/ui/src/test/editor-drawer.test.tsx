@@ -704,3 +704,84 @@ it("starts a copy of a pinned action on Auto and keeps a copy without a key keyl
     ["Swapped copy", "none"],
   ]);
 });
+
+it("gives an action a group, suggesting the review's other groups, trimmed when the field is left", () => {
+  const { drawer, tab } = open({
+    ...video,
+    actions: [
+      { ...video.actions[0], group: "First question" },
+      { ...video.actions[1], group: "second question" },
+      video.actions[2],
+    ],
+  });
+  tab("Actions");
+  const row = (name: string) =>
+    within(drawer)
+      .getByRole("button", { name: new RegExp(`^(Expand|Collapse) ${name}$`) })
+      .closest<HTMLElement>(".dq-action-row")!;
+  // Rows name their group.
+  expect(within(row("Kept")).getByText("First question")).toBeInTheDocument();
+  expect(row("Absent").querySelector(".dq-action-row-group")).toBeNull();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Expand Absent" }));
+  const field = within(drawer).getByRole("combobox", { name: "Group" });
+  expect(field).toHaveValue("");
+  const suggestions = () =>
+    [...document.getElementById(field.getAttribute("list")!)!.querySelectorAll("option")].map(
+      (option) => option.value,
+    );
+  expect(suggestions()).toEqual(["First question", "second question"]);
+  fireEvent.change(field, { target: { value: "  First QUESTION " } });
+  expect(latest.actions[2]).toMatchObject({ group: "  First QUESTION " });
+  // The same group, whatever the case: it is no longer suggested to this action.
+  expect(suggestions()).toEqual(["second question"]);
+  fireEvent.blur(field);
+  expect(latest.actions[2]).toMatchObject({ group: "First QUESTION" });
+  fireEvent.change(field, { target: { value: "" } });
+  expect(latest.actions[2]).not.toHaveProperty("group");
+  // A copy answers the same group.
+  fireEvent.click(within(drawer).getByRole("button", { name: "Duplicate Kept" }));
+  expect(latest.actions[1]).toMatchObject({ label: "Kept copy", group: "First question" });
+});
+
+it("offers media reviews Stay until every group is answered in the Actions tab, and tag reviews no groups", () => {
+  const { drawer, tab } = open(video);
+  tab("Actions");
+  const setting = within(drawer).getByRole("checkbox", { name: "Stay until every group is answered" });
+  expect(setting).not.toBeChecked();
+  expect(setting).toHaveAccessibleDescription(
+    "Single-item view: a plain action moves on once every group has an answer.",
+  );
+  fireEvent.click(setting);
+  expect(latest).toMatchObject({ stayUntilGroupsAnswered: true });
+  expect(within(drawer).getByText("Unsaved changes")).toBeInTheDocument();
+  // Without a group on any action there is nothing to wait for yet, and the note says so.
+  expect(setting).toHaveAccessibleDescription(
+    "No action has a group yet: give the actions of each question the same group.",
+  );
+  fireEvent.click(setting);
+  expect((latest as VideoReview).stayUntilGroupsAnswered).toBeUndefined();
+  expect(within(drawer).queryByText("Unsaved changes")).toBeNull();
+});
+
+it("offers tag reviews neither the group setting nor group fields", () => {
+  const { drawer, tab } = open(tagReview);
+  tab("Actions");
+  expect(within(drawer).queryByRole("checkbox", { name: "Stay until every group is answered" })).toBeNull();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Expand Group" }));
+  expect(within(drawer).queryByRole("combobox", { name: "Group" })).toBeNull();
+});
+
+it("warns while the review waits for its groups about a group none of whose actions can answer it", () => {
+  const { drawer, tab } = open({
+    ...video,
+    actions: [
+      { ...video.actions[0], group: "First question" },
+      { id: "drop", label: "Drop", group: "Cleanup", steps: [{ mode: "REMOVE", tagIds: [14] }] },
+    ],
+  });
+  tab("Actions");
+  expect(within(drawer).queryByText("Cleanup can't be answered")).toBeNull();
+  fireEvent.click(within(drawer).getByRole("checkbox", { name: "Stay until every group is answered" }));
+  expect(within(drawer).getByText("Cleanup can't be answered")).toBeInTheDocument();
+  expect(within(drawer).queryByText("First question can't be answered")).toBeNull();
+});

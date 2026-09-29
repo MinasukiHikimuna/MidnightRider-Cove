@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activeTestKeys,
   testFilterControls,
@@ -19,7 +19,7 @@ import {
 } from "./runtime-components";
 import { setViewportWidth } from "./viewport";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
-import type { OccurrenceReview, VideoReview } from "../model";
+import type { MediaReviewAction, OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
 import { rankingSignature, type PerformerRanking } from "../performerRanking";
 configure({ asyncUtilTimeout: 3000 });
@@ -2377,4 +2377,257 @@ it("moves on after a tapped action while Stay on this item is off, and shows no 
   act(() => setViewportWidth(1024));
   expect(screen.queryByRole("switch", { name: "Stay on this item" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "q Action 1" })).toBeInTheDocument();
+});
+
+describe("answer groups", () => {
+  // Two questions, "Kind" (names match ignoring case) and "Size", and an ungrouped note.
+  const grouped: OccurrenceReview = {
+    ...review,
+    stayUntilGroupsAnswered: true,
+    actions: [
+      { id: "one", label: "Kind one", group: "Kind", steps: [{ mode: "ADD", tagIds: [1] }, { mode: "REMOVE", tagIds: [2] }] },
+      { id: "two", label: "Kind two", group: " kind", steps: [{ mode: "ADD", tagIds: [2] }, { mode: "REMOVE", tagIds: [1] }] },
+      { id: "small", label: "Small", group: "Size", steps: [{ mode: "ADD", tagIds: [11] }] },
+      { id: "none", label: "No size", group: "Size", steps: [{ mode: "MARK_ABSENT", tagIds: [11, 12] }] },
+      { id: "note", label: "Note", steps: [{ mode: "ADD", tagIds: [30] }] },
+    ],
+  };
+  /** Runs an action's steps on the shared tag state, as Cove would store them. */
+  function applySteps(action: MediaReviewAction) {
+    let { ids, absent } = state;
+    for (const step of action.steps)
+      for (const id of step.tagIds) {
+        if (step.mode === "ADD" || step.mode === "MARK_PRESENT") ids = [...ids.filter((tag) => tag !== id), id];
+        if (step.mode === "REMOVE" || step.mode === "MARK_ABSENT") ids = ids.filter((tag) => tag !== id);
+        if (step.mode === "MARK_ABSENT") absent = [...absent.filter((tag) => tag !== id), id];
+        if (step.mode === "MARK_PRESENT" || step.mode === "CLEAR_ABSENCE") absent = absent.filter((tag) => tag !== id);
+      }
+    state = { ids, names: ids.map((id) => `Tag ${id}`), absent };
+  }
+  beforeEach(() => {
+    api.applyTags.mockImplementation(async (_review, _item, action: MediaReviewAction) => applySteps(action));
+  });
+  const checklist = () =>
+    within(screen.getByRole("list", { name: "Answer groups" }))
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+  const highlighted = () =>
+    [...document.querySelectorAll(".dq-pad-tile[data-group-open]")].map(
+      (tile) => tile.querySelector(".dq-pad-label")?.textContent,
+    );
+  const onFirst = () =>
+    expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
+
+  it("stays while a group is open, showing which, and moves on to the partner once every group is answered", async () => {
+    open(grouped);
+    await ready();
+    expect(checklist()).toEqual(["Kind, not answered yet", "Size, not answered yet"]);
+    expect(highlighted()).toEqual(["Kind one", "Kind two", "Small", "No size"]);
+    expect(screen.getByRole("button", { name: "e Small" })).toHaveAccessibleDescription(
+      "+ Choice. Size: not answered yet",
+    );
+    fireEvent.keyDown(document.body, { key: "q" });
+    // Nothing moves on at once: the item stays, and a live region says why.
+    onFirst();
+    const message = await screen.findByText("Tags saved. Staying until answered: Size.");
+    expect(message.closest("[aria-live]")).not.toBeNull();
+    await ready();
+    onFirst();
+    expect(checklist()).toEqual(["Kind, answered: Kind one", "Size, not answered yet"]);
+    expect(highlighted()).toEqual(["Small", "No size"]);
+    fireEvent.keyDown(document.body, { key: "e" });
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(api.applyTags).toHaveBeenCalledTimes(2);
+  });
+
+  it("moves on with Skip while groups are open, and stays with Shift and the pin", async () => {
+    open(grouped);
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    await ready();
+    expect(api.applyTags).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "Q", code: "KeyQ", shiftKey: true });
+    await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+    await ready();
+    // Shift stays as it always does, not for the open size.
+    expect(screen.getByText("Tags saved.")).toBeInTheDocument();
+    expect(screen.queryByText(/Staying until answered/)).toBeNull();
+    // Shift and the pin stay even once every group is answered.
+    fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Small" }));
+    await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+    await ready();
+    expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+    expect(checklist()).toEqual(["Kind, answered: Kind one", "Size, answered: Small"]);
+    expect(highlighted()).toEqual([]);
+    expect(screen.queryByText(/Staying until answered/)).toBeNull();
+  });
+
+  it("applies an ungrouped action and stays while groups are open", async () => {
+    open(grouped);
+    await ready();
+    // Find action's Enter is a plain action too.
+    fireEvent.keyDown(document.body, { key: "-" });
+    const search = await screen.findByRole("combobox", { name: "Find an action" });
+    fireEvent.change(search, { target: { value: "note" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    await screen.findByText("Tags saved. Staying until answered: Kind, Size.");
+    await ready();
+    onFirst();
+    expect(appliedLabel()).toBe("Note");
+    expect(state.ids).toEqual([30]);
+  });
+
+  it("moves on after an ungrouped action once every group is answered", async () => {
+    state = { ids: [2], names: ["Tag 2"], absent: [12] };
+    open(grouped);
+    await ready();
+    expect(checklist()).toEqual(["Kind, answered: Kind two", "Size, answered: No size"]);
+    expect(highlighted()).toEqual([]);
+    fireEvent.keyDown(document.body, { key: "t" });
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(appliedLabel()).toBe("Note");
+  });
+
+  it("counts the answers an item already has and waits only for the others", async () => {
+    state = { ids: [2], names: ["Tag 2"], absent: [] };
+    open(grouped);
+    await ready();
+    expect(checklist()).toEqual(["Kind, answered: Kind two", "Size, not answered yet"]);
+    expect(highlighted()).toEqual(["Small", "No size"]);
+    // Changing the kind's answer leaves the size open.
+    fireEvent.keyDown(document.body, { key: "q" });
+    await screen.findByText("Tags saved. Staying until answered: Size.");
+    await ready();
+    onFirst();
+    // A recorded absence answers the size: foreseen from the action, the move starts at once,
+    // before the write ends.
+    let finish!: () => void;
+    api.applyTags.mockImplementationOnce(async (_review, _item, action: MediaReviewAction) => {
+      await new Promise<void>((resolve) => (finish = resolve));
+      applySteps(action);
+    });
+    fireEvent.keyDown(document.body, { key: "r" });
+    expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+    await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+    await act(async () => finish());
+    await ready();
+    expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+  });
+
+  it("moves on when the saved tags answer every group after all", async () => {
+    api.applyTags.mockImplementationOnce(async (_review, _item, action: MediaReviewAction) => {
+      applySteps(action);
+      // Someone else answered the size meanwhile.
+      state = { ...state, ids: [...state.ids, 11] };
+    });
+    open(grouped);
+    await ready();
+    fireEvent.keyDown(document.body, { key: "q" });
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(screen.queryByText(/Staying until answered/)).toBeNull();
+    expect(screen.getByText("Tags saved.")).toBeInTheDocument();
+  });
+
+  it("waits with the queue as it is, even for an item that left it, then moves on at once and plays the next video", async () => {
+    api.loadOccurrencePage.mockResolvedValueOnce({ items: [first, third], totalCount: 2 });
+    // Once answered, the item no longer matches the queue.
+    api.loadOccurrencePage.mockResolvedValue({ items: [third], totalCount: 1 });
+    open(grouped);
+    await ready();
+    const loads = api.loadOccurrencePage.mock.calls.length;
+    const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
+    fireEvent.keyDown(document.body, { key: "q" });
+    await screen.findByText("Tags saved. Staying until answered: Size.");
+    // Waiting reloads nothing: the item stays marked in the queue, the next video preloaded.
+    expect(api.loadOccurrencePage.mock.calls.length).toBe(loads);
+    expect(queue.getByRole("button", { name: "First performer — First scene" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByTestId("video-player-preload")).toHaveAttribute("data-video-id", "2");
+    // The answer that completes the item, pressed at once, moves on before its write ends and
+    // starts the next video; its refresh then settles the queue.
+    let finish!: () => void;
+    api.applyTags.mockImplementationOnce(async (_review, _item, action: MediaReviewAction) => {
+      await new Promise<void>((resolve) => (finish = resolve));
+      applySteps(action);
+    });
+    fireEvent.keyDown(document.body, { key: "e" });
+    expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+    expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
+    await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+    expect(appliedLabel(1)).toBe("Small");
+    await act(async () => finish());
+    await ready();
+    expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+    expect(queue.queryByRole("button", { name: /First scene/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps Save & next, actions without steps and Stay on this item as they were", async () => {
+    const rule: OccurrenceReview = {
+      ...grouped,
+      actions: [...grouped.actions, { id: "next", label: "Next one", group: "Size", steps: [] }],
+    };
+    setViewportWidth(390);
+    open(rule);
+    await ready();
+    const pad = () => screen.getByRole("region", { name: "Actions" });
+    // A grouped action without steps answers nothing, so it is not marked, and it moves on.
+    expect(
+      [...pad().querySelectorAll("[data-group-open]")].map(
+        (button) => button.querySelector(".dq-mobile-label")?.textContent,
+      ),
+    ).toEqual(["Kind one", "Kind two", "Small", "No size"]);
+    // Stay on this item stays, as it always does, not for the open groups.
+    fireEvent.click(within(pad()).getByRole("switch", { name: "Stay on this item" }));
+    fireEvent.click(within(pad()).getByRole("button", { name: "Small" }));
+    await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+    await ready();
+    onFirst();
+    expect(screen.getByText("Tags saved.")).toBeInTheDocument();
+    fireEvent.click(within(pad()).getByRole("switch", { name: "Stay on this item" }));
+    fireEvent.click(within(pad()).getByRole("button", { name: "Next one" }));
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    await ready();
+    expect(api.applyTags).toHaveBeenCalledTimes(1);
+    // Edit tags' Save & next moves on with the kind still open.
+    fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & next" }));
+    await waitFor(() => expect(api.editTags).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Reviewing Second performer" })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Staying until answered/)).toBeNull();
+  });
+
+  it("waits in video reviews too", async () => {
+    const rule: VideoReview = {
+      ...grouped,
+      entityType: "video",
+      view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+    };
+    api.findMedia.mockResolvedValue({ items: [video, third.media], totalCount: 2 });
+    open(rule);
+    await ready();
+    fireEvent.keyDown(document.body, { key: "e" });
+    await screen.findByText("Tags saved. Staying until answered: Kind.");
+    await ready();
+    expect(screen.getByRole("link", { name: "First scene" })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "w" });
+    await screen.findByRole("link", { name: "Next scene" });
+  });
+
+  it.each([
+    ["the setting is off", { ...grouped, stayUntilGroupsAnswered: undefined }],
+    ["no action has a group", { ...review, stayUntilGroupsAnswered: true }],
+  ])("moves on after every action as before when %s", async (_case, rule) => {
+    open(rule);
+    await ready();
+    expect(screen.queryByRole("list", { name: "Answer groups" })).not.toBeInTheDocument();
+    expect(highlighted()).toEqual([]);
+    fireEvent.keyDown(document.body, { key: "q" });
+    await screen.findByRole("heading", { name: "Reviewing Second performer" });
+    expect(api.applyTags).toHaveBeenCalledTimes(1);
+  });
 });

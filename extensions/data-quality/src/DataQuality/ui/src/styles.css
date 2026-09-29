@@ -1787,6 +1787,97 @@
     transition: none;
   }
 }
+/* Answer groups (answerGroups.ts), while a review waits for them: the pad header's checklist, a
+   check and the answer for each answered group and a ring for each open one, and an accent edge
+   and tint on the actions of the open groups (the checklist and each tile's description say it in
+   words too). Phone-sized windows put the checklist over the buttons, wrapping. */
+.dq-group-checklist {
+  display: flex;
+  /* In a tight header the effect line gives up its room first; the list takes at most 60 %. */
+  max-width: 60%;
+  flex: none;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+.dq-group {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-secondary);
+}
+.dq-group + .dq-group::before {
+  margin-right: 3px;
+  color: var(--color-muted);
+  content: "·";
+  content: "·" / "";
+}
+/* Answered groups stay calm; the accent is for the open ones. */
+.dq-group svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--color-secondary);
+}
+.dq-group-answer {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+.dq-group[data-state="open"] > .dq-group-name {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+.dq-group-ring {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 2px solid var(--color-accent);
+  border-radius: 50%;
+}
+.dq-group[data-state="unknown"] {
+  color: var(--color-muted);
+}
+.dq-pad-tile[data-group-open],
+.dq-mobile-tile[data-group-open] {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-card));
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+.dq-pad-slot:hover > .dq-pad-tile[data-group-open]:not(:disabled),
+.dq-pad-slot:focus-within > .dq-pad-tile[data-group-open]:not(:disabled) {
+  box-shadow:
+    inset 3px 0 0 var(--color-accent),
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+/* Forced colours drop the tint and the edge: an inner outline marks the tiles instead. */
+@media (forced-colors: active) {
+  .dq-pad-tile[data-group-open]:not(:focus-visible),
+  .dq-mobile-tile[data-group-open]:not(:focus-visible) {
+    outline: 2px solid CanvasText;
+    outline-offset: -4px;
+  }
+}
+/* Phones: the list wraps, so a wider gap parts the groups instead of dots that would start a line,
+   and a long answer wraps within its group. */
+.dq-pad-mobile .dq-group-checklist {
+  max-width: none;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  font-size: 0.8125rem;
+  white-space: normal;
+}
+.dq-pad-mobile .dq-group {
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+}
+.dq-pad-mobile .dq-group + .dq-group::before {
+  content: none;
+}
 
 /* The current item's column: sections scroll, Edit tags and Skip stay at the bottom. */
 .dq-review-panel {
@@ -4512,6 +4603,24 @@ textarea.dq-input {
 .dq-action-problem svg {
   width: 13px;
   height: 13px;
+}
+/* An action's answer group, as a small outlined chip after its label. */
+.dq-action-row-group {
+  max-width: 140px;
+  flex: none;
+  overflow: hidden;
+  padding: 1px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-secondary);
+  font-size: 0.71875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dq-actions-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .dq-action-toggle svg {
   transition: transform 0.15s;

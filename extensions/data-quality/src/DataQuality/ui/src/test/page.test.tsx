@@ -1762,10 +1762,11 @@ it("adds actions generated from a parent tag's children after the existing ones"
     { mode: "ADD", tagIds: [id] },
     { mode: "REMOVE_TREE", tagIds: [40] },
   ];
+  // Each answers the group named after the parent.
   expect(api.saveReviews.mock.calls[0][1][0].actions).toEqual([
     review.actions[0],
-    { id: expect.any(String), label: "Bedroom", steps: onlyOne(42) },
-    { id: expect.any(String), label: "Kitchen", steps: onlyOne(41) },
+    { id: expect.any(String), label: "Bedroom", steps: onlyOne(42), group: "Rooms" },
+    { id: expect.any(String), label: "Kitchen", steps: onlyOne(41), group: "Rooms" },
   ]);
 });
 it("saves explicitly reordered tag operations", async () => {
@@ -2276,6 +2277,34 @@ it("applies action letters from the page body and from the action bar", async ()
   fireEvent.keyDown(search, { key: "q" });
   await act(async () => {});
   expect(api.runReviewAction).toHaveBeenCalledTimes(3);
+});
+
+it("ignores answer groups in the grid, where an action on the focused card moves on as before", async () => {
+  const grouped = {
+    ...review,
+    stayUntilGroupsAnswered: true,
+    view: { ...review.view, reviewMode: "multiple" as const },
+    actions: [
+      { ...review.actions[0], group: "Kind" },
+      { id: "size", label: "Size", group: "Size", steps: [{ mode: "ADD" as const, tagIds: [4] }] },
+    ],
+  };
+  api.loadReviews.mockResolvedValueOnce({ reviews: [grouped], storageKey: "reviews", canWrite: true });
+  let remaining = [video(1), video(2), video(3)];
+  api.findMedia.mockImplementation(async () => ({ items: remaining, totalCount: remaining.length }));
+  api.runReviewAction.mockImplementation(async (_kind, _action, ids: number[]) => {
+    remaining = remaining.filter((item) => !ids.includes(item.id));
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(screen.queryByRole("list", { name: "Answer groups" })).toBeNull();
+  expect(document.querySelector("[data-group-open]")).toBeNull();
+  fireEvent.keyDown(first, { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1]);
+  await waitFor(() => expect(screen.getByRole("article", { name: "Video 2" })).toHaveFocus());
+  expect(screen.queryByRole("article", { name: /^Video 1/ })).toBeNull();
 });
 
 it("explains why an action shortcut cannot run instead of ignoring it", async () => {

@@ -6,7 +6,15 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Ban, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
+import { Ban, Check, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
+import {
+  actionGroups,
+  answersGroup,
+  groupStatus,
+  openGroups,
+  type ActionGroup,
+  type GroupStatus,
+} from "./answerGroups";
 import { actionEffectParts } from "./FindAction";
 import { previewActionEffect, type TagTrees } from "./effectPreview";
 import {
@@ -187,6 +195,55 @@ export function MobileFindButton({
 }
 
 /**
+ * The review's answer groups on the item on screen (answerGroups.ts): each group's name, then a
+ * check and the answer the item holds, or a ring while the group is still open. Until the item's
+ * tags are known it lists the names alone.
+ */
+function GroupChecklist({
+  groups,
+  statuses,
+  actions,
+}: {
+  groups: readonly ActionGroup[];
+  /** Null while the item's tags load. */
+  statuses: readonly GroupStatus[] | null;
+  actions: readonly MediaReviewAction[];
+}) {
+  return (
+    <ul
+      className="dq-group-checklist"
+      aria-label="Answer groups"
+      title="A plain action moves on once every group has an answer"
+    >
+      {(statuses ?? groups).map((group) => {
+        const answers = statuses ? (group as GroupStatus).answers : null;
+        const state = !answers ? "unknown" : answers.length ? "answered" : "open";
+        return (
+          <li key={group.key} className="dq-group" data-state={state}>
+            <span className="dq-group-name">{group.name}</span>
+            {state === "answered" && (
+              <>
+                <Check aria-hidden="true" />
+                <span className="dq-sr-only">, answered:</span>{" "}
+                <span className="dq-group-answer">
+                  {answers!.map((index) => actions[index].label).join(", ")}
+                </span>
+              </>
+            )}
+            {state === "open" && (
+              <>
+                <span className="dq-group-ring" aria-hidden="true" />
+                <span className="dq-sr-only">, not answered yet</span>
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * Phone-sized windows: touch has neither Shift nor the hover pin, so while this switch is on a
  * tapped action applies and stays on the item. It is not remembered, and keys keep their meaning.
  */
@@ -211,6 +268,8 @@ function StaySwitch({ checked, onChange }: { checked: boolean; onChange(checked:
  * left out; the bottom row also carries Find action, which counts the actions without a key.
  * Hovering or focusing a tile previews its effect above the pad and on the current tags. Phone-sized
  * windows get plain groups of buttons instead (MobileActionGroups) and the Stay on this item switch.
+ * A review that waits for its answer groups shows them as a checklist in the header (above the
+ * buttons on phones) and marks the actions of the groups still open.
  */
 export function ActionPad({
   actions,
@@ -224,6 +283,7 @@ export function ActionPad({
   onFind,
   findDisabled,
   paused = false,
+  waitForGroups = false,
   stayOnTap = false,
   onStayOnTapChange,
 }: {
@@ -241,6 +301,11 @@ export function ActionPad({
   findDisabled: boolean;
   /** The review is being edited: the pad says so and dims its tiles, which stay disabled. */
   paused?: boolean;
+  /**
+   * The review stays on an item until every answer group is answered: the pad lists the groups
+   * with the item's answers and marks the actions of the open ones.
+   */
+  waitForGroups?: boolean;
   /** Phone-sized windows: a tapped action applies and stays (the Stay on this item switch). */
   stayOnTap?: boolean;
   /** Turns Stay on this item on or off; without it phone-sized windows show no switch. */
@@ -256,6 +321,34 @@ export function ActionPad({
   const rows = ROWS.filter((row) => row.keys.some((key) => keyMap.actionOn.has(key)));
   const bottomRow = rows.includes(ROWS[2]);
   const extra = actions.length - keyMap.actionOn.size;
+  // Answer groups, while the review waits for them and is not being edited.
+  const answerGroups = useMemo(
+    () => (waitForGroups && !paused ? actionGroups(actions) : []),
+    [waitForGroups, paused, actions],
+  );
+  const statuses = useMemo(
+    () => (answerGroups.length && tags ? groupStatus(actions, tags) : null),
+    [answerGroups, actions, tags],
+  );
+  // Each action that can answer a group still open, with that group's name.
+  const openGroupOf = new Map(
+    openGroups(statuses ?? []).flatMap((group) =>
+      group.actions
+        .filter((index) => answersGroup(actions[index]))
+        .map((index) => [index, group.name] as const),
+    ),
+  );
+  const checklist = answerGroups.length > 0 && (
+    <GroupChecklist groups={answerGroups} statuses={statuses} actions={actions} />
+  );
+  /** What the action changes, read out with its tile or button, and whose open group it answers. */
+  const description = (index: number): string => {
+    const effect = actionEffectParts(actions[index], names, [], trees)
+      .map((part) => part.text)
+      .join(", ");
+    const group = openGroupOf.get(index);
+    return group === undefined ? effect : `${effect}. ${group}: not answered yet`;
+  };
 
   const previewHandlers = (action: MediaReviewAction) => ({
     onMouseEnter: () => preview.set(action),
@@ -288,9 +381,7 @@ export function ActionPad({
       <div key={binding} className="dq-pad-slot" {...(paused ? {} : previewHandlers(action))}>
         {/* What the action changes, read out with the tile (the line above the pad is visual). */}
         <span id={effectId} className="dq-sr-only">
-          {actionEffectParts(action, names, [], trees)
-            .map((part) => part.text)
-            .join(", ")}
+          {description(index!)}
         </span>
         <button
           type="button"
@@ -298,6 +389,7 @@ export function ActionPad({
           title={action.label}
           aria-keyshortcuts={binding}
           aria-describedby={effectId}
+          data-group-open={openGroupOf.has(index!) || undefined}
           disabled={disabled}
           onClick={(event) => onApply(action, event.shiftKey)}
         >
@@ -348,6 +440,7 @@ export function ActionPad({
           title={action.label}
           aria-keyshortcuts={binding}
           aria-describedby={`${baseId}-effect-${binding}`}
+          data-group-open={openGroupOf.has(index) || undefined}
           disabled={isDisabled(action)}
           onClick={(event) => {
             // A tap that focused the button leaves no preview behind for the next item.
@@ -390,6 +483,7 @@ export function ActionPad({
           )}
           {onStayOnTapChange && <StaySwitch checked={stayOnTap} onChange={onStayOnTapChange} />}
         </div>
+        {checklist}
         <div className="dq-mobile-actions">
           <MobileActionGroups
             groups={groups}
@@ -408,9 +502,7 @@ export function ActionPad({
         <div hidden>
           {groups.flat().map((index) => (
             <span key={index} id={`${baseId}-effect-${keyMap.keys[index]}`}>
-              {actionEffectParts(actions[index], names, [], trees)
-                .map((part) => part.text)
-                .join(", ")}
+              {description(index)}
             </span>
           ))}
         </div>
@@ -438,6 +530,7 @@ export function ActionPad({
               preview={preview}
               findKey={keys.find}
             />
+            {checklist}
             <span className="dq-pad-hint">
               <kbd className="dq-key">Shift</kbd>
               <span>+ key applies and stays</span>

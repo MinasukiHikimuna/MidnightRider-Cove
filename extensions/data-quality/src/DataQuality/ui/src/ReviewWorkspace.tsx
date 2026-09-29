@@ -42,6 +42,13 @@ import {
   type ActionPreviewStore,
 } from "./ActionPad";
 import {
+  groupStatus,
+  openGroups,
+  tagsAfterAction,
+  waitsForGroups,
+  type GroupStatus,
+} from "./answerGroups";
+import {
   currentTags,
   previewActionEffect,
   useTagTrees,
@@ -901,16 +908,28 @@ export function ReviewWorkspace({
     if (ruleDraft || !current || lock.current || loading || (editing && !adHoc))
       return;
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
-    const autoplayNext = mutating && !stay;
     if (mutating && (!canWrite || !tags)) return;
     if (action && hasAssessmentSteps(action) && !canAssess) return;
+    // Answer groups: a plain action (a key, a tile or Find action; not Shift, the pin or Stay on
+    // this item) stays on the item while one of the review's groups would still be open after it.
+    // The item's tags and the action's foreseen effect decide at once, so moving on can start
+    // before the write ends; Skip and Edit tags move on as always.
+    const waitingForGroups =
+      !stay &&
+      !adHoc &&
+      !legacy &&
+      mutating &&
+      action !== undefined &&
+      tags !== null &&
+      waitsForGroups(saved) &&
+      openGroups(groupStatus(saved.actions, tagsAfterAction(action, tags, trees))).length > 0;
     lock.current = true;
     setPending(true);
     setError("");
     setNotice("");
     const currentIndex = items.findIndex((item) => item.key === current.key);
     const optimisticNext =
-      mutating && !stay && currentIndex >= 0
+      mutating && !stay && !waitingForGroups && currentIndex >= 0
         ? (items[currentIndex + 1] ?? null)
         : null;
     if (optimisticNext) {
@@ -920,6 +939,8 @@ export function ReviewWorkspace({
       showItem(optimisticNext, true);
     }
     let savedTags = false;
+    // The groups the saved tags leave open, while the item waits for them.
+    let openAfter: GroupStatus[] = [];
     try {
       if (mutating) {
         const before = await readTags(mediaKind, current);
@@ -939,15 +960,25 @@ export function ReviewWorkspace({
         if (!optimisticNext) setTags(after);
         savedTags = true;
         setEditing(false);
-        setNotice("Tags saved.");
+        // The saved tags have the last word: when they answer every group after all, move on.
+        if (waitingForGroups) openAfter = openGroups(groupStatus(saved.actions, after));
+        setNotice(
+          openAfter.length
+            ? `Tags saved. Staying until answered: ${openAfter.map((group) => group.name).join(", ")}.`
+            : "Tags saved.",
+        );
         if (current.occurrence) {
           void recountAfterWrite(current.occurrence.performer.id);
           setAnswersRevision((value) => value + 1);
         }
       }
       if (!alive.current || deferredRestore.current) return;
-      if (mutating) await advance(true, stay, autoplayNext);
-      else if (!stay) await advance();
+      // Waiting for open groups leaves the queue as it is, with the item marked in it and the next
+      // one preloaded: the action that answers the last group then moves on at once, and its
+      // refresh reconciles the queue, an item that has left it meanwhile included.
+      if (mutating) {
+        if (!openAfter.length) await advance(true, stay, !stay);
+      } else if (!stay) await advance();
       if (stay && adHoc) requestAnimationFrame(() => editButton.current?.focus());
     } catch (error) {
       setError(
@@ -1657,6 +1688,7 @@ export function ReviewWorkspace({
                   onFind={() => setFindOpen(true)}
                   findDisabled={editing || !!ruleDraft}
                   paused={!!ruleDraft}
+                  waitForGroups={waitsForGroups(definition)}
                   stayOnTap={stayOnTap}
                   onStayOnTapChange={setStayOnTap}
                 />

@@ -36,12 +36,14 @@ function pad(
     trees = new Map(),
     tags = null,
     paused = false,
+    waitForGroups = false,
   }: {
     mediaKind?: MediaKind;
     disabled?(action: MediaReviewAction): boolean;
     trees?: Map<number, number[]>;
     tags?: TagState | null;
     paused?: boolean;
+    waitForGroups?: boolean;
   } = {},
 ) {
   const preview = createActionPreviewStore();
@@ -60,6 +62,7 @@ function pad(
       onFind={onFind}
       findDisabled={paused}
       paused={paused}
+      waitForGroups={waitForGroups}
     />,
   );
   return { ...view, preview, onApply, onFind };
@@ -465,5 +468,106 @@ describe("phone-sized windows", () => {
     expect(screen.getByRole("button", { name: "Find" })).toBeDisabled();
     // The note wraps beside the Stay switch rather than running under it.
     expect(getComputedStyle(region.querySelector(".dq-pad-paused-note")!).whiteSpace).toBe("normal");
+  });
+});
+
+describe("answer groups", () => {
+  // "Kind" (two actions, names matching ignoring case), "Size" (a size and a recorded absence) and
+  // an ungrouped action.
+  const grouped: MediaReviewAction[] = [
+    { id: "one", label: "Kind one", group: "Kind", steps: [{ mode: "ADD", tagIds: [1] }] },
+    { id: "two", label: "Kind two", group: "KIND ", steps: [{ mode: "ADD", tagIds: [2] }] },
+    { id: "small", label: "Small", group: "Size", steps: [{ mode: "ADD", tagIds: [11] }] },
+    { id: "none", label: "No size", group: "Size", steps: [{ mode: "MARK_ABSENT", tagIds: [11] }] },
+    { id: "note", label: "Note", steps: [{ mode: "ADD", tagIds: [30] }] },
+    // In a group, but without steps it answers nothing: never marked.
+    { id: "next", label: "Next one", group: "Size", steps: [] },
+  ];
+  const items = () =>
+    within(screen.getByRole("list", { name: "Answer groups" }))
+      .getAllByRole("listitem")
+      .map((item) => [item.textContent, item.dataset.state]);
+  const marked = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLElement>("[data-group-open]")].map((tile) => tile.title);
+
+  it("lists the groups with the item's answers in the header and marks the open groups' actions", async () => {
+    const { container } = pad(grouped, {
+      waitForGroups: true,
+      tags: { ids: [2, 30], names: [], absent: [] },
+    });
+    const header = container.querySelector(".dq-pad-header")!;
+    expect(within(header as HTMLElement).getByRole("list", { name: "Answer groups" })).toBeInTheDocument();
+    expect(items()).toEqual([
+      ["Kind, answered: Kind two", "answered"],
+      ["Size, not answered yet", "open"],
+    ]);
+    expect(marked(container)).toEqual(["Small", "No size"]);
+    // Each tile's description names the open group it answers; the others only their effect.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "r No size absent" })).toHaveAccessibleDescription(
+        "Mark Tag 11 absent. Size: not answered yet",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "q Kind one" })).toHaveAccessibleDescription("+ Tag 1");
+    expect(screen.getByRole("button", { name: "y Next one" })).toHaveAccessibleDescription("Skip");
+  });
+
+  it("names the groups alone until the item's tags are known", () => {
+    const { container, rerender } = pad(grouped, { waitForGroups: true });
+    expect(items()).toEqual([
+      ["Kind", "unknown"],
+      ["Size", "unknown"],
+    ]);
+    expect(marked(container)).toEqual([]);
+    rerender(
+      <ActionPad
+        actions={grouped}
+        mediaKind="video"
+        isDisabled={() => false}
+        busy={false}
+        tags={{ ids: [], names: [], absent: [11] }}
+        trees={new Map()}
+        preview={createActionPreviewStore()}
+        onApply={() => {}}
+        onFind={() => {}}
+        findDisabled={false}
+        waitForGroups
+      />,
+    );
+    expect(items()).toEqual([
+      ["Kind, not answered yet", "open"],
+      ["Size, answered: No size", "answered"],
+    ]);
+    expect(marked(container)).toEqual(["Kind one", "Kind two"]);
+  });
+
+  it("shows nothing of the groups while the review does not wait for them or is edited", () => {
+    const tags = { ids: [], names: [], absent: [] };
+    const { container, unmount } = pad(grouped, { tags });
+    expect(screen.queryByRole("list", { name: "Answer groups" })).toBeNull();
+    expect(marked(container)).toEqual([]);
+    unmount();
+    const paused = pad(grouped, { tags, waitForGroups: true, paused: true, disabled: () => true });
+    expect(screen.queryByRole("list", { name: "Answer groups" })).toBeNull();
+    expect(marked(paused.container)).toEqual([]);
+  });
+
+  it("puts the checklist above the buttons in phone-sized windows and marks the open groups' buttons", () => {
+    setViewportWidth(390);
+    const { container } = pad(grouped, {
+      waitForGroups: true,
+      tags: { ids: [1], names: [], absent: [] },
+    });
+    const region = screen.getByRole("region", { name: "Actions" });
+    const list = within(region).getByRole("list", { name: "Answer groups" });
+    const buttons = region.querySelector(".dq-mobile-actions")!;
+    expect(list.compareDocumentPosition(buttons) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(region.querySelector(".dq-pad-header")!.contains(list)).toBe(false);
+    expect(getComputedStyle(list).flexWrap).toBe("wrap");
+    expect(items()).toEqual([
+      ["Kind, answered: Kind one", "answered"],
+      ["Size, not answered yet", "open"],
+    ]);
+    expect(marked(container)).toEqual(["Small", "No size"]);
   });
 });

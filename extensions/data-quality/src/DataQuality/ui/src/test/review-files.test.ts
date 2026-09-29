@@ -53,3 +53,24 @@ it("keeps each action's key choice through a review file", async () => {
   const read = await readReviewFile(new File([JSON.stringify([review], null, 2)], "keys.json"));
   expect(read).toEqual([review]);
 });
+
+it("keeps answer groups and their setting through a review file", async () => {
+  const review = {
+    id: "groups",
+    name: "Groups",
+    description: "",
+    entityType: "performerOccurrence",
+    view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text" },
+    occurrence: { targetMode: "all", performerIds: [], performerFilter: {}, condition: "any", conditionTagIds: [], tagIds: [], multiple: true },
+    stayUntilGroupsAnswered: true,
+    actions: [
+      { id: "one", label: "One", group: "Kind", steps: [{ mode: "ADD", tagIds: [1] }] },
+      { id: "two", label: "Two", steps: [{ mode: "ADD", tagIds: [2] }] },
+    ],
+  };
+  const read = await readReviewFile(new File([JSON.stringify([review], null, 2)], "groups.json"));
+  expect(read).toEqual([review]);
+  await expect(
+    readReviewFile(new File([JSON.stringify([{ ...review, stayUntilGroupsAnswered: 1 }])], "bad.json")),
+  ).rejects.toThrow("It does not hold valid Data Quality reviews.");
+});

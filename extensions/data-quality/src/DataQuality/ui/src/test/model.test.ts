@@ -201,6 +201,37 @@ it("round-trips explicit video layouts and card tag parents and rejects unknown 
   expect(() => parseReviews(JSON.stringify([{ ...rule, view: { ...rule.view, reviewMode: "unknown" } }]))).toThrow(/could not be read/i);
 });
 
+it("round-trips answer groups and their setting, refusing them where they do not belong", () => {
+  const view = { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text" };
+  const media = (extra: object = {}, action: object = {}) => ({
+    id: "groups",
+    name: "Groups",
+    description: "",
+    view,
+    actions: [{ id: "a", label: "A", steps: [{ mode: "ADD", tagIds: [1] }], ...action }],
+    ...extra,
+  });
+  const grouped = media({ stayUntilGroupsAnswered: true }, { group: " Size " });
+  expect(parseReviews(JSON.stringify([grouped]))).toEqual([grouped]);
+  const occurrence = {
+    ...media({ stayUntilGroupsAnswered: false }, { group: "Size" }),
+    entityType: "audioPerformerOccurrence",
+    occurrence: { targetMode: "all", performerIds: [], performerFilter: {}, condition: "any", conditionTagIds: [], tagIds: [], multiple: true },
+  };
+  expect(parseReviews(JSON.stringify([occurrence]))).toEqual([occurrence]);
+  expect(() => parseReviews(JSON.stringify([media({ stayUntilGroupsAnswered: "yes" })]))).toThrow(/could not be read/i);
+  expect(() => parseReviews(JSON.stringify([media({}, { group: 3 })]))).toThrow(/could not be read/i);
+  // Tag reviews set tag groups, not tags: answer groups have nothing to wait for there.
+  const tag = (extra: object = {}, action: object = {}) => ({
+    ...media(extra),
+    entityType: "tag",
+    actions: [{ id: "t", label: "T", effect: { mode: "SKIP" }, ...action }],
+  });
+  expect(parseReviews(JSON.stringify([tag()]))).toHaveLength(1);
+  expect(() => parseReviews(JSON.stringify([tag({ stayUntilGroupsAnswered: true })]))).toThrow(/could not be read/i);
+  expect(() => parseReviews(JSON.stringify([tag({}, { group: "Size" })]))).toThrow(/could not be read/i);
+});
+
 it("round-trips the select-all-on-load preference and rejects non-boolean values", () => {
   const rule = { id: "select", name: "Select", description: "", view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text", reviewMode: "multiple", selectAllOnLoad: true }, actions: [] };
   expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);

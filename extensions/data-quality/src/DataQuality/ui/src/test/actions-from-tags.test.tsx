@@ -7,9 +7,10 @@ import {
   childTagAction,
   distinctChildGroups,
   loadChildTagGroup,
+  parentGroupName,
   parentsOfChildren,
 } from "../childTagActions";
-import type { AudioReview, OccurrenceReview, VideoReview } from "../model";
+import type { AudioReview, MediaReviewAction, OccurrenceReview, VideoReview } from "../model";
 
 const fetchMock = vi.mocked(extensionFetch);
 const response = (body: unknown, status = 200) =>
@@ -239,6 +240,7 @@ it("adds the ticked children of several parents in order, skipping ones an actio
   fireEvent.click(within(generic).getByRole("checkbox", { name: /Only one per video/ }));
   fireEvent.click(screen.getByRole("button", { name: "Add 2 actions" }));
   expect(onAdd).toHaveBeenCalledTimes(1);
+  // Each action answers the group of the parent its child is listed under.
   expect(onAdd.mock.calls[0][0]).toEqual([
     {
       id: expect.any(String),
@@ -247,11 +249,42 @@ it("adds the ticked children of several parents in order, skipping ones an actio
         { mode: "ADD", tagIds: [3] },
         { mode: "REMOVE_TREE", tagIds: [1] },
       ],
+      group: "Generic",
     },
-    { id: expect.any(String), label: "Kitchen", steps: [{ mode: "ADD", tagIds: [11] }] },
+    {
+      id: expect.any(String),
+      label: "Kitchen",
+      steps: [{ mode: "ADD", tagIds: [11] }],
+      group: "Specific",
+    },
   ]);
   // Generated actions take their keys as Auto.
   for (const action of onAdd.mock.calls[0][0]) expect(action).not.toHaveProperty("shortcut");
+});
+
+it("names each generated action's group after its parent, spelled as the review already spells that group", async () => {
+  const onAdd = vi.fn();
+  const review: VideoReview = {
+    ...videoReview,
+    actions: [{ ...videoReview.actions[0], group: " specific " }],
+  };
+  render(<ActionsFromTags review={review} disabled={false} onAdd={onAdd} onCancel={vi.fn()} />);
+  expect(screen.getByText(/in a group named after its parent/)).toBeInTheDocument();
+  fireEvent.change(screen.getByPlaceholderText("Search parent tags..."), { target: { value: "1,10" } });
+  await screen.findByRole("group", { name: "Generic" });
+  await screen.findByRole("group", { name: "Specific" });
+  fireEvent.click(screen.getByRole("button", { name: "Add 4 actions" }));
+  expect(
+    onAdd.mock.calls[0][0].map((action: MediaReviewAction) => [action.label, action.group]),
+  ).toEqual([
+    ["Outdoors", "Generic"],
+    ["Bedroom", "specific"],
+    ["Attic", "specific"],
+    ["Kitchen", "specific"],
+  ]);
+  expect(parentGroupName("  Other ", review.actions)).toBe("Other");
+  expect(childTagAction({ id: 23, name: "Child" }, [], "  Parent ")).toMatchObject({ group: "Parent" });
+  expect(childTagAction({ id: 23, name: "Child" }, [], "  ")).not.toHaveProperty("group");
 });
 
 it("words the only-one choice per performer in occurrence reviews and shows appearance counts", async () => {

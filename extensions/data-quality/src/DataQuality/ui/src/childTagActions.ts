@@ -1,4 +1,5 @@
 import { mediaCollection, normalizeCriteria, request } from "./api";
+import { actionGroups, groupKey } from "./answerGroups";
 import {
   isOccurrenceReview,
   reviewMediaKind,
@@ -192,11 +193,13 @@ export function actionsByAddedTag(
 /**
  * An action that adds one child tag. For each "only one" parent it belongs to, it also removes
  * that parent's tree, which spares the tag the action adds, so the child ends up as the only
- * tag in those trees.
+ * tag in those trees. Given a group (the name of the parent it is listed under), the action
+ * answers that group.
  */
 export function childTagAction(
   child: Pick<ChildTag, "id" | "name">,
   onlyOneParentIds: number[],
+  group?: string,
 ): MediaReviewAction {
   return {
     id: crypto.randomUUID(),
@@ -207,5 +210,18 @@ export function childTagAction(
         ? [{ mode: "REMOVE_TREE" as const, tagIds: onlyOneParentIds }]
         : []),
     ],
+    ...(group?.trim() ? { group: group.trim() } : {}),
   };
+}
+
+/**
+ * The group for actions generated under a parent: the parent's name, spelled as the review's
+ * actions already spell a group of that name, if one does.
+ */
+export function parentGroupName(
+  parentName: string,
+  actions: ReadonlyArray<Pick<MediaReviewAction, "group">>,
+): string {
+  const key = groupKey(parentName);
+  return actionGroups(actions).find((group) => group.key === key)?.name ?? parentName.trim();
 }

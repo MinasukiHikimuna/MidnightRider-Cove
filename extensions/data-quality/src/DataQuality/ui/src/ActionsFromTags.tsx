@@ -6,6 +6,7 @@ import {
   childTagAction,
   distinctChildGroups,
   loadChildTagGroup,
+  parentGroupName,
   parentsOfChildren,
   type ChildTagGroup,
 } from "./childTagActions";
@@ -25,9 +26,10 @@ const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
 
 /**
- * Generates one action per direct child of the chosen parent tags. The actions are ordinary
- * actions once added: nothing stays linked to the parents, and running this again pre-ticks
- * only the children no action adds yet.
+ * Generates one action per direct child of the chosen parent tags, in the answer group named
+ * after the parent the child is listed under. The actions are ordinary actions once added:
+ * nothing stays linked to the parents, and running this again pre-ticks only the children no
+ * action adds yet.
  */
 export function ActionsFromTags({
   id,
@@ -129,10 +131,14 @@ export function ActionsFromTags({
   const parentNames = new Map(loaded.map((group) => [group.parent.id, group.parent.name]));
   const adding = actionsByAddedTag(review.actions);
   const checked = (childId: number) => choices[childId] ?? !adding.has(childId);
+  // Each ticked child with the answer group of the parent it is listed under.
   const chosen = complete
-    ? [...offered.values()].flatMap((group) =>
-        group.children.filter((child) => checked(child.id)),
-      )
+    ? [...offered.values()].flatMap((group) => {
+        const answerGroup = parentGroupName(group.parent.name, review.actions);
+        return group.children
+          .filter((child) => checked(child.id))
+          .map((child) => ({ child, answerGroup }));
+      })
     : [];
   const setAll = (group: ChildTagGroup, value: boolean) =>
     setChoices((current) => ({
@@ -145,9 +151,9 @@ export function ActionsFromTags({
       <legend>Add actions from parent tags</legend>
       <p className="dq-drawer-note">
         Each ticked child tag becomes an action that adds it, most used{" "}
-        {occurrences ? "on performers " : ""}first. Tags an action already adds
-        start unticked. The new actions go at the end, ready to reorder and
-        edit.
+        {occurrences ? "on performers " : ""}first, in a group named after its
+        parent. Tags an action already adds start unticked. The new actions go
+        at the end, ready to reorder and edit.
       </p>
       <EntityReferenceMultiSelector
         entityType="tag"
@@ -284,12 +290,13 @@ export function ActionsFromTags({
           disabled={disabled || !chosen.length}
           onClick={() =>
             onAdd(
-              chosen.map((child) =>
+              chosen.map(({ child, answerGroup }) =>
                 childTagAction(
                   child,
                   (parentsOf.get(child.id) ?? []).filter(
                     (parentId) => onlyOne[parentId],
                   ),
+                  answerGroup,
                 ),
               ),
             )
