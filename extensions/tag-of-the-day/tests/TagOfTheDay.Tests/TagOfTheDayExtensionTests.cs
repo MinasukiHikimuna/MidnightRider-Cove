@@ -15,7 +15,7 @@ public sealed class TagOfTheDayExtensionTests
         {
             Id = "com.midnightrider.tag-of-the-day",
             Name = "Tag of the Day",
-            Version = "0.1.0",
+            Version = "0.1.1",
         });
 
         var widget = Assert.Single(extension.GetUIManifest().DashboardWidgets);
