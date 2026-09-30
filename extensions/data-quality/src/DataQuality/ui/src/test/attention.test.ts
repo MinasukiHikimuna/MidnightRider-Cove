@@ -15,6 +15,7 @@ import {
   touchedTags,
   touches,
   type AttentionEntry,
+  type FlagCategory,
 } from "../attention";
 import type { MediaReviewAction, PerformerFlag } from "../model";
 import type { AnswerCategory } from "../performerAnswers";
@@ -92,23 +93,24 @@ const row = (
   tags: ReturnType<typeof answers>,
   mixed: AnswerCategory["mixed"] = [],
 ): AnswerCategory => ({ key, kind, name: key, members, tags, mixed });
-/** A row taking one answer, as answerCategories gives it: mixed with two or more answers. */
+/**
+ * A row taking one answer where the performer's answers are mixed, as answerCategories gives one
+ * holding two or more (its rule, not this helper, decides which rows are mixed).
+ */
 const oneAnswer = (
   key: string,
   kind: AnswerCategory["kind"],
   members: number[],
   tags: ReturnType<typeof answers>,
-): AnswerCategory =>
-  row(key, kind, members, tags, tags.length > 1 ? [{ key, name: key, members, tags }] : []);
+  name = key,
+): AnswerCategory => ({ ...row(key, kind, members, tags, [{ key, name, members, tags }]), name });
 
-it("finds mixed answers where a category taking one answer holds a second one, with the counts", () => {
-  // Which rows can be mixed at all (not the other review tags, nor a category holding several
-  // answers at once) is answerCategories' rule, pinned in performer-answers.test.ts.
+it("gives each mixed category an entry with the performer's answers and their counts", () => {
+  // Which rows are mixed at all (two or more answers, in a category taking one answer) is
+  // answerCategories' rule, pinned in performer-answers.test.ts.
   const rows = [
     oneAnswer("tag:10", "condition", [10, 11, 12], answers([11, "Round", 40], [12, "Square", 12])),
-    oneAnswer("tag:20", "condition", [20, 21, 22], answers([21, "Red", 30])),
     oneAnswer("group:size", "group", [31, 32], answers([31, "Small", 2], [32, "Large", 1])),
-    oneAnswer("group:none", "group", [41, 42], []),
   ];
   const mixed = mixedAttention(rows);
   expect(mixed.map((item) => item.key)).toEqual(["tag:10", "group:size"]);
@@ -219,6 +221,44 @@ it("leaves a mixed condition category to a mixed one taking one answer that hold
   const second = oneAnswer("tag:60", "condition", [32, 33], held);
   expect(mixedAttention([first, second]).map((item) => item.key)).toEqual(["tag:50"]);
   expect(mixedAttention([second, first]).map((item) => item.key)).toEqual(["tag:60"]);
+});
+
+it("keeps a flag on the inner category of a nested pair as its own entry beside the outer one's answers", () => {
+  // As above: the outer category 30 speaks for the mixed answers of 31 inside it. A flag affects 31.
+  const held = answers([32, "One", 3], [33, "Two", 1]);
+  const mixed = mixedAttention([
+    oneAnswer("tag:30", "condition", [30, 31, 32, 33, 34], held, "Outer"),
+    oneAnswer("tag:31", "condition", [31, 32, 33], held, "Inner"),
+  ]);
+  const flagged = (inner: FlagCategory) =>
+    combineAttention(
+      flagAttention([{ tagId: 7, categoryTagId: 31 }], [{ id: 7, name: "Changed" }], () => inner),
+      mixed,
+    );
+  const flag = "Inner (Flagged: Changed)";
+  const outer = `Outer (Mixed: One${NBSP}3 · Two${NBSP}1)`;
+  const unrelated = action([{ mode: "ADD", tagIds: [99] }]);
+  const one = action([{ mode: "ADD", tagIds: [32] }]);
+  // While the flag's tree is not read, its entry holds the flag alone, not the answers again, and
+  // a ticked answer that changes nothing there still warns, rather than miss one of its tags...
+  const unread = flagged({ name: "Inner", tagIds: [31], resolved: false });
+  expect(unread.map((item) => [attentionText(item), item.unresolved])).toEqual([
+    [flag, true],
+    [outer, undefined],
+  ]);
+  expect(touchedAttention([unrelated], unread, new Map()).map(attentionText)).toEqual([flag]);
+  // ...while keys carry the flag only where they touch what is known of it.
+  expect(categoriesTouched(one, unread, new Map()).map(attentionText)).toEqual([outer]);
+  expect(categoriesTouched(unrelated, unread, new Map())).toEqual([]);
+  // Once it is read, that answer warns about nothing, and one inside the inner category about both.
+  const read = flagged({ name: "Inner", tagIds: [31, 32, 33], resolved: true });
+  expect(read.map((item) => [attentionText(item), item.unresolved])).toEqual([
+    [flag, undefined],
+    [outer, undefined],
+  ]);
+  expect(touchedAttention([unrelated], read, new Map())).toEqual([]);
+  expect(touchedAttention([one], read, new Map()).map(attentionText)).toEqual([flag, outer]);
+  expect(categoriesTouched(one, read, new Map()).map(attentionText)).toEqual([flag, outer]);
 });
 
 it("finds the entries that speak for a mixed category: its own, or those holding it", () => {

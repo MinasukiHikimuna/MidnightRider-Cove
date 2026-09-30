@@ -5489,20 +5489,20 @@ function Pc(e, t, n = 0) {
   }, [i, n]), s.key === i ? s.value : oi;
 }
 function df(e, t) {
-  const n = (c) => {
-    var d;
-    return ((d = c.tagIds) == null ? void 0 : d.every((p) => e.members.includes(p))) ?? !1;
+  const n = (p) => {
+    var u;
+    return ((u = p.tagIds) == null ? void 0 : u.every((g) => e.members.includes(g))) ?? !1;
   }, a = /* @__PURE__ */ new Set(), i = /* @__PURE__ */ new Set();
-  for (const c of e.mixed) {
-    const d = Dd(c, t).filter((u) => u.key !== e.key), p = c.key === e.key ? [] : d.filter(n);
-    p.length ? p.forEach((u) => a.add(u.name)) : d.forEach((u) => i.add(u.name));
+  for (const p of e.mixed) {
+    const u = Dd(p, t).filter((m) => m.key !== e.key), g = p.key === e.key ? [] : u.filter(n);
+    g.length ? g.forEach((m) => a.add(m.name)) : u.forEach((m) => i.add(m.name));
   }
-  const s = Pn(e.name), o = [...a].filter((c) => Pn(c) !== s);
-  return { names: o, here: o.length < a.size || i.size > 0, under: [...i] };
+  const s = Pn(e.name), o = [...a].filter((p) => Pn(p) !== s), c = o.length < a.size, d = i.size ? ` (${c ? "partly " : ""}listed under ${[...i].join(", ")})` : "";
+  return { names: o, here: c || i.size > 0, note: d };
 }
-function uf(e, { names: t, here: n, under: a }) {
-  const i = a.length ? ` (listed under ${a.join(", ")})` : "", s = `this ${e.kind === "group" ? "group" : "category"}${i}`;
-  return `This performer has different answers in ${t.length ? n ? `${s} and in ${t.join(", ")}` : t.join(", ") : s}.`;
+function uf(e, { names: t, here: n, note: a }) {
+  const i = `this ${e.kind === "group" ? "group" : "category"}${a}`;
+  return `This performer has different answers in ${t.length ? n ? `${i} and in ${t.join(", ")}` : t.join(", ") : i}.`;
 }
 function $i({
   summary: e,
@@ -5535,7 +5535,7 @@ function $i({
           "Could not load existing answers. ",
           t
         ] }) : e ? p.map((m) => {
-          const b = m.kind === "other" ? [] : g(m.members), y = df(m, u);
+          const b = m.kind === "other" ? [] : g(m.members), y = df(m, u), N = y.note ? /* @__PURE__ */ r("span", { className: "dq-sr-only", children: y.note }) : null;
           return /* @__PURE__ */ l("div", { className: "dq-answer-group", children: [
             /* @__PURE__ */ l("div", { className: "dq-answer-category", children: [
               /* @__PURE__ */ r("span", { children: m.name }),
@@ -5547,7 +5547,11 @@ function $i({
                   children: [
                     /* @__PURE__ */ r(Mn, { "aria-hidden": "true" }),
                     "Mixed",
-                    y.names.length > 0 && /* @__PURE__ */ r("span", { className: "dq-answer-mixed-names", children: ` ${y.here ? "here and in" : "in"} ${y.names.join(", ")}` })
+                    y.names.length > 0 ? /* @__PURE__ */ l("span", { className: "dq-answer-mixed-names", children: [
+                      y.here && " here",
+                      N,
+                      ` ${y.here ? "and in" : "in"} ${y.names.join(", ")}`
+                    ] }) : N
                   ]
                 }
               ),
@@ -5566,14 +5570,14 @@ function $i({
                 }
               )
             ] }),
-            m.tags.length ? /* @__PURE__ */ r("ul", { className: "dq-tags", "aria-label": m.name, children: m.tags.map((N) => /* @__PURE__ */ l("li", { className: "dq-tag", children: [
-              /* @__PURE__ */ r(Gt, { tag: N }),
-              /* @__PURE__ */ r("span", { className: "dq-chip-count", "aria-hidden": "true", children: N.count.toLocaleString() }),
+            m.tags.length ? /* @__PURE__ */ r("ul", { className: "dq-tags", "aria-label": m.name, children: m.tags.map((q) => /* @__PURE__ */ l("li", { className: "dq-tag", children: [
+              /* @__PURE__ */ r(Gt, { tag: q }),
+              /* @__PURE__ */ r("span", { className: "dq-chip-count", "aria-hidden": "true", children: q.count.toLocaleString() }),
               /* @__PURE__ */ l("span", { className: "dq-sr-only", children: [
                 ", ",
-                d(N.count)
+                d(q.count)
               ] })
-            ] }, N.id)) }) : /* @__PURE__ */ r("p", { className: "dq-muted", children: "None" })
+            ] }, q.id)) }) : /* @__PURE__ */ r("p", { className: "dq-muted", children: "None" })
           ] }, m.key);
         }) : /* @__PURE__ */ r("p", { className: "dq-muted", children: "Loading existing answers…" })
       ]

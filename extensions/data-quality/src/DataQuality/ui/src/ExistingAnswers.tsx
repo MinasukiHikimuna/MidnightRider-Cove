@@ -75,11 +75,15 @@ interface MixedIn {
   names: string[];
   /**
    * Whether answers differ here beyond those places: in a place with the row's own name, which
-   * would only repeat it, or in answers only a category outside the row speaks for (`under`).
+   * would only repeat it, or in answers only categories outside the row speak for (see `note`).
    */
   here: boolean;
-  /** The categories around the row, or beside it, under which the attention lists its answers. */
-  under: string[];
+  /**
+   * Where the attention lists the answers mixed here when categories around the row, or beside
+   * it, speak for them: " (listed under Body)", or " (partly listed under Cut)" while the rest are
+   * listed under the row's own name. Empty when no category outside the row speaks for any.
+   */
+  note: string;
 }
 
 /**
@@ -103,13 +107,16 @@ function mixedIn(row: AnswerCategory, entries: readonly AttentionEntry[]): Mixed
   }
   const own = groupKey(row.name);
   const others = [...names].filter((name) => groupKey(name) !== own);
-  return { names: others, here: others.length < names.size || under.size > 0, under: [...under] };
+  const ownName = others.length < names.size;
+  const note = under.size
+    ? ` (${ownName ? "partly " : ""}listed under ${[...under].join(", ")})`
+    : "";
+  return { names: others, here: ownName || under.size > 0, note };
 }
 
 /** What a row's Mixed badge says in full: where the different answers are. */
-function mixedTitle(row: AnswerCategory, { names, here, under }: MixedIn): string {
-  const listed = under.length ? ` (listed under ${under.join(", ")})` : "";
-  const self = `this ${row.kind === "group" ? "group" : "category"}${listed}`;
+function mixedTitle(row: AnswerCategory, { names, here, note }: MixedIn): string {
+  const self = `this ${row.kind === "group" ? "group" : "category"}${note}`;
   const where = !names.length
     ? self
     : here
@@ -177,6 +184,9 @@ export function ExistingAnswersView({
         rows.map((row) => {
           const flagged = row.kind === "other" ? [] : flagsOn(row.members);
           const mixed = mixedIn(row, mixedEntries);
+          // The tooltip's note on where answers mixed here are listed, also for readers who
+          // cannot hover the badge: screen readers hear it where the tooltip places it.
+          const note = mixed.note ? <span className="dq-sr-only">{mixed.note}</span> : null;
           return (
             <div className="dq-answer-group" key={row.key}>
               <div className="dq-answer-category">
@@ -189,10 +199,14 @@ export function ExistingAnswersView({
                     <Flag aria-hidden="true" />
                     Mixed
                     {/* Where a row holding several answers is mixed, as the flags are named. */}
-                    {mixed.names.length > 0 && (
+                    {mixed.names.length > 0 ? (
                       <span className="dq-answer-mixed-names">
-                        {` ${mixed.here ? "here and in" : "in"} ${mixed.names.join(", ")}`}
+                        {mixed.here && " here"}
+                        {note}
+                        {` ${mixed.here ? "and in" : "in"} ${mixed.names.join(", ")}`}
                       </span>
+                    ) : (
+                      note
                     )}
                   </span>
                 )}
