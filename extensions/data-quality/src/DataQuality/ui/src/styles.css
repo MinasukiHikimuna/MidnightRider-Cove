@@ -5426,13 +5426,13 @@ textarea.dq-input {
    for the table head; none for the preview's panel, as outside these styles) over the theme's
    background and, under all of them, a dark (or, in light themes, a light) base close to Cove's
    default background, so each keeps the theme's look and is opaque in every theme. The action
-   bar, sticky over the grid's cards and docked in the preview's panel, does the same. Opaque, they
-   need no backdrop blur (Cove gives its dialogs one), which would only cost frames over a playing
-   video. The preview's own backdrop stays a dimmed see-through scrim, as a backdrop is. The bar's
-   dock keeps its fade into the theme's background above the bar and, in phone-sized windows, the
-   strip under it: a band of the theme's colour over a background animation alone, and see-through
-   with both glass and an animation, where that background is transparent (the cards then show
-   above and under the opaque bar, not through it). */
+   bar, floating over the grid's cards in its sticky dock and docked in the preview's panel, does
+   the same. Opaque, they need no backdrop blur (Cove gives its dialogs one), which would only cost
+   frames over a playing video. The preview's own backdrop stays a dimmed see-through scrim, as a
+   backdrop is. The bar's dock keeps its fade into the theme's background above the bar and, in
+   phone-sized windows, the strip under it: a band of the theme's colour over a background
+   animation alone, and see-through with both glass and an animation, where that background is
+   transparent (the cards then show above and under the opaque bar, not through it). */
 :is(
     .dq-menu-list,
     .dq-scope-popover,
