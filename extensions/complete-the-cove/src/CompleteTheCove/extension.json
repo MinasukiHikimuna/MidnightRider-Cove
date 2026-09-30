@@ -1,7 +1,7 @@
 {
   "id": "com.midnightrider.complete-the-cove",
   "name": "Complete the Cove",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Builds a native catalog of remote videos missing from this Cove for selected performers, studios, and tags.",
   "author": "MidnightRider",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",

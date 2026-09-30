@@ -38,6 +38,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     private IServiceScopeFactory? _scopes;
     private CoveConfiguration? _configuration;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    private static readonly CatalogSnapshotRegistry Snapshots = new();
 
     public override UIManifest GetUIManifest()
     {
@@ -415,6 +416,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/facets", GetFacets).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/targets", GetTargets).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/providers", GetProviders).RequireCovePermission(Permissions.ExtensionsConfigure);
+        endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/catalog-snapshot/v1", GetCatalogSnapshot).RequireCovePermission(Permissions.ExtensionsConfigure);
         endpoints.MapGet("/api/plugins/com.midnightrider.complete-the-cove/refresh/{jobId}", (string jobId, IJobService jobs) =>
             jobs.GetJob(jobId) is { } job ? Results.Ok(job) : Results.NotFound()).RequireCovePermission(Permissions.ExtensionsConfigure);
         foreach (var target in TargetSurfaces)
@@ -554,6 +556,16 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         return selectedIds.ToDictionary(
             id => id,
             id => (IReadOnlyCollection<int>)ExpandTagId(id, childrenByParent));
+    }
+
+    internal static async Task<IResult> GetCatalogSnapshot(HttpRequest request, DbContext db, CancellationToken ct)
+    {
+        var outcome = await CatalogSnapshot.PageAsync(
+            request.Query["limit"].ToString(), request.Query["cursor"].ToString(), db, Snapshots, ct);
+        if (outcome.Envelope is not { } envelope)
+            return Results.Json(new { error = new { outcome.Code, Message = outcome.Message, outcome.Restart } },
+                CatalogSnapshotJson.Options, statusCode: outcome.Status);
+        return Results.Json(envelope, CatalogSnapshotJson.Options);
     }
 
     private static async Task<IResult> GetVideo(int id, DbContext db, CancellationToken ct)
