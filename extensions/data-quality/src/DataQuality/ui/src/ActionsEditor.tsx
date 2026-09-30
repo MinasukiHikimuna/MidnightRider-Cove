@@ -29,6 +29,7 @@ import { ActionsFromTags } from "./ActionsFromTags";
 import { actionGroups, groupKey, unanswerableGroups } from "./answerGroups";
 import type { TagTrees } from "./effectPreview";
 import { actionEffectParts, actionTagIds } from "./FindAction";
+import { GroupField } from "./GroupField";
 import { ActionKeyButton } from "./KeyPicker";
 import {
   hasContradictoryAssessments,
@@ -125,10 +126,22 @@ export function ActionsEditor({
   const actions = review.actions as readonly ReviewAction[];
   const keyMap = useActionKeyMap(actions);
   const names = useTagNames(useMemo(() => actionTagIds(actions), [actions]));
-  // The groups the actions name, each once as first spelled: the group field's suggestions.
+  // The groups the actions name, each once as first spelled: the group field's list.
   const groupNames = useMemo(
     () => (media ? actionGroups(actions as readonly MediaReviewAction[]).map((group) => group.name) : []),
     [media, actions],
+  );
+  // Those the other actions name, for the open action's group field: a typed name none of them has
+  // is a new group.
+  const expandedIndex = actions.findIndex((action) => action.id === expandedId);
+  const otherGroupNames = useMemo(
+    () =>
+      media && expandedIndex >= 0
+        ? actionGroups(
+            (actions as readonly MediaReviewAction[]).filter((_, index) => index !== expandedIndex),
+          ).map((group) => group.name)
+        : [],
+    [media, actions, expandedIndex],
   );
   const staysForGroups = media && (review as MediaReview).stayUntilGroupsAnswered === true;
   // A group none of whose actions can answer it would hold every item until skipped.
@@ -391,6 +404,7 @@ export function ActionsEditor({
                     <MediaActionDetail
                       action={action}
                       groupNames={groupNames}
+                      otherGroupNames={otherGroupNames}
                       occurrence={isOccurrenceReview(review)}
                       saving={saving}
                       stepKey={stepKey}
@@ -589,71 +603,10 @@ function LabelField({
   );
 }
 
-/** The action without an answer group. */
-function ungrouped(action: MediaReviewAction): MediaReviewAction {
-  const { group: _group, ...rest } = action;
-  return rest;
-}
-
-/**
- * The action's answer group: free text, suggesting the groups the review's other actions name.
- * Names match trimmed and ignoring case; leaving the field trims the name, and an empty one is no
- * group. A group is one question that takes one answer, which its help says; in occurrence reviews
- * that is also what lets a performer's answers there count as mixed (performerAnswers.ts).
- */
-function GroupField({
-  action,
-  groupNames,
-  occurrence,
-  onChange,
-}: {
-  action: MediaReviewAction;
-  groupNames: readonly string[];
-  occurrence: boolean;
-  onChange(action: MediaReviewAction): void;
-}) {
-  const listId = useId();
-  const helpId = useId();
-  const own = groupKey(action.group);
-  const set = (value: string) => onChange(value ? { ...action, group: value } : ungrouped(action));
-  return (
-    <div>
-      <label className="dq-action-field">
-        <span className="dq-action-field-name">Group</span>
-        <input
-          className="dq-input dq-action-group-input"
-          list={listId}
-          placeholder="No group"
-          autoComplete="off"
-          spellCheck={false}
-          aria-describedby={helpId}
-          value={action.group ?? ""}
-          onChange={(event) => set(event.target.value)}
-          onBlur={(event) => {
-            const trimmed = event.target.value.trim();
-            if (trimmed !== event.target.value) set(trimmed);
-          }}
-        />
-        <datalist id={listId}>
-          {groupNames
-            .filter((name) => groupKey(name) !== own)
-            .map((name) => (
-              <option key={name} value={name} />
-            ))}
-        </datalist>
-      </label>
-      <p className="dq-actions-hint dq-action-field-help" id={helpId}>
-        {occurrence
-          ? "A group is one question with one answer per item; when a chosen performer's items hold two different answers of a group, Existing answers marks it Mixed."
-          : "A group is one question with one answer per item."}
-      </p>
-    </div>
-  );
-}
-
 function MediaActionDetail({
   action,
   groupNames,
+  otherGroupNames,
   occurrence,
   saving,
   stepKey,
@@ -661,8 +614,10 @@ function MediaActionDetail({
   onChange,
 }: {
   action: MediaReviewAction;
-  /** The groups the review's actions name, as the group field's suggestions. */
+  /** The groups the review's actions name, for the group field's list. */
   groupNames: readonly string[];
+  /** The groups the review's other actions name. */
+  otherGroupNames: readonly string[];
   /** An occurrence review's action, whose groups also decide where answers can be mixed. */
   occurrence: boolean;
   saving: boolean;
@@ -689,6 +644,7 @@ function MediaActionDetail({
       <GroupField
         action={action}
         groupNames={groupNames}
+        otherGroupNames={otherGroupNames}
         occurrence={occurrence}
         onChange={onChange}
       />

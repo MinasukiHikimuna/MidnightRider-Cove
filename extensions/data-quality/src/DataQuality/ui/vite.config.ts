@@ -36,6 +36,8 @@ export default defineConfig(({ mode }) => ({
       external: [
         "react",
         "react/jsx-runtime",
+        // Cove maps it to its own React DOM, like react itself (the group field's list is a portal).
+        "react-dom",
         "@cove/runtime/api",
         "@cove/runtime/components",
         "@cove/runtime/lucide-react",

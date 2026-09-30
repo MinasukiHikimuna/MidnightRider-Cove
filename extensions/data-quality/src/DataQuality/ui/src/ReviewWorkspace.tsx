@@ -460,8 +460,8 @@ export function ReviewWorkspace({
   }, [editing]);
   const [performerDialog, setPerformerDialog] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
-  // Touch has neither Shift nor the pad's hover pin: in phone-sized windows the pad's Stay on this
-  // item switch makes a tapped action, in the pad or in Find action, apply and stay.
+  // Touch has no Shift: in phone-sized windows the pad's Stay on this item switch makes a tapped
+  // action, in the pad or in Find action, apply and stay.
   const mobile = useMobileLayout();
   const [ownStayOnTap, setOwnStayOnTap] = useState(false);
   const stayOnTap = pageStayOnTap ?? ownStayOnTap;
@@ -957,8 +957,8 @@ export function ReviewWorkspace({
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
     if (mutating && (!canWrite || !tags)) return;
     if (action && hasAssessmentSteps(action) && !canAssess) return;
-    // Answer groups: a plain action (a key, a tile or Find action; not Shift, the pin or Stay on
-    // this item) stays on the item while one of the review's groups would still be open after it.
+    // Answer groups: a plain action (a key, a tile or Find action; not Shift or Stay on this item)
+    // stays on the item while one of the review's groups would still be open after it.
     // The item's tags and the action's foreseen effect decide at once, so moving on can start
     // before the write ends; Skip and Edit tags move on as always.
     const waitingForGroups =

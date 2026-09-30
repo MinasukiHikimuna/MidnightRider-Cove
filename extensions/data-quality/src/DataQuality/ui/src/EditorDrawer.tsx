@@ -304,6 +304,9 @@ export function EditorDrawer({
         tabIndex={-1}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || event.defaultPrevented || saving) return;
+          // An Esc that cancels a composition in a field belongs to the input method (Safari
+          // sends it as key code 229, without isComposing).
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
           event.preventDefault();
           event.stopPropagation();
           requestClose();

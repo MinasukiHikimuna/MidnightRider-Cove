@@ -1392,8 +1392,6 @@
 .dq-pad-header {
   display: flex;
   min-height: 24px;
-  /* With the pad's gap, room for the first row's Apply and stay tabs (see .dq-pad-pin). */
-  margin-bottom: 6px;
   align-items: center;
   gap: 10px;
   color: var(--color-secondary);
@@ -1599,51 +1597,6 @@
   opacity: 1;
   cursor: progress;
 }
-/* Apply and stay: a tab on the tile's top edge, shown while the tile is pointed at or focused. It
-   sits in the gap above the tile, over the bottom border and padding of the tile above and 5 px
-   into its own tile's top border and padding (tiles keep at least 5 px padding, so 1 px stays
-   spare at both edges), right of the key cap: it never covers a label, key cap or marker, and a
-   click on the tile's face never lands on it. The pad header leaves the first row the same room. */
-.dq-pad-pin {
-  position: absolute;
-  z-index: 1;
-  top: -11px;
-  right: 6px;
-  display: flex;
-  width: 28px;
-  height: 16px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--dq-key-border);
-  border-radius: 5px;
-  background: var(--dq-key-bg);
-  color: var(--color-foreground);
-  opacity: 0;
-  pointer-events: none;
-}
-.dq-pad-pin svg {
-  width: 11px;
-  height: 11px;
-}
-.dq-pad-slot:hover > .dq-pad-pin:not(:disabled),
-.dq-pad-slot:focus-within > .dq-pad-pin:not(:disabled) {
-  opacity: 1;
-  pointer-events: auto;
-}
-.dq-pad-slot:hover > .dq-pad-pin:not(:disabled),
-.dq-pad-slot:focus-within > .dq-pad-pin:not(:disabled),
-.dq-pad-pin:hover {
-  border-color: var(--color-accent);
-}
-.dq-pad-pin:hover {
-  background: var(--color-accent);
-  color: white;
-}
-/* Its focus ring stays inside the tab, off the tile above (over the shared focus rule below). */
-.dq-pad-slot > .dq-pad-pin:focus-visible {
-  outline-offset: -2px;
-}
 .dq-pad-free {
   display: flex;
   flex-direction: column;
@@ -1682,7 +1635,6 @@
   flex: none;
 }
 .dq-pad-tile:focus-visible,
-.dq-pad-pin:focus-visible,
 .dq-pad-find-button:focus-visible,
 .dq-icon-button:focus-visible,
 .dq-header-button:focus-visible,
@@ -1828,11 +1780,7 @@
   color: var(--color-muted);
   font-size: 0.75rem;
 }
-/* No Apply and stay tabs to make room for above the first row. The paused note wraps beside the
-   Stay switch instead of running under it. */
-.dq-pad-mobile .dq-pad-header {
-  margin-bottom: 0;
-}
+/* The paused note wraps beside the Stay switch instead of running under it. */
 .dq-pad-mobile .dq-pad-paused-note {
   white-space: normal;
 }
@@ -5125,6 +5073,132 @@ textarea.dq-input {
 .dq-action-field-help {
   margin-top: 4px;
   padding-left: calc(var(--dq-action-name-width) + var(--dq-action-name-gap));
+}
+/* The Group field (GroupField.tsx): a text field with a chevron at its end, and a list of the
+   review's groups drawn like Cove's own suggestion lists (its surface, border and shadow, rows as
+   tall as its rows, the active row in the accent colour, a check on the selected one and the new
+   group in the accent colour after a line). The list hangs on the page, outside the drawer's
+   scrolling body, so nothing cuts it off; the component places it under the field (or above it) and
+   keeps it there as the body scrolls. */
+.dq-combobox {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.dq-combobox > .dq-input {
+  padding-right: 34px;
+}
+.dq-combobox-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: flex;
+  width: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0 5px 5px 0;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .dq-combobox-toggle:hover:not(:disabled) {
+    color: var(--color-foreground);
+  }
+}
+/* The editor's fields pause while the review saves. */
+.dq-combobox-toggle:disabled {
+  cursor: default;
+}
+.dq-combobox-toggle svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s;
+}
+.dq-combobox-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.dq-combobox-list {
+  position: fixed;
+  z-index: 200;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 10%),
+    0 4px 6px -4px rgb(0 0 0 / 10%);
+  /* Cove's glass and background-animation styles make the surface see-through and blur what is
+     behind its own lists; the blur keeps the rows readable over the drawer there and changes
+     nothing on opaque surfaces. */
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  list-style: none;
+}
+.dq-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.dq-combobox-option-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+.dq-combobox-option svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dq-combobox-option[data-kind="none"] {
+  color: var(--color-secondary);
+}
+.dq-combobox-option[data-kind="new"] {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-accent);
+}
+.dq-combobox-check {
+  color: var(--color-accent);
+}
+.dq-combobox-option[data-active] {
+  background: var(--color-accent);
+  color: white;
+}
+.dq-combobox-option[data-active] .dq-combobox-check {
+  color: inherit;
+}
+/* Phone-sized windows (MOBILE_QUERY in viewport.ts): rows and the chevron sized for a finger. */
+@media (max-width: 760px) {
+  .dq-combobox-option {
+    min-height: 40px;
+  }
+  .dq-combobox > .dq-input {
+    padding-right: 42px;
+  }
+  .dq-combobox-toggle {
+    width: 40px;
+  }
+}
+/* Forced colours drop the active row's fill: the selection colours mark it instead. */
+@media (forced-colors: active) {
+  .dq-combobox-option[data-active] {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
 }
 .dq-steps {
   display: flex;

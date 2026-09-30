@@ -4,11 +4,10 @@ import {
   useMemo,
   useRef,
   useSyncExternalStore,
-  type FocusEvent as ReactFocusEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Ban, Check, Flag, Pencil, Pin, Search } from "@cove/runtime/lucide-react";
+import { Ban, Check, Flag, Pencil, Search } from "@cove/runtime/lucide-react";
 import {
   actionGroups,
   answersGroup,
@@ -284,8 +283,8 @@ function GroupChecklist({
 }
 
 /**
- * Phone-sized windows: touch has neither Shift nor the hover pin, so while this switch is on a
- * tapped action applies and stays on the item. It is not remembered, and keys keep their meaning.
+ * Phone-sized windows: touch has no Shift, so while this switch is on a tapped action applies and
+ * stays on the item. It is not remembered, and keys keep their meaning.
  */
 function StaySwitch({ checked, onChange }: { checked: boolean; onChange(checked: boolean): void }) {
   return (
@@ -442,11 +441,7 @@ export function ActionPad({
     onMouseEnter: () => preview.set(action),
     onMouseLeave: () => preview.clear(action),
     onFocus: () => preview.set(action),
-    onBlur: (event: ReactFocusEvent<HTMLElement>) => {
-      // Moving between a tile and its pin button keeps the preview.
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-        preview.clear(action);
-    },
+    onBlur: () => preview.clear(action),
   });
 
   const tile = (binding: ActionKey): ReactNode => {
@@ -494,18 +489,6 @@ export function ActionPad({
           )}
           {flagMark(index!)}
         </button>
-        {canApplyAndStay(action) && (
-          <button
-            type="button"
-            className="dq-pad-pin"
-            aria-label={`Apply and stay: ${action.label}`}
-            title="Apply and stay (Shift)"
-            disabled={disabled}
-            onClick={() => onApply(action, true)}
-          >
-            <Pin aria-hidden="true" />
-          </button>
-        )}
       </div>
     );
   };
@@ -602,10 +585,11 @@ export function ActionPad({
     );
   }
 
+  // Shift is the way to apply and stay, with a key or a click; the hint says both.
   const shiftHint = (
     <span className="dq-pad-hint">
       <kbd className="dq-key">Shift</kbd>
-      <span>+ key applies and stays</span>
+      <span>+ key or Shift-click applies and stays</span>
     </span>
   );
   const headerFind = !bottomRow && (

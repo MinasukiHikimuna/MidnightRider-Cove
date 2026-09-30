@@ -165,7 +165,7 @@ it("names no Cove key in audio reviews, where m mutes nothing", () => {
   expect(container.querySelector(".dq-pad-reserved")).toBeNull();
 });
 
-it("applies, stays with the pin or Shift, and marks absence actions", () => {
+it("applies, stays with Shift, and marks absence actions", () => {
   const actions: MediaReviewAction[] = [
     { id: "a", label: "Present", steps: [{ mode: "ADD", tagIds: [1] }] },
     { id: "b", label: "Not visible", steps: [{ mode: "MARK_ABSENT", tagIds: [2] }] },
@@ -174,58 +174,27 @@ it("applies, stays with the pin or Shift, and marks absence actions", () => {
   const { onApply } = pad(actions, { disabled: (action) => action.id === "b" });
   fireEvent.click(screen.getByRole("button", { name: "q Present" }));
   fireEvent.click(screen.getByRole("button", { name: "q Present" }), { shiftKey: true });
-  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Present" }));
   expect(onApply.mock.calls).toEqual([
     [actions[0], false],
-    [actions[0], true],
     [actions[0], true],
   ]);
   const absent = screen.getByRole("button", { name: "w Not visible absent" });
   expect(absent).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Apply and stay: Not visible" })).toBeDisabled();
-  // An action without steps only moves on, so it has nothing to apply and stay.
-  expect(screen.queryByRole("button", { name: "Apply and stay: Next" })).not.toBeInTheDocument();
 });
 
-it("keeps Apply and stay on the tile's top edge, off its key cap, label and marker, and in the Tab order", () => {
-  pad([{ id: "b", label: "Not visible", steps: [{ mode: "MARK_ABSENT", tagIds: [2] }] }]);
-  const tile = screen.getByRole("button", { name: "q Not visible absent" });
-  const pin = screen.getByRole("button", { name: "Apply and stay: Not visible" });
-  const px = (value: string) => parseFloat(value) || 0;
-  const pinStyle = getComputedStyle(pin);
-  const tileStyle = getComputedStyle(tile);
-  const top = px(pinStyle.top);
-  const bottom = top + px(pinStyle.height);
-  expect(pinStyle.position).toBe("absolute");
-  // Narrow stages give tiles less padding through container queries, which jsdom reads but does
-  // not apply: the tab has to fit the least padding any rule gives a tile.
-  const paddings = [px(tileStyle.paddingTop), px(tileStyle.paddingBottom)];
-  for (const sheet of [...document.styleSheets])
-    for (const rule of [...sheet.cssRules])
-      if (rule.cssText.startsWith("@container"))
-        for (const inner of [...(rule as CSSGroupingRule).cssRules] as CSSStyleRule[])
-          if (inner.selectorText?.split(",").some((part) => part.trim() === ".dq-pad-tile"))
-            paddings.push(px(inner.style.paddingTop), px(inner.style.paddingBottom));
-  expect(paddings.length).toBeGreaterThan(2);
-  const padding = Math.min(...paddings);
-  // It starts above the tile and ends within its top padding: the key cap row and the "absent"
-  // marker begin below that, and the tile's face stays the tile's to click. (jsdom resolves no
-  // borders drawn in theme colours; leaving them out only makes these bounds stricter.)
-  expect(top).toBeLessThan(0);
-  expect(bottom).toBeLessThanOrEqual(padding);
-  // Above the tile it takes no more than the gap and the room kept there: the bottom padding of a
-  // tile in the row above, or the extra space under the pad's header.
-  const gap = px(getComputedStyle(document.querySelector(".dq-pad")!).gap);
-  expect(gap).toBeGreaterThan(0);
-  expect(-top).toBeLessThanOrEqual(gap + padding);
-  expect(-top).toBeLessThanOrEqual(
-    gap + px(getComputedStyle(document.querySelector(".dq-pad-header")!).marginBottom),
+it("has no Apply and stay button on its tiles: Shift is the way, as its hint says", () => {
+  const { container } = pad([
+    { id: "a", label: "Present", steps: [{ mode: "ADD", tagIds: [1] }] },
+    { id: "b", label: "Not visible", steps: [{ mode: "MARK_ABSENT", tagIds: [2] }] },
+  ]);
+  expect(screen.queryByRole("button", { name: /apply and stay/i })).not.toBeInTheDocument();
+  // Each tile is the only control in its place, so Tab goes from tile to tile.
+  const slots = [...container.querySelectorAll(".dq-pad-slot:not(.dq-pad-free)")];
+  expect(slots).toHaveLength(2);
+  for (const slot of slots) expect(slot.querySelectorAll("button")).toHaveLength(1);
+  expect(screen.getByRole("region", { name: "Actions" })).toHaveTextContent(
+    "Shift+ key or Shift-click applies and stays",
   );
-  // Hidden until the tile is pointed at or focused, it is still a button in the Tab order, next to
-  // its tile.
-  expect(pinStyle.display).not.toBe("none");
-  expect(pin).not.toHaveAttribute("tabindex", "-1");
-  expect(tile.nextElementSibling).toBe(pin);
 });
 
 it("previews the tile under the pointer or with focus, in words above the pad", async () => {
@@ -254,11 +223,8 @@ it("previews the tile under the pointer or with focus, in words above the pad", 
   fireEvent.mouseLeave(slot);
   expect(preview.get()).toBeNull();
   expect(effectLine(container)).toHaveTextContent("2 actions");
-  // Focus previews too, and moving to the tile's pin keeps the preview.
+  // Focus previews too.
   act(() => tile.focus());
-  expect(preview.get()).toBe(actions[0]);
-  const pin = screen.getByRole("button", { name: "Apply and stay: Choose child" });
-  act(() => pin.focus());
   expect(preview.get()).toBe(actions[0]);
   act(() => screen.getByRole("button", { name: "w Other" }).focus());
   expect(preview.get()).toBe(actions[1]);
@@ -312,10 +278,9 @@ describe("phone-sized windows", () => {
     const { container, onApply, onFind } = pad(actions);
     const region = screen.getByRole("region", { name: "Actions" });
     expect(region).toHaveClass("dq-pad-mobile");
-    // No key caps, empty or fixed keys, keyboard row offsets or Apply and stay pins.
+    // No key caps, empty or fixed keys or keyboard row offsets.
     expect(region.querySelector("kbd")).toBeNull();
-    expect(region.querySelector(".dq-pad-row, .dq-pad-slot, .dq-pad-pin")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Apply and stay/ })).not.toBeInTheDocument();
+    expect(region.querySelector(".dq-pad-row, .dq-pad-slot")).toBeNull();
     // In key order: the Auto actions around the pin on å, a and s alone, then z and Find.
     const groups = [...region.querySelectorAll<HTMLElement>(".dq-mobile-group")];
     expect(groups).toHaveLength(3);

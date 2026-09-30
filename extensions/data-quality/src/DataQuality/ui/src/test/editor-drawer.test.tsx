@@ -759,7 +759,7 @@ it("starts a copy of a pinned action on Auto and keeps a copy without a key keyl
   ]);
 });
 
-it("gives an action a group, suggesting the review's other groups, trimmed when the field is left", () => {
+it("gives an action a group from a list of the review's groups, trimmed when the field is left", () => {
   const { drawer, tab } = open({
     ...video,
     actions: [
@@ -779,16 +779,23 @@ it("gives an action a group, suggesting the review's other groups, trimmed when 
   fireEvent.click(within(drawer).getByRole("button", { name: "Expand Absent" }));
   const field = within(drawer).getByRole("combobox", { name: "Group" });
   expect(field).toHaveValue("");
-  const suggestions = () =>
-    [...document.getElementById(field.getAttribute("list")!)!.querySelectorAll("option")].map(
-      (option) => option.value,
-    );
-  expect(suggestions()).toEqual(["First question", "second question"]);
+  // The chevron lists No group and the review's groups (group-field.test.tsx has the rest).
+  fireEvent.click(within(drawer).getByRole("button", { name: "Show groups" }));
+  const options = () =>
+    within(screen.getByRole("listbox", { name: "Groups" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+  expect(options()).toEqual(["No group", "First question", "second question"]);
   fireEvent.change(field, { target: { value: "  First QUESTION " } });
   expect(latest.actions[2]).toMatchObject({ group: "  First QUESTION " });
-  // The same group, whatever the case: it is no longer suggested to this action.
-  expect(suggestions()).toEqual(["second question"]);
+  // The same group, whatever the case: listed as that group, selected, and not as a new one.
+  expect(options()).toEqual(["No group", "First question"]);
+  expect(screen.getByRole("option", { name: "First question" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   fireEvent.blur(field);
+  expect(screen.queryByRole("listbox")).toBeNull();
   expect(latest.actions[2]).toMatchObject({ group: "First QUESTION" });
   fireEvent.change(field, { target: { value: "" } });
   expect(latest.actions[2]).not.toHaveProperty("group");

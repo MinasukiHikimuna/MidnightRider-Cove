@@ -200,14 +200,14 @@ it("preloads the next distinct video in a reusable player", async () => {
     "false",
   );
 });
-it("renders Apply and stay as an accessible icon button", async () => {
+it("has no Apply and stay button beside its actions: Shift applies and stays", async () => {
   open();
   await ready();
-
-  const stay = screen.getByRole("button", { name: "Apply and stay: Observation" });
-  expect(stay).toHaveAttribute("title", "Apply and stay (Shift)");
-  expect(stay.querySelector("svg")).not.toBeNull();
-  expect(stay).toHaveTextContent("");
+  expect(screen.getByRole("button", { name: "q Observation" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /apply and stay/i })).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Actions" })).toHaveTextContent(
+    "Shift+ key or Shift-click applies and stays",
+  );
 });
 it("ignores legacy progress and uses saved performer targeting", async () => {
   localStorage.setItem(
@@ -255,7 +255,7 @@ it("applies multiple observations and advances to the partner without remounting
     screen.queryByRole("button", { name: "Undo latest tag operation" }),
   ).not.toBeInTheDocument();
 });
-it.each(["shift-click", "stay button", "shift shortcut"])(
+it.each(["shift-click", "shift shortcut"])(
   "supports %s without advancing",
   async (alternative) => {
     open();
@@ -264,10 +264,6 @@ it.each(["shift-click", "stay button", "shift shortcut"])(
       fireEvent.click(screen.getByRole("button", { name: "q Observation" }), {
         shiftKey: true,
       });
-    else if (alternative === "stay button")
-      fireEvent.click(
-        screen.getByRole("button", { name: "Apply and stay: Observation" }),
-      );
     else
       fireEvent.keyDown(document.body, {
         key: "Q",
@@ -1923,7 +1919,7 @@ it("refreshes on Apply & stay without closing or restarting the current video", 
   open(); await ready();
   const player = screen.getByTestId("video-player");
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
@@ -1987,7 +1983,7 @@ it("does not revisit a reverse-page refill after Apply & stay removes the active
   window.history.replaceState(null, "", "/data-quality?review=r&page=2&perPage=1&startFrom=end");
   open(); await ready();
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({ items: page === 1 ? [first] : [traversed], totalCount: 2 }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
@@ -2019,7 +2015,7 @@ it("continues past skipped performers after Apply & stay removes a middle row", 
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
@@ -2032,7 +2028,7 @@ it("continues into the preceding page when Apply & stay clamps a removed last sc
   window.history.replaceState(null, "", "/data-quality?review=r&page=2&perPage=1&startFrom=end");
   open(); await ready();
   api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({ items: page === 1 ? [first] : [], totalCount: 1 }));
-  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   expect(new URLSearchParams(window.location.search).get("page")).toBe("1");
@@ -2048,7 +2044,7 @@ it("restores the pinned cursor when cancelling a rule edit after a queue reload"
   const rendered = open(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Observation" }));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalled());
   await ready();
   rendered.rerender(<ReviewWorkspace review={review} canWrite onBusy={() => {}} editRequest={1} onSaveDefaults={vi.fn()} />);
@@ -3004,7 +3000,7 @@ describe("answer groups", () => {
     expect(api.applyTags).toHaveBeenCalledTimes(2);
   });
 
-  it("moves on with Skip while groups are open, and stays with Shift and the pin", async () => {
+  it("moves on with Skip while groups are open, and stays with Shift", async () => {
     open(grouped);
     await ready();
     fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
@@ -3017,8 +3013,8 @@ describe("answer groups", () => {
     // Shift stays as it always does, not for the open size.
     expect(screen.getByText("Tags saved.")).toBeInTheDocument();
     expect(screen.queryByText(/Staying until answered/)).toBeNull();
-    // Shift and the pin stay even once every group is answered.
-    fireEvent.click(screen.getByRole("button", { name: "Apply and stay: Small" }));
+    // Shift-click stays even once every group is answered.
+    fireEvent.click(screen.getByRole("button", { name: "e Small" }), { shiftKey: true });
     await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
     await ready();
     expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
