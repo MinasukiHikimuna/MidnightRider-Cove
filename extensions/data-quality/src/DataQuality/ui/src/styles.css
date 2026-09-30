@@ -5084,6 +5084,9 @@ textarea.dq-input {
   outline-offset: 2px;
 }
 .dq-action-detail {
+  /* A field's name column and the gap after it, which the help under a field lines up with. */
+  --dq-action-name-width: 84px;
+  --dq-action-name-gap: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -5092,7 +5095,7 @@ textarea.dq-input {
 .dq-action-field {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--dq-action-name-gap);
   color: var(--color-secondary);
   font-size: 0.78125rem;
 }
@@ -5103,7 +5106,7 @@ textarea.dq-input {
   padding-top: 8px;
 }
 .dq-action-field-name {
-  width: 84px;
+  width: var(--dq-action-name-width);
   flex: none;
 }
 .dq-action-field > .dq-input,
@@ -5111,10 +5114,10 @@ textarea.dq-input {
   min-width: 0;
   flex: 1 1 auto;
 }
-/* Under the field's input: the width of the field name and the gap after it. */
+/* Under the field's input: past the field's name and the gap after it. */
 .dq-action-field-help {
   margin-top: 4px;
-  padding-left: calc(84px + 12px);
+  padding-left: calc(var(--dq-action-name-width) + var(--dq-action-name-gap));
 }
 .dq-steps {
   display: flex;

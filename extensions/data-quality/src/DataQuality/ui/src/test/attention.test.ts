@@ -9,6 +9,7 @@ import {
   flagSummary,
   flagTagIds,
   mixedAttention,
+  mixedEntriesFor,
   performerFlagTags,
   touchedAttention,
   touchedTags,
@@ -101,15 +102,13 @@ const oneAnswer = (
   row(key, kind, members, tags, tags.length > 1 ? [{ key, name: key, members, tags }] : []);
 
 it("finds mixed answers where a category taking one answer holds a second one, with the counts", () => {
+  // Which rows can be mixed at all (not the other review tags, nor a category holding several
+  // answers at once) is answerCategories' rule, pinned in performer-answers.test.ts.
   const rows = [
     oneAnswer("tag:10", "condition", [10, 11, 12], answers([11, "Round", 40], [12, "Square", 12])),
     oneAnswer("tag:20", "condition", [20, 21, 22], answers([21, "Red", 30])),
-    // A category holding several answers at once shows its counts without being mixed.
-    row("tag:60", "condition", [60, 61, 62], answers([61, "Left", 5], [62, "Right", 3])),
     oneAnswer("group:size", "group", [31, 32], answers([31, "Small", 2], [32, "Large", 1])),
     oneAnswer("group:none", "group", [41, 42], []),
-    // The review's other tags are no category: different tags there are no mixed answers.
-    row("other", "other", [51, 52], answers([51, "One", 3], [52, "Two", 1])),
   ];
   const mixed = mixedAttention(rows);
   expect(mixed.map((item) => item.key)).toEqual(["tag:10", "group:size"]);
@@ -189,6 +188,57 @@ it("leaves a mixed group to a condition category taking one answer that holds it
     "group:inner",
     "group:wide",
   ]);
+});
+
+it("leaves a mixed condition category to a mixed one taking one answer that holds it", () => {
+  // Condition category 30 holds 31 and 34, and 31 holds 32 and 33; both take one answer (answers
+  // removing 30's tree, which holds 31 once it is known) and hold the performer's two answers.
+  const held = answers([32, "One", 3], [33, "Two", 1]);
+  const outer = oneAnswer("tag:30", "condition", [30, 31, 32, 33, 34], held);
+  const inner = oneAnswer("tag:31", "condition", [31, 32, 33], held);
+  // Said once, by the outer category, whichever row comes first...
+  expect(mixedAttention([outer, inner]).map((entry) => entry.key)).toEqual(["tag:30"]);
+  expect(mixedAttention([inner, outer]).map((entry) => entry.key)).toEqual(["tag:30"]);
+  // ...whose tags hold the inner one's, so an answer there still touches the answers.
+  const [entry] = mixedAttention([outer, inner]);
+  expect(touches(action([{ mode: "ADD", tagIds: [33] }]), entry, new Map())).toBe(true);
+  // A mixed group inside both is left to the outer one too.
+  const group = { key: "group:inner", name: "Inner", members: [32, 33], tags: held };
+  const around = row("tag:20", "condition", [20, 30, 31, 32, 33, 34], held, [group]);
+  expect(mixedAttention([around, inner, outer]).map((item) => item.key)).toEqual(["tag:30"]);
+  // Categories that only overlap both speak.
+  const beside = oneAnswer(
+    "tag:40",
+    "condition",
+    [33, 34, 40],
+    answers([34, "Three", 2], [33, "Two", 1]),
+  );
+  expect(mixedAttention([inner, beside]).map((item) => item.key)).toEqual(["tag:31", "tag:40"]);
+  // Of two with the same tags (as when only the answers tell them), the first speaks.
+  const first = oneAnswer("tag:50", "condition", [32, 33], held);
+  const second = oneAnswer("tag:60", "condition", [32, 33], held);
+  expect(mixedAttention([first, second]).map((item) => item.key)).toEqual(["tag:50"]);
+  expect(mixedAttention([second, first]).map((item) => item.key)).toEqual(["tag:60"]);
+});
+
+it("finds the entries that speak for a mixed category: its own, or those holding it", () => {
+  const held = answers([32, "One", 3], [33, "Two", 1]);
+  const group = { key: "group:inner", name: "Inner", members: [32, 33], tags: held };
+  // A category holding several answers, mixed where the group inside it is.
+  const around = row("tag:20", "condition", [20, 30, 31, 32, 33, 34, 35], held, [group]);
+  expect(mixedEntriesFor(group, mixedAttention([around])).map((entry) => entry.key)).toEqual([
+    "group:inner",
+  ]);
+  // Inside a mixed category taking one answer, inside another: the outermost speaks for it.
+  const inner = oneAnswer("tag:31", "condition", [31, 32, 33], held);
+  const outer = oneAnswer("tag:30", "condition", [30, 31, 32, 33, 34], held);
+  const entries = mixedAttention([around, inner, outer]);
+  expect(mixedEntriesFor(group, entries).map((entry) => entry.key)).toEqual(["tag:30"]);
+  expect(mixedEntriesFor(inner.mixed[0], entries).map((entry) => entry.key)).toEqual(["tag:30"]);
+  expect(mixedEntriesFor(outer.mixed[0], entries).map((entry) => entry.key)).toEqual(["tag:30"]);
+  // Nothing speaks for answers no entry holds.
+  const apart = { key: "group:apart", name: "Apart", members: [70, 71], tags: held };
+  expect(mixedEntriesFor(apart, entries)).toEqual([]);
 });
 
 it("joins a flag and mixed answers on the same category, the whole review first", () => {

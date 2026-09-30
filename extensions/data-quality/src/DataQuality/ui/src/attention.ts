@@ -119,24 +119,34 @@ export function flagAttention(
 }
 
 /**
+ * Whether a condition category (key and tags) holds all of another mixed category's tags: an
+ * answer group inside it, or a condition category inside it.
+ */
+function holds(key: string, tags: readonly number[], inner: MixedAnswers): boolean {
+  return (
+    key !== inner.key && key.startsWith("tag:") && inner.members.every((id) => tags.includes(id))
+  );
+}
+
+/**
  * The categories where the performer's existing answers differ: any second distinct answer in a
  * category that takes one answer (AnswerCategory.mixed), each once. In a condition category that
- * holds several answers at once, that is an answer group inside it, whose own answers count,
- * unless a condition category taking one answer holds the group too and says so already (a
- * condition category inside another).
+ * holds several answers at once, that is an answer group inside it, whose own answers count. A
+ * mixed condition category taking one answer speaks for each mixed category it holds (an answer
+ * group or a condition category inside it), whose answers are among its own, so no answers are
+ * listed twice; of two with the same tags, the first speaks.
  */
 export function mixedAttention(categories: readonly AnswerCategory[]): AttentionEntry[] {
   const found = categories.flatMap((category) => category.mixed);
-  const covered = (group: MixedAnswers) =>
-    group.key.startsWith("group:") &&
+  const covered = (item: MixedAnswers, index: number) =>
     found.some(
-      (category) =>
-        category.key.startsWith("tag:") &&
-        group.members.every((id) => category.members.includes(id)),
+      (other, at) =>
+        holds(other.key, other.members, item) &&
+        !(at > index && holds(item.key, item.members, other)),
     );
   const entries = new Map<string, AttentionEntry>();
-  for (const item of found)
-    if (!entries.has(item.key) && !covered(item))
+  found.forEach((item, index) => {
+    if (!entries.has(item.key) && !covered(item, index))
       entries.set(item.key, {
         key: item.key,
         name: item.name,
@@ -144,7 +154,21 @@ export function mixedAttention(categories: readonly AnswerCategory[]): Attention
         flags: [],
         mixed: item.tags,
       });
+  });
   return [...entries.values()];
+}
+
+/**
+ * The entries of mixedAttention that speak for a mixed category: its own, or else those of the
+ * mixed condition categories taking one answer that hold it.
+ */
+export function mixedEntriesFor(
+  item: MixedAnswers,
+  entries: readonly AttentionEntry[],
+): AttentionEntry[] {
+  return entries.filter(
+    (entry) => entry.key === item.key || holds(entry.key, entry.tagIds ?? [], item),
+  );
 }
 
 /**

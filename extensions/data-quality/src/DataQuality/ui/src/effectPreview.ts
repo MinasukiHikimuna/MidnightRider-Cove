@@ -12,6 +12,8 @@ import { sortTagsForDisplay } from "./tagOrder";
 
 /** Each tree removal's parent tag, mapped to that parent and all of its descendants. */
 export type TagTrees = ReadonlyMap<number, readonly number[]>;
+/** No tree resolved (yet). */
+export const NO_TREES: TagTrees = new Map();
 
 /** What applying an action would change on the item on screen, relative to its current tags. */
 export interface ActionEffectPreview {

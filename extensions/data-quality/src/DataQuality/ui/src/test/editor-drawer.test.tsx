@@ -811,7 +811,7 @@ it("says under the group field that a group takes one answer, and in occurrence 
   expect(
     within(occurrences.drawer).getByRole("combobox", { name: "Group" }),
   ).toHaveAccessibleDescription(
-    "A group is one question with one answer per item; a chosen performer holding two different answers is marked Mixed.",
+    "A group is one question with one answer per item; when a chosen performer's items hold two different answers of a group, Existing answers marks it Mixed.",
   );
 });
 

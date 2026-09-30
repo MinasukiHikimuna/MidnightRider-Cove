@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Flag } from "@cove/runtime/lucide-react";
+import { groupKey } from "./answerGroups";
 import { mediaLabel } from "./api";
-import type { AttentionEntry } from "./attention";
-import type { TagTrees } from "./effectPreview";
+import { mixedAttention, mixedEntriesFor, type AttentionEntry } from "./attention";
+import { NO_TREES, type TagTrees } from "./effectPreview";
 import type { MediaKind, MediaReviewAction, OccurrenceReview } from "./model";
 import {
   answerCategories,
@@ -68,21 +69,53 @@ export function usePerformerAnswers(
   return answers.key === key ? answers.value : NO_ANSWERS;
 }
 
-const NO_TREES: TagTrees = new Map();
+/** Where a row is mixed, in the words of its badge (see mixedIn). */
+interface MixedIn {
+  /** The places inside the row that the badge names: none when the row's own answers differ. */
+  names: string[];
+  /**
+   * Whether answers differ here beyond those places: in a place with the row's own name, which
+   * would only repeat it, or in answers only a category outside the row speaks for (`under`).
+   */
+  here: boolean;
+  /** The categories around the row, or beside it, under which the attention lists its answers. */
+  under: string[];
+}
 
 /**
- * The answer groups whose different answers mark the row mixed, when the row is a category that
- * holds several answers at once; empty when the row's own answers are mixed.
+ * Where a row is mixed, as the performer's attention names it (a mixed condition category taking
+ * one answer speaks for each mixed category it holds, see mixedAttention). The row's own mixed
+ * answers need no name, only the categories they are listed under when one speaks for them. Each
+ * mixed answer group inside a row holding several answers is named by the places inside the row
+ * that speak for it, less one with the row's own name, which would only repeat it; a group only
+ * categories outside the row speak for is "here", listed under them.
  */
-function mixedGroups(row: AnswerCategory): string[] {
-  return row.mixed.filter((found) => found.key !== row.key).map((found) => found.name);
+function mixedIn(row: AnswerCategory, entries: readonly AttentionEntry[]): MixedIn {
+  const inRow = (entry: AttentionEntry) =>
+    entry.tagIds?.every((id) => row.members.includes(id)) ?? false;
+  const names = new Set<string>();
+  const under = new Set<string>();
+  for (const found of row.mixed) {
+    const speakers = mixedEntriesFor(found, entries).filter((entry) => entry.key !== row.key);
+    const inside = found.key === row.key ? [] : speakers.filter(inRow);
+    if (inside.length) inside.forEach((entry) => names.add(entry.name));
+    else speakers.forEach((entry) => under.add(entry.name));
+  }
+  const own = groupKey(row.name);
+  const others = [...names].filter((name) => groupKey(name) !== own);
+  return { names: others, here: others.length < names.size || under.size > 0, under: [...under] };
 }
 
 /** What a row's Mixed badge says in full: where the different answers are. */
-function mixedTitle(row: AnswerCategory): string {
-  const groups = mixedGroups(row);
-  if (groups.length) return `This performer has different answers in ${groups.join(", ")}.`;
-  return `This performer has different answers in this ${row.kind === "group" ? "group" : "category"}.`;
+function mixedTitle(row: AnswerCategory, { names, here, under }: MixedIn): string {
+  const listed = under.length ? ` (listed under ${under.join(", ")})` : "";
+  const self = `this ${row.kind === "group" ? "group" : "category"}${listed}`;
+  const where = !names.length
+    ? self
+    : here
+      ? `${self} and in ${names.join(", ")}`
+      : names.join(", ");
+  return `This performer has different answers in ${where}.`;
 }
 
 /**
@@ -114,6 +147,8 @@ export function ExistingAnswersView({
   const items = (count: number) =>
     `${count.toLocaleString()} ${count === 1 ? labels.one : labels.many}`;
   const rows = summary ? answerCategories(summary, actions, trees) : [];
+  // Where the performer's attention names the mixed answers: the badges name the same places.
+  const mixedEntries = mixedAttention(rows);
   const flagsOn = (members: readonly number[]) => [
     ...new Set(
       flags
@@ -141,7 +176,7 @@ export function ExistingAnswersView({
       ) : (
         rows.map((row) => {
           const flagged = row.kind === "other" ? [] : flagsOn(row.members);
-          const groups = mixedGroups(row);
+          const mixed = mixedIn(row, mixedEntries);
           return (
             <div className="dq-answer-group" key={row.key}>
               <div className="dq-answer-category">
@@ -149,13 +184,15 @@ export function ExistingAnswersView({
                 {row.mixed.length > 0 && (
                   <span
                     className="dq-badge dq-badge-warning dq-answer-mixed"
-                    title={mixedTitle(row)}
+                    title={mixedTitle(row, mixed)}
                   >
                     <Flag aria-hidden="true" />
                     Mixed
-                    {/* The groups a row holding several answers is mixed in, as the flags are named. */}
-                    {groups.length > 0 && (
-                      <span className="dq-answer-mixed-names"> in {groups.join(", ")}</span>
+                    {/* Where a row holding several answers is mixed, as the flags are named. */}
+                    {mixed.names.length > 0 && (
+                      <span className="dq-answer-mixed-names">
+                        {` ${mixed.here ? "here and in" : "in"} ${mixed.names.join(", ")}`}
+                      </span>
                     )}
                   </span>
                 )}

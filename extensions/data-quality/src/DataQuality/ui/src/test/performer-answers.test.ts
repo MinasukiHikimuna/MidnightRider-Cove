@@ -7,6 +7,7 @@ import {
   type AnswerSummary,
 } from "../performerAnswers";
 import { mixedAttention } from "../attention";
+import { NO_TREES } from "../effectPreview";
 import type { MediaReviewAction, OccurrenceReview } from "../model";
 
 const fetchMock = vi.mocked(extensionFetch);
@@ -212,7 +213,6 @@ const onlyOne = (id: string, tag: number, tree: number): MediaReviewAction => ({
     { mode: "REMOVE_TREE", tagIds: [tree] },
   ],
 });
-const NO_TREES = new Map<number, number[]>();
 
 it("gives answer groups outside the condition categories rows of their own", () => {
   const actions = [
@@ -264,7 +264,9 @@ it("counts a group's answers wherever the performer holds them, a group across c
   );
   expect(rows.map((row) => row.key)).toEqual(["tag:30", "tag:40", "group:mixed up", "other"]);
   expect(rows[2].tags).toEqual([held(32, 5), held(41, 3)]);
-  // Mixed in the group, while each category keeps one of its answers and several are allowed.
+  // Mixed in the group, while each category keeps one of its answers and several are allowed,
+  // and the review's other tags, three different ones here, are no category that can be mixed.
+  expect(rows[3].tags).toHaveLength(3);
   expect(rows.map((row) => row.mixed.length)).toEqual([0, 0, 1, 0]);
 });
 
@@ -410,4 +412,31 @@ it("names a group inside nested condition categories once, after the one taking 
       ["tag:31", "Inner"],
     ]);
   }
+});
+
+it("names nested condition categories taking one answer once, the outer one, before and after its tree is known", () => {
+  // Condition category 30 holds 31 and 34, and 31 holds 32 and 33. Each answer adds one of 32, 33
+  // and 34 and removes 30's tree, as "Only one per performer" answers do.
+  const nested: AnswerSummary = {
+    answered: 4,
+    groups: [
+      { id: 30, name: "Outer", members: [30, 31, 32, 33, 34], tags: [held(32, 3), held(33, 1)] },
+      { id: 31, name: "Inner", members: [31, 32, 33], tags: [held(32, 3), held(33, 1)] },
+    ],
+  };
+  const actions = [onlyOne("a", 32, 30), onlyOne("b", 33, 30), onlyOne("c", 34, 30)];
+  const before = answerCategories(nested, actions, NO_TREES);
+  const after = answerCategories(nested, actions, new Map([[30, [30, 31, 32, 33, 34]]]));
+  // Once 30's tree is known, it holds all of 31: then 31 takes one answer too, and its row says so.
+  expect(before.map((row) => row.mixed.map((found) => found.key))).toEqual([["tag:30"], []]);
+  expect(after.map((row) => row.mixed.map((found) => found.key))).toEqual([
+    ["tag:30"],
+    ["tag:31"],
+  ]);
+  // Attention stays with the outer category, which holds the same answers, so nothing is added
+  // as the tree loads and no answer is listed twice.
+  for (const rows of [before, after])
+    expect(mixedAttention(rows).map((entry) => [entry.key, entry.name])).toEqual([
+      ["tag:30", "Outer"],
+    ]);
 });

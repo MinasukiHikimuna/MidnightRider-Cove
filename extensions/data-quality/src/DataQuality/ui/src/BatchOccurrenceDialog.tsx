@@ -31,7 +31,7 @@ import {
   type BatchStatus,
   type OccurrenceBatch,
 } from "./batchOccurrences";
-import type { TagTrees } from "./effectPreview";
+import { NO_TREES, type TagTrees } from "./effectPreview";
 import { ExistingAnswersView, usePerformerAnswers } from "./ExistingAnswers";
 import { actionEffectParts, actionTagIds, type EffectPart } from "./FindAction";
 import {
@@ -55,7 +55,6 @@ import { sortTagsForDisplay } from "./tagOrder";
 
 /** The scope names this many chosen performers; the rest are counted. */
 const SHOWN_PERFORMERS = 5;
-const NO_TREES: TagTrees = new Map();
 
 // Closing the dialog aborts the reads in flight.
 function loadPerformerNames(ids: number[], signal: AbortSignal) {

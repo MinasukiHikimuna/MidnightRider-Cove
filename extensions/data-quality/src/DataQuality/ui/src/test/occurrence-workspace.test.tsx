@@ -1283,7 +1283,30 @@ describe("category attention", () => {
     api.resolveTagTree.mockImplementation(async ([id]: number[]) => (id === 40 ? [40, 41, 42] : [id]));
   });
 
-  it("lists where the focused performer needs attention and marks the keys and answers it concerns", async () => {
+  // Size takes one answer either way: through the answer group named after it (as Add from parent
+  // tags names it), whose entry is the group's, or through answers made with "Only one per
+  // performer", which remove its tree, whose entry is the condition category's.
+  const onlyOne = (id: string, label: string, tag: number, tree: number): MediaReviewAction => ({
+    id,
+    label,
+    steps: [
+      { mode: "ADD", tagIds: [tag] },
+      { mode: "REMOVE_TREE", tagIds: [tree] },
+    ],
+  });
+  const sizedOnlyOne: OccurrenceReview = {
+    ...sized,
+    actions: [
+      onlyOne("small", "Small", 31, 30),
+      onlyOne("medium", "Medium", 32, 30),
+      sized.actions[2],
+    ],
+  };
+
+  it.each([
+    ["an answer group", sized, "+ Choice"],
+    ["answers removing its tree", sizedOnlyOne, "+ Choice, − Choice tree"],
+  ])("lists where the focused performer needs attention and marks the keys and answers it concerns (Size taking one answer through %s)", async (_how, reviewed, effect) => {
     HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
     panels.loadPerformerAnswers.mockResolvedValue({
       answered: 3,
@@ -1298,7 +1321,7 @@ describe("category attention", () => {
       ],
     });
     window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
-    open(sized); await ready();
+    open(reviewed); await ready();
     await waitFor(() =>
       expect(attention()).toEqual([
         "ColourFlagged: Colour changed",
@@ -1308,14 +1331,18 @@ describe("category attention", () => {
     // Keys whose actions change a category that needs attention carry a flag.
     expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]);
     expect(screen.getByRole("button", { name: "q Small" })).toHaveAccessibleDescription(
-      "+ Choice. Needs attention: Size (Mixed: Medium\u00a040 · Small\u00a012)",
+      `${effect}. Needs attention: Size (Mixed: Medium\u00a040 · Small\u00a012)`,
     );
     // The flag sits on the category it affects among the existing answers, Mixed where they differ.
     const answers = within(screen.getByRole("region", { name: "Existing answers" }));
     expect(answers.getByTitle("Flagged: Colour changed").closest(".dq-answer-group")).toHaveTextContent(
       "Colour",
     );
-    expect(answers.getByText("Mixed").closest(".dq-answer-group")).toHaveTextContent("Size");
+    const mixed = answers.getByText("Mixed");
+    expect(mixed.closest(".dq-answer-group")).toHaveTextContent("Size");
+    // A group named after its category is not named again: the badge says Mixed alone.
+    expect(mixed).toHaveTextContent(/^Mixed$/);
+    expect(mixed).toHaveAttribute("title", "This performer has different answers in this category.");
     // The focus chip names the category the flag affects.
     expect(screen.getByRole("group", { name: "Performer focus" })).toHaveTextContent(
       "Flagged: Colour changed (affects Colour)",
@@ -1433,18 +1460,10 @@ describe("category attention", () => {
         ? new Promise<number[]>((resolve) => treeReads.push(resolve))
         : Promise.resolve(id === 40 ? [40, 41, 42] : [id]),
     );
-    const onlyOne = (id: string, label: string, tag: number): MediaReviewAction => ({
-      id,
-      label,
-      steps: [
-        { mode: "ADD", tagIds: [tag] },
-        { mode: "REMOVE_TREE", tagIds: [3] },
-      ],
-    });
     window.history.replaceState(null, "", "/data-quality?review=r&performer=11");
     open({
       ...sized,
-      actions: [onlyOne("small", "Small", 31), onlyOne("medium", "Medium", 32), sized.actions[2]],
+      actions: [onlyOne("small", "Small", 31, 3), onlyOne("medium", "Medium", 32, 3), sized.actions[2]],
     });
     await ready();
     // Until then Size holds several answers as far as the review knows: counts, nothing mixed.

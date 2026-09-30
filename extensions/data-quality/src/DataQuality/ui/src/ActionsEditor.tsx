@@ -617,7 +617,7 @@ function GroupField({
   const own = groupKey(action.group);
   const set = (value: string) => onChange(value ? { ...action, group: value } : ungrouped(action));
   return (
-    <div className="dq-action-group-field">
+    <div>
       <label className="dq-action-field">
         <span className="dq-action-field-name">Group</span>
         <input
@@ -644,7 +644,7 @@ function GroupField({
       </label>
       <p className="dq-actions-hint dq-action-field-help" id={helpId}>
         {occurrence
-          ? "A group is one question with one answer per item; a chosen performer holding two different answers is marked Mixed."
+          ? "A group is one question with one answer per item; when a chosen performer's items hold two different answers of a group, Existing answers marks it Mixed."
           : "A group is one question with one answer per item."}
       </p>
     </div>
