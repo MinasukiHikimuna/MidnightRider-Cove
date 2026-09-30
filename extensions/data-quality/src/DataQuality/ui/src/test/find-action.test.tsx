@@ -76,6 +76,18 @@ it("filters by label, skips disabled rows on Enter and applies with the mouse", 
   expect(options[0]).toBeDisabled();
   fireEvent.keyDown(search, { key: "Enter" });
   expect(onApply).not.toHaveBeenCalled();
+  // Keys composing a character belong to the input method: the Enter that commits one applies
+  // nothing, the Esc that cancels one does not close Find action.
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+  fireEvent.keyDown(search, { key: "Enter", keyCode: 229 });
+  fireEvent.keyDown(search, { key: "Escape", isComposing: true });
+  fireEvent.keyDown(search, { key: "Escape", keyCode: 229 });
+  expect(onApply).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  onClose.mockClear();
   fireEvent.click(options[1], { shiftKey: true });
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ id: "three" }), true);
   fireEvent.mouseDown(document.querySelector(".dq-find-backdrop")!);

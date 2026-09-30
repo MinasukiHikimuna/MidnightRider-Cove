@@ -1637,6 +1637,7 @@
 .dq-pad-tile:focus-visible,
 .dq-pad-find-button:focus-visible,
 .dq-icon-button:focus-visible,
+.dq-combobox-toggle:focus-visible,
 .dq-header-button:focus-visible,
 .dq-text-button:focus-visible,
 .dq-segmented button:focus-visible,
@@ -5136,15 +5137,18 @@ textarea.dq-input {
   box-shadow:
     0 10px 15px -3px rgb(0 0 0 / 10%),
     0 4px 6px -4px rgb(0 0 0 / 10%);
-  /* Cove's glass and background-animation styles make the surface see-through and blur what is
-     behind its own lists; the blur keeps the rows readable over the drawer there and changes
-     nothing on opaque surfaces. */
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
   color: var(--color-foreground);
   font-size: 0.875rem;
   line-height: 1.25rem;
   list-style: none;
+}
+/* A list opened by a tap has focus itself: no ring for the tap, one for a keyboard. */
+.dq-combobox-list:focus {
+  outline: none;
+}
+.dq-combobox-list:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 .dq-combobox-option {
   display: flex;
@@ -5417,4 +5421,142 @@ textarea.dq-input {
 .dq-form-dialog-footer .dq-button[aria-disabled="true"] {
   cursor: default;
   opacity: 0.4;
+}
+
+/* Popups in Cove's glass and background-animation styles. Those make the theme's surface
+   see-through (30 % in Glass, 50 % with a background animation, 8 % with both, where the page's
+   background is transparent too), and Cove's own glass colour for dialogs is see-through as well,
+   so rows and text would mix with the page, the drawer or the player under them. Every popup the
+   extension draws (menus, popovers, lists, its dialogs, and the notes floating over the grid's
+   cards) lays its tint and the theme's surface over the theme's background and, under all of
+   them, a dark (or, in light themes, a light) base close to Cove's default background, so it
+   keeps the theme's look and is opaque in each theme. The last selector outweighs Cove's
+   stronger rule for dialogs under a background animation with glass; Cove's rules are
+   !important, so these are too. */
+:is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ) {
+  --dq-glass-tint: transparent;
+  --dq-glass-base: #16181d;
+}
+/* One element heavier than the list above, whose notices raise its weight to theirs. */
+html .dq-bar-notices > .dq-alert {
+  --dq-glass-tint: color-mix(in srgb, rgb(239 68 68) 14%, transparent);
+}
+html .dq-bar-notices > .dq-status {
+  --dq-glass-tint: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+html[data-color-scheme="light"] :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ) {
+  --dq-glass-base: #f5f8fa;
+}
+html[data-component-style*="glass"] body :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ),
+html[data-theme-bg-animation] body :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ),
+html[data-theme-bg-animation][data-component-style*="glass"] body :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ) {
+  background:
+    linear-gradient(var(--dq-glass-tint), var(--dq-glass-tint)),
+    linear-gradient(var(--color-surface), var(--color-surface)),
+    linear-gradient(var(--color-background), var(--color-background)),
+    var(--dq-glass-base) !important;
+}
+/* Forced colours: the system's window colour, whatever the layers above would draw. */
+@media (forced-colors: active) {
+  html[data-component-style*="glass"] body :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ),
+  html[data-theme-bg-animation] body :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ),
+  html[data-theme-bg-animation][data-component-style*="glass"] body :is(
+    .dq-menu-list,
+    .dq-scope-popover,
+    .dq-find-action,
+    .dq-key-picker,
+    .dq-combobox-list,
+    .dq-confirm-dialog,
+    .dq-form-dialog,
+    .dq-batch-dialog,
+    .dq-bar-effect,
+    .dq-bar-notices > .dq-alert,
+    .dq-bar-notices > .dq-status
+  ) {
+    background: Canvas !important;
+  }
 }

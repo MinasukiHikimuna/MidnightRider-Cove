@@ -19,6 +19,7 @@ import { PerformerFlagSettings, TagChoiceSettings } from "./OccurrenceReview";
 import { REVIEW_KIND_NAMES } from "./ReviewEntityIcon";
 import { exportReview } from "./reviewFiles";
 import {
+  isComposingKey,
   isOccurrenceReview,
   REVIEW_ENTITY_TYPES,
   reviewEntityType,
@@ -306,7 +307,7 @@ export function EditorDrawer({
           if (event.key !== "Escape" || event.defaultPrevented || saving) return;
           // An Esc that cancels a composition in a field belongs to the input method (Safari
           // sends it as key code 229, without isComposing).
-          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (isComposingKey(event)) return;
           event.preventDefault();
           event.stopPropagation();
           requestClose();

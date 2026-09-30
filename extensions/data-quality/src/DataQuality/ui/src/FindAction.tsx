@@ -12,6 +12,7 @@ import type { TagTrees } from "./effectPreview";
 import {
   ACTION_KEYS,
   canApplyAndStay,
+  isComposingKey,
   tagsAddedBy,
   type ActionKey,
   type ReviewAction,
@@ -176,6 +177,9 @@ export function FindAction({
   function handleKey(event: ReactKeyboardEvent<HTMLElement>) {
     // Every key typed here belongs to Find action, not to the page or player behind it.
     event.stopPropagation();
+    // The Esc that cancels, and the Enter that commits, a composed character belong to the input
+    // method: neither closes Find action nor applies an action.
+    if (isComposingKey(event)) return;
     // The physical key, so Shift pressed during the hold does not make it another key.
     const key = event.code || event.key;
     if (event.repeat && !pressedHere.current.has(key)) {

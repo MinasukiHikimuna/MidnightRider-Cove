@@ -21,7 +21,7 @@ import {
 } from "@cove/runtime/lucide-react";
 import { REVIEW_ENTITY_LABELS, ReviewEntityIcon } from "./ReviewEntityIcon";
 import { useMediaQuery } from "./viewport";
-import type { ReviewEntityType } from "./model";
+import { isComposingKey, type ReviewEntityType } from "./model";
 
 /**
  * What the header offers while the queue differs from the saved review: Save to review, unless
@@ -413,6 +413,8 @@ export function ReviewPager({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
+            // Keys composing a character (full-width digits) belong to the input method.
+            if (isComposingKey(event)) return;
             if (event.key === "Enter") {
               event.preventDefault();
               go();

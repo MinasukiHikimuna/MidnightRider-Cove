@@ -806,6 +806,18 @@ export function isReviewShortcutTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * A key that composes a character belongs to the input method: the Esc that cancels an accented
+ * or dead-key character, the Enter that commits one. Safari sends those as key code 229 without
+ * isComposing. Handlers that act on Esc or Enter leave such keys alone.
+ */
+export function isComposingKey(
+  event: Pick<KeyboardEvent, "isComposing" | "keyCode"> | { nativeEvent: KeyboardEvent },
+): boolean {
+  const native = "nativeEvent" in event ? event.nativeEvent : event;
+  return native.isComposing || native.keyCode === 229;
+}
+
+/**
  * Escape clears the grid selection after focus drifts to the page body or to
  * the extension's own controls: cards, the action bar, the header's pager and
  * the review preview. Host-owned widgets inside the page (the list toolbar,

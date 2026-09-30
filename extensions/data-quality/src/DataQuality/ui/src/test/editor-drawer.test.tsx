@@ -380,6 +380,10 @@ it("narrows the rows with Find an action, reorders only the full list and clears
   expect(within(drawer).getByRole("button", { name: "Reorder Swapped" })).toBeDisabled();
   fireEvent.change(find, { target: { value: "nothing like it" } });
   expect(within(drawer).getByText("No action matches “nothing like it”.")).toBeInTheDocument();
+  // An Esc that cancels a composed character leaves the filter alone.
+  fireEvent.keyDown(find, { key: "Escape", isComposing: true });
+  fireEvent.keyDown(find, { key: "Escape", keyCode: 229 });
+  expect(find).toHaveValue("nothing like it");
   // Esc empties the filter first; the drawer stays open.
   fireEvent.keyDown(find, { key: "Escape" });
   expect(find).toHaveValue("");
@@ -551,7 +555,14 @@ it("closes Add from parent tags with Esc before Esc can close the drawer", () =>
   const toggle = within(drawer).getByRole("button", { name: "Add from parent tags…" });
   fireEvent.click(toggle);
   const panel = within(drawer).getByRole("group", { name: "Add actions from parent tags" });
-  fireEvent.keyDown(within(panel).getByPlaceholderText("Search parent tags..."), { key: "Escape" });
+  const search = within(panel).getByPlaceholderText("Search parent tags...");
+  // An Esc that cancels a composed character (flagged, or Safari's key code 229) belongs to the
+  // input method: the panel and the drawer stay.
+  fireEvent.keyDown(search, { key: "Escape", isComposing: true });
+  fireEvent.keyDown(search, { key: "Escape", keyCode: 229 });
+  expect(within(drawer).getByRole("group", { name: "Add actions from parent tags" })).toBe(panel);
+  expect(onCancel).not.toHaveBeenCalled();
+  fireEvent.keyDown(search, { key: "Escape" });
   expect(within(drawer).queryByRole("group", { name: "Add actions from parent tags" })).toBeNull();
   expect(onCancel).not.toHaveBeenCalled();
   expect(toggle).toHaveFocus();

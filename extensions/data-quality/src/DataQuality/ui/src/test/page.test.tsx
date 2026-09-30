@@ -3020,6 +3020,9 @@ it("edits a grid review in a drawer beside the cards, with actions paused, and C
   fireEvent.click(within(first).getByRole("button", { name: "Preview Video 1" }));
   expect(screen.queryByRole("dialog", { name: /Review preview/ })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "More review options" })).toBeDisabled();
+  // An Esc composing a character belongs to the input method and clears nothing.
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "Escape", isComposing: true });
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "Escape", keyCode: 229 });
   // The cards stay live: Esc on one clears the selection, and the drawer stays.
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 2, selected" }), { key: "Escape" });
   expect(screen.getByRole("article", { name: "Video 2" })).toBeInTheDocument();

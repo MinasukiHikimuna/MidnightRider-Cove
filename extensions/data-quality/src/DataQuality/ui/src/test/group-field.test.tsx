@@ -95,6 +95,12 @@ const activeOption = (field: HTMLElement) => {
   const id = field.getAttribute("aria-activedescendant");
   return id ? document.getElementById(id)?.textContent : undefined;
 };
+/** A tap as a touchscreen sends it: a touch press, the mouse events it makes, then the click. */
+function tap(element: Element) {
+  fireEvent.pointerDown(element, { pointerType: "touch" });
+  fireEvent.mouseDown(element);
+  fireEvent.click(element);
+}
 
 describe("groupOptions", () => {
   const all = ["Shape", "Colour", "Width"];
@@ -434,28 +440,152 @@ describe("the group field", () => {
     expect(listbox()).toBeInTheDocument();
   });
 
-  it("opens from a tapped chevron without focusing the field, so no on-screen keyboard appears", () => {
+  it("opens from a tapped chevron with focus in the list, not the field, so no on-screen keyboard appears", () => {
     const { field, chevron } = openAction("Own");
-    fireEvent.pointerDown(chevron, { pointerType: "touch" });
-    fireEvent.mouseDown(chevron);
-    fireEvent.click(chevron);
+    tap(chevron);
     expect(listbox()).toBeInTheDocument();
     expect(field).not.toHaveFocus();
-    fireEvent.click(within(listbox()).getByRole("option", { name: "Colour" }));
+    // Focus on the list itself, which takes no typing, and so brings up no keyboard.
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute("tabindex", "-1");
+    // A tapped row picks; focus stays by the field, on the chevron, which takes no typing either.
+    tap(within(listbox()).getByRole("option", { name: "Colour" }));
     expect(groupOf("own")).toBe("Colour");
-    // Without focus in the field no blur closes the list: a press outside does.
-    fireEvent.pointerDown(chevron, { pointerType: "touch" });
-    fireEvent.mouseDown(chevron);
-    fireEvent.click(chevron);
-    expect(listbox()).toBeInTheDocument();
-    expect(field).not.toHaveFocus();
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(chevron).toHaveFocus();
+    // A tap outside closes it.
+    tap(chevron);
+    expect(listbox()).toHaveFocus();
     fireEvent.pointerDown(document.body, { pointerType: "touch" });
     expect(screen.queryByRole("listbox")).toBeNull();
+    // A tap on the chevron of a field that has focus keeps focus there: its keyboard is up anyway.
+    act(() => field.focus());
+    tap(chevron);
+    expect(listbox()).toBeInTheDocument();
+    expect(field).toHaveFocus();
+    tap(chevron);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(field).toHaveFocus();
     // A mouse press on it focuses the field, and the press itself keeps focus where it is.
+    act(() => chevron.blur());
     fireEvent.pointerDown(chevron, { pointerType: "mouse" });
     expect(fireEvent.mouseDown(chevron)).toBe(false);
     fireEvent.click(chevron);
     expect(field).toHaveFocus();
+  });
+
+  it("closes only a tapped-open list on Esc, though focus was in another field", () => {
+    const { drawer, chevron, onCancel } = openAction("Own");
+    const label = within(drawer).getByRole("textbox", { name: "Button label" });
+    // A change, so the drawer's Esc would ask to discard it.
+    fireEvent.change(label, { target: { value: "Own edited" } });
+    act(() => label.focus());
+    tap(chevron);
+    expect(label).not.toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Discard unsaved changes?" })).toBeNull();
+    expect(chevron).toHaveFocus();
+    // An Esc composing a character leaves the list open.
+    tap(chevron);
+    fireEvent.keyDown(listbox(), { key: "Escape", keyCode: 229 });
+    fireEvent.keyDown(listbox(), { key: "Escape", isComposing: true });
+    expect(listbox()).toBeInTheDocument();
+    // Once the list is closed, Esc is the drawer's again.
+    fireEvent.keyDown(listbox(), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("closes a tapped-open list once focus goes to another field or Tab leaves it", async () => {
+    const user = userEvent.setup();
+    const { drawer, field, chevron } = openAction("Own");
+    const label = within(drawer).getByRole("textbox", { name: "Button label" });
+    tap(chevron);
+    // Focus moved to another field (to type there, say) closes the list.
+    act(() => label.focus());
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard("x");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(label).toHaveValue("Ownx");
+    // Tab from the list closes it and goes on from the field, not from the end of the page: focus
+    // moves to the chevron beside the field, and the browser's Tab carries on from there.
+    tap(chevron);
+    expect(listbox()).toHaveFocus();
+    expect(fireEvent.keyDown(listbox(), { key: "Tab" })).toBe(true);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(chevron).toHaveFocus();
+    expect(groupOf("own")).toBe("Width");
+    // Shift + Tab carries on from the field itself, so it lands before the field.
+    tap(chevron);
+    expect(fireEvent.keyDown(listbox(), { key: "Tab", shiftKey: true })).toBe(true);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(field).toHaveFocus();
+  });
+
+  it("lets a keyboard carry on in a tapped-open list", async () => {
+    const user = userEvent.setup();
+    const { field, chevron } = openAction("Own");
+    tap(chevron);
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    expect(activeOption(listbox())).toBe("Shape");
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(groupOf("own")).toBe("Shape");
+    expect(chevron).toHaveFocus();
+    // Typing goes to the field, which filters the list.
+    tap(chevron);
+    await user.keyboard("Col");
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue("ShapeCol");
+    expect(listbox()).toBeInTheDocument();
+    // AltGr characters (Ctrl + Alt on Windows) and dead keys are typing too; shortcuts are not.
+    act(() => field.blur());
+    tap(chevron);
+    fireEvent.keyDown(listbox(), { key: "a", ctrlKey: true });
+    expect(listbox()).toHaveFocus();
+    fireEvent.keyDown(listbox(), { key: "@", ctrlKey: true, altKey: true, modifierAltGraph: true });
+    expect(field).toHaveFocus();
+    act(() => field.blur());
+    tap(chevron);
+    fireEvent.keyDown(listbox(), { key: "Dead" });
+    expect(field).toHaveFocus();
+  });
+
+  it("listens for presses in the bubble phase and for scrolls where the field scrolls", async () => {
+    const user = userEvent.setup();
+    const { drawer, field } = openAction("Own");
+    // The window has its own addEventListener in jsdom.
+    const listen = vi.spyOn(EventTarget.prototype, "addEventListener");
+    const listenWindow = vi.spyOn(window, "addEventListener");
+    await user.click(field);
+    const calls = [listen, listenWindow].flatMap((spy) =>
+      spy.mock.calls.map((call, index) => ({
+        target: spy.mock.contexts[index],
+        type: call[0],
+        capture: call[2] === true || (typeof call[2] === "object" && call[2]?.capture === true),
+      })),
+    );
+    const scrolling = calls.filter((call) => call.type === "scroll").map((call) => call.target);
+    expect(scrolling).toContain(drawer.querySelector(".dq-drawer-body"));
+    expect(scrolling).toContain(window);
+    expect(calls.some((call) => call.type === "pointerdown" && call.target === document)).toBe(true);
+    // None of them in the capture phase. (React listens on the body, the portal's container, in
+    // both phases the first time a portal mounts; the field never listens there.)
+    expect(
+      calls.filter(
+        (call) =>
+          (call.type === "scroll" || call.type === "pointerdown") &&
+          call.capture &&
+          call.target !== document.body,
+      ),
+    ).toEqual([]);
+    listen.mockRestore();
+    listenWindow.mockRestore();
   });
 
   it("closes when focus leaves the field another way", async () => {
@@ -543,6 +673,15 @@ describe("the group list's place", () => {
     fieldRect = rect(40, 900, 400, 34);
     scrollBody(drawer);
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("follows the field as the page itself scrolls", async () => {
+    const user = userEvent.setup();
+    const { field } = openAction("Own");
+    await user.click(field);
+    fieldRect = rect(250, 900, 400, 34);
+    fireEvent.scroll(window);
+    expect(listbox().style.top).toBe("288px");
   });
 
   it("never takes its own place before a scroll for something covering the field", async () => {

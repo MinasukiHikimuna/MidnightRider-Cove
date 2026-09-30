@@ -14,6 +14,7 @@ import {
 import { ChevronDown, Pencil, Users } from "@cove/runtime/lucide-react";
 import {
   conditionSeeksMissingTags,
+  isComposingKey,
   OCCURRENCE_CONDITION_LABELS,
   OCCURRENCE_CONDITIONS,
   targetsAllPerformers,
@@ -139,7 +140,7 @@ export function ScopePopover({
     const nested =
       event.target instanceof Element &&
       event.target.closest('[role="dialog"]') !== panel.current;
-    if (nested || event.defaultPrevented) return;
+    if (nested || event.defaultPrevented || isComposingKey(event)) return;
     if (event.key === "Escape") {
       event.preventDefault();
       close();

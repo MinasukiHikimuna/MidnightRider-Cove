@@ -65,6 +65,7 @@ import {
 } from "./api";
 import {
   getNextReviewFocus,
+  isComposingKey,
   isOccurrenceReview,
   mediaKindOf,
   getReviewActionTargets,
@@ -1111,7 +1112,8 @@ export function DataQualityPage({
       if (
         pageDialogRef.current ||
         isEditableTarget(document.activeElement) ||
-        document.activeElement?.closest(".dq-drawer")
+        // The drawer's Group list hangs on the page, outside the drawer.
+        document.activeElement?.closest(".dq-drawer, .dq-combobox-list")
       )
         return;
       const card = cardRefs.current.get(id);
@@ -1396,6 +1398,7 @@ export function DataQualityPage({
     if (
       event.defaultPrevented ||
       event.repeat ||
+      isComposingKey(event) ||
       event.ctrlKey ||
       event.altKey ||
       event.metaKey

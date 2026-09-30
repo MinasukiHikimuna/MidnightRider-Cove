@@ -33,6 +33,7 @@ import { GroupField } from "./GroupField";
 import { ActionKeyButton } from "./KeyPicker";
 import {
   hasContradictoryAssessments,
+  isComposingKey,
   isOccurrenceReview,
   NO_ACTION_KEY,
   reviewEntityType,
@@ -294,7 +295,7 @@ export function ActionsEditor({
               onChange={(event) => setFilter(event.target.value)}
               onKeyDown={(event: ReactKeyboardEvent<HTMLInputElement>) => {
                 // Esc empties the filter first; only an empty one lets Esc reach the drawer.
-                if (event.key === "Escape" && filter) {
+                if (event.key === "Escape" && filter && !isComposingKey(event)) {
                   event.preventDefault();
                   event.stopPropagation();
                   setFilter("");
@@ -338,10 +339,10 @@ export function ActionsEditor({
       </div>
       {media && fromTags && (
         // Esc closes this panel before it can reach the drawer, whose Esc would lose the parents
-        // and ticks chosen here.
+        // and ticks chosen here. An Esc that cancels a composition belongs to the input method.
         <div
           onKeyDown={(event) => {
-            if (event.key !== "Escape" || event.defaultPrevented) return;
+            if (event.key !== "Escape" || event.defaultPrevented || isComposingKey(event)) return;
             event.preventDefault();
             event.stopPropagation();
             closeFromTags();

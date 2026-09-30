@@ -10,7 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Plus } from "@cove/runtime/lucide-react";
 import { groupKey } from "./answerGroups";
-import type { MediaReviewAction } from "./model";
+import { isComposingKey, type MediaReviewAction } from "./model";
 
 /** One row of the group field's list. */
 export interface GroupOption {
@@ -112,7 +112,9 @@ function fieldInView(
  * what is typed) and the typed name as a new group; it follows the ARIA combobox pattern, with
  * the chevron outside the Tab order. Typing, ↓ or Alt + ↓ opens it, ↑ / ↓ move, Enter picks, Esc
  * closes only the list (not the drawer around it) and Tab closes it keeping what was typed; a click
- * or tap on the field or the chevron opens it and one outside closes it. The list hangs on the page,
+ * or tap on the field or the chevron opens it and one outside closes it. A tapped chevron gives the
+ * list focus rather than the field, so no on-screen keyboard comes up; focus anywhere but the field
+ * and its list closes the list, so its Esc never waits in another field. The list hangs on the page,
  * outside the drawer's scrolling body that would cut it off, and follows the field as that body
  * scrolls. A group is one question that takes one answer, which the help under the field says; in
  * occurrence reviews that is also what lets a performer's answers there count as mixed
@@ -140,10 +142,14 @@ export function GroupField({
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const chevron = useRef<HTMLButtonElement>(null);
   const clipping = useRef<HTMLElement[]>([]);
   // Whether the chevron's press came from a touch: a tap on it opens the list without bringing up
   // the on-screen keyboard.
   const touchPress = useRef(false);
+  // Whether the list takes focus once it is drawn: a tapped chevron opens it without focusing the
+  // field, and focus must not stay in another field while the list is open.
+  const focusList = useRef(false);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -166,7 +172,12 @@ export function GroupField({
     setActiveKey(activate);
     setOpen(true);
   }
+  /** Whether a node is the field (its name, input and chevron) or its list. */
+  const within = (node: EventTarget | null) =>
+    node instanceof Node && (field.current?.contains(node) || list.current?.contains(node)) === true;
   function close() {
+    // Focus in the list stays by the field, on the chevron, which brings up no on-screen keyboard.
+    if (list.current?.contains(document.activeElement)) chevron.current?.focus({ preventScroll: true });
     setOpen(false);
     setTyped(null);
     setActiveKey(null);
@@ -202,9 +213,13 @@ export function GroupField({
     popup.style.maxHeight = `${Math.max(0, Math.min(LIST_MAX_HEIGHT, upwards ? above : below))}px`;
     if (!fieldInView(anchor, popup, rect, clipping.current)) close();
   }
-  // Once per opening, before the first placement: what can hide the field.
+  // Once per opening, before the first placement: what can hide the field, and focus for a list
+  // opened by a tap.
   useLayoutEffect(() => {
-    if (open && box.current) clipping.current = clippingAncestors(box.current);
+    if (!open) return;
+    if (box.current) clipping.current = clippingAncestors(box.current);
+    if (focusList.current) list.current?.focus({ preventScroll: true });
+    focusList.current = false;
   }, [open]);
   // After every render while open: the options, and the rows above the field, may have changed.
   useLayoutEffect(() => {
@@ -214,34 +229,36 @@ export function GroupField({
     if (!open) return;
     const follow = () => place();
     // A press outside the field and its list closes the list; the field's name counts as the
-    // field, so pressing it does not close the list only for its click to open it again.
+    // field, so pressing it does not close the list only for its click to open it again. In the
+    // bubble phase, as Cove's own menus listen.
     const pressOutside = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && (field.current?.contains(target) || list.current?.contains(target))) return;
-      close();
+      if (!within(event.target)) close();
     };
+    // Scroll events do not bubble: each element that can scroll the field away is listened to,
+    // and the window for the page itself.
+    const scrollers: EventTarget[] = [...clipping.current, window];
     const viewport = window.visualViewport;
-    window.addEventListener("scroll", follow, true);
+    for (const scroller of scrollers) scroller.addEventListener("scroll", follow);
     window.addEventListener("resize", follow);
     viewport?.addEventListener("resize", follow);
     viewport?.addEventListener("scroll", follow);
-    document.addEventListener("pointerdown", pressOutside, true);
+    document.addEventListener("pointerdown", pressOutside);
     return () => {
-      window.removeEventListener("scroll", follow, true);
+      for (const scroller of scrollers) scroller.removeEventListener("scroll", follow);
       window.removeEventListener("resize", follow);
       viewport?.removeEventListener("resize", follow);
       viewport?.removeEventListener("scroll", follow);
-      document.removeEventListener("pointerdown", pressOutside, true);
+      document.removeEventListener("pointerdown", pressOutside);
     };
   }, [open]);
   useEffect(() => {
     if (active >= 0) list.current?.children[active]?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
 
-  function handleKey(event: ReactKeyboardEvent<HTMLInputElement>) {
-    // Keys that compose a character belong to the input method (Safari sends the Enter that
-    // commits a composition as key code 229, without isComposing).
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+  // The keys of the field and, while it has focus, of its list; Esc is the wrapper's.
+  function handleKey(event: ReactKeyboardEvent<HTMLElement>) {
+    // Keys that compose a character belong to the input method.
+    if (isComposingKey(event)) return;
     const vertical = event.key === "ArrowDown" || event.key === "ArrowUp";
     if (vertical && !open) {
       // Alt + ↓ only opens the list; ↓ and ↑ open it on the action's group, as a select does, so
@@ -277,16 +294,43 @@ export function GroupField({
         trim();
         close();
       }
-    } else if (event.key === "Escape") {
-      // Closes the list only: the drawer's Esc, which would close the editor, waits.
-      event.preventDefault();
-      event.stopPropagation();
+    }
+  }
+  // The list has focus after a tap on the chevron; a keyboard can carry on from there.
+  function handleListKey(event: ReactKeyboardEvent<HTMLUListElement>) {
+    if (event.key === "Tab") {
+      // Tab goes on from the field, not from the end of the page where the list hangs: closing
+      // moves focus to the chevron, after the field, and Shift + Tab starts from the field itself,
+      // so the browser's Tab carries on as from the field.
       close();
-    } else if (event.key === "Tab") close();
+      if (event.shiftKey) input.current?.focus();
+      return;
+    }
+    // AltGr arrives as Ctrl + Alt on Windows; its characters are typing too, as are dead keys.
+    const altGraph = event.getModifierState("AltGraph");
+    const typing =
+      event.key === "Dead" ||
+      (event.key.length === 1 && !event.metaKey && (altGraph || (!event.ctrlKey && !event.altKey)));
+    if (typing) {
+      // Typing goes to the field, which filters the list as it would have.
+      input.current?.focus();
+      return;
+    }
+    handleKey(event);
   }
 
   return (
-    <div>
+    <div
+      // While the list is open, Esc closes only the list, wherever in the field or the list focus
+      // is (the list is a portal, but its keys come here); the drawer's Esc, which would close the
+      // editor, waits. Focus anywhere else closes the list, so Esc cannot find it open there.
+      onKeyDown={(event) => {
+        if (!open || event.key !== "Escape" || isComposingKey(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }}
+    >
       <div ref={field} className="dq-action-field">
         <label
           className="dq-action-field-name"
@@ -330,6 +374,7 @@ export function GroupField({
             }}
           />
           <button
+            ref={chevron}
             type="button"
             className="dq-combobox-toggle"
             tabIndex={-1}
@@ -339,14 +384,20 @@ export function GroupField({
             onPointerDown={(event) => {
               touchPress.current = event.pointerType === "touch";
             }}
-            // Focus stays in the field (or wherever it was), so the list is not closed by a blur.
+            // The press itself leaves focus where it is, so the list is not closed by a blur.
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
               const touch = touchPress.current;
               touchPress.current = false;
+              const inField = document.activeElement === input.current;
               if (open) close();
-              else show(null);
-              if (!touch || document.activeElement === input.current) input.current?.focus();
+              else {
+                // A tap opens the list with focus in it, not in the field, so no on-screen
+                // keyboard comes up, and none stays in another field whose keys would miss the list.
+                focusList.current = touch && !inField;
+                show(null);
+              }
+              if (!touch || inField) input.current?.focus();
             }}
           >
             <ChevronDown aria-hidden="true" />
@@ -366,8 +417,15 @@ export function GroupField({
             role="listbox"
             aria-label="Groups"
             className="dq-combobox-list"
-            // A press on a row, a gap or the scroll bar leaves focus in the field.
+            // Focusable for a list opened by a tap, which then has focus and names its active row.
+            tabIndex={-1}
+            aria-activedescendant={active >= 0 ? optionId(active) : undefined}
+            // A press on a row, a gap or the scroll bar leaves focus in the field, or the list.
             onMouseDown={(event) => event.preventDefault()}
+            onKeyDown={handleListKey}
+            onBlur={(event) => {
+              if (!within(event.relatedTarget)) close();
+            }}
           >
             {options.map((option, index) => (
               <li

@@ -1017,6 +1017,14 @@ it("moves between queue pages with the header pager and its go-to field", async 
   expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   // Esc leaves the page as it is.
   fireEvent.click(screen.getByRole("button", { name: "Page 3 of 3. Go to page" }));
+  // Keys composing a character (full-width digits) belong to the input method: neither the Enter
+  // that commits one nor the Esc that cancels one acts on the field.
+  const pageField = screen.getByRole("spinbutton", { name: "Go to page, 1 to 3" });
+  fireEvent.change(pageField, { target: { value: "1" } });
+  fireEvent.keyDown(pageField, { key: "Enter", isComposing: true });
+  fireEvent.keyDown(pageField, { key: "Escape", keyCode: 229 });
+  expect(pageField).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Go to page, 1 to 3" }), { key: "Escape" });
   expect(screen.getByRole("button", { name: "Page 3 of 3. Go to page" })).toBeInTheDocument();
 });
@@ -2566,6 +2574,11 @@ it("summarises the scope on its button and keeps its controls in a popover", asy
   fireEvent.keyDown(document.body, { key: "q" });
   await act(async () => {});
   expect(api.applyTags).not.toHaveBeenCalled();
+  // An Esc that cancels a composed character belongs to the input method: the popover stays.
+  const condition = scope.getByRole("combobox", { name: "Occurrence condition" });
+  fireEvent.keyDown(condition, { key: "Escape", isComposing: true });
+  fireEvent.keyDown(condition, { key: "Escape", keyCode: 229 });
+  expect(screen.getByRole("dialog", { name: "Queue scope" })).toBeInTheDocument();
   fireEvent.keyDown(scope.getByRole("combobox", { name: "Occurrence condition" }), { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Queue scope" })).not.toBeInTheDocument();
   await waitFor(() => expect(button).toHaveFocus());
