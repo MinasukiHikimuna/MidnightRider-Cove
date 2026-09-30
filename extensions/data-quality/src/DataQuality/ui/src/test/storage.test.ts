@@ -266,6 +266,23 @@ it("preserves legacy action shortcuts without using them", async () => {
   expect(JSON.parse(records[0].uiOptions).reviews).toEqual([legacy]);
 });
 
+it("saves and reloads keys pinned to n, m, comma and period as they are", async () => {
+  const loaded = await loadReviews();
+  const pinned = {
+    ...review,
+    actions: ["n", "m", ",", "."].map((shortcut, index) => ({
+      id: `key-${index}`,
+      label: `Key ${index}`,
+      steps: [],
+      shortcut,
+    })),
+  };
+  await expect(saveReviews(loaded.storageKey, () => [pinned])).resolves.toEqual([pinned]);
+  expect(JSON.parse(records[0].uiOptions).reviews).toEqual([pinned]);
+  localStorage.clear();
+  expect((await loadReviews()).reviews).toEqual([pinned]);
+});
+
 it("does not change the account revision when a clean browser only reads it", async () => {
   await loadReviews();
   const revision = JSON.parse(records[0].uiOptions).revision;

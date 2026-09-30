@@ -36,6 +36,7 @@ import {
   isComposingKey,
   isOccurrenceReview,
   NO_ACTION_KEY,
+  actionKeyName,
   reviewEntityType,
   validAction,
   withActionKey,
@@ -531,10 +532,10 @@ function ActionRow({
           {takenPin && (
             <span
               className="dq-action-problem"
-              title={`An earlier action is pinned to ${takenPin.toLocaleUpperCase()} too, so this one takes a free key as Auto does. Choose its key to settle it.`}
+              title={`An earlier action is pinned to ${actionKeyName(takenPin)} too, so this one takes a free key as Auto does. Choose its key to settle it.`}
             >
               <AlertTriangle aria-hidden="true" />
-              {`${takenPin.toLocaleUpperCase()} is pinned twice`}
+              {`${actionKeyName(takenPin)} is pinned twice`}
             </span>
           )}
           {groupUnanswerable && (

@@ -1,5 +1,5 @@
-import { expect, it } from "vitest";
-import { readReviewFile, reviewFileName } from "../reviewFiles";
+import { expect, it, vi } from "vitest";
+import { exportReview, readReviewFile, reviewFileName } from "../reviewFiles";
 
 it("names a review's file after the review, in plain ASCII", () => {
   expect(reviewFileName({ name: "Hair colour" })).toBe("data-quality-review-hair-colour.json");
@@ -52,6 +52,40 @@ it("keeps each action's key choice through a review file", async () => {
   };
   const read = await readReviewFile(new File([JSON.stringify([review], null, 2)], "keys.json"));
   expect(read).toEqual([review]);
+});
+
+it("exports keys pinned to n, m, comma and period and imports them back unchanged", async () => {
+  const review = {
+    id: "bottom-row",
+    name: "Bottom row",
+    description: "",
+    view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text" },
+    actions: ["n", "m", ",", ".", undefined].map((shortcut, index) => ({
+      id: `action-${index}`,
+      label: `Action ${index + 1}`,
+      steps: [],
+      ...(shortcut === undefined ? {} : { shortcut }),
+    })),
+  } as const;
+  let exported: Blob | undefined;
+  const create = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+    exported = blob as Blob;
+    return "blob:review";
+  });
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    exportReview(review as never);
+  } finally {
+    create.mockRestore();
+    revoke.mockRestore();
+    click.mockRestore();
+  }
+  const text = await exported!.text();
+  expect(JSON.parse(text)[0].actions.map((action: { shortcut?: string }) => action.shortcut)).toEqual(
+    ["n", "m", ",", ".", undefined],
+  );
+  expect(await readReviewFile(new File([text], "bottom-row.json"))).toEqual([review]);
 });
 
 it("keeps answer groups and their setting through a review file", async () => {

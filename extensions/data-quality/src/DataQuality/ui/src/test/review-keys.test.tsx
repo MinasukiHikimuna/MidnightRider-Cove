@@ -44,10 +44,11 @@ function keys(overrides: Partial<ReviewKeyHandlers> = {}) {
 }
 
 it("registers each placed key and Shift+key, - for Find action and Ctrl+A for select all", () => {
-  keys({ actions: actions(30) });
+  keys({ actions: actions(34) });
   const active = activeTestKeys();
   // The stand-in rejects bindings with an action id, which would follow Cove's keyboard preset.
-  expect(active).toHaveLength(2 + 27 * 2);
+  // 29 letters with Shift, then comma and period with what Shift makes them type.
+  expect(active).toHaveLength(2 + 29 * 2 + 2 * 3);
   expect(active.slice(0, 6)).toEqual([
     "local:Ctrl+a",
     "local:-",
@@ -59,8 +60,66 @@ it("registers each placed key and Shift+key, - for Find action and Ctrl+A for se
   expect(active).toEqual(
     expect.arrayContaining(["local:å", "local:Shift+å", "local:ö", "local:Shift+ä", "local:Shift+b"]),
   );
-  // n and m step through the grid preview; they never apply an action.
-  expect(active.filter((key) => /:(Shift\+)?[nm]$/.test(key))).toEqual([]);
+  expect(active.slice(-10)).toEqual([
+    "local:n",
+    "local:Shift+n",
+    "local:m",
+    "local:Shift+m",
+    "local:,",
+    "local:;",
+    "local:<",
+    "local:.",
+    "local::",
+    "local:>",
+  ]);
+});
+
+it("applies on n, m, comma and period, and stays with Shift on them", () => {
+  const { onAction } = keys({ actions: actions(31) });
+  fireEvent.keyDown(document.body, { key: "n", code: "KeyN" });
+  fireEvent.keyDown(document.body, { key: "M", code: "KeyM", shiftKey: true });
+  fireEvent.keyDown(document.body, { key: ",", code: "Comma" });
+  fireEvent.keyDown(document.body, { key: ".", code: "Period" });
+  expect(onAction.mock.calls).toEqual([
+    [27, false],
+    [28, true],
+    [29, false],
+    [30, false],
+  ]);
+});
+
+it("stays on Shift + comma or period by the key pressed, whatever character it types", () => {
+  const { onAction } = keys({ actions: actions(31) });
+  // Finnish/Swedish: Shift + comma types ;, Shift + period types :.
+  expect(fireEvent.keyDown(document.body, { key: ";", code: "Comma", shiftKey: true })).toBe(false);
+  expect(fireEvent.keyDown(document.body, { key: ":", code: "Period", shiftKey: true })).toBe(false);
+  // US and UK: < and >.
+  fireEvent.keyDown(document.body, { key: "<", code: "Comma", shiftKey: true });
+  fireEvent.keyDown(document.body, { key: ">", code: "Period", shiftKey: true });
+  expect(onAction.mock.calls).toEqual([
+    [29, true],
+    [30, true],
+    [29, true],
+    [30, true],
+  ]);
+  onAction.mockClear();
+  // The same characters from other keys apply nothing: the Finnish/Swedish < key left of Z,
+  // with and without Shift, and a US semicolon key; nor do they without Shift or with Alt.
+  for (const init of [
+    { key: "<", code: "IntlBackslash" },
+    { key: ">", code: "IntlBackslash", shiftKey: true },
+    { key: ";", code: "Semicolon" },
+    { key: ":", code: "Semicolon", shiftKey: true },
+    { key: ";", code: "Comma" },
+  ])
+    fireEvent.keyDown(document.body, init);
+  expect(onAction).not.toHaveBeenCalled();
+  // A repeat of a held Shift + comma applies nothing either.
+  fireEvent.keyDown(document.body, { key: ";", code: "Comma", shiftKey: true, repeat: true });
+  // Without the key event (not while Cove dispatches one), the character applies nothing.
+  invokeTestBinding(";");
+  invokeTestBinding(":", { sequence: ":" });
+  expect(onAction).not.toHaveBeenCalled();
 });
 
 it("applies on a key, stays with Shift and a key, and acts on a held key only once", () => {
@@ -106,24 +165,57 @@ it("puts pinned actions on their keys and leaves other empty keys unregistered",
   expect(fireEvent.keyDown(document.body, { key: "e" })).toBe(true);
 });
 
-it("claims f, g and k while they hold no action, so Cove's own uses of them never fire", () => {
+it("reads the physical key only from the keydown Cove is dispatching for the stroke", () => {
+  const { onAction } = keys({ actions: actions(31) });
+  const target = document.createElement("div");
+  document.body.append(target);
+  // Stand-ins for a stroke Cove dispatches while another event is on its way: only the keydown
+  // at the invocation's target counts.
+  const during = (type: string, init: KeyboardEventInit, invocationTarget: EventTarget) => {
+    const listener = () => invokeTestBinding(";", { sequence: ";", target: invocationTarget });
+    target.addEventListener(type, listener);
+    fireEvent(target, new KeyboardEvent(type, { bubbles: true, ...init }));
+    target.removeEventListener(type, listener);
+  };
+  // A key Cove binds nothing to, so the event reaches the listener.
+  const shiftComma = { key: "F13", code: "Comma", shiftKey: true };
+  during("keydown", shiftComma, document.body);
+  during("keyup", shiftComma, target);
+  expect(onAction).not.toHaveBeenCalled();
+  during("keydown", shiftComma, target);
+  expect(onAction.mock.calls).toEqual([[29, true]]);
+  target.remove();
+});
+
+it("claims f, g, k, n, m, comma and period while they hold no action, so Cove's own uses never fire", () => {
   testVideoControls.toggle.mockClear();
+  testPlayerShortcuts.mute.mockClear();
   const { rerender, props, onAction } = keys({ actions: actions(2) });
   render(<VideoPlayer videoId={1} extensionSurface="data-quality" />);
-  for (const key of ["f", "g", "k"]) {
+  for (const key of ["f", "g", "k", "n", "m"]) {
     expect(activeTestKeys()).toContain(`local:${key}`);
     expect(activeTestKeys()).toContain(`local:Shift+${key}`);
   }
+  for (const key of [",", ";", "<", ".", ":", ">"]) expect(activeTestKeys()).toContain(`local:${key}`);
   for (const init of [
     { key: "f" },
     { key: "g" },
     { key: "k" },
+    { key: "n" },
+    { key: "m" },
+    { key: ",", code: "Comma" },
+    { key: ".", code: "Period" },
     { key: "F", shiftKey: true },
     { key: "G", shiftKey: true },
     { key: "K", shiftKey: true },
+    { key: "N", shiftKey: true },
+    { key: "M", shiftKey: true },
+    { key: ";", code: "Comma", shiftKey: true },
+    { key: ":", code: "Period", shiftKey: true },
   ])
     expect(fireEvent.keyDown(document.body, init)).toBe(false);
   expect(onAction).not.toHaveBeenCalled();
+  expect(testPlayerShortcuts.mute).not.toHaveBeenCalled();
   expect(testPlayerShortcuts.fullscreen).not.toHaveBeenCalled();
   expect(testVideoControls.toggle).not.toHaveBeenCalled();
   expect(testGlobalShortcuts.goTo).not.toHaveBeenCalled();
@@ -133,6 +225,8 @@ it("claims f, g and k while they hold no action, so Cove's own uses of them neve
   fireEvent.keyDown(document.body, { key: "f" });
   fireEvent.keyDown(document.body, { key: "g" });
   fireEvent.keyDown(document.body, { key: "k" });
+  fireEvent.keyDown(document.body, { key: "m" });
+  expect(testPlayerShortcuts.mute).toHaveBeenCalledTimes(1);
   expect(testPlayerShortcuts.fullscreen).toHaveBeenCalledTimes(1);
   expect(testGlobalShortcuts.goTo).toHaveBeenCalledTimes(1);
   expect(testVideoControls.toggle).toHaveBeenCalledTimes(1);
@@ -154,12 +248,23 @@ it("registers none while disabled, and select all and f, g and k without actions
     "local:Shift+g",
     "local:k",
     "local:Shift+k",
+    "local:n",
+    "local:Shift+n",
+    "local:m",
+    "local:Shift+m",
+    "local:,",
+    "local:;",
+    "local:<",
+    "local:.",
+    "local::",
+    "local:>",
   ]);
   expect(fireEvent.keyDown(document.body, { key: "f" })).toBe(false);
+  expect(fireEvent.keyDown(document.body, { key: "m" })).toBe(false);
   expect(onAction).not.toHaveBeenCalled();
 });
 
-it("puts the preview's keys on the overlay surface, without select all or empty keys", () => {
+it("puts the preview's keys on the overlay surface, without select all, claiming the same keys", () => {
   keys({ surface: "overlay", actions: actions(2) });
   expect(activeTestKeys()).toEqual([
     "overlay:-",
@@ -167,6 +272,13 @@ it("puts the preview's keys on the overlay surface, without select all or empty 
     "overlay:Shift+q",
     "overlay:w",
     "overlay:Shift+w",
+    ...["f", "g", "k", "n", "m"].flatMap((key) => [`overlay:${key}`, `overlay:Shift+${key}`]),
+    "overlay:,",
+    "overlay:;",
+    "overlay:<",
+    "overlay:.",
+    "overlay::",
+    "overlay:>",
   ]);
 });
 
@@ -200,13 +312,16 @@ it("follows the keys when the actions change", () => {
 });
 
 it("leaves every key to text fields", () => {
-  const { onAction, onFind, onSelectAll } = keys();
+  const { onAction, onFind, onSelectAll } = keys({ actions: actions(31) });
   render(<input aria-label="Notes" />);
   const field = screen.getByRole("textbox", { name: "Notes" });
   for (const init of [
     { key: "q" },
     { key: "Q", shiftKey: true },
     { key: "f" },
+    { key: "m" },
+    { key: ",", code: "Comma" },
+    { key: ";", code: "Comma", shiftKey: true },
     { key: "-" },
     { key: "a", ctrlKey: true },
   ])

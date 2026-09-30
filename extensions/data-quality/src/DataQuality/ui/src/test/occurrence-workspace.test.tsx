@@ -694,10 +694,10 @@ it("blocks duplicate submissions and keeps Skip available without write permissi
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
   expect(api.applyTags).not.toHaveBeenCalled();
 });
-it("shows the 27 action keys in order and reaches later actions through Find action", async () => {
+it("shows the 31 action keys in order and reaches later actions through Find action", async () => {
   open({
     ...review,
-    actions: Array.from({ length: 28 }, (_, index) => ({
+    actions: Array.from({ length: 32 }, (_, index) => ({
       id: `action-${index}`,
       label: `Action ${index + 1}`,
       steps: [],
@@ -712,8 +712,12 @@ it("shows the 27 action keys in order and reaches later actions through Find act
   expect(screen.getByRole("button", { name: "k Action 19" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "ö Action 21" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "b Action 27" }).querySelector("kbd")).not.toBeNull();
-  // Action 28 has no key: the pad has no tile for it, and its Find tile counts it.
-  expect(screen.queryByRole("button", { name: /Action 28$/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "n Action 28" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "m Action 29" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Comma Action 30" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Period Action 31" }).querySelector("kbd")).not.toBeNull();
+  // Action 32 has no key: the pad has no tile for it, and its Find tile counts it.
+  expect(screen.queryByRole("button", { name: /Action 32$/ })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Find action, 1 more" })).toBeEnabled();
 });
 it("preserves legacy choices and clip boundaries", async () => {
@@ -2117,8 +2121,12 @@ it.each([
   ["g", 16],
   ["k", 19],
   ["ö", 21],
+  ["n", 28],
+  ["m", 29],
+  [",", 30],
+  [".", 31],
 ])("applies the action on %s and advances", async (key, number) => {
-  open({ ...review, actions: numberedActions(27) });
+  open({ ...review, actions: numberedActions(31) });
   await ready();
   fireEvent.keyDown(document.body, { key });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
@@ -2128,44 +2136,57 @@ it.each([
   // conflict.
   expect(screen.queryByRole("dialog", { name: "Video filters" })).not.toBeInTheDocument();
   expect(testPlayerShortcuts.fullscreen).not.toHaveBeenCalled();
+  expect(testPlayerShortcuts.mute).not.toHaveBeenCalled();
   expect(testVideoControls.toggle).not.toHaveBeenCalled();
   expect(testKeyboardConflicts).toEqual([]);
 });
 
 it.each([
-  ["Q", 1],
-  ["Å", 11],
-  ["A", 12],
-  ["F", 15],
-  ["G", 16],
-  ["K", 19],
-  ["Ö", 21],
-])("applies the action on Shift+%s and stays", async (key, number) => {
-  open({ ...review, actions: numberedActions(27) });
+  ["Q", "KeyQ", 1],
+  ["Å", "BracketLeft", 11],
+  ["A", "KeyA", 12],
+  ["F", "KeyF", 15],
+  ["G", "KeyG", 16],
+  ["K", "KeyK", 19],
+  ["Ö", "Semicolon", 21],
+  ["N", "KeyN", 28],
+  ["M", "KeyM", 29],
+  // Shift + comma and period, by the key, as a Finnish/Swedish keyboard types them.
+  [";", "Comma", 30],
+  [":", "Period", 31],
+])("applies the action on Shift+%s (%s) and stays", async (key, code, number) => {
+  open({ ...review, actions: numberedActions(31) });
   await ready();
-  fireEvent.keyDown(document.body, { key, shiftKey: true });
+  fireEvent.keyDown(document.body, { key, code, shiftKey: true });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
   expect(appliedLabel()).toBe(`Action ${number}`);
   await ready();
   expect(screen.getByRole("heading", { name: "Reviewing First performer" })).toBeInTheDocument();
 });
 
-it("claims f, g and k while their keys hold no action, so they do nothing", async () => {
+it("claims f, g, k, n, m, comma and period while their keys hold no action, so they do nothing", async () => {
   open({ ...review, actions: numberedActions(13) });
   await ready();
   // Nothing in the idle workspace counts as an open dialog, which would pause every key.
   expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
   const active = activeTestKeys();
-  for (const key of ["q", "Shift+q", "s", "Shift+s", "-", "f", "Shift+f", "g", "Shift+g", "k", "Shift+k"])
+  for (const key of [
+    "q", "Shift+q", "s", "Shift+s", "-", "f", "Shift+f", "g", "Shift+g", "k", "Shift+k",
+    "n", "Shift+n", "m", "Shift+m", ",", ";", ".", ":",
+  ])
     expect(active).toContain(`local:${key}`);
   // Other empty keys are not registered; Cove binds nothing to them here.
   for (const key of ["d", "h", "b"]) {
     expect(active).not.toContain(`local:${key}`);
     expect(active).not.toContain(`local:Shift+${key}`);
   }
-  // Cove's Filters and fullscreen on f, its go-to chords on g and play/pause on k never fire.
-  for (const key of ["g", "k", "f", "G", "K", "F"])
+  // Cove's Filters and fullscreen on f, its go-to chords on g, play/pause on k and mute on m
+  // never fire.
+  for (const key of ["g", "k", "f", "n", "m", ",", ".", "G", "K", "F", "N", "M"])
     expect(fireEvent.keyDown(document.body, { key, shiftKey: key !== key.toLowerCase() })).toBe(false);
+  for (const [key, code] of [[";", "Comma"], [":", "Period"], ["<", "IntlBackslash"]])
+    expect(fireEvent.keyDown(document.body, { key, code, shiftKey: key !== "<" })).toBe(false);
+  expect(testPlayerShortcuts.mute).not.toHaveBeenCalled();
   expect(testVideoControls.toggle).not.toHaveBeenCalled();
   expect(testPlayerShortcuts.fullscreen).not.toHaveBeenCalled();
   expect(testGlobalShortcuts.goTo).not.toHaveBeenCalled();
@@ -2295,8 +2316,8 @@ it("never applies an action while typing in the search field", async () => {
   expect(screen.queryByRole("combobox", { name: "Find an action" })).not.toBeInTheDocument();
 });
 
-it("finds any action with -, including those past the 27 keys", async () => {
-  open({ ...review, actions: numberedActions(30) });
+it("finds any action with -, including those past the 31 keys", async () => {
+  open({ ...review, actions: numberedActions(34) });
   await ready();
   const opener = screen.getByRole("button", { name: "Skip performer" });
   opener.focus();
@@ -2304,21 +2325,24 @@ it("finds any action with -, including those past the 27 keys", async () => {
   const search = await screen.findByRole("combobox", { name: "Find an action" });
   expect(search).toHaveFocus();
   expect(screen.getByRole("dialog", { name: "Find an action" })).toBeInTheDocument();
-  expect(findOptions()).toHaveLength(30);
+  expect(findOptions()).toHaveLength(34);
+  // The comma and period are named in words for screen readers.
+  expect(findOptions()[29]).toHaveAccessibleName(expect.stringMatching(/^Comma Action 30/));
+  expect(findOptions()[30]).toHaveAccessibleName(expect.stringMatching(/^Period Action 31/));
   // Rows show their key when they have one, and what they change.
   await waitFor(() =>
     expect(findOptions()[10]).toHaveTextContent("åAction 11+ Choice"),
   );
   expect(activeTestKeys()).not.toContain("local:q");
-  fireEvent.change(search, { target: { value: "action 29" } });
+  fireEvent.change(search, { target: { value: "action 33" } });
   const [only] = findOptions();
   expect(findOptions()).toHaveLength(1);
-  expect(only).toHaveTextContent("Action 29");
+  expect(only).toHaveTextContent("Action 33");
   expect(only.querySelector("kbd")).toBeNull();
   expect(only).toHaveAttribute("aria-selected", "true");
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
-  expect(appliedLabel()).toBe("Action 29");
+  expect(appliedLabel()).toBe("Action 33");
   expect(screen.queryByRole("dialog", { name: "Find an action" })).not.toBeInTheDocument();
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
 });

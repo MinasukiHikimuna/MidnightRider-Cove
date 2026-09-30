@@ -256,12 +256,21 @@ export const testVideoControls = {
   toggle: vi.fn(),
   seekBy: vi.fn(),
 };
+/**
+ * Reports a playing position, in the source video's seconds, through the onTimeUpdate of the
+ * video player mounted last, as Cove's player does after each time update and seek.
+ */
+export function reportTestVideoTime(time: number) {
+  testVideoTimeUpdate.current?.(time);
+}
+const testVideoTimeUpdate: { current?: (time: number) => void } = {};
 export function VideoPlayer({
   videoId,
   autostart,
   extensionSurface,
   keyboardShortcutsEnabled,
   onPlaybackStateChange,
+  onTimeUpdate,
   clip,
   onPlaybackControlRegister,
 }: {
@@ -270,10 +279,12 @@ export function VideoPlayer({
   extensionSurface?: string;
   keyboardShortcutsEnabled?: boolean;
   onPlaybackStateChange?: (playing: boolean) => void;
+  onTimeUpdate?: (time: number) => void;
   clip?: { start: number; end?: number | null; loop?: boolean };
   onPlaybackControlRegister?: (controls: typeof testVideoControls) => void;
 }) {
   onPlaybackControlRegister?.(testVideoControls);
+  testVideoTimeUpdate.current = onTimeUpdate;
   // Cove's player shortcuts (Cove Native keys), on by default as in Cove.
   const playerKeys = keyboardShortcutsEnabled ?? true;
   useTestCoveShortcut("player.playPause", ["Space", "k"], "player", playerKeys, () =>

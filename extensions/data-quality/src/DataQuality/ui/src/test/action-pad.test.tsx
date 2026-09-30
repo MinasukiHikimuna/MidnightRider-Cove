@@ -3,7 +3,7 @@ import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionPad, createActionPreviewStore } from "../ActionPad";
 import type { AttentionEntry } from "../attention";
-import type { MediaKind, MediaReviewAction } from "../model";
+import type { MediaReviewAction } from "../model";
 import type { TagState } from "../reviewTags";
 import { setViewportWidth } from "./viewport";
 // The pad's own styles, for where its controls sit (jsdom applies them, without layout).
@@ -32,7 +32,6 @@ function numbered(count: number): MediaReviewAction[] {
 function pad(
   actions: MediaReviewAction[],
   {
-    mediaKind = "video",
     disabled = () => false,
     trees = new Map(),
     tags = null,
@@ -40,7 +39,6 @@ function pad(
     waitForGroups = false,
     attention,
   }: {
-    mediaKind?: MediaKind;
     disabled?(action: MediaReviewAction): boolean;
     trees?: Map<number, number[]>;
     tags?: TagState | null;
@@ -55,7 +53,6 @@ function pad(
   const view = render(
     <ActionPad
       actions={actions}
-      mediaKind={mediaKind}
       isDisabled={disabled}
       busy={false}
       tags={tags}
@@ -138,31 +135,50 @@ it("leaves out rows without actions, keeping the bottom row's Find action with i
   expect(effectLine(container)).toHaveTextContent("2 actions · 1 on keys, 1 more under -");
 });
 
-it("adds the bottom row, with Find action counting the actions past the last key", () => {
-  const { container, onFind } = pad(numbered(30));
+it("adds the bottom row, z to the period, with Find action counting the actions past the last key", () => {
+  const { container, onApply, onFind } = pad(numbered(34));
   expect(rows(container)).toHaveLength(3);
   const bottom = rows(container)[2];
   expect(within(bottom).getByRole("button", { name: "z Action 23" })).toBeInTheDocument();
   expect(within(bottom).getByRole("button", { name: "b Action 27" })).toBeInTheDocument();
-  // n, m, comma and full stop are not action keys; with a video, m still mutes.
-  expect([...bottom.querySelectorAll(".dq-pad-fixed kbd")].map((key) => key.textContent)).toEqual([
-    "n",
-    "m",
-    ",",
-    ".",
+  // n, m, comma and period hold actions 28 to 31, then comes the Find action tile.
+  expect([...bottom.querySelectorAll("kbd")].map((key) => key.textContent)).toEqual([
+    ..."zxcvbnm,.",
+    "-",
   ]);
-  expect(bottom).toHaveTextContent("Mute");
-  expect(screen.queryByRole("button", { name: /Action 28/ })).not.toBeInTheDocument();
+  for (const [key, number] of [["n", 28], ["m", 29], [",", 30], [".", 31]] as const) {
+    // Screen readers may skip punctuation, so the comma and period are named in words.
+    const spoken = key === "," ? "Comma" : key === "." ? "Period" : key;
+    const tile = within(bottom).getByRole("button", { name: `${spoken} Action ${number}` });
+    expect(tile).toHaveAttribute("aria-keyshortcuts", key);
+    fireEvent.click(tile);
+  }
+  expect(onApply.mock.calls.map(([action]) => action.label)).toEqual([
+    "Action 28",
+    "Action 29",
+    "Action 30",
+    "Action 31",
+  ]);
+  expect(bottom).not.toHaveTextContent("Mute");
+  expect(screen.queryByRole("button", { name: /Action 32/ })).not.toBeInTheDocument();
   fireEvent.click(within(bottom).getByRole("button", { name: "Find action, 3 more" }));
   expect(onFind).toHaveBeenCalledTimes(1);
   expect(screen.getAllByRole("button", { name: /^Find action/ })).toHaveLength(1);
-  expect(effectLine(container)).toHaveTextContent("30 actions · 27 on keys, 3 more under -");
+  expect(effectLine(container)).toHaveTextContent("34 actions · 31 on keys, 3 more under -");
 });
 
-it("names no Cove key in audio reviews, where m mutes nothing", () => {
-  const { container } = pad(numbered(27), { mediaKind: "audio" });
-  expect(rows(container)[2]).not.toHaveTextContent("Mute");
-  expect(container.querySelector(".dq-pad-reserved")).toBeNull();
+it("leaves an empty m, comma and period dimmed and unlabelled, like every empty key", () => {
+  const { container } = pad(numbered(28));
+  const bottom = rows(container)[2];
+  expect(within(bottom).getByRole("button", { name: "n Action 28" })).toBeInTheDocument();
+  const empty = [...bottom.querySelectorAll(".dq-pad-free")];
+  expect(empty.map((slot) => slot.textContent)).toEqual(["m", ",", "."]);
+  expect(bottom.querySelector(".dq-pad-free .dq-sr-only")).toBeNull();
+  for (const slot of empty) {
+    expect(slot).toHaveAttribute("title", "No action on this key: it does nothing here");
+    expect(slot.querySelector(".dq-pad-label")).toBeNull();
+  }
+  expect(bottom).not.toHaveTextContent("Mute");
 });
 
 it("applies, stays with Shift, and marks absence actions", () => {
@@ -353,7 +369,6 @@ describe("phone-sized windows", () => {
       return (
         <ActionPad
           actions={actions}
-          mediaKind="video"
           isDisabled={() => false}
           busy={false}
           tags={null}
@@ -540,7 +555,6 @@ describe("answer groups", () => {
     rerender(
       <ActionPad
         actions={grouped}
-        mediaKind="video"
         isDisabled={() => false}
         busy={false}
         tags={{ ids: [], names: [], absent: [11] }}

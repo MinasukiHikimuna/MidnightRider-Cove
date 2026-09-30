@@ -1059,8 +1059,8 @@ export function ReviewWorkspace({
   }
   // Action keys belong to the workspace while an item is shown, or is about to be, and no tag
   // editor, rule editor or dialog of its own is open. They stay claimed while a write or load
-  // runs, when execute ignores them, so a quick f, g or k never falls through to Cove's
-  // fullscreen, go-to chords or play/pause in between items.
+  // runs, when execute ignores them, so a quick f, g, k or m never falls through to Cove's
+  // fullscreen, go-to chords, play/pause or mute in between items.
   const keysActive =
     !editing &&
     !ruleDraft &&
@@ -1747,7 +1747,6 @@ export function ReviewWorkspace({
               {definition.actions.length > 0 ? (
                 <ActionPad
                   actions={definition.actions}
-                  mediaKind={mediaKind}
                   isDisabled={(action) => editing || actionBlocked(action)}
                   busy={settling}
                   tags={tags}

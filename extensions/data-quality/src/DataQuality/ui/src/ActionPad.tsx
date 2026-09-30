@@ -22,9 +22,9 @@ import { previewActionEffect, type TagTrees } from "./effectPreview";
 import {
   ACTION_KEY_ROWS,
   canApplyAndStay,
+  spokenKeyName,
   type ActionKey,
   type ActionKeyMap,
-  type MediaKind,
   type MediaReviewAction,
 } from "./model";
 import { useActionKeyMap, useReviewKeyLabels } from "./reviewKeys";
@@ -103,35 +103,34 @@ export function mobilePreviewHandlers<A>(preview: ActionPreviewStore<A>, action:
 
 const NO_ATTENTION: readonly AttentionEntry[] = [];
 
-/** The pad's keyboard rows: q…å, a…ä, then z…b followed by keys that apply no action. */
-const ROWS: ReadonlyArray<{ indent: number; keys: readonly ActionKey[]; fixed: readonly string[] }> =
-  ACTION_KEY_ROWS.map((keys, indent) => ({
-    indent,
-    keys,
-    fixed: indent === 2 ? ["n", "m", ",", "."] : [],
-  }));
-
-/**
- * What a key that applies no action still does in the single-item review: with a video, Cove's
- * player mutes on m (Cove Native preset). Empty action keys do nothing there, f, g and k
- * included, so none of them is labelled.
- */
-function coveKeyLabel(key: string, mediaKind: MediaKind): string {
-  return mediaKind === "video" && key === "m" ? "Mute" : "";
-}
+/** The pad's keyboard rows: q…å, a…ä, then z…. (z to the period), which Find action closes. */
+const ROWS: ReadonlyArray<{ indent: number; keys: readonly ActionKey[] }> = ACTION_KEY_ROWS.map(
+  (keys, indent) => ({ indent, keys }),
+);
+const BOTTOM_ROW = ROWS.length - 1;
 
 /**
  * One key cap; single characters show in upper case, as printed on a keyboard. Hidden from
- * assistive technology where the control names its key through aria-keyshortcuts instead.
+ * assistive technology where the control names its key through aria-keyshortcuts instead. The
+ * comma and period, which screen readers may skip as punctuation, are read out by name.
  */
 export function KeyCap({ binding, hidden }: { binding: string; hidden?: boolean }) {
-  return (
+  const spoken = hidden ? undefined : spokenKeyName(binding);
+  const cap = (
     <kbd
       className={Array.from(binding).length === 1 ? "dq-key dq-key-letter" : "dq-key"}
-      aria-hidden={hidden || undefined}
+      aria-hidden={hidden || spoken ? true : undefined}
     >
       {binding}
     </kbd>
+  );
+  return spoken ? (
+    <>
+      {cap}
+      <span className="dq-sr-only">{spoken}</span>
+    </>
+  ) : (
+    cap
   );
 }
 
@@ -312,7 +311,6 @@ function StaySwitch({ checked, onChange }: { checked: boolean; onChange(checked:
  */
 export function ActionPad({
   actions,
-  mediaKind,
   isDisabled,
   busy,
   tags,
@@ -328,7 +326,6 @@ export function ActionPad({
   onStayOnTapChange,
 }: {
   actions: readonly MediaReviewAction[];
-  mediaKind: MediaKind;
   isDisabled(action: MediaReviewAction): boolean;
   /** A write or load is running: tiles refuse input without fading. */
   busy: boolean;
@@ -365,7 +362,7 @@ export function ActionPad({
     useMemo(() => actions.flatMap((item) => item.steps.flatMap((step) => step.tagIds)), [actions]),
   );
   const rows = ROWS.filter((row) => row.keys.some((key) => keyMap.actionOn.has(key)));
-  const bottomRow = rows.includes(ROWS[2]);
+  const bottomRow = rows.includes(ROWS[BOTTOM_ROW]);
   const extra = actions.length - keyMap.actionOn.size;
   // Answer groups, while the review waits for them and is not being edited.
   const answerGroups = useMemo(
@@ -455,7 +452,7 @@ export function ActionPad({
           aria-hidden="true"
           title="No action on this key: it does nothing here"
         >
-          <KeyCap binding={binding} />
+          <KeyCap binding={binding} hidden />
         </div>
       );
     const disabled = isDisabled(action);
@@ -643,20 +640,7 @@ export function ActionPad({
       {rows.map((row) => (
         <div key={row.indent} className="dq-pad-row" data-indent={row.indent}>
           {row.keys.map(tile)}
-          {row.fixed.map((key) => {
-            const label = coveKeyLabel(key, mediaKind);
-            return (
-              <div
-                key={key}
-                className={`dq-pad-slot dq-pad-free dq-pad-fixed${label ? " dq-pad-reserved" : ""}`}
-                aria-hidden="true"
-              >
-                <KeyCap binding={key} />
-                {label && <span className="dq-pad-label">{label}</span>}
-              </div>
-            );
-          })}
-          {row.fixed.length > 0 && (
+          {row.indent === BOTTOM_ROW && (
             <div className="dq-pad-slot">
               <button
                 type="button"

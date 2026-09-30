@@ -10,24 +10,18 @@ import {
   ACTION_KEY_ROWS,
   NO_ACTION_KEY,
   actionKeyChoice,
+  actionKeyName,
   isActionKey,
   type ActionKeyChoice,
   type ActionKeyMap,
   type ReviewAction,
 } from "./model";
 
-/** Keys shown after b but never offered: they step through the grid preview. */
-const PREVIEW_KEYS = ["n", "m"];
-/** What the arrow keys move through: the offered keys by row, then Auto and No key. */
+/** What the arrow keys move through: the keys by row, then Auto and No key. */
 const NAVIGATION: ReadonlyArray<readonly ActionKeyChoice[]> = [
   ...ACTION_KEY_ROWS,
   ["auto", NO_ACTION_KEY],
 ];
-
-/** "Q", as the key caps show it. */
-function keyName(key: string): string {
-  return key.toLocaleUpperCase();
-}
 
 /** The action's choice as it works: a pin that an earlier action holds as well acts as Auto. */
 function effectiveChoice(
@@ -67,10 +61,10 @@ export function ActionKeyButton({
   const choice = effectiveChoice(actions, keyMap, index);
   const pinned = isActionKey(choice);
   const takenPin = keyMap.duplicatePins.has(index)
-    ? ` (${keyName(actions[index].shortcut ?? "")} is pinned twice)`
+    ? ` (${actionKeyName(actions[index].shortcut ?? "")} is pinned twice)`
     : "";
   const state = key
-    ? `${keyName(key)}, ${pinned ? "pinned" : "Auto"}${takenPin}`
+    ? `${actionKeyName(key)}, ${pinned ? "pinned" : "Auto"}${takenPin}`
     : choice === NO_ACTION_KEY
       ? "no key, Find action only"
       : `no key: Auto found no free key${takenPin}`;
@@ -206,9 +200,8 @@ function KeyPicker({
         aria-label={`Key for ${name}`}
         className="dq-key-picker"
         onKeyDown={handleKey}
-        // A press anywhere in the panel, its title, a gap or an unavailable key included, leaves
-        // focus where it is, so the arrow keys and Esc stay with the picker rather than the drawer.
-        // A click still chooses.
+        // A press anywhere in the panel, its title or a gap included, leaves focus where it is, so
+        // the arrow keys and Esc stay with the picker rather than the drawer. A click still chooses.
         onMouseDown={(event) => event.preventDefault()}
       >
         <p className="dq-key-picker-title">
@@ -229,7 +222,7 @@ function KeyPicker({
                     className={`dq-key-choice${held ? "" : " dq-key-choice-free"}${held?.own ? " dq-key-choice-own" : ""}`}
                     data-choice={key}
                     tabIndex={key === gridKey ? 0 : -1}
-                    aria-label={`${keyName(key)}: ${state}`}
+                    aria-label={`${actionKeyName(key)}: ${state}`}
                     aria-pressed={Boolean(held?.own && held.pinned)}
                     title={held ? `${held.label} (${held.pinned ? "pinned" : "Auto"})` : undefined}
                     onFocus={() => setGridKey(key)}
@@ -243,25 +236,6 @@ function KeyPicker({
                   </button>
                 );
               })}
-              {rowIndex === ACTION_KEY_ROWS.length - 1 &&
-                PREVIEW_KEYS.map((key) => (
-                  // Unavailable, yet not disabled: a browser gives a disabled button no press for
-                  // the panel to keep, and moves focus out of the picker. This one chooses nothing
-                  // and is never focused (the arrow keys and Tab pass it by).
-                  <button
-                    key={key}
-                    type="button"
-                    className="dq-key-choice dq-key-choice-free"
-                    aria-label={`${keyName(key)}: not available, it steps through the grid preview`}
-                    title="Steps through the grid preview"
-                    aria-disabled="true"
-                    tabIndex={-1}
-                  >
-                    <span className="dq-key-choice-head">
-                      <KeyCap binding={key} />
-                    </span>
-                  </button>
-                ))}
             </div>
           ))}
         </div>

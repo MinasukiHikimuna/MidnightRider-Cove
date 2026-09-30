@@ -15,6 +15,7 @@ import { presentedVideo } from "../TagPresentation";
 import { testVideoControls } from "@cove/runtime/components";
 import {
   activeTestKeys,
+  reportTestVideoTime,
   testFilterControls,
   testGlobalShortcuts,
   testKeyboardConflicts,
@@ -2509,7 +2510,7 @@ it("opens Find action once for a held -, without typing its repeats into the sea
   expect(findOptions()).toHaveLength(12);
 });
 
-it("puts the preview's keys where the review places its actions, and no empty f, g or k", async () => {
+it("puts the preview's keys where the review places its actions, and claims the fixed keys", async () => {
   const actions = numberedActions(2);
   actions[0] = { ...actions[0], shortcut: "k" } as (typeof actions)[number];
   openGrid(actions);
@@ -2517,10 +2518,25 @@ it("puts the preview's keys where the review places its actions, and no empty f,
   await waitFor(() => expect(first).toHaveFocus());
   fireEvent.keyDown(first, { key: "Enter" });
   const preview = await screen.findByRole("dialog", { name: "Review preview: Video 1" });
-  // The preview holds Cove's keys back itself: it registers only the keys that hold actions.
+  // The keys that hold actions, and f, g, k, n, m, comma and period, which it always claims.
   expect(activeTestKeys().filter((key) => key.startsWith("overlay:")).sort()).toEqual(
-    ["overlay:-", "overlay:Shift+k", "overlay:Shift+q", "overlay:k", "overlay:q"].sort(),
+    [
+      "overlay:-",
+      "overlay:q",
+      "overlay:Shift+q",
+      ...["f", "g", "k", "n", "m"].flatMap((key) => [`overlay:${key}`, `overlay:Shift+${key}`]),
+      "overlay:,",
+      "overlay:;",
+      "overlay:<",
+      "overlay:.",
+      "overlay::",
+      "overlay:>",
+    ].sort(),
   );
+  // An empty n steps nowhere now: it is an action key.
+  expect(fireEvent.keyDown(preview, { key: "n" })).toBe(false);
+  expect(screen.getByRole("dialog", { name: "Review preview: Video 1" })).toBe(preview);
+  expect(api.runReviewAction).not.toHaveBeenCalled();
   const lines = [...preview.querySelectorAll<HTMLElement>(".dq-bar-line")];
   expect(lines.map((line) => [...line.querySelectorAll(".dq-bar-tile:not(.dq-bar-find) kbd")].map((key) => key.textContent))).toEqual([
     ["q"],
@@ -2830,12 +2846,17 @@ it("shows the preview's steps, selection, hints and action bar", async () => {
   const preview = await openPreview();
   const previous = within(preview).getByRole("button", { name: "Previous video" });
   const next = within(preview).getByRole("button", { name: "Next video" });
-  expect(previous).toHaveAttribute("aria-keyshortcuts", "n");
-  expect(next).toHaveAttribute("aria-keyshortcuts", "m");
+  expect(previous).toHaveAttribute("aria-keyshortcuts", "ArrowUp");
+  expect(next).toHaveAttribute("aria-keyshortcuts", "ArrowDown");
+  expect(previous.querySelector("kbd")).toHaveTextContent("↑");
+  expect(next.querySelector("kbd")).toHaveTextContent("↓");
   expect(previous).toBeDisabled();
   expect(next).toBeEnabled();
   expect(within(preview).getByText("Actions apply to this video")).toBeInTheDocument();
-  expect(preview).toHaveTextContent("N M previous / next");
+  expect(preview).toHaveTextContent("0–9 jump to 0–90 %");
+  expect(preview).toHaveTextContent("↑ ↓ previous / next");
+  expect(preview).not.toHaveTextContent("volume");
+  expect(preview).not.toHaveTextContent("N M");
   expect(preview).toHaveTextContent("Enter or Esc closes");
   const bar = within(within(preview).getByRole("region", { name: "Actions" }));
   expect(bar.getByText("This video")).toBeInTheDocument();
@@ -2848,16 +2869,155 @@ it("shows the preview's steps, selection, hints and action bar", async () => {
   expect(selected).toHaveAttribute("aria-pressed", "true");
   expect(within(preview).getByText("Actions apply to the 1 selected video")).toBeInTheDocument();
   expect(bar.getByText("1 selected")).toBeInTheDocument();
-  // m and n step through the page; the header follows.
-  fireEvent.keyDown(preview, { key: "m" });
+  // ↓ and ↑ step through the page; the header follows.
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
   await screen.findByRole("dialog", { name: "Review preview: Video 2" });
   expect(within(preview).getByRole("button", { name: "Selected" })).toHaveAttribute("aria-pressed", "false");
-  fireEvent.keyDown(preview, { key: "n" });
+  fireEvent.keyDown(preview, { key: "ArrowUp" });
   await screen.findByRole("dialog", { name: "Review preview: Video 1" });
   // Esc closes and hands focus back to the card.
   fireEvent.keyDown(preview, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: /Review preview/ })).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole("article", { name: "Video 1, selected" })).toHaveFocus());
+});
+
+it("steps through the page with ↑ and ↓ in the preview, within the page, once per press", async () => {
+  api.findMedia.mockResolvedValue({ items: [video(1), video(2), video(3)], totalCount: 3 });
+  const preview = await openPreview();
+  const at = (id: number) => screen.getByRole("dialog", { name: `Review preview: Video ${id}` });
+  // Nothing before the first item; the key is still the preview's.
+  expect(fireEvent.keyDown(preview, { key: "ArrowUp" })).toBe(false);
+  expect(at(1)).toBe(preview);
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  // A held key's repeats step no further.
+  fireEvent.keyDown(preview, { key: "ArrowDown", repeat: true });
+  fireEvent.keyDown(preview, { key: "ArrowDown", repeat: true });
+  expect(at(2)).toBe(preview);
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 3" });
+  // Nothing after the last item on the page.
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  expect(at(3)).toBe(preview);
+  // Not while an action runs, wherever the action leaves the preview.
+  let finish!: () => void;
+  api.runReviewAction.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  fireEvent.keyDown(preview, { key: "q" });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  const during = screen.getByRole("dialog", { name: /Review preview/ }).getAttribute("aria-label");
+  // The action leaves the preview on an item with one before it; ↑ still waits for the action.
+  expect(within(preview).getByRole("button", { name: "Previous video" })).toBeDisabled();
+  fireEvent.keyDown(preview, { key: "ArrowUp" });
+  expect(screen.getByRole("dialog", { name: /Review preview/ })).toHaveAttribute("aria-label", during);
+  await act(async () => finish());
+});
+
+it("no longer changes the volume on ↑ and ↓ in the preview", async () => {
+  const preview = await openPreview();
+  const media = document.createElement("video");
+  media.volume = 0.5;
+  preview.querySelector(".dq-preview-video")!.append(media);
+  fireEvent.keyDown(preview, { key: "ArrowUp" });
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  expect(media.volume).toBe(0.5);
+});
+
+it("jumps to 0 %, 10 %, … 90 % of the video on the digits in the preview", async () => {
+  const preview = await openPreview();
+  // The 60-second video, from its start before the player has said where it is.
+  fireEvent.keyDown(preview, { key: "5" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(30);
+  // Then from where the player last said it is.
+  act(() => reportTestVideoTime(12));
+  fireEvent.keyDown(preview, { key: "5" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(18);
+  fireEvent.keyDown(preview, { key: "0" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(-12);
+  fireEvent.keyDown(preview, { key: "9" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(42);
+  // Not on a held key's repeats, with Alt, nor while Find action is open.
+  const calls = vi.mocked(testVideoControls.seekBy).mock.calls.length;
+  fireEvent.keyDown(preview, { key: "3", repeat: true });
+  fireEvent.keyDown(preview, { key: "3", altKey: true });
+  fireEvent.keyDown(preview, { key: "-" });
+  const search = within(preview).getByRole("combobox", { name: "Find an action" });
+  fireEvent.keyDown(search, { key: "3" });
+  expect(testVideoControls.seekBy).toHaveBeenCalledTimes(calls);
+  fireEvent.keyDown(search, { key: "Escape" });
+  // A position heard for another video counts for nothing on the next one.
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  fireEvent.keyDown(preview, { key: "1" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(6);
+});
+
+it("jumps within a clip on the digits in the preview", async () => {
+  api.findMedia.mockResolvedValue({
+    items: [
+      { ...video(1), parentVideoId: 9, clipStartSec: 30, clipEndSec: 50 },
+      { ...video(2), parentVideoId: 9, clipStartSec: 30, clipEndSec: null },
+    ],
+    totalCount: 2,
+  });
+  const preview = await openPreview();
+  act(() => reportTestVideoTime(35));
+  // 50 % of the 20-second clip from 30 s is 40 s, 5 s on.
+  fireEvent.keyDown(preview, { key: "5" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(5);
+  fireEvent.keyDown(preview, { key: "0" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(-5);
+  // A clip without an end runs to the end of its video (60 s): 90 % of 30 s from 30 s is 57 s.
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  act(() => reportTestVideoTime(35));
+  fireEvent.keyDown(preview, { key: "9" });
+  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(22);
+});
+
+it.each([
+  [{ key: "n" }, "Action 28"],
+  [{ key: "M", shiftKey: true }, "Action 29"],
+  [{ key: ",", code: "Comma" }, "Action 30"],
+  [{ key: ";", code: "Comma", shiftKey: true }, "Action 30"],
+  [{ key: ".", code: "Period" }, "Action 31"],
+  [{ key: ":", code: "Period", shiftKey: true }, "Action 31"],
+])("applies the action on %o in the preview", async (init, label) => {
+  const preview = await openPreview(numberedActions(31));
+  expect(fireEvent.keyDown(preview, init)).toBe(false);
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe(label);
+  expect(testVideoControls.seekBy).not.toHaveBeenCalled();
+});
+
+it.each([
+  [{ key: "n" }, "Action 28"],
+  [{ key: "m" }, "Action 29"],
+  [{ key: ",", code: "Comma" }, "Action 30"],
+  [{ key: "<", code: "Comma", shiftKey: true }, "Action 30"],
+  [{ key: "." , code: "Period" }, "Action 31"],
+  [{ key: ">", code: "Period", shiftKey: true }, "Action 31"],
+])("applies the action on %o in the grid", async (init, label) => {
+  openGrid(numberedActions(31));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  expect(fireEvent.keyDown(first, init)).toBe(false);
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe(label);
+});
+
+it("applies nothing on the Finnish/Swedish < key, in the grid or its preview", async () => {
+  const preview = await openPreview(numberedActions(31));
+  fireEvent.keyDown(preview, { key: "<", code: "IntlBackslash" });
+  fireEvent.keyDown(preview, { key: ">", code: "IntlBackslash", shiftKey: true });
+  fireEvent.keyDown(preview, { key: "Escape" });
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "<", code: "IntlBackslash" });
+  fireEvent.keyDown(first, { key: ">", code: "IntlBackslash", shiftKey: true });
+  await act(async () => {});
+  expect(api.runReviewAction).not.toHaveBeenCalled();
 });
 
 it("keeps focus in the preview after its buttons are clicked, so its own keys keep working", async () => {
@@ -2876,7 +3036,7 @@ it("keeps focus in the preview after its buttons are clicked, so its own keys ke
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
   expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 1");
   expect(preview).toHaveFocus();
-  fireEvent.keyDown(document.activeElement!, { key: "n" });
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
   await screen.findByRole("dialog", { name: "Review preview: Video 1" });
   // The Selected toggle too.
   await user.click(within(preview).getByRole("button", { name: "Selected" }));
@@ -3928,8 +4088,8 @@ describe("phone-sized windows", () => {
     const next = within(preview).getByRole("button", { name: "Next video" });
     expect(previous.querySelector("kbd")).toBeNull();
     expect(next.querySelector("kbd")).toBeNull();
-    expect(next).toHaveAttribute("aria-keyshortcuts", "m");
-    expect(preview).not.toHaveTextContent("N M previous / next");
+    expect(next).toHaveAttribute("aria-keyshortcuts", "ArrowDown");
+    expect(preview).not.toHaveTextContent("↑ ↓ previous / next");
     expect(preview).not.toHaveTextContent("Enter or Esc closes");
     const bar = within(preview).getByRole("region", { name: "Actions" });
     expect(bar).toHaveClass("dq-bar-mobile");

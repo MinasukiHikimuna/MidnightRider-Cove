@@ -20,15 +20,20 @@ import {
  * Cove's ? overview and Settings → Keyboard shortcuts do not list them, so they cannot be rebound
  * there.
  *
- * A "local" registration outranks Cove's list, player and global shortcuts. On the local surface
- * (the single-item review and the grid) f, g and k are always registered: they apply the action
- * placed on them, and on an empty key they do nothing, so Cove's Filters and fullscreen, its
- * "g …" go-to chords and play/pause never fire there. Other empty keys are not registered (Cove
- * binds none of them on these pages). Cove skips text entry for these keys and, while any dialog
- * is open, every surface below its overlays; the grid preview is such a dialog and registers its
- * keys on the overlay surface. Cove does not filter key repeat for keys it has no definition of,
- * so a held key acts on its first stroke only. That relies on Cove handing each action its
- * invocation, which its useKeySequence typings leave out (see runtime.d.ts).
+ * A "local" registration outranks Cove's list, player and global shortcuts. f, g, k, n, m, comma
+ * and period are always registered: they apply the action placed on them, and on an empty key they
+ * do nothing, so Cove's Filters and fullscreen, its "g …" go-to chords, play/pause and mute never
+ * fire on a review page. Other empty keys are not registered (Cove binds none of them on these
+ * pages). Cove skips text entry for these keys and, while any dialog is open, every surface below
+ * its overlays; the grid preview is such a dialog and registers its keys on the overlay surface.
+ * Cove does not filter key repeat for keys it has no definition of, so a held key acts on its
+ * first stroke only. That relies on Cove handing each action its invocation, which its
+ * useKeySequence typings leave out (see runtime.d.ts).
+ *
+ * Shift + comma and Shift + period apply and stay like Shift + a letter, but Cove records Shift
+ * only for letters and named keys: those strokes reach it as the character they type (";" and ":"
+ * on a Finnish/Swedish keyboard, "<" and ">" on a US one). Those characters are registered too,
+ * and act only when the key pressed was the comma or period key itself (see physicalShiftedKey).
  */
 
 /** Opens Find action. */
@@ -38,11 +43,46 @@ export const SELECT_ALL_KEY = "Ctrl+a";
 /** How grid select all is shown. */
 export const SELECT_ALL_KEY_LABEL = "Ctrl/⌘A";
 /**
- * Keys Cove uses on review pages (Filters and fullscreen, the go-to chords, play/pause), which the
- * single-item review and the grid claim whether or not an action sits on them.
+ * Keys that always belong to the review: the single-item review, the grid and its preview claim
+ * them whether or not an action sits on them, so none of them reaches Cove there (it uses f, g, k
+ * and m on review pages: Filters and fullscreen, the go-to chords, play/pause, mute).
  */
-export const CLAIMED_KEYS: readonly ActionKey[] = ["f", "g", "k"];
+export const CLAIMED_KEYS: readonly ActionKey[] = ["f", "g", "k", "n", "m", ",", "."];
 const SHIFT = "Shift+";
+/**
+ * What Shift + comma and Shift + period type, as Cove records them, on the layouts covered: ; and
+ * : on Finnish/Swedish and German keyboards, < and > on US and UK ones. Layouts where they type
+ * something else (a character Cove binds, such as ?, or one of the action keys) are not covered.
+ */
+const SHIFTED_PUNCTUATION: Readonly<Partial<Record<ActionKey, readonly string[]>>> = {
+  ",": [";", "<"],
+  ".": [":", ">"],
+};
+const SHIFTED_CHARACTERS = new Set(Object.values(SHIFTED_PUNCTUATION).flat());
+/** The comma and period keys by their physical place (KeyboardEvent.code). */
+const PHYSICAL_PUNCTUATION: Readonly<Record<string, ActionKey>> = { Comma: ",", Period: "." };
+
+/**
+ * The action key a stroke Cove recorded as a shifted character stands for: comma or period when
+ * the key pressed, with Shift, was the comma or period key; otherwise none, so the same character
+ * typed by another key (the Finnish/Swedish < key left of Z, for example) applies nothing. (Cove
+ * adds Ctrl and Alt to the stroke, which then matches no binding.) Cove hands a binding the
+ * stroke, its target and whether it repeats, but not the event; the event is read from
+ * window.event, which browsers set while Cove's keydown listener runs and so while it calls the
+ * binding, and it must be that stroke's keydown (same target). Without it the stroke applies
+ * nothing.
+ */
+function physicalShiftedKey(invocation?: KeyboardActionInvocation): ActionKey | undefined {
+  const event = typeof window === "undefined" ? undefined : window.event;
+  if (
+    !(event instanceof KeyboardEvent) ||
+    event.type !== "keydown" ||
+    (invocation && event.target !== invocation.target) ||
+    !event.shiftKey
+  )
+    return undefined;
+  return Object.hasOwn(PHYSICAL_PUNCTUATION, event.code) ? PHYSICAL_PUNCTUATION[event.code] : undefined;
+}
 
 type KeyBinding = Parameters<typeof useKeySequence>[0][number];
 
@@ -88,22 +128,24 @@ export function useReviewKeys({
   const hasFind = Boolean(onFind) && actions.length > 0;
   const hasSelectAll = surface === "local" && Boolean(onSelectAll);
   const keys = ACTION_KEYS.filter(
-    (key) => keyMap.actionOn.has(key) || (surface === "local" && CLAIMED_KEYS.includes(key)),
+    (key) => keyMap.actionOn.has(key) || CLAIMED_KEYS.includes(key),
   ).join(" ");
   const bindings = useMemo(() => {
     // Every binding acts on the stroke Cove resolved, not on its own place in the list: until
     // Cove registers a changed list, it forwards each registered binding by position to the
     // latest list, which after a change of keys may hold another key there.
-    const dispatch = (stroke: string) => {
+    const dispatch = (stroke: string, invocation?: KeyboardActionInvocation) => {
       const current = latest.current;
       if (stroke === SELECT_ALL_KEY) current.onSelectAll?.();
       else if (stroke === FIND_ACTION_KEY) current.onFind?.();
       else {
-        const stay = stroke.startsWith(SHIFT);
-        const index = current.keyMap.actionOn.get(
-          (stay ? stroke.slice(SHIFT.length) : stroke) as ActionKey,
-        );
-        // An empty f, g or k is claimed and does nothing.
+        const shifted = SHIFTED_CHARACTERS.has(stroke);
+        const stay = shifted || stroke.startsWith(SHIFT);
+        const key = shifted
+          ? physicalShiftedKey(invocation)
+          : ((stay ? stroke.slice(SHIFT.length) : stroke) as ActionKey);
+        const index = key === undefined ? undefined : current.keyMap.actionOn.get(key);
+        // An empty claimed key, or a shifted character typed by another key, does nothing.
         if (index !== undefined) current.onAction(index, stay);
       }
     };
@@ -112,14 +154,16 @@ export function useReviewKeys({
       keys: stroke,
       surface: bindingSurface,
       action: (invocation?: KeyboardActionInvocation) => {
-        if (!invocation?.repeat) dispatch(invocation?.sequence ?? stroke);
+        if (!invocation?.repeat) dispatch(invocation?.sequence ?? stroke, invocation);
       },
     });
     const list: KeyBinding[] = [];
     if (hasSelectAll) list.push(binding(SELECT_ALL_KEY, "local"));
     if (hasFind) list.push(binding(FIND_ACTION_KEY));
-    for (const key of keys ? keys.split(" ") : [])
-      list.push(binding(key), binding(`${SHIFT}${key}`));
+    for (const key of keys ? (keys.split(" ") as ActionKey[]) : []) {
+      const shifted = SHIFTED_PUNCTUATION[key];
+      list.push(binding(key), ...(shifted ?? [`${SHIFT}${key}`]).map((stroke) => binding(stroke)));
+    }
     return list;
   }, [surface, keys, hasFind, hasSelectAll]);
   useKeySequence(bindings, enabled);

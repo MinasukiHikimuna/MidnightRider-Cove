@@ -46,9 +46,17 @@ function bar(list: readonly (MediaReviewAction | TagReviewAction)[], props: Part
 
 it("shows a tile per action key, says what each does, and counts the rest under Find action", async () => {
   api.request.mockImplementation(async (path: string) => ({ name: `Tag ${path.split("/").at(-1)}` }));
-  const { onApply, onFind, region } = bar(actions(29));
-  const tiles = within(region).getAllByRole("button", { name: /^[a-zåäö] Action/ });
-  expect(tiles).toHaveLength(27);
+  const { onApply, onFind, region } = bar(actions(33));
+  const tiles = within(region).getAllByRole("button", { name: /^([a-zåäö]|Comma|Period) Action/ });
+  expect(tiles).toHaveLength(31);
+  // The bottom line ends on n, m, comma and period.
+  expect(tiles.slice(-4).map((tile) => tile.getAttribute("aria-keyshortcuts"))).toEqual([
+    "n",
+    "m",
+    ",",
+    ".",
+  ]);
+  expect(within(region).getByRole("button", { name: "Period Action 31" })).toBeInTheDocument();
   const first = within(region).getByRole("button", { name: "q Action 1" });
   expect(first).toHaveAttribute("aria-keyshortcuts", "q");
   await waitFor(() => expect(first).toHaveAccessibleDescription("+ Tag 100"));

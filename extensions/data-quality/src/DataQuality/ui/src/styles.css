@@ -1607,17 +1607,12 @@
   border: 1px dashed var(--color-border);
   border-radius: 8px;
   color: var(--color-muted);
+  opacity: 0.6;
 }
 .dq-pad-free .dq-key {
   border-bottom-width: 1px;
   background: transparent;
   color: var(--color-muted);
-}
-.dq-pad-free:not(.dq-pad-reserved) {
-  opacity: 0.6;
-}
-.dq-pad-free .dq-pad-label {
-  font-size: 0.75rem;
 }
 .dq-pad-find {
   background: var(--color-surface);
@@ -4790,15 +4785,11 @@ textarea.dq-input {
   background: transparent;
   color: var(--color-muted);
 }
-.dq-key-choice[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
 .dq-key-choice-own {
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 14%, var(--color-card));
 }
-.dq-key-choice:hover:not([aria-disabled="true"]),
+.dq-key-choice:hover,
 .dq-key-picker-choice:hover {
   border-color: var(--color-accent);
 }
@@ -4858,7 +4849,7 @@ textarea.dq-input {
   .dq-key-picker-choice[aria-pressed="true"] span {
     color: HighlightText;
   }
-  .dq-key-choice-own:hover:not([aria-disabled="true"]) {
+  .dq-key-choice-own:hover {
     border-color: Highlight;
   }
   .dq-key-choice-own:focus-visible,

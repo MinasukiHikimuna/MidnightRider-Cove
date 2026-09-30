@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTION_KEYS,
+  ACTION_KEY_ROWS,
   actionKeyChoice,
+  actionKeyName,
   actionKeyMap,
   parseReviews,
   reviewValidation,
@@ -21,12 +23,16 @@ function actions(...shortcuts: Array<string | undefined>): MediaReviewAction[] {
 const keysOf = (list: readonly MediaReviewAction[]) => actionKeyMap(list).keys;
 
 describe("actionKeyMap", () => {
-  it("gives Auto actions the free keys in keyboard order, never n or m", () => {
-    const keys = keysOf(actions(...Array<undefined>(27).fill(undefined)));
-    expect(keys.join("")).toBe("qwertyuiopåasdfghjklöäzxcvb");
-    expect(keys).not.toContain("n");
-    expect(keys).not.toContain("m");
-    expect(ACTION_KEYS).toHaveLength(27);
+  it("gives Auto actions the free keys in keyboard order, n, m, comma and period last", () => {
+    const keys = keysOf(actions(...Array<undefined>(31).fill(undefined)));
+    expect(keys.join("")).toBe("qwertyuiopåasdfghjklöäzxcvbnm,.");
+    expect(keys.slice(27)).toEqual(["n", "m", ",", "."]);
+    expect(ACTION_KEYS).toHaveLength(31);
+    expect(ACTION_KEY_ROWS.map((row) => row.join(""))).toEqual([
+      "qwertyuiopå",
+      "asdfghjklöä",
+      "zxcvbnm,.",
+    ]);
   });
 
   it("places pinned actions first and fills the rest around them", () => {
@@ -44,14 +50,23 @@ describe("actionKeyMap", () => {
   });
 
   it("leaves No key actions and Auto actions past the free keys without a key", () => {
-    const list = actions("none", ...Array<undefined>(28).fill(undefined), "b");
+    const list = actions("none", ...Array<undefined>(32).fill(undefined), "b");
     const map = actionKeyMap(list);
     expect(map.keys[0]).toBe("");
-    // 26 keys are free once b is pinned: the 27th and 28th Auto actions get none.
-    expect(map.keys.slice(1, 27).join("")).toBe("qwertyuiopåasdfghjklöäzxcv");
-    expect(map.keys.slice(27, 29)).toEqual(["", ""]);
-    expect(map.keys[29]).toBe("b");
-    expect(map.actionOn.size).toBe(27);
+    // 30 keys are free once b is pinned: the 31st and 32nd Auto actions get none.
+    expect(map.keys.slice(1, 31).join("")).toBe("qwertyuiopåasdfghjklöäzxcvnm,.");
+    expect(map.keys.slice(31, 33)).toEqual(["", ""]);
+    expect(map.keys[33]).toBe("b");
+    expect(map.actionOn.size).toBe(31);
+  });
+
+  it("pins actions to n, m, comma and period like any other key", () => {
+    const list = actions(".", ",", "m", "n", undefined);
+    expect(list.map(actionKeyChoice)).toEqual([".", ",", "m", "n", "auto"]);
+    expect(keysOf(list)).toEqual([".", ",", "m", "n", "q"]);
+    const swapped = withActionKey(list, 4, ",");
+    expect(swapped.map((action) => action.shortcut)).toEqual([".", undefined, "m", "n", ","]);
+    expect(keysOf(swapped)).toEqual([".", "q", "m", "n", ","]);
   });
 
   it("keeps a key pinned twice with the first action and turns the later ones Auto", () => {
@@ -61,10 +76,16 @@ describe("actionKeyMap", () => {
   });
 
   it("reads saved digits and other values as Auto", () => {
-    const list = actions("1", "Q", "n", "ArrowRight", "", "g");
-    expect(list.map(actionKeyChoice)).toEqual(["auto", "auto", "auto", "auto", "auto", "g"]);
-    expect(keysOf(list)).toEqual(["q", "w", "e", "r", "t", "g"]);
+    const list = actions("1", "Q", ";", "ArrowRight", "", "g", "N");
+    expect(list.map(actionKeyChoice)).toEqual(["auto", "auto", "auto", "auto", "auto", "g", "auto"]);
+    expect(keysOf(list)).toEqual(["q", "w", "e", "r", "t", "g", "y"]);
     expect(actionKeyMap(list).duplicatePins.size).toBe(0);
+  });
+});
+
+describe("actionKeyName", () => {
+  it("names letters as their key caps and the comma and period in words", () => {
+    expect(["q", "å", ",", "."].map(actionKeyName)).toEqual(["Q", "Å", "Comma", "Period"]);
   });
 });
 
@@ -134,10 +155,13 @@ describe("saved key choices", () => {
   });
 
   it("accepts pinned keys, no key, legacy values and duplicate pins, and keeps them as saved", () => {
-    const list = actions("s", "none", "1", "s", undefined);
+    const list = actions("s", "none", "1", "s", undefined, ",", ".", "n", "m");
     expect(reviewValidation(review(list))).toBe("");
     const [read] = parseReviews(JSON.stringify([review(list)]));
-    expect(read.actions.map((action) => action.shortcut)).toEqual(["s", "none", "1", "s", undefined]);
+    expect(read.actions.map((action) => action.shortcut)).toEqual([
+      "s", "none", "1", "s", undefined, ",", ".", "n", "m",
+    ]);
+    expect(keysOf(read.actions as MediaReviewAction[]).slice(5)).toEqual([",", ".", "n", "m"]);
   });
 
   it("refuses a saved key that is not text", () => {

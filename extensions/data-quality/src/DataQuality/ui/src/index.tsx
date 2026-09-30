@@ -3142,6 +3142,8 @@ function ReviewPreview({
     toggle(): void;
     seekBy(seconds: number): void;
   } | null>(null);
+  // Where the player is, as it last said, in the source video's time; the digit keys jump from it.
+  const playerTime = useRef<{ videoId: number; time: number } | null>(null);
   const file = video.files[0];
   const title = videoTitle(video);
   const actionBlocked = (action: ReviewAction) =>
@@ -3217,33 +3219,34 @@ function ReviewPreview({
         (event.key === "ArrowLeft" ? -1 : 1) *
           (event.shiftKey ? 5 : event.altKey ? 10 : 60),
       );
-    } else if ((event.key === "," || event.key === ".") && controls) {
-      const sourceDuration =
-        [file?.duration, videoElement?.duration].find(
-          (value) => value != null && Number.isFinite(value) && value > 0,
-        ) ?? 0;
-      const duration =
-        video.parentVideoId != null
-          ? (video.clipEndSec ?? sourceDuration) - (video.clipStartSec ?? 0)
-          : sourceDuration;
-      if (Number.isFinite(duration) && duration > 0)
-        controls.seekBy((event.key === "," ? -1 : 1) * duration * 0.1);
-    } else if (
-      event.key.toLowerCase() === "n" ||
-      event.key.toLowerCase() === "m"
-    ) {
-      if (!event.repeat && !pending && !refreshing) {
-        if (event.key.toLowerCase() === "n" && hasPrevious) onPrevious();
-        if (event.key.toLowerCase() === "m" && hasNext) onNext();
+    } else if (/^[0-9]$/.test(event.key) && controls) {
+      // 0 to 9 jump to 0 %, 10 %, … 90 % of the video, or of the clip for a clip, like Cove's
+      // player on its own pages. Its controls only seek by a difference, taken from where it
+      // last said it was (onTimeUpdate, a fraction of a second behind while playing), so a jump
+      // is close rather than exact; while a transcoded stream restarts it can be further off.
+      if (!event.repeat) {
+        const sourceDuration =
+          [file?.duration, videoElement?.duration].find(
+            (value) => value != null && Number.isFinite(value) && value > 0,
+          ) ?? 0;
+        const clip = video.parentVideoId != null;
+        const start = clip ? (video.clipStartSec ?? 0) : 0;
+        const duration = (clip ? (video.clipEndSec ?? sourceDuration) : sourceDuration) - start;
+        const heard = playerTime.current;
+        const current =
+          heard?.videoId === video.id ? heard.time : (videoElement?.currentTime ?? start);
+        if (Number.isFinite(duration) && duration > 0 && Number.isFinite(current))
+          controls.seekBy(start + (duration * Number(event.key)) / 10 - current);
       }
-    } else if (event.key === "ArrowUp" && videoElement)
-      videoElement.volume = Math.min(1, videoElement.volume + 0.1);
-    else if (event.key === "ArrowDown" && videoElement)
-      videoElement.volume = Math.max(0, videoElement.volume - 0.1);
-    else return;
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (!event.repeat && !pending && !refreshing) {
+        if (event.key === "ArrowUp" && hasPrevious) onPrevious();
+        if (event.key === "ArrowDown" && hasNext) onNext();
+      }
+    } else return;
     consumeShortcut(event);
   }
-  // The preview's own keys (Space, the arrows, n and m) need focus inside it, on the preview
+  // The preview's own keys (Space, the arrows, the digits) need focus inside it, on the preview
   // rather than on a button, which takes Space and Enter for itself. So a pointer click on one of
   // the preview's own buttons or links hands focus back to the preview. A button pressed from the
   // keyboard keeps focus, as keyboard users expect. The player's controls (portalled menus
@@ -3308,24 +3311,24 @@ function ReviewPreview({
             type="button"
             className="dq-preview-button"
             aria-label="Previous video"
-            aria-keyshortcuts="n"
+            aria-keyshortcuts="ArrowUp"
             title="Previous video"
             disabled={!hasPrevious || pending || refreshing}
             onClick={onPrevious}
           >
             <ChevronLeft aria-hidden="true" />
-            {!mobile && <KeyCap binding="n" hidden />}
+            {!mobile && <KeyCap binding="↑" hidden />}
           </button>
           <button
             type="button"
             className="dq-preview-button"
             aria-label="Next video"
-            aria-keyshortcuts="m"
+            aria-keyshortcuts="ArrowDown"
             title="Next video"
             disabled={!hasNext || pending || refreshing}
             onClick={onNext}
           >
-            {!mobile && <KeyCap binding="m" hidden />}
+            {!mobile && <KeyCap binding="↓" hidden />}
             <ChevronRight aria-hidden="true" />
           </button>
           <div className="dq-preview-title">
@@ -3378,6 +3381,9 @@ function ReviewPreview({
                 videoId={video.id}
                 showAbLoop={false}
                 extensionSurface="quick-view"
+                onTimeUpdate={(time) => {
+                  playerTime.current = { videoId: video.id, time };
+                }}
                 onPlaybackControlRegister={(controls) => {
                   playerControls.current = controls;
                   return () => {
@@ -3409,9 +3415,8 @@ function ReviewPreview({
           <p className="dq-preview-hints">
             <span>Space play / pause</span>
             <span>← → ±60 s · Alt ±10 s · Shift ±5 s</span>
-            <span>, . ±10 %</span>
-            <span>↑ ↓ volume</span>
-            <span>N M previous / next</span>
+            <span>0–9 jump to 0–90 %</span>
+            <span>↑ ↓ previous / next</span>
             <span>Enter or Esc closes</span>
           </p>
         )}

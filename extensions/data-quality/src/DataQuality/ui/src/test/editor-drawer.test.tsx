@@ -597,21 +597,33 @@ it("pins a key, swaps with the action holding it, and sets Auto or No key from t
   fireEvent.click(keyButton(drawer, "Kept"));
   const map = picker()!;
   expect(map).toHaveAccessibleName("Key for Kept");
-  // Every key says what holds it; n and m are shown but cannot be chosen.
+  // Every key says what holds it; the bottom row runs z to the period, every key offered.
   expect(within(map).getByRole("button", { name: "Q: this action, Auto" })).toHaveFocus();
   expect(within(map).getByRole("button", { name: "W: Swapped, Auto" })).toBeEnabled();
   expect(within(map).getByRole("button", { name: "S: free" })).toBeEnabled();
-  for (const unavailable of [/^N: not available/, /^M: not available/]) {
-    const key = within(map).getByRole("button", { name: unavailable });
-    expect(key).toHaveAttribute("aria-disabled", "true");
-    expect(key).toHaveAttribute("tabindex", "-1");
-    fireEvent.click(key);
+  const rows = [...map.querySelectorAll(".dq-key-picker-row")];
+  expect(
+    rows.map((row) => [...row.querySelectorAll("kbd")].map((key) => key.textContent).join("")),
+  ).toEqual(["qwertyuiopå", "asdfghjklöä", "zxcvbnm,."]);
+  for (const name of ["N: free", "M: free", "Comma: free", "Period: free"]) {
+    const key = within(rows[2] as HTMLElement).getByRole("button", { name });
+    expect(key).not.toHaveAttribute("aria-disabled");
   }
+  expect(map.querySelector("[aria-disabled]")).toBeNull();
   expect(picker()).toBe(map);
   expect(shortcuts()).toEqual([undefined, undefined, undefined]);
-  expect(within(map).getByRole("button", { name: /^Auto/ })).toHaveAttribute("aria-pressed", "true");
+  // Comma and period are keys like any other: pinned, the key names them.
+  fireEvent.click(within(map).getByRole("button", { name: "Comma: free" }));
+  expect(shortcuts()).toEqual([",", undefined, undefined]);
+  expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: Comma, pinned");
+  fireEvent.click(keyButton(drawer, "Kept"));
+  expect(within(picker()!).getByRole("button", { name: "Comma: this action, pinned" })).toHaveFocus();
+  fireEvent.click(within(picker()!).getByRole("button", { name: /^Auto/ }));
+  expect(shortcuts()).toEqual([undefined, undefined, undefined]);
+  fireEvent.click(keyButton(drawer, "Kept"));
+  expect(within(picker()!).getByRole("button", { name: /^Auto/ })).toHaveAttribute("aria-pressed", "true");
   // A free key pins the action there; the picker closes and hands focus back to the key.
-  fireEvent.click(within(map).getByRole("button", { name: "S: free" }));
+  fireEvent.click(within(picker()!).getByRole("button", { name: "S: free" }));
   expect(picker()).toBeNull();
   expect(shortcuts()).toEqual(["s", undefined, undefined]);
   expect(keyButton(drawer, "Kept")).toHaveAccessibleName("Key for Kept: S, pinned");
@@ -657,7 +669,16 @@ it("works the key picker from the keyboard, and Esc closes only the picker", asy
   fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
   expect(focused()).toBe("C: free");
   fireEvent.keyDown(document.activeElement!, { key: "End" });
-  expect(focused()).toBe("B: free");
+  expect(focused()).toBe("Period: free");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  expect(focused()).toBe("Comma: free");
+  // Up and down keep the column: comma sits under k.
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  expect(focused()).toBe("K: free");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(focused()).toBe("Comma: free");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+  expect(focused()).toBe("Period: free");
   // Below the keys: Auto and No key.
   fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
   expect(document.activeElement).toBe(within(map).getByRole("button", { name: /^No key/ }));
@@ -708,11 +729,9 @@ it("keeps focus in the key picker when its title, a gap or its note is clicked",
   expect(focused()).toBe("W: this action, Auto");
   await user.keyboard("{ArrowRight}");
   expect(focused()).toBe("E: Absent, Auto");
-  // So does a click between the keys, on the note under the choices or on a key it does not
-  // offer, which chooses nothing.
+  // So does a click between the keys or on the note under the choices, which chooses nothing.
   await user.click(map.querySelector(".dq-key-picker-keys")!);
   await user.click(map.querySelector(".dq-key-picker-hint")!);
-  await user.click(within(map).getByRole("button", { name: /^N: not available/ }));
   expect(focused()).toBe("E: Absent, Auto");
   expect(picker()).toBe(map);
   // Esc then closes only the picker: the drawer stays, asking nothing, and nothing changed.

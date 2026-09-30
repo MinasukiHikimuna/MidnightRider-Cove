@@ -261,22 +261,35 @@ export function reviewEntityType(review: Review): ReviewEntityType {
 }
 
 /**
- * Action keys in keyboard order, the order Auto fills them: the letter rows of a Finnish/Swedish
- * keyboard, skipping n and m (previous/next in the grid preview). None needs AltGr. The keys are
- * fixed: reviewKeys.ts registers them with Cove whatever keyboard preset the user has.
+ * Action keys in keyboard order, the order Auto fills them: the three letter rows of a
+ * Finnish/Swedish keyboard, the bottom one with its comma and period. None needs AltGr. The keys
+ * are fixed: reviewKeys.ts registers them with Cove whatever keyboard preset the user has.
  */
 export const ACTION_KEYS = [
   "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å",
   "a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä",
-  "z", "x", "c", "v", "b",
+  "z", "x", "c", "v", "b", "n", "m", ",", ".",
 ] as const;
 export type ActionKey = (typeof ACTION_KEYS)[number];
-/** The action keys by keyboard row: q…å, a…ä, z…b. */
+/** The action keys by keyboard row: q…å, a…ä, z…. (z to the period). */
 export const ACTION_KEY_ROWS: ReadonlyArray<readonly ActionKey[]> = [
   ACTION_KEYS.slice(0, 11),
   ACTION_KEYS.slice(11, 22),
   ACTION_KEYS.slice(22),
 ];
+
+/**
+ * The name of a key that screen readers may skip as punctuation: "Comma" and "Period"; none for
+ * the letters, which read as they are.
+ */
+export function spokenKeyName(key: string): string | undefined {
+  return key === "," ? "Comma" : key === "." ? "Period" : undefined;
+}
+
+/** A key named in text: "Q" as the key caps show it, and the comma and period by name. */
+export function actionKeyName(key: string): string {
+  return spokenKeyName(key) ?? key.toLocaleUpperCase();
+}
 
 /** The saved `shortcut` of an action without a key, reached only through Find action. */
 export const NO_ACTION_KEY = "none";
@@ -312,7 +325,7 @@ export interface ActionKeyMap {
 /**
  * The keys of a review's actions. Pinned keys come first; a key pinned twice stays with the first
  * action. Then the Auto actions, in review order, take the free keys in keyboard order
- * (ACTION_KEYS; n and m are never used). Actions set to no key, and Auto actions past the last
+ * (ACTION_KEYS). Actions set to no key, and Auto actions past the last
  * free key, have none and are reached with Find action. Everything that shows, registers or
  * edits action keys reads them from here.
  */

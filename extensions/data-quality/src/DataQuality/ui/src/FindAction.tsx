@@ -13,6 +13,7 @@ import {
   ACTION_KEYS,
   canApplyAndStay,
   isComposingKey,
+  spokenKeyName,
   tagsAddedBy,
   type ActionKey,
   type ReviewAction,
@@ -266,7 +267,16 @@ export function FindAction({
                   }
                 >
                   {mobile ? null : row.key ? (
-                    <kbd>{row.key}</kbd>
+                    <>
+                      <kbd aria-hidden={spokenKeyName(row.key) ? true : undefined}>{row.key}</kbd>
+                      {/* Screen readers may skip the comma and period, so they are named in
+                          words; the space keeps the name readable ("Comma Action 30"). */}
+                      {spokenKeyName(row.key) && (
+                        <>
+                          <span className="dq-sr-only">{spokenKeyName(row.key)}</span>{" "}
+                        </>
+                      )}
+                    </>
                   ) : (
                     <span className="dq-find-no-key" aria-hidden="true">
                       ·

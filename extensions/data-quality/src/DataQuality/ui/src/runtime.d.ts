@@ -246,6 +246,11 @@ declare module "@cove/runtime/components" {
     showAbLoop?: boolean;
     keyboardShortcutsEnabled?: boolean;
     extensionSurface?: "detail" | "quick-view" | "compilation";
+    /**
+     * The playing position in seconds of the source video (a clip's too), after every time update
+     * and seek; it counts in the transcode's start, which the video element's own time leaves out.
+     */
+    onTimeUpdate?: (time: number) => void;
     onPlaybackControlRegister?: (controls: {
       play(): Promise<void>;
       pause(): void;
