@@ -325,9 +325,9 @@ export interface ActionKeyMap {
 /**
  * The keys of a review's actions. Pinned keys come first; a key pinned twice stays with the first
  * action. Then the Auto actions, in review order, take the free keys in keyboard order
- * (ACTION_KEYS). Actions set to no key, and Auto actions past the last
- * free key, have none and are reached with Find action. Everything that shows, registers or
- * edits action keys reads them from here.
+ * (ACTION_KEYS). Actions set to no key, and Auto actions past the last free key, have none and
+ * are reached with Find action. Everything that shows, registers or edits action keys reads them
+ * from here.
  */
 export function actionKeyMap(actions: ReadonlyArray<Pick<ReviewAction, "shortcut">>): ActionKeyMap {
   const keys: Array<ActionKey | ""> = actions.map(() => "");

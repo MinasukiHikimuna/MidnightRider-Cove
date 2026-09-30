@@ -3224,7 +3224,11 @@ function ReviewPreview({
       // player on its own pages. Its controls only seek by a difference, taken from where it
       // last said it was (onTimeUpdate, a fraction of a second behind while playing), so a jump
       // is close rather than exact; while a transcoded stream restarts it can be further off.
-      if (!event.repeat) {
+      // Until it has said where it is for this item the digits do nothing: its first seek (to a
+      // clip start or a resume point) may already have moved a transcoded stream without a report,
+      // and the video element's own time leaves out the stream's start.
+      const heard = playerTime.current;
+      if (!event.repeat && heard?.videoId === video.id) {
         const sourceDuration =
           [file?.duration, videoElement?.duration].find(
             (value) => value != null && Number.isFinite(value) && value > 0,
@@ -3232,11 +3236,8 @@ function ReviewPreview({
         const clip = video.parentVideoId != null;
         const start = clip ? (video.clipStartSec ?? 0) : 0;
         const duration = (clip ? (video.clipEndSec ?? sourceDuration) : sourceDuration) - start;
-        const heard = playerTime.current;
-        const current =
-          heard?.videoId === video.id ? heard.time : (videoElement?.currentTime ?? start);
-        if (Number.isFinite(duration) && duration > 0 && Number.isFinite(current))
-          controls.seekBy(start + (duration * Number(event.key)) / 10 - current);
+        if (Number.isFinite(duration) && duration > 0 && Number.isFinite(heard.time))
+          controls.seekBy(start + (duration * Number(event.key)) / 10 - heard.time);
       }
     } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       if (!event.repeat && !pending && !refreshing) {

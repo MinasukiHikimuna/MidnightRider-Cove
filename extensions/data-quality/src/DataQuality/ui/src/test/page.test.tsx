@@ -2926,10 +2926,10 @@ it("no longer changes the volume on ↑ and ↓ in the preview", async () => {
 
 it("jumps to 0 %, 10 %, … 90 % of the video on the digits in the preview", async () => {
   const preview = await openPreview();
-  // The 60-second video, from its start before the player has said where it is.
+  // Nothing before the player has said where it is: a transcoded stream may already have moved.
   fireEvent.keyDown(preview, { key: "5" });
-  expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(30);
-  // Then from where the player last said it is.
+  expect(testVideoControls.seekBy).not.toHaveBeenCalled();
+  // The 60-second video, from where the player last said it is.
   act(() => reportTestVideoTime(12));
   fireEvent.keyDown(preview, { key: "5" });
   expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(18);
@@ -2949,6 +2949,10 @@ it("jumps to 0 %, 10 %, … 90 % of the video on the digits in the preview", asy
   // A position heard for another video counts for nothing on the next one.
   fireEvent.keyDown(preview, { key: "ArrowDown" });
   await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  const before = vi.mocked(testVideoControls.seekBy).mock.calls.length;
+  fireEvent.keyDown(preview, { key: "1" });
+  expect(testVideoControls.seekBy).toHaveBeenCalledTimes(before);
+  act(() => reportTestVideoTime(0));
   fireEvent.keyDown(preview, { key: "1" });
   expect(testVideoControls.seekBy).toHaveBeenLastCalledWith(6);
 });

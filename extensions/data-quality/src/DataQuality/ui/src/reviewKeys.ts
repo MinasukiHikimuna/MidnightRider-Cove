@@ -51,8 +51,10 @@ export const CLAIMED_KEYS: readonly ActionKey[] = ["f", "g", "k", "n", "m", ",",
 const SHIFT = "Shift+";
 /**
  * What Shift + comma and Shift + period type, as Cove records them, on the layouts covered: ; and
- * : on Finnish/Swedish and German keyboards, < and > on US and UK ones. Layouts where they type
- * something else (a character Cove binds, such as ?, or one of the action keys) are not covered.
+ * : on Finnish/Swedish and German keyboards, < and > on US and UK ones. Not covered: layouts where
+ * they type something else (a character Cove binds, such as ?, or one of the action keys), and
+ * layouts that put comma or period on another physical key (Dvorak, AZERTY), where plain comma
+ * and period still work by character but Shift with them applies nothing.
  */
 const SHIFTED_PUNCTUATION: Readonly<Partial<Record<ActionKey, readonly string[]>>> = {
   ",": [";", "<"],
