@@ -184,8 +184,10 @@ export function ExistingAnswersView({
         rows.map((row) => {
           const flagged = row.kind === "other" ? [] : flagsOn(row.members);
           const mixed = mixedIn(row, mixedEntries);
-          // The tooltip's note on where answers mixed here are listed, also for readers who
-          // cannot hover the badge: screen readers hear it where the tooltip places it.
+          // The tooltip's note on where answers mixed here are listed, as hidden text for screen
+          // readers, which read it where the tooltip places it (sighted touch and keyboard users
+          // cannot open the tooltip; the workspace's attention list names the same categories,
+          // the batch dialog's only those a ticked answer touches).
           const note = mixed.note ? <span className="dq-sr-only">{mixed.note}</span> : null;
           return (
             <div className="dq-answer-group" key={row.key}>

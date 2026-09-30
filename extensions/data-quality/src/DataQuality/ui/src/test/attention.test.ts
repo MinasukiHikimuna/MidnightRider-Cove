@@ -85,13 +85,13 @@ it("groups a performer's flags by the category they affect, the whole review fir
 const NBSP = "\u00a0";
 const answers = (...counts: Array<[number, string, number]>) =>
   counts.map(([id, name, count]) => ({ id, name, count }));
-/** A row whose answers are not mixed, or mixed in the categories given. */
+/** A row mixed in the categories given, which each test states (answerCategories decides them). */
 const row = (
   key: string,
   kind: AnswerCategory["kind"],
   members: number[],
   tags: ReturnType<typeof answers>,
-  mixed: AnswerCategory["mixed"] = [],
+  mixed: AnswerCategory["mixed"],
 ): AnswerCategory => ({ key, kind, name: key, members, tags, mixed });
 /**
  * A row taking one answer where the performer's answers are mixed, as answerCategories gives one

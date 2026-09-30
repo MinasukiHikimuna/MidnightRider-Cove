@@ -2143,10 +2143,12 @@
   font-size: 0.78125rem;
 }
 .dq-badge {
+  /* Between a badge's icon and its words; .dq-answer-mixed-names takes most of it back. */
+  --dq-badge-gap: 6px;
   display: inline-flex;
   align-self: flex-start;
   align-items: center;
-  gap: 6px;
+  gap: var(--dq-badge-gap);
   min-height: 22px;
   margin: 0;
   padding: 1px 8px;
@@ -2361,6 +2363,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* "Mixed" and the names after it read as one phrase: a word space rather than the badge's icon
+   gap (the names' leading space starts their line, so it takes no width). */
+.dq-answer-mixed-names {
+  margin-inline-start: calc(0.25em - var(--dq-badge-gap));
 }
 .dq-tag-editor {
   gap: 10px;

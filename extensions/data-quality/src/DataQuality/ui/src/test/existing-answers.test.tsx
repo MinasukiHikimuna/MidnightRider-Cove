@@ -107,7 +107,7 @@ it("names a category around or beside the row only in the badge's tooltip and in
     "title",
     "This performer has different answers in this category (listed under Body).",
   );
-  // The tooltip's note is in the badge's text too, hidden from view, for those who cannot hover.
+  // The tooltip's note is in the badge's text too, hidden from view, for screen readers.
   expect(badge("Size")).toHaveTextContent(/^Mixed \(listed under Body\)$/);
   expect(within(badge("Size")).getByText("(listed under Body)")).toHaveClass("dq-sr-only");
 });
