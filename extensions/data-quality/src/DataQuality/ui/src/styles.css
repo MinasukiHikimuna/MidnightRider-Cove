@@ -5142,11 +5142,13 @@ textarea.dq-input {
   line-height: 1.25rem;
   list-style: none;
 }
-/* A list opened by a tap has focus itself: no ring for the tap, one for a keyboard. */
+/* A list opened by a tap has focus itself: no ring for the tap, one for a keyboard. Browsers ring
+   focus that script moves out of a text field (Button label, say), so the tap is marked on the
+   list until a key is used there. */
 .dq-combobox-list:focus {
   outline: none;
 }
-.dq-combobox-list:focus-visible {
+.dq-combobox-list:focus-visible:not([data-tap-focus]) {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
@@ -5423,16 +5425,18 @@ textarea.dq-input {
   opacity: 0.4;
 }
 
-/* Popups in Cove's glass and background-animation styles. Those make the theme's surface
-   see-through (30 % in Glass, 50 % with a background animation, 8 % with both, where the page's
-   background is transparent too), and Cove's own glass colour for dialogs is see-through as well,
-   so rows and text would mix with the page, the drawer or the player under them. Every popup the
-   extension draws (menus, popovers, lists, its dialogs, and the notes floating over the grid's
-   cards) lays its tint and the theme's surface over the theme's background and, under all of
-   them, a dark (or, in light themes, a light) base close to Cove's default background, so it
-   keeps the theme's look and is opaque in each theme. The last selector outweighs Cove's
-   stronger rule for dialogs under a background animation with glass; Cove's rules are
-   !important, so these are too. */
+/* Popups and panels in Cove's glass and background-animation styles. Those make the theme's
+   surface see-through (30 % in Glass, 50 % with a background animation, 8 % with both, where the
+   page's background is transparent too), and Cove's own glass colour for dialogs is see-through as
+   well, so rows and text would mix with the page, the drawer or the player under them. Every popup
+   the extension draws (menus, popovers, lists, its dialogs with the batch dialog's sticky table
+   head, and the notes floating over the grid's cards), the editor drawer with its sticky Actions
+   toolbar, and the grid preview's panel lay their tint and the theme's surface (the card colour
+   for the table head; none for the preview's panel, as outside these styles) over the theme's
+   background and, under all of them, a dark (or, in light themes, a light) base close to Cove's
+   default background, so each keeps the theme's look and is opaque in every theme. Opaque, they
+   need no backdrop blur (Cove gives its dialogs one), which would only cost frames over a playing
+   video. The preview's own backdrop stays a dimmed see-through scrim, as a backdrop is. */
 :is(
     .dq-menu-list,
     .dq-scope-popover,
@@ -5442,19 +5446,30 @@ textarea.dq-input {
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
   ) {
   --dq-glass-tint: transparent;
+  --dq-glass-surface: var(--color-surface);
   --dq-glass-base: #16181d;
 }
-/* One element heavier than the list above, whose notices raise its weight to theirs. */
+/* Each heavier than the list above, whose notices raise its weight to two classes. */
 html .dq-bar-notices > .dq-alert {
   --dq-glass-tint: color-mix(in srgb, rgb(239 68 68) 14%, transparent);
 }
 html .dq-bar-notices > .dq-status {
   --dq-glass-tint: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+html .dq-preview > .dq-preview-shell {
+  --dq-glass-surface: transparent;
+}
+html .dq-batch-dialog .dq-batch-list th {
+  --dq-glass-surface: var(--color-card);
 }
 html[data-color-scheme="light"] :is(
     .dq-menu-list,
@@ -5465,12 +5480,22 @@ html[data-color-scheme="light"] :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
   ) {
   --dq-glass-base: #f5f8fa;
 }
+/* Cove's glass rules for dialogs are !important, so this is too, and it outweighs them:
+   :is() weighs as its heaviest argument, a notice's two classes, so the first two selectors are
+   (0,3,2), above Cove's (0,2,1) under Glass and its (0,3,1) under a background animation with
+   glass. The third selector adds nothing today and is kept deliberately: should the notices leave
+   the list, :is() would weigh as the table head's (0,1,1), the first two would fall to (0,2,3),
+   below that (0,3,1), and the third keeps (0,3,3) there. */
 html[data-component-style*="glass"] body :is(
     .dq-menu-list,
     .dq-scope-popover,
@@ -5480,6 +5505,10 @@ html[data-component-style*="glass"] body :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5493,6 +5522,10 @@ html[data-theme-bg-animation] body :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5506,15 +5539,21 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
   ) {
   background:
     linear-gradient(var(--dq-glass-tint), var(--dq-glass-tint)),
-    linear-gradient(var(--color-surface), var(--color-surface)),
+    linear-gradient(var(--dq-glass-surface), var(--dq-glass-surface)),
     linear-gradient(var(--color-background), var(--color-background)),
     var(--dq-glass-base) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 /* Forced colours: the system's window colour, whatever the layers above would draw. */
 @media (forced-colors: active) {
@@ -5527,6 +5566,10 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5540,6 +5583,10 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5553,6 +5600,10 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-confirm-dialog,
     .dq-form-dialog,
     .dq-batch-dialog,
+    .dq-batch-list th,
+    .dq-drawer,
+    .dq-actions-head,
+    .dq-preview-shell,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status

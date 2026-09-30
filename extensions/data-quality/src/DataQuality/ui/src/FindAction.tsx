@@ -177,19 +177,22 @@ export function FindAction({
   function handleKey(event: ReactKeyboardEvent<HTMLElement>) {
     // Every key typed here belongs to Find action, not to the page or player behind it.
     event.stopPropagation();
+    // The physical key, so Shift pressed during the hold does not make it another key. Recorded
+    // before the composition check, so a key pressed while composing (a Backspace that empties
+    // the composition, say) keeps repeating once the composition ends.
+    const key = event.code || event.key;
+    if (!event.repeat) pressedHere.current.add(key);
     // The Esc that cancels, and the Enter that commits, a composed character belong to the input
     // method: neither closes Find action nor applies an action.
     if (isComposingKey(event)) return;
-    // The physical key, so Shift pressed during the hold does not make it another key.
-    const key = event.code || event.key;
     if (event.repeat && !pressedHere.current.has(key)) {
       event.preventDefault();
       return;
     }
-    if (!event.repeat) pressedHere.current.add(key);
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose();
+      // A first press closes; repeats only come from an Esc held after it cancelled a composition.
+      if (!event.repeat) onClose();
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (!event.repeat) apply(rows[active], event.shiftKey);

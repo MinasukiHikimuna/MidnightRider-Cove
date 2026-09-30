@@ -178,3 +178,39 @@ it("ignores the auto-repeat of a key held down since before it opened, such as t
   expect(fireEvent.keyDown(search, { key: "k", code: "KeyK", repeat: true })).toBe(false);
   expect(fireEvent.keyDown(search, { key: "k", code: "KeyK" })).toBe(true);
 });
+
+it("keeps repeating a key first pressed while composing, such as a Backspace that empties the composition", () => {
+  render(
+    <FindAction
+      actions={[{ id: "one", label: "Kitchen", steps: [] }]}
+      onApply={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  const search = screen.getByRole("combobox", { name: "Find an action" });
+  // The press belongs to the input method (Safari's key code 229, or isComposing)…
+  expect(fireEvent.keyDown(search, { key: "Backspace", code: "Backspace", keyCode: 229 })).toBe(true);
+  // …but it was pressed here, so its repeats once the composition has ended keep deleting.
+  expect(fireEvent.keyDown(search, { key: "Backspace", code: "Backspace", repeat: true })).toBe(true);
+  expect(fireEvent.keyDown(search, { key: "Delete", code: "Delete", isComposing: true })).toBe(true);
+  expect(fireEvent.keyDown(search, { key: "Delete", code: "Delete", repeat: true })).toBe(true);
+  // A key held since before Find action opened still repeats nothing.
+  expect(fireEvent.keyDown(search, { key: "x", code: "KeyX", repeat: true })).toBe(false);
+});
+
+it("does not close on a held Esc that cancelled a composition", () => {
+  const onClose = vi.fn();
+  render(
+    <FindAction
+      actions={[{ id: "one", label: "Kitchen", steps: [] }]}
+      onApply={vi.fn()}
+      onClose={onClose}
+    />,
+  );
+  const search = screen.getByRole("combobox", { name: "Find an action" });
+  fireEvent.keyDown(search, { key: "Escape", code: "Escape", isComposing: true });
+  fireEvent.keyDown(search, { key: "Escape", code: "Escape", repeat: true });
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(search, { key: "Escape", code: "Escape" });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

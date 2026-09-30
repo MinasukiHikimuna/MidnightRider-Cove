@@ -543,17 +543,108 @@ describe("the group field", () => {
     expect(field).toHaveFocus();
     expect(field).toHaveValue("ShapeCol");
     expect(listbox()).toBeInTheDocument();
-    // AltGr characters (Ctrl + Alt on Windows) and dead keys are typing too; shortcuts are not.
+    // AltGr characters (Ctrl + Alt on Windows, no AltGraph state needed) and dead keys are typing
+    // too; shortcuts are not.
     act(() => field.blur());
     tap(chevron);
     fireEvent.keyDown(listbox(), { key: "a", ctrlKey: true });
     expect(listbox()).toHaveFocus();
-    fireEvent.keyDown(listbox(), { key: "@", ctrlKey: true, altKey: true, modifierAltGraph: true });
+    fireEvent.keyDown(listbox(), { key: "@", ctrlKey: true, altKey: true });
     expect(field).toHaveFocus();
     act(() => field.blur());
     tap(chevron);
     fireEvent.keyDown(listbox(), { key: "Dead" });
     expect(field).toHaveFocus();
+  });
+
+  it("sends Option characters, Backspace and Delete from a tapped-open list to the field's end", () => {
+    const { field: combobox, chevron } = openAction("Own");
+    const field = combobox as HTMLInputElement;
+    const reopen = () => {
+      act(() => field.blur());
+      tap(chevron);
+      expect(listbox()).toHaveFocus();
+    };
+    // Option characters on a Mac or iPad arrive with Alt alone (Option + 2 is @ on a Finnish
+    // keyboard), with no AltGraph state.
+    reopen();
+    fireEvent.keyDown(listbox(), { key: "@", altKey: true });
+    expect(field).toHaveFocus();
+    // So do keys an input method takes (Chrome's Process, Safari's key code 229) and characters
+    // outside the Basic Multilingual Plane; the list keeps an Esc an input method passes on.
+    for (const init of [
+      { key: "Process" },
+      { key: "Unidentified", keyCode: 229 },
+      { key: "Unidentified", isComposing: true },
+      { key: "😀" },
+    ]) {
+      reopen();
+      fireEvent.keyDown(listbox(), init);
+      expect(field, JSON.stringify(init)).toHaveFocus();
+    }
+    reopen();
+    fireEvent.keyDown(listbox(), { key: "Escape", keyCode: 229 });
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute("data-tap-focus");
+    fireEvent.keyDown(listbox(), { key: "Escape" });
+    // Backspace and Delete edit the field, from the end of its text wherever its caret was.
+    act(() => field.setSelectionRange(0, 0));
+    for (const key of ["Backspace", "Delete"]) {
+      reopen();
+      fireEvent.keyDown(listbox(), { key });
+      expect(field, key).toHaveFocus();
+      expect(field.selectionStart, key).toBe("Width".length);
+      expect(field.selectionEnd, key).toBe("Width".length);
+    }
+    // Ctrl or Meta with a letter are shortcuts, not typing.
+    reopen();
+    fireEvent.keyDown(listbox(), { key: "a", ctrlKey: true });
+    fireEvent.keyDown(listbox(), { key: "a", metaKey: true });
+    fireEvent.keyDown(listbox(), { key: "@", metaKey: true, altKey: true });
+    expect(listbox()).toHaveFocus();
+    // Alt + ↓ and Alt + ↑ stay the list's: ↓ keeps it open, ↑ closes it.
+    fireEvent.keyDown(listbox(), { key: "ArrowDown", altKey: true });
+    expect(listbox()).toHaveFocus();
+    fireEvent.keyDown(listbox(), { key: "ArrowUp", altKey: true });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(chevron).toHaveFocus();
+  });
+
+  it("shows no focus ring on a tapped-open list until a key is used in it", () => {
+    const { drawer, field, chevron } = openAction("Own");
+    // Browsers ring focus that script moves out of a text field, so the tap is marked on the list.
+    act(() => within(drawer).getByRole("textbox", { name: "Button label" }).focus());
+    tap(chevron);
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute("data-tap-focus");
+    // A modifier alone is not using the list; an arrow key is, and the ring shows from then on.
+    fireEvent.keyDown(listbox(), { key: "Shift", shiftKey: true });
+    fireEvent.keyDown(listbox(), { key: "NumLock" });
+    expect(listbox()).toHaveAttribute("data-tap-focus");
+    fireEvent.keyDown(listbox(), { key: "ArrowDown" });
+    expect(listbox()).not.toHaveAttribute("data-tap-focus");
+    // Each tap starts without the ring again, however the list closed (a press outside here).
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    tap(chevron);
+    expect(listbox()).toHaveAttribute("data-tap-focus");
+    // A list opened from the field, which keeps focus, is never marked, even straight after a tap.
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    act(() => field.focus());
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    expect(listbox()).not.toHaveAttribute("data-tap-focus");
+    // The ring itself is for keyboard focus only, and never for a tapped list.
+    const rings = [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules])
+      .filter(
+        (rule): rule is CSSStyleRule =>
+          rule instanceof CSSStyleRule && /\.dq-combobox-list:focus/.test(rule.selectorText),
+      );
+    const drawn = rings.filter((rule) => rule.style.outline && rule.style.outline !== "none");
+    expect(drawn.map((rule) => rule.selectorText)).toEqual([
+      ".dq-combobox-list:focus-visible:not([data-tap-focus])",
+    ]);
+    expect(rings.find((rule) => rule.selectorText === ".dq-combobox-list:focus")?.style.outline).toBe("none");
   });
 
   it("listens for presses in the bubble phase and for scrolls where the field scrolls", async () => {

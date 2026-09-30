@@ -5,39 +5,152 @@ import "../styles.css";
 import styleSource from "../styles.css?raw";
 
 /**
- * Every popup the extension draws: menus, popovers, lists, its own dialogs, and the notes that
- * float over the grid's cards (a notice is a `.dq-alert` or `.dq-status` in `.dq-bar-notices`).
+ * A presence check: jsdom cascades the rules but neither weighs `!important` rules against Cove's
+ * nor draws colours, so these tests show that every popup has the opaque rule and its layers, not
+ * that the rule wins in a browser (the weight it needs is read from the source below, and checked
+ * live).
+ *
+ * Every popup the extension draws, as the stylesheet selects it: menus, popovers, lists, its own
+ * dialogs with the batch dialog's sticky table head, the editor drawer with its sticky Actions
+ * toolbar, the grid preview's panel, and the notes that float over the grid's cards (a notice is a
+ * `.dq-alert` or `.dq-status` in `.dq-bar-notices`).
  */
 const POPUPS = [
-  "dq-menu-list",
-  "dq-scope-popover",
-  "dq-find-action",
-  "dq-key-picker",
-  "dq-combobox-list",
-  "dq-confirm-dialog",
-  "dq-form-dialog",
-  "dq-batch-dialog",
-  "dq-bar-effect",
-  "dq-bar-notices > dq-alert",
-  "dq-bar-notices > dq-status",
+  ".dq-menu-list",
+  ".dq-scope-popover",
+  ".dq-find-action",
+  ".dq-key-picker",
+  ".dq-combobox-list",
+  ".dq-confirm-dialog",
+  ".dq-form-dialog",
+  ".dq-batch-dialog",
+  ".dq-batch-list th",
+  ".dq-drawer",
+  ".dq-actions-head",
+  ".dq-preview-shell",
+  ".dq-bar-effect",
+  ".dq-bar-notices > .dq-alert",
+  ".dq-bar-notices > .dq-status",
 ];
+/** Where a popup is drawn, when that changes its layers. */
+const CONTEXT: Record<string, string> = {
+  ".dq-preview-shell": ".dq-preview",
+  ".dq-batch-list th": ".dq-batch-dialog",
+};
+/** The surface each popup lays over the theme's background, when it is not the theme's surface. */
+const SURFACES: Record<string, string> = {
+  ".dq-preview-shell": "transparent",
+  ".dq-batch-list th": "var(--color-card)",
+};
 
-function popup(name: string): HTMLElement {
-  const [outer, inner] = name.split(" > ");
-  const element = document.body.appendChild(document.createElement("div"));
-  element.className = outer;
-  if (!inner) return element;
-  const child = element.appendChild(document.createElement("div"));
-  child.className = inner;
-  return child;
+/**
+ * What floats or is a popup without needing a surface of its own, and why. A new element that
+ * floats over the page (a fixed layer, or an absolute or sticky one with a z-index) or has a popup
+ * role must be in `POPUPS` or here, so a popup without the opaque rule is caught.
+ */
+const NOT_SURFACES: Record<string, string> = {
+  ".dq-wall-autoplay": "the wall's autoplaying video, inside its card",
+  ".dq-menu-backdrop": "a transparent layer that catches presses outside the menu",
+  ".dq-scope-backdrop": "a transparent layer that catches presses outside the popover",
+  ".dq-find-backdrop": "a transparent layer that catches presses outside Find action",
+  ".dq-key-picker-backdrop": "a transparent layer that catches presses outside the key picker",
+  ".dq-preview": "the preview's backdrop, a dimmed scrim; its panel is the surface",
+  ".dq-find-list": "Find action's list, drawn on Find action's surface",
+  // Open point: its bar is the theme's surface, see-through in glass styles as the cards scroll
+  // under it; not in Step 20b's scope.
+  ".dq-bar-dock": "the grid's action bar, sticky over the cards; not yet opaque in glass styles",
+};
+
+/** Builds an element the selector matches (classes, element names, children and descendants). */
+function popup(selector: string): HTMLElement {
+  let parent: HTMLElement = document.body;
+  for (const compound of [CONTEXT[selector], ...selector.split(/\s*>\s*|\s+/)]) {
+    if (!compound) continue;
+    const [tag, ...classes] = compound.split(".");
+    const element = document.createElement(tag || "div");
+    element.className = classes.join(" ");
+    parent = parent.appendChild(element);
+  }
+  return parent;
 }
 const LAYERS =
-  "linear-gradient(var(--dq-glass-tint), var(--dq-glass-tint)), linear-gradient(var(--color-surface), var(--color-surface)), linear-gradient(var(--color-background), var(--color-background)), var(--dq-glass-base)";
+  "linear-gradient(var(--dq-glass-tint), var(--dq-glass-tint)), linear-gradient(var(--dq-glass-surface), var(--dq-glass-surface)), linear-gradient(var(--color-background), var(--color-background)), var(--dq-glass-base)";
 const layers = (element: HTMLElement) => getComputedStyle(element).background.replace(/\s+/g, " ");
 const variable = (element: HTMLElement, name: string) =>
   getComputedStyle(element).getPropertyValue(name).trim();
 
-describe("popups in Cove's glass and background-animation styles", () => {
+/** The end of the JSX opening tag starting at `start` (its `>`, outside strings and braces). */
+function tagEnd(source: string, start: number): number {
+  let depth = 0;
+  for (let index = start + 1; index < source.length; index++) {
+    const char = source[index];
+    if (char === '"' || char === "'" || char === "`") index = source.indexOf(char, index + 1);
+    else if (char === "{") depth++;
+    else if (char === "}") depth--;
+    else if (char === ">" && depth === 0) return index;
+    if (index < 0) break;
+  }
+  return source.length;
+}
+
+/**
+ * The first class of every element the components render as a dialog or with a popup role, keyed
+ * `(no class)` when its tag has no plain class to name it and `(dynamic role)` when its role is an
+ * expression, so neither passes unnoticed.
+ */
+function renderedPopupClasses(): Map<string, string> {
+  const sources = import.meta.glob<string>("../*.tsx", { query: "?raw", import: "default", eager: true });
+  const found = new Map<string, string>();
+  for (const [file, raw] of Object.entries(sources)) {
+    // Comments name tags too (a modal <dialog>); they are left out.
+    const source = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+    // Only where JSX can start (after ( > } { ? : & | = , or return, or at a line's start), not
+    // a generic (useRef<HTMLDivElement>) or a comparison.
+    const opening = /(?<=(?:^|[(>}{?:&|=,])\s*|\breturn\s+)<([a-zA-Z][\w.]*)/gm;
+    for (const match of source.matchAll(opening)) {
+      const tag = source.slice(match.index, tagEnd(source, match.index) + 1);
+      if (/\srole=\{/.test(tag)) found.set(`(dynamic role) ${file}`, file);
+      const popupRole = /\srole="(?:dialog|alertdialog|menu|listbox|tooltip)"/.test(tag);
+      if (match[1] !== "dialog" && !popupRole) continue;
+      const name = tag.match(/\sclassName=(?:"|\{`)(dq-[\w-]+)/)?.[1];
+      found.set(name ? `.${name}` : `(no class) ${file}`, file);
+    }
+  }
+  return found;
+}
+
+/** Every style rule, those inside @media, @supports and other grouping rules included. */
+function styleRules(rules: Iterable<CSSRule>): CSSStyleRule[] {
+  return [...rules].flatMap((rule) =>
+    rule instanceof CSSStyleRule
+      ? [rule]
+      : "cssRules" in rule
+        ? styleRules((rule as CSSGroupingRule).cssRules)
+        : [],
+  );
+}
+
+/**
+ * Every element the stylesheet lifts over the page: the last compound of the rule's selector, by
+ * its first class, or the whole selector when that compound has none (a table's head cell). It
+ * sees a rule that sets `position` (fixed, or absolute or sticky with a z-index) on its own, not
+ * one whose z-index and position come from separate rules.
+ */
+function floatingElements(): Set<string> {
+  const found = new Set<string>();
+  for (const rule of styleRules([...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]))) {
+    const { position, zIndex } = rule.style;
+    const floating = position === "fixed" || ((position === "absolute" || position === "sticky") && zIndex);
+    if (!floating) continue;
+    for (const selector of rule.selectorText.split(",").map((part) => part.trim())) {
+      const name = selector.split(/\s*>\s*|\s+/).at(-1)?.match(/^[a-z]*(\.dq-[\w-]+)/)?.[1];
+      found.add(name ?? selector);
+    }
+  }
+  return found;
+}
+
+describe("popups in Cove's glass and background-animation styles (a presence check)", () => {
   afterEach(() => {
     document.body.replaceChildren();
     delete document.documentElement.dataset.componentStyle;
@@ -45,10 +158,25 @@ describe("popups in Cove's glass and background-animation styles", () => {
     delete document.documentElement.dataset.themeBgAnimation;
   });
 
+  it("covers every popup the components render and everything the styles float over the page", () => {
+    const listed = new Set(POPUPS.flatMap((selector) => [selector, selector.split(/\s*>\s*|\s+/).at(-1)!]));
+    const known = (name: string) => listed.has(name) || name in NOT_SURFACES;
+    const rendered = renderedPopupClasses();
+    // The scan finds the popups it should: a menu, listboxes, role dialogs and native dialogs.
+    for (const name of [".dq-menu-list", ".dq-combobox-list", ".dq-drawer", ".dq-preview", ".dq-batch-dialog"])
+      expect(rendered.has(name), name).toBe(true);
+    for (const name of rendered.keys()) expect(known(name), `${name} (${rendered.get(name)})`).toBe(true);
+    const floating = floatingElements();
+    for (const name of [".dq-combobox-list", ".dq-drawer", ".dq-actions-head", ".dq-preview", ".dq-batch-list th"])
+      expect(floating.has(name), name).toBe(true);
+    for (const name of floating) expect(known(name), name).toBe(true);
+  });
+
   it("keep their own backgrounds in other styles", () => {
     document.documentElement.dataset.componentStyle = "floating";
     for (const name of POPUPS) expect(layers(popup(name)), name).not.toBe(LAYERS);
-    expect(getComputedStyle(popup("dq-menu-list")).background).toBe("var(--color-surface)");
+    expect(getComputedStyle(popup(".dq-menu-list")).background).toBe("var(--color-surface)");
+    expect(getComputedStyle(popup(".dq-preview-shell")).background).toBe("var(--color-background)");
   });
 
   it("lay their tint and the theme's surface over its background and an opaque base", () => {
@@ -70,19 +198,30 @@ describe("popups in Cove's glass and background-animation styles", () => {
       delete document.documentElement.dataset.themeBgAnimation;
     }
     // Notices keep their tint; the others have none.
-    expect(variable(popup("dq-menu-list"), "--dq-glass-tint")).toBe("transparent");
-    expect(variable(popup("dq-bar-notices > dq-alert"), "--dq-glass-tint")).toMatch(/239 68 68/);
-    expect(variable(popup("dq-bar-notices > dq-status"), "--dq-glass-tint")).toMatch(/--color-accent/);
+    expect(variable(popup(".dq-menu-list"), "--dq-glass-tint")).toBe("transparent");
+    expect(variable(popup(".dq-bar-notices > .dq-alert"), "--dq-glass-tint")).toMatch(/239 68 68/);
+    expect(variable(popup(".dq-bar-notices > .dq-status"), "--dq-glass-tint")).toMatch(/--color-accent/);
+    // The theme's surface on each, but the preview's panel, which draws the theme's background,
+    // and the batch table's head, which draws the card colour.
+    for (const name of POPUPS)
+      expect(variable(popup(name), "--dq-glass-surface"), name).toBe(SURFACES[name] ?? "var(--color-surface)");
   });
 
   it("outweigh Cove's own !important glass rules for dialogs", () => {
     // jsdom weighs neither specificity between !important rules nor keeps the flag on a layered
-    // background, so the source is read: the rule is !important and has a selector with three
-    // attributes for Cove's rule under a background animation with glass.
+    // background, so the source is read: the rule is !important, and each of its selectors has a
+    // notice's two classes in its :is() (which weighs as its heaviest argument) and two elements,
+    // so it outweighs Cove's (0,2,1) and (0,3,1) rules for [role="dialog"], the drawer and the
+    // preview included.
     const rule = styleSource.match(/^(html\[[^{]*glass[^{]*)\{([^}]*)\}/m);
+    expect(rule?.[1]).toContain('html[data-component-style*="glass"] body :is(');
     expect(rule?.[1]).toContain('html[data-theme-bg-animation] body :is(');
     expect(rule?.[1]).toContain('html[data-theme-bg-animation][data-component-style*="glass"] body :is(');
+    expect(rule?.[1].match(/\.dq-bar-notices > \.dq-alert/g)).toHaveLength(3);
     expect(rule?.[2]).toMatch(/background:[^;]*!important;/);
+    // Opaque, they drop the backdrop blur Cove gives its dialogs.
+    expect(rule?.[2]).toMatch(/(^|[^-])backdrop-filter: none !important;/);
+    expect(rule?.[2]).toContain("-webkit-backdrop-filter: none !important;");
   });
 
   it("take a light base in light themes", () => {
@@ -100,9 +239,11 @@ describe("popups in Cove's glass and background-animation styles", () => {
       )
       .flatMap((rule) => [...rule.cssRules] as CSSStyleRule[])
       .find((rule) => rule.selectorText.includes('data-component-style*="glass"'));
-    for (const name of POPUPS)
-      expect(forced?.selectorText.replace(/\s+/g, " "), name).toContain(`.${name.replace(" > ", " > .")}`);
-    expect(forced?.selectorText).toContain("html[data-theme-bg-animation] body");
+    // Each of its selectors (glass, a background animation, both) names every popup.
+    const groups = forced?.selectorText.replace(/\s+/g, " ").split(/\s*\),\s*/) ?? [];
+    expect(groups).toHaveLength(3);
+    expect(groups[1]).toContain("html[data-theme-bg-animation] body");
+    for (const group of groups) for (const name of POPUPS) expect(group, name).toContain(name);
     expect(forced?.style.background.toLowerCase()).toBe("canvas");
     expect(forced?.style.getPropertyPriority("background")).toBe("important");
   });

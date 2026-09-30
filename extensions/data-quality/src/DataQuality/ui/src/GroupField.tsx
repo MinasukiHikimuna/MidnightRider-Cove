@@ -65,6 +65,28 @@ function ungrouped(action: MediaReviewAction): MediaReviewAction {
   return rest;
 }
 
+/** Keys that only modify others. */
+const MODIFIER_KEYS = new Set([
+  "Shift",
+  "Control",
+  "Alt",
+  "AltGraph",
+  "Meta",
+  "OS",
+  "Super",
+  "Hyper",
+  "Fn",
+  "FnLock",
+  "Symbol",
+  "SymbolLock",
+  "CapsLock",
+  "NumLock",
+  "ScrollLock",
+]);
+
+/** Keys the list itself handles, which an input method passing them on leaves to it. */
+const LIST_KEYS = new Set(["Escape", "Enter", "Tab", "ArrowUp", "ArrowDown"]);
+
 /** Room kept between the field and its list. */
 const LIST_GAP = 4;
 /** The tallest the list grows before it scrolls: about six rows. */
@@ -113,10 +135,12 @@ function fieldInView(
  * the chevron outside the Tab order. Typing, ↓ or Alt + ↓ opens it, ↑ / ↓ move, Enter picks, Esc
  * closes only the list (not the drawer around it) and Tab closes it keeping what was typed; a click
  * or tap on the field or the chevron opens it and one outside closes it. A tapped chevron gives the
- * list focus rather than the field, so no on-screen keyboard comes up; focus anywhere but the field
- * and its list closes the list, so its Esc never waits in another field. The list hangs on the page,
- * outside the drawer's scrolling body that would cut it off, and follows the field as that body
- * scrolls. A group is one question that takes one answer, which the help under the field says; in
+ * list focus rather than the field, so no on-screen keyboard comes up, and without a focus ring
+ * until a key is used there; with focus already in the field, it stays there. Typing, Backspace or
+ * Delete in a focused list moves focus to the field. Focus anywhere but the field and its list
+ * closes the list, so its Esc never waits in another field. The list hangs on the page, outside
+ * the drawer's scrolling body that would cut it off, and follows the field as that body scrolls.
+ * A group is one question that takes one answer, which the help under the field says; in
  * occurrence reviews that is also what lets a performer's answers there count as mixed
  * (performerAnswers.ts).
  */
@@ -153,6 +177,9 @@ export function GroupField({
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  // Whether the list has focus from a tap: no focus ring then, though focus came from a text field
+  // (browsers ring focus that script moves out of one), until a key is used in the list.
+  const [tapFocus, setTapFocus] = useState(false);
   const value = action.group ?? "";
   const options = useMemo(
     () => groupOptions(groupNames, otherGroupNames, value, typed),
@@ -181,6 +208,7 @@ export function GroupField({
     setOpen(false);
     setTyped(null);
     setActiveKey(null);
+    setTapFocus(false);
   }
   function pick(option: GroupOption) {
     // The group the action already has, perhaps spelt differently by another action, picked
@@ -218,7 +246,10 @@ export function GroupField({
   useLayoutEffect(() => {
     if (!open) return;
     if (box.current) clipping.current = clippingAncestors(box.current);
-    if (focusList.current) list.current?.focus({ preventScroll: true });
+    if (focusList.current) {
+      list.current?.focus({ preventScroll: true });
+      setTapFocus(true);
+    }
     focusList.current = false;
   }, [open]);
   // After every render while open: the options, and the rows above the field, may have changed.
@@ -306,16 +337,30 @@ export function GroupField({
       if (event.shiftKey) input.current?.focus();
       return;
     }
-    // AltGr arrives as Ctrl + Alt on Windows; its characters are typing too, as are dead keys.
-    const altGraph = event.getModifierState("AltGraph");
+    // A character typed without Meta is typing unless Ctrl is held without Alt: Alt alone is the
+    // Mac's Option (Option + 2 is @ on a Finnish keyboard) and Ctrl + Alt is AltGr on Windows.
+    // Dead keys, Backspace and Delete edit the field too; Alt + ↓ / ↑ stay the list's.
+    // A key an input method takes (a composition cannot start in the list) goes there too. One
+    // character may be two code units (outside the Basic Multilingual Plane).
     const typing =
       event.key === "Dead" ||
-      (event.key.length === 1 && !event.metaKey && (altGraph || (!event.ctrlKey && !event.altKey)));
+      event.key === "Process" ||
+      (isComposingKey(event) && !LIST_KEYS.has(event.key)) ||
+      event.key === "Backspace" ||
+      event.key === "Delete" ||
+      ([...event.key].length === 1 && !event.metaKey && (!event.ctrlKey || event.altKey));
     if (typing) {
-      // Typing goes to the field, which filters the list as it would have.
-      input.current?.focus();
+      // Typing goes to the field, at the end of its text, which filters the list as it would have.
+      const target = input.current;
+      if (target) {
+        target.focus();
+        target.setSelectionRange(target.value.length, target.value.length);
+      }
       return;
     }
+    // A key used in the list shows its focus ring from now on, as a keyboard's focus does; a
+    // modifier pressed alone, or a key an input method passes on, does not count.
+    if (!MODIFIER_KEYS.has(event.key) && !isComposingKey(event)) setTapFocus(false);
     handleKey(event);
   }
 
@@ -420,6 +465,7 @@ export function GroupField({
             // Focusable for a list opened by a tap, which then has focus and names its active row.
             tabIndex={-1}
             aria-activedescendant={active >= 0 ? optionId(active) : undefined}
+            data-tap-focus={tapFocus || undefined}
             // A press on a row, a gap or the scroll bar leaves focus in the field, or the list.
             onMouseDown={(event) => event.preventDefault()}
             onKeyDown={handleListKey}

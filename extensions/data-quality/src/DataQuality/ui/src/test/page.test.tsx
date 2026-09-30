@@ -3055,6 +3055,40 @@ it("edits a grid review in a drawer beside the cards, with actions paused, and C
   await waitFor(() => expect(activeTestKeys()).toContain("local:q"));
 });
 
+it("leaves focus in the drawer's tapped-open Group list while the grid's queue reloads", async () => {
+  // Frames after the render, as in a browser, so the reload's new cards exist when focus is moved.
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0),
+  });
+  openGrid(numberedActions(2));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  const drawer = await openEditor();
+  fireEvent.click(within(drawer).getByRole("tab", { name: "Actions" }));
+  fireEvent.click(within(drawer).getByRole("button", { name: "Expand Action 1" }));
+  // A tapped chevron gives focus to the list, which hangs on the page outside the drawer.
+  const chevron = within(drawer).getByRole("button", { name: "Show groups" });
+  fireEvent.pointerDown(chevron, { pointerType: "touch" });
+  fireEvent.mouseDown(chevron);
+  fireEvent.click(chevron);
+  const list = screen.getByRole("listbox", { name: "Groups" });
+  expect(list).toHaveFocus();
+  expect(drawer.contains(list)).toBe(false);
+  // The toolbar reloads the queue as the draft's preview, onto cards the focused one is not among:
+  // the first new card becomes the one the keys act on, but focus stays in the open list.
+  api.findMedia.mockResolvedValue({ items: [video(3)], totalCount: 1 });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search list" }), {
+    target: { value: "draft" },
+  });
+  const reloaded = await screen.findByRole("article", { name: "Video 3" });
+  await waitFor(() => expect(reloaded).toHaveAttribute("aria-current", "true"));
+  // A frame after the reload's render, in which the grid would have focused the card.
+  await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  expect(screen.getByRole("listbox", { name: "Groups" })).toHaveFocus();
+  expect(reloaded).not.toHaveFocus();
+});
+
 it("closes the grid's drawer at once without changes, and asks first with them; Discard restores the queue", async () => {
   openGrid(numberedActions(2));
   await screen.findByRole("article", { name: "Video 1" });
