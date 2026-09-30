@@ -12,7 +12,8 @@ import styleSource from "../styles.css?raw";
  *
  * Every popup the extension draws, as the stylesheet selects it: menus, popovers, lists, its own
  * dialogs with the batch dialog's sticky table head, the editor drawer with its sticky Actions
- * toolbar, the grid preview's panel, and the notes that float over the grid's cards (a notice is a
+ * toolbar, the grid preview's panel, the action bar (sticky over the grid's cards in its dock, and
+ * docked in the preview's panel), and the notes that float over the grid's cards (a notice is a
  * `.dq-alert` or `.dq-status` in `.dq-bar-notices`).
  */
 const POPUPS = [
@@ -28,6 +29,7 @@ const POPUPS = [
   ".dq-drawer",
   ".dq-actions-head",
   ".dq-preview-shell",
+  ".dq-action-bar",
   ".dq-bar-effect",
   ".dq-bar-notices > .dq-alert",
   ".dq-bar-notices > .dq-status",
@@ -36,6 +38,8 @@ const POPUPS = [
 const CONTEXT: Record<string, string> = {
   ".dq-preview-shell": ".dq-preview",
   ".dq-batch-list th": ".dq-batch-dialog",
+  // The grid's bar, as it floats over the cards (the preview's docked bar is checked on its own).
+  ".dq-action-bar": ".dq-bar-dock",
 };
 /** The surface each popup lays over the theme's background, when it is not the theme's surface. */
 const SURFACES: Record<string, string> = {
@@ -56,9 +60,7 @@ const NOT_SURFACES: Record<string, string> = {
   ".dq-key-picker-backdrop": "a transparent layer that catches presses outside the key picker",
   ".dq-preview": "the preview's backdrop, a dimmed scrim; its panel is the surface",
   ".dq-find-list": "Find action's list, drawn on Find action's surface",
-  // Open point: its bar is the theme's surface, see-through in glass styles as the cards scroll
-  // under it; not in Step 20b's scope.
-  ".dq-bar-dock": "the grid's action bar, sticky over the cards; not yet opaque in glass styles",
+  ".dq-bar-dock": "the dock under the grid's action bar, a fade into the page; the bar is the surface",
 };
 
 /** Builds an element the selector matches (classes, element names, children and descendants). */
@@ -75,6 +77,9 @@ function popup(selector: string): HTMLElement {
 }
 const LAYERS =
   "linear-gradient(var(--dq-glass-tint), var(--dq-glass-tint)), linear-gradient(var(--dq-glass-surface), var(--dq-glass-surface)), linear-gradient(var(--color-background), var(--color-background)), var(--dq-glass-base)";
+/** The selector as a whole, not the start of a longer class (`.dq-action-bar-docked`). */
+const whole = (selector: string) =>
+  new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`);
 const layers = (element: HTMLElement) => getComputedStyle(element).background.replace(/\s+/g, " ");
 const variable = (element: HTMLElement, name: string) =>
   getComputedStyle(element).getPropertyValue(name).trim();
@@ -167,7 +172,14 @@ describe("popups in Cove's glass and background-animation styles (a presence che
       expect(rendered.has(name), name).toBe(true);
     for (const name of rendered.keys()) expect(known(name), `${name} (${rendered.get(name)})`).toBe(true);
     const floating = floatingElements();
-    for (const name of [".dq-combobox-list", ".dq-drawer", ".dq-actions-head", ".dq-preview", ".dq-batch-list th"])
+    for (const name of [
+      ".dq-combobox-list",
+      ".dq-drawer",
+      ".dq-actions-head",
+      ".dq-preview",
+      ".dq-batch-list th",
+      ".dq-bar-dock",
+    ])
       expect(floating.has(name), name).toBe(true);
     for (const name of floating) expect(known(name), name).toBe(true);
   });
@@ -177,6 +189,25 @@ describe("popups in Cove's glass and background-animation styles (a presence che
     for (const name of POPUPS) expect(layers(popup(name)), name).not.toBe(LAYERS);
     expect(getComputedStyle(popup(".dq-menu-list")).background).toBe("var(--color-surface)");
     expect(getComputedStyle(popup(".dq-preview-shell")).background).toBe("var(--color-background)");
+    expect(getComputedStyle(popup(".dq-action-bar")).background).toBe("var(--color-surface)");
+  });
+
+  it("make the action bar opaque where it is docked in the preview's panel too", () => {
+    for (const attributes of [
+      { componentStyle: "glass" },
+      { themeBgAnimation: "true" },
+      { themeBgAnimation: "true", componentStyle: "glass" },
+    ]) {
+      Object.assign(document.documentElement.dataset, attributes);
+      const shell = popup(".dq-preview-shell");
+      const bar = shell.appendChild(document.createElement("section"));
+      bar.className = "dq-action-bar dq-action-bar-docked";
+      expect(layers(bar), JSON.stringify(attributes)).toBe(LAYERS);
+      // Its own surface, not the shell's inherited `transparent`.
+      expect(variable(bar, "--dq-glass-surface")).toBe("var(--color-surface)");
+      delete document.documentElement.dataset.componentStyle;
+      delete document.documentElement.dataset.themeBgAnimation;
+    }
   });
 
   it("lay their tint and the theme's surface over its background and an opaque base", () => {
@@ -218,6 +249,10 @@ describe("popups in Cove's glass and background-animation styles (a presence che
     expect(rule?.[1]).toContain('html[data-theme-bg-animation] body :is(');
     expect(rule?.[1]).toContain('html[data-theme-bg-animation][data-component-style*="glass"] body :is(');
     expect(rule?.[1].match(/\.dq-bar-notices > \.dq-alert/g)).toHaveLength(3);
+    // Each of the three selectors names every popup, so none falls back on a lighter one.
+    const groups = rule?.[1].replace(/\s+/g, " ").split(/\s*\),\s*/) ?? [];
+    expect(groups).toHaveLength(3);
+    for (const group of groups) for (const name of POPUPS) expect(group, name).toMatch(whole(name));
     expect(rule?.[2]).toMatch(/background:[^;]*!important;/);
     // Opaque, they drop the backdrop blur Cove gives its dialogs.
     expect(rule?.[2]).toMatch(/(^|[^-])backdrop-filter: none !important;/);
@@ -243,7 +278,7 @@ describe("popups in Cove's glass and background-animation styles (a presence che
     const groups = forced?.selectorText.replace(/\s+/g, " ").split(/\s*\),\s*/) ?? [];
     expect(groups).toHaveLength(3);
     expect(groups[1]).toContain("html[data-theme-bg-animation] body");
-    for (const group of groups) for (const name of POPUPS) expect(group, name).toContain(name);
+    for (const group of groups) for (const name of POPUPS) expect(group, name).toMatch(whole(name));
     expect(forced?.style.background.toLowerCase()).toBe("canvas");
     expect(forced?.style.getPropertyPriority("background")).toBe("important");
   });

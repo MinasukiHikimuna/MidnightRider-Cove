@@ -5425,9 +5425,14 @@ textarea.dq-input {
    toolbar, and the grid preview's panel lay their tint and the theme's surface (the card colour
    for the table head; none for the preview's panel, as outside these styles) over the theme's
    background and, under all of them, a dark (or, in light themes, a light) base close to Cove's
-   default background, so each keeps the theme's look and is opaque in every theme. Opaque, they
+   default background, so each keeps the theme's look and is opaque in every theme. The action
+   bar, sticky over the grid's cards and docked in the preview's panel, does the same. Opaque, they
    need no backdrop blur (Cove gives its dialogs one), which would only cost frames over a playing
-   video. The preview's own backdrop stays a dimmed see-through scrim, as a backdrop is. */
+   video. The preview's own backdrop stays a dimmed see-through scrim, as a backdrop is. The bar's
+   dock keeps its fade into the theme's background above the bar and, in phone-sized windows, the
+   strip under it: a band of the theme's colour over a background animation alone, and see-through
+   with both glass and an animation, where that background is transparent (the cards then show
+   above and under the opaque bar, not through it). */
 :is(
     .dq-menu-list,
     .dq-scope-popover,
@@ -5441,6 +5446,7 @@ textarea.dq-input {
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5475,6 +5481,7 @@ html[data-color-scheme="light"] :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5500,6 +5507,7 @@ html[data-component-style*="glass"] body :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5517,6 +5525,7 @@ html[data-theme-bg-animation] body :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5534,6 +5543,7 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5561,6 +5571,7 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5578,6 +5589,7 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
@@ -5595,6 +5607,7 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-drawer,
     .dq-actions-head,
     .dq-preview-shell,
+    .dq-action-bar,
     .dq-bar-effect,
     .dq-bar-notices > .dq-alert,
     .dq-bar-notices > .dq-status
