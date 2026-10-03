@@ -10,8 +10,10 @@ import {
 import {
   EntityDetailTabs,
   EntityReferenceMultiSelector,
+  FilterDialog,
+  VIDEO_CRITERIA,
 } from "@cove/runtime/components";
-import { AlertTriangle, X } from "@cove/runtime/lucide-react";
+import { AlertTriangle, Plus, Trash2, X } from "@cove/runtime/lucide-react";
 import type { TagGroup } from "./api";
 import { ActionsEditor } from "./ActionsEditor";
 import type { TagTrees } from "./effectPreview";
@@ -25,6 +27,7 @@ import {
   reviewEntityType,
   reviewValidation,
   validAction,
+  type FilterBin,
   type Review,
   type ReviewAction,
   type ReviewEntityType,
@@ -645,7 +648,129 @@ function AppearanceSettings({
           counted on the loaded page.
         </p>
       </div>
+      <FilterBinSettings
+        bins={presentation.filterBins ?? []}
+        onChange={(filterBins) =>
+          setPresentation({ filterBins: filterBins.length ? filterBins : undefined })
+        }
+      />
     </>
+  );
+}
+
+/**
+ * The review's queue filter bins: each a name, an optional pick-one group and a video filter
+ * edited in Cove's filter dialog. A new bin opens the dialog at once.
+ */
+function FilterBinSettings({
+  bins,
+  onChange,
+}: {
+  bins: FilterBin[];
+  onChange(bins: FilterBin[]): void;
+}) {
+  const baseId = useId();
+  const [editing, setEditing] = useState<string | null>(null);
+  const edited = bins.find((bin) => bin.key === editing);
+  const update = (key: string, change: Partial<FilterBin>) =>
+    onChange(
+      bins.map((bin) => {
+        if (bin.key !== key) return bin;
+        const next = { ...bin, ...change };
+        if (!next.group?.trim()) delete next.group;
+        return next;
+      }),
+    );
+  return (
+    <div className="dq-drawer-section" role="group" aria-labelledby={`${baseId}-title`}>
+      <h3 className="dq-eyebrow" id={`${baseId}-title`}>
+        Queue filter bins
+      </h3>
+      {bins.map((bin, index) => {
+        const name = bin.label.trim() || `Filter bin ${index + 1}`;
+        const criteria = Object.keys(bin.filter).length;
+        return (
+          <div className="dq-filter-bin" role="group" aria-label={name} key={bin.key}>
+            <input
+              className="dq-input"
+              aria-label={`Name of ${name}`}
+              placeholder="Bin name"
+              value={bin.label}
+              onChange={(event) => update(bin.key, { label: event.target.value })}
+            />
+            <input
+              className="dq-input"
+              aria-label={`Pick-one group of ${name}`}
+              placeholder="Group (optional)"
+              value={bin.group ?? ""}
+              onChange={(event) => update(bin.key, { group: event.target.value })}
+            />
+            <button
+              type="button"
+              className="dq-button"
+              aria-label={`Edit filter of ${name}`}
+              onClick={() => setEditing(bin.key)}
+            >
+              {criteria ? "Edit filter…" : "Set filter…"}
+            </button>
+            <button
+              type="button"
+              className="dq-icon-button dq-icon-button-small"
+              aria-label={`Delete ${name}`}
+              title="Delete"
+              onClick={() => onChange(bins.filter((other) => other.key !== bin.key))}
+            >
+              <Trash2 aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        className="dq-button"
+        onClick={() => {
+          const key = crypto.randomUUID();
+          onChange([...bins, { key, label: "", filter: {} }]);
+          setEditing(key);
+        }}
+      >
+        <Plus aria-hidden="true" />
+        Add filter bin
+      </button>
+      <p className="dq-drawer-note">
+        In the grid, each bin becomes a one-click filter after the tag bins, counted over the whole
+        queue. Bins with the same group are pick-one: pressing one lifts the other.
+      </p>
+      {edited && (
+        <div
+          // Esc in the filter dialog (a portal, but its keys come here) closes only the dialog,
+          // or whatever the dialog closed with it; the drawer's Esc, which would close the editor,
+          // waits.
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || isComposingKey(event)) return;
+            event.stopPropagation();
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            setEditing(null);
+          }}
+        >
+          <FilterDialog
+            open
+            onClose={() => setEditing(null)}
+            criteria={VIDEO_CRITERIA}
+            activeFilter={edited.filter}
+            supportsFilterExpressions
+            subjectLabel={
+              edited.label.trim() ? `videos in ${edited.label.trim()}` : "videos in this bin"
+            }
+            onApply={(filter) => {
+              setEditing(null);
+              update(edited.key, { filter });
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

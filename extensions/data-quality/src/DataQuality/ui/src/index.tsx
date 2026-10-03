@@ -45,6 +45,7 @@ import {
   getConfirmedAbsentTagsFieldStatus,
   getOccurrenceAbsenceFieldStatus,
   listTagGroups,
+  readMedia,
   loadReviews,
   loadProgress,
   saveProgress,
@@ -117,9 +118,10 @@ import {
   readQuery,
   defaultQuery,
   effectiveReview,
+  filterBinsOf,
   normalizedReview,
   openedFromList,
-  withoutTagBins,
+  withoutQueueBins,
   writePageUrl,
   writeQuery,
 } from "./reviewQuery";
@@ -129,10 +131,13 @@ export { objectFiltersEqual } from "./objectFiltersEqual";
 import "./styles.css";
 import {
   usePresentationTags,
+  presentedDetails,
   presentedVideo,
-  splitTagBins,
+  FilterBins,
+  splitQueueBins,
   TagBins,
-  toggleTagBin,
+  toggleQueueBin,
+  type QueueBin,
 } from "./TagPresentation";
 import {
   presentCustomFieldCriteria,
@@ -186,7 +191,7 @@ function withLiveCriteria(
   filter: Record<string, unknown>,
   saved: Review,
 ): Review {
-  return withoutTagBins(
+  return withoutQueueBins(
     {
       ...draft,
       view: {
@@ -202,12 +207,13 @@ function withLiveCriteria(
 
 /**
  * The grid's temporary review once the queue's criteria were saved: none, as the queue is the
- * saved one, except for tag bins pressed on it, which stay pressed and are all it differs by.
+ * saved one, except for queue bins pressed on it, which stay pressed and are all it differs by.
  */
 function pressedBinsAfterSave(saved: Review, live: Review): Review | null {
   const binned =
     reviewEntityType(live) === "video" &&
-    splitTagBins(live.view.objectFilter, saved.view.objectFilter).bins.length > 0;
+    splitQueueBins(live.view.objectFilter, saved.view.objectFilter, filterBinsOf(live, saved))
+      .bins.length > 0;
   return binned
     ? ({ ...saved, view: { ...saved.view, objectFilter: live.view.objectFilter } } as Review)
     : null;
@@ -583,7 +589,7 @@ export function DataQualityPage({
   const savableQueue = useMemo(
     () =>
       review && savedReview
-        ? withoutTagBins(
+        ? withoutQueueBins(
             { ...savedReview, view: { ...review.view, filter: { ...filter, page: 1 } } } as Review,
             savedReview,
           )
@@ -1168,8 +1174,15 @@ export function DataQualityPage({
     [focusCard, itemIds],
   );
 
+  /**
+   * Applies an action to the selected cards, or else the focused one. A plain action takes them
+   * off the page at once and reloads it, so the cards that still match come back and the queue
+   * moves on. Apply and stay (Shift + the key, or Shift+Enter in Find action) leaves the page as
+   * it is: the cards keep their place, the focus and the selection, even when they no longer
+   * match, and only their details are read again.
+   */
   const execute = useCallback(
-    async (action: ReviewAction) => {
+    async (action: ReviewAction, stay = false) => {
       const changesData =
         "steps" in action
           ? action.steps.length > 0
@@ -1235,17 +1248,19 @@ export function DataQualityPage({
         previousFocus,
         actionTargets.includes(previousFocus ?? -1),
       );
-      setQueue({
-        items: optimisticItems,
-        totalCount: previousQueue.totalCount,
-      });
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        for (const id of actionTargets) next.delete(id);
-        return next;
-      });
-      setFocusedId(optimisticFocus);
-      if (!previewOpenRef.current) focusCard(optimisticFocus);
+      if (!stay) {
+        setQueue({
+          items: optimisticItems,
+          totalCount: previousQueue.totalCount,
+        });
+        setSelectedIds((current) => {
+          const next = new Set(current);
+          for (const id of actionTargets) next.delete(id);
+          return next;
+        });
+        setFocusedId(optimisticFocus);
+        if (!previewOpenRef.current) focusCard(optimisticFocus);
+      }
       let succeeded = false;
       try {
         if ("effect" in action)
@@ -1253,15 +1268,16 @@ export function DataQualityPage({
         else await runReviewAction(mediaKind, action, actionTargets);
         succeeded = true;
         if (!isCurrent()) return;
-        setSelectedIds((current) => {
-          const next = new Set(current);
-          for (const id of actionTargets)
-            if ((selectionVersions.current.get(id) ?? 0) === versions.get(id))
-              next.delete(id);
-          return next;
-        });
+        if (!stay)
+          setSelectedIds((current) => {
+            const next = new Set(current);
+            for (const id of actionTargets)
+              if ((selectionVersions.current.get(id) ?? 0) === versions.get(id))
+                next.delete(id);
+            return next;
+          });
         setMessage(
-          `${action.label}: ${actionTargets.length} ${entityType}${actionTargets.length === 1 ? "" : "s"} ${changesData ? "updated" : "skipped"}.`,
+          `${action.label}: ${actionTargets.length} ${entityType}${actionTargets.length === 1 ? "" : "s"} ${changesData ? "updated" : "skipped"}${stay ? ", kept in place" : ""}.`,
         );
       } catch (error) {
         if (!isCurrent()) return;
@@ -1285,6 +1301,32 @@ export function DataQualityPage({
       try {
         await settleReviewWrites(action);
         if (!isCurrent()) return;
+        if (stay) {
+          // The page stays as it is: each card shows what the page now reads for it, and a target
+          // that has left the queue is read on its own. The count is the queue's new total.
+          const fresh =
+            entityType === "tag"
+              ? await findTags(review as TagReview, filter)
+              : await findMedia(review as VideoReview, filter);
+          const byId = new Map<number, ReviewPage["items"][number]>(
+            fresh.items.map((item) => [item.id, item]),
+          );
+          if (entityType !== "tag")
+            await Promise.all(
+              actionTargets
+                .filter((id) => !byId.has(id))
+                .map(async (id) => {
+                  const item = await readMedia(mediaKind, id).catch(() => null);
+                  if (item) byId.set(id, item);
+                }),
+            );
+          if (!isCurrent()) return;
+          setQueue((current) => ({
+            items: current.items.map((item) => byId.get(item.id) ?? item),
+            totalCount: fresh.totalCount,
+          }));
+          return;
+        }
         // Applying to the whole page is effectively a page turn, so the next
         // page arrives selected like a fresh load; a hand-trimmed selection
         // stays trimmed.
@@ -1528,9 +1570,9 @@ export function DataQualityPage({
       !queueError &&
       (queue.items.length > 0 || queueLoading || pending),
     actions: review?.actions ?? NO_ACTIONS,
-    onAction: (index) => {
+    onAction: (index, stay) => {
       const action = review?.actions[index];
-      if (action) void execute(action);
+      if (action) void execute(action, stay);
     },
     onFind: () => setFindOpen(true),
     onSelectAll: () =>
@@ -2107,6 +2149,7 @@ export function DataQualityPage({
         <ReviewPreview
           video={previewVideo}
           review={videoReview}
+          details={presentedDetails(previewVideo, videoReview, presentationTags.ids)}
           selectedCount={selectedIds.size}
           pending={pending}
           refreshing={queueLoading || !!queueError}
@@ -2140,10 +2183,9 @@ export function DataQualityPage({
           tagGroups={tagGroups}
           trees={trees}
           isDisabled={gridActionBlocked}
-          canStay={false}
-          onApply={(action) => {
+          onApply={(action, stay) => {
             setFindOpen(false);
-            void execute(action);
+            void execute(action, stay);
           }}
           onClose={() => setFindOpen(false)}
         />
@@ -2428,12 +2470,13 @@ export function DataQualityPage({
   }
 
   /**
-   * A queue tag bin narrows the queue to its tag, from the first page; pressed again, it lifts
-   * the narrowing. Back at the saved queue, the queue starts where the review starts, as Reset does.
+   * A queue bin narrows the queue to its tag or filter, from the first page; pressed again, it
+   * lifts the narrowing. Back at the saved queue, the queue starts where the review starts, as
+   * Reset does.
    */
-  function toggleQueueTagBin(id: number) {
+  function toggleQueueBinOnGrid(bin: QueueBin) {
     if (!videoReview || !savedReview || pending || queueLoading || gridSaving) return;
-    const adjusted = toggleTagBin(videoReview, id, savedReview.view.objectFilter);
+    const adjusted = toggleQueueBin(videoReview, bin, savedReview.view.objectFilter);
     const keepsTemporaryQueue = !sameQueue(adjusted, savedReview);
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
     if (keepsTemporaryQueue) void resumeQueue(adjusted, { ...filter, page: 1 });
@@ -2567,15 +2610,30 @@ export function DataQualityPage({
               : undefined
           }
           chipsAfter={
-            videoReview?.presentation?.binParents?.length ? (
-              <TagBins
-                videos={queue.items as MediaItem[]}
-                review={videoReview}
-                savedObjectFilter={(savedReview ?? videoReview).view.objectFilter}
-                trees={presentationTags.ids}
-                disabled={pending || queueLoading || gridSaving}
-                onToggle={toggleQueueTagBin}
-              />
+            videoReview?.presentation?.binParents?.length ||
+            videoReview?.presentation?.filterBins?.length ? (
+              <>
+                {!!videoReview.presentation.binParents?.length && (
+                  <TagBins
+                    videos={queue.items as MediaItem[]}
+                    review={videoReview}
+                    savedObjectFilter={(savedReview ?? videoReview).view.objectFilter}
+                    trees={presentationTags.ids}
+                    disabled={pending || queueLoading || gridSaving}
+                    onToggle={toggleQueueBinOnGrid}
+                  />
+                )}
+                <FilterBins
+                  review={videoReview}
+                  savedObjectFilter={(savedReview ?? videoReview).view.objectFilter}
+                  queueFilter={filter}
+                  queueCount={queueLoading || queueError ? null : queue.totalCount}
+                  disabled={pending || queueLoading || gridSaving}
+                  // Until the queue has loaded from the review's link, its criteria are not yet known.
+                  countsPaused={pending || queueLoading || gridSaving || !progressReady}
+                  onToggle={toggleQueueBinOnGrid}
+                />
+              </>
             ) : undefined
           }
           chipsEnd={
@@ -2726,7 +2784,7 @@ export function DataQualityPage({
                     ? "Arrows move · Space selects · Enter opens"
                     : gridEditor
                       ? "Arrows move · Space selects"
-                      : "Arrows move · Space selects · Enter previews"
+                      : "Arrows move · Space selects · Enter previews · Shift + key stays"
                 }
                 notices={
                   showsError || message ? (
@@ -3095,6 +3153,7 @@ function WallPreview({ video, cardsScroll }: { video: MediaItem; cardsScroll: bo
 function ReviewPreview({
   video,
   review,
+  details,
   selectedCount,
   pending,
   refreshing,
@@ -3115,6 +3174,8 @@ function ReviewPreview({
 }: {
   video: MediaItem;
   review: VideoReview;
+  /** What the video's card shows beyond its cover and title (see presentedDetails). */
+  details: ReturnType<typeof presentedDetails>;
   /** How many cards are selected; actions apply to them, or else to this video. */
   selectedCount: number;
   pending: boolean;
@@ -3130,7 +3191,8 @@ function ReviewPreview({
   onPrevious: () => void;
   onNext: () => void;
   onClose: () => void;
-  onAction: (action: MediaReviewAction) => Promise<void>;
+  /** Shift + the key, or Shift+Enter in Find action, applies and stays (see the page's execute). */
+  onAction: (action: MediaReviewAction, stay?: boolean) => Promise<void>;
   /** Find action inside the preview; the page owns the state so its keys pause too. */
   findOpen: boolean;
   onFindOpenChange(open: boolean): void;
@@ -3158,9 +3220,9 @@ function ReviewPreview({
     surface: "overlay",
     enabled: !findOpen,
     actions: review.actions,
-    onAction: (index) => {
+    onAction: (index, stay) => {
       const action = review.actions[index];
-      if (action) void onAction(action);
+      if (action) void onAction(action, stay);
     },
     onFind: () => setFindOpen(true),
   });
@@ -3334,6 +3396,24 @@ function ReviewPreview({
           </button>
           <div className="dq-preview-title">
             <h2>{title}</h2>
+            {/* As the card shows them, so the player need not close for them. */}
+            {(details.performers.length > 0 || details.tags) && (
+              <div className="dq-preview-details">
+                {details.performers.length > 0 && (
+                  <span className="dq-preview-performers">{details.performers.join(", ")}</span>
+                )}
+                {details.tags &&
+                  (details.tags.length ? (
+                    <ul className="dq-preview-tags" aria-label="Matching tags">
+                      {details.tags.map((tag) => (
+                        <li key={tag.id}>{tag.name}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <small>No matching tags</small>
+                  ))}
+              </div>
+            )}
             <p>Actions apply to {target}</p>
           </div>
           <button
@@ -3442,10 +3522,9 @@ function ReviewPreview({
           actions={review.actions}
           trees={trees}
           isDisabled={actionBlocked}
-          canStay={false}
-          onApply={(action) => {
+          onApply={(action, stay) => {
             setFindOpen(false);
-            void onAction(action as MediaReviewAction);
+            void onAction(action as MediaReviewAction, stay);
           }}
           onClose={() => setFindOpen(false)}
         />

@@ -7,7 +7,9 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "lz-string": "1.5.0"
+  },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

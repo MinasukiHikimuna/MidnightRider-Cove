@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { draftSignature, EditorDrawer } from "../EditorDrawer";
+import { testFilterControls } from "./runtime-components";
 import type {
   AudioReview,
   OccurrenceReview,
@@ -254,6 +255,48 @@ it("sets a video review's default layout, grid settings and queue tag bins", () 
     annotationParents: [5],
     binParents: [6, 7],
   });
+});
+
+it("adds, names, groups, filters and deletes queue filter bins", () => {
+  const { drawer, tab } = open(video);
+  tab("Appearance");
+  const bins = () => (latest as VideoReview).presentation?.filterBins;
+  fireEvent.click(within(drawer).getByRole("button", { name: "Add filter bin" }));
+  // A new bin opens Cove's filter dialog at once.
+  testFilterControls.result = { organized: true };
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  expect(bins()).toEqual([{ key: expect.any(String), label: "", filter: { organized: true } }]);
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).toBeNull();
+  fireEvent.change(within(drawer).getByRole("textbox", { name: "Name of Filter bin 1" }), {
+    target: { value: "Organized" },
+  });
+  fireEvent.change(within(drawer).getByRole("textbox", { name: "Pick-one group of Organized" }), {
+    target: { value: "State" },
+  });
+  expect(bins()).toEqual([
+    { key: expect.any(String), label: "Organized", group: "State", filter: { organized: true } },
+  ]);
+  // A blank group is no group.
+  fireEvent.change(within(drawer).getByRole("textbox", { name: "Pick-one group of Organized" }), {
+    target: { value: " " },
+  });
+  expect(bins()?.[0]).not.toHaveProperty("group");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Edit filter of Organized" }));
+  testFilterControls.result = { favorite: true };
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  expect(bins()?.[0].filter).toEqual({ favorite: true });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Delete Organized" }));
+  expect((latest as VideoReview).presentation).not.toHaveProperty("filterBins", expect.anything());
+});
+
+it("closes only a filter bin's filter dialog on Esc, not the editor", () => {
+  const { drawer, tab } = open(video);
+  tab("Appearance");
+  fireEvent.click(within(drawer).getByRole("button", { name: "Add filter bin" }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Apply filters" }), { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Video filters" })).toBeNull();
+  expect(screen.queryByText("Discard unsaved changes?")).toBeNull();
+  expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
 });
 
 it("offers a tag review its card view and select all, and nothing video-only", () => {

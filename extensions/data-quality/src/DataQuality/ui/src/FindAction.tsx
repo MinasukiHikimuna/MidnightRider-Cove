@@ -113,7 +113,7 @@ export function FindAction({
   /** Resolved removal trees, for "− rest of <tree>" wording. */
   trees?: TagTrees;
   isDisabled?(action: ReviewAction): boolean;
-  /** False where applying always moves on (the grid and its preview). */
+  /** False where applying always moves on. */
   canStay?: boolean;
   /**
    * A tapped or clicked action applies and stays, as the single-item review's Stay on this item

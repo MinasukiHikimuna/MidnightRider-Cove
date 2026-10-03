@@ -22,6 +22,7 @@ import {
 } from "./runtime-components";
 import { setViewportWidth } from "./viewport";
 import type { Review } from "../model";
+import { readCriteria } from "../reviewQuery";
 
 const { account, api, review } = vi.hoisted(() => ({
   // The account's reviews as the page's saves leave them (see applySave).
@@ -35,6 +36,8 @@ const { account, api, review } = vi.hoisted(() => ({
     loadProgress: vi.fn(),
     saveProgress: vi.fn(),
     findMedia: vi.fn(),
+    countMedia: vi.fn(),
+    readMedia: vi.fn(),
     findTags: vi.fn(),
     listTagGroups: vi.fn(),
     runReviewAction: vi.fn(),
@@ -160,6 +163,8 @@ beforeEach(() => {
   api.listTagGroups.mockReset().mockResolvedValue([
     { id: 8, name: "Classification", sortOrder: 10, tagCount: 0 },
   ]);
+  api.countMedia.mockReset().mockResolvedValue(0);
+  api.readMedia.mockReset().mockImplementation(async (_kind: string, id: number) => video(id));
   api.runReviewAction.mockReset().mockResolvedValue(undefined);
   api.runTagReviewAction.mockReset().mockResolvedValue(undefined);
   api.loadProgress.mockReset().mockResolvedValue(null);
@@ -2050,7 +2055,7 @@ it("applies saved layout preferences while URL criteria remain active", async ()
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   await screen.findByRole("heading", { name: "Reviewing this video" });
   expect(screen.getByRole("button", { name: "Single" })).toHaveAttribute("aria-pressed", "true");
-  expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
+  expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual({ organized: true });
 });
 
 it("keeps newly saved queue criteria when the editor switches to single video", async () => {
@@ -2071,7 +2076,7 @@ it("keeps newly saved queue criteria when the editor switches to single video", 
   await screen.findByRole("heading", { name: "Reviewing this video" });
   expect(savedList()[0].view.objectFilter).toEqual({ organized: true });
   expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true });
-  expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
+  expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual({ organized: true });
   expect(screen.queryByRole("dialog", { name: "Edit review" })).not.toBeInTheDocument();
 });
 
@@ -2168,7 +2173,7 @@ it("defers browser query changes until a pending multi-video write settles", asy
   expect(screen.getByRole("button", { name: "Single" })).toBeDisabled();
   await act(async () => finish());
   await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({ organized: true }));
-  expect(new URLSearchParams(window.location.search).get("filters")).toBe('{"organized":true}');
+  expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual({ organized: true });
 });
 
 it("honors URL traversal direction independently of the saved multi-video direction", async () => {
@@ -2189,7 +2194,7 @@ it("requires an explicit defaults reset before loading a malformed multi-video q
   expect(api.findMedia).not.toHaveBeenCalled();
   fireEvent.click(within(error).getByRole("button", { name: "Reset to review defaults" }));
   await screen.findByRole("article", { name: "Video 1" });
-  expect(new URLSearchParams(window.location.search).get("filters")).toBe("{}");
+  expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual({});
 });
 
 it("resets an invalid URL to the last page when the saved review starts at the end", async () => {
@@ -2214,7 +2219,7 @@ it("selects and clears every shown video from the action bar", async () => {
   expect(screen.queryByRole("article", { name: "Video 1, selected" })).not.toBeInTheDocument();
   const bar = within(screen.getByRole("region", { name: "Actions" }));
   expect(bar.getByText("Applies to the focused video")).toBeInTheDocument();
-  expect(bar.getByText("Arrows move · Space selects · Enter previews")).toBeInTheDocument();
+  expect(bar.getByText("Arrows move · Space selects · Enter previews · Shift + key stays")).toBeInTheDocument();
   const selectAll = bar.getByRole("button", { name: "Select all" });
   const clear = bar.getByRole("button", { name: "Clear" });
   expect(clear).toBeDisabled();
@@ -2510,6 +2515,46 @@ it("opens Find action once for a held -, without typing its repeats into the sea
   expect(findOptions()).toHaveLength(12);
 });
 
+it("shows the card's performers and matching tags in the preview, as Card details asks", async () => {
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [{
+      ...review,
+      view: { ...review.view, reviewMode: "multiple" },
+      presentation: { annotations: ["performers", "tags"], annotationParents: [100] },
+    }],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  api.resolveTagTree.mockResolvedValue([100, 30]);
+  api.findMedia.mockResolvedValue({
+    items: [{ ...video(1), tags: [{ id: 30, name: "Twosome" }, { id: 31, name: "Unrelated" }] }, { ...video(2), tags: [] }],
+    totalCount: 2,
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "Enter" });
+  const preview = await screen.findByRole("dialog", { name: "Review preview: Video 1" });
+  expect(within(preview).getByText("Performer 1")).toBeInTheDocument();
+  const tags = await within(preview).findByRole("list", { name: "Matching tags" });
+  expect(within(tags).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Twosome"]);
+  // The next card has none of them, and says so.
+  fireEvent.keyDown(preview, { key: "ArrowDown" });
+  const next = await screen.findByRole("dialog", { name: "Review preview: Video 2" });
+  expect(within(next).getByText("No matching tags")).toBeInTheDocument();
+});
+
+it("shows nothing more in the preview than the title while Card details has none", async () => {
+  openGrid(numberedActions(1));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.keyDown(first, { key: "Enter" });
+  const preview = await screen.findByRole("dialog", { name: "Review preview: Video 1" });
+  expect(within(preview).queryByRole("list", { name: "Matching tags" })).toBeNull();
+  expect(within(preview).queryByText("No matching tags")).toBeNull();
+  expect(within(preview).queryByText("Performer 1")).toBeNull();
+});
+
 it("puts the preview's keys where the review places its actions, and claims the fixed keys", async () => {
   const actions = numberedActions(2);
   actions[0] = { ...actions[0], shortcut: "k" } as (typeof actions)[number];
@@ -2595,7 +2640,37 @@ it("runs action keys and Find action in the preview, also after clicking its act
   expect(screen.getByRole("dialog", { name: /Review preview/ })).toBeInTheDocument();
 });
 
-it("applies a held grid key once, and Shift with a key like the key alone", async () => {
+it("applies and stays with Shift and a grid key: the cards keep their place, focus and selection", async () => {
+  openGrid(numberedActions(3));
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  await waitFor(() => expect(first).toHaveFocus());
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 1" }));
+  // After the write, both have left the queue: the page reads only another video.
+  api.findMedia.mockResolvedValue({ items: [video(3)], totalCount: 1 });
+  api.readMedia.mockImplementation(async (_kind: string, id: number) => ({ ...video(id), title: `Video ${id} read again` }));
+  const findCalls = api.findMedia.mock.calls.length;
+  fireEvent.keyDown(document.activeElement!, { key: "E", shiftKey: true });
+  // Nothing leaves the page while the action runs.
+  expect(screen.getByRole("article", { name: "Video 1, selected" })).toBeInTheDocument();
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  expect(api.runReviewAction.mock.calls[0][1].label).toBe("Action 3");
+  expect(api.runReviewAction.mock.calls[0][2]).toEqual([1, 2]);
+  await screen.findByRole("article", { name: "Video 1 read again, selected" });
+  expect(screen.getByRole("article", { name: "Video 2 read again, selected" })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: /Video 3/ })).toBeNull();
+  expect(api.findMedia.mock.calls.length).toBe(findCalls + 1);
+  expect(api.findMedia.mock.calls.at(-1)?.[1].page).toBe(1);
+  await waitFor(() => expect(screen.getByRole("article", { name: "Video 1 read again, selected" })).toHaveFocus());
+  expect(screen.getByText(/Action 3: 2 videos updated, kept in place\./)).toBeInTheDocument();
+  // The key alone moves on as before: the cards acted on leave and the page reloads.
+  await waitFor(() => expect(screen.getByRole("button", { name: /Action 2/ })).toBeEnabled());
+  fireEvent.keyDown(document.activeElement!, { key: "w" });
+  await screen.findByRole("article", { name: "Video 3" });
+  expect(screen.queryByRole("article", { name: /Video 1/ })).toBeNull();
+});
+
+it("applies a held grid key once", async () => {
   openGrid(numberedActions(3));
   const first = await screen.findByRole("article", { name: "Video 1" });
   await waitFor(() => expect(first).toHaveFocus());
@@ -2618,10 +2693,6 @@ it("applies a held grid key once, and Shift with a key like the key alone", asyn
   press({ key: "w", repeat: true });
   await act(async () => {});
   expect(api.runReviewAction).toHaveBeenCalledTimes(1);
-  // The grid always moves on, so Shift with a key applies the action like the key alone.
-  press({ key: "E", shiftKey: true });
-  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
-  expect(api.runReviewAction.mock.calls[1][1].label).toBe("Action 3");
 });
 
 it("gives f to action 15 over Cove's Filters while the review has one", async () => {
@@ -3094,6 +3165,78 @@ it("toggles queue tag bins from the header's chip row", async () => {
     expect(within(bins).getByRole("button", { name: "Bin A 2" })).toHaveAttribute("aria-pressed", "false"),
   );
   expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+});
+
+it("toggles queue filter bins, pick-one within a group, counted over the queue", async () => {
+  const women = { performerCountCriterion: { value: 2, modifier: "EQUALS" } };
+  const three = { performerCountCriterion: { value: 3, modifier: "EQUALS" } };
+  const binned = {
+    ...review,
+    view: { ...review.view, reviewMode: "multiple" },
+    presentation: {
+      filterBins: [
+        { key: "two", label: "Two", filter: women, group: "Makeup" },
+        { key: "three", label: "Three", filter: three, group: "Makeup" },
+      ],
+    },
+  };
+  api.loadReviews.mockResolvedValueOnce({ reviews: [binned], storageKey: "reviews", canWrite: true });
+  api.countMedia.mockImplementation(async (target: Review) =>
+    JSON.stringify(target.view.objectFilter).includes('"value":3') ? 4 : 7,
+  );
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  const group = await screen.findByRole("group", { name: "Makeup bins" });
+  expect(group).toHaveTextContent("Makeup");
+  // Each count is the queue as it would read with that bin pressed.
+  const two = await within(group).findByRole("button", { name: "Two 7" });
+  expect(await within(group).findByRole("button", { name: "Three 4" })).toHaveAttribute("aria-pressed", "false");
+  await waitFor(() => expect(two).toBeEnabled());
+  fireEvent.click(two);
+  const narrowed = (filter: Record<string, unknown>) => ({
+    _filterExpression: { operator: "AND", children: [{ filter }] },
+  });
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual(narrowed(women)));
+  expect(api.findMedia.mock.calls.at(-1)?.[1].page).toBe(1);
+  await waitFor(() =>
+    expect(within(group).getByRole("button", { name: /^Two/ })).toHaveAttribute("aria-pressed", "true"),
+  );
+  expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
+  // The group is pick-one: pressing Three lifts Two.
+  await waitFor(() => expect(within(group).getByRole("button", { name: /^Three/ })).toBeEnabled());
+  fireEvent.click(within(group).getByRole("button", { name: /^Three/ }));
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual(narrowed(three)));
+  await waitFor(() =>
+    expect(within(group).getByRole("button", { name: /^Two/ })).toHaveAttribute("aria-pressed", "false"),
+  );
+  await waitFor(() => expect(within(group).getByRole("button", { name: /^Three/ })).toBeEnabled());
+  fireEvent.click(within(group).getByRole("button", { name: /^Three/ }));
+  await waitFor(() => expect(api.findMedia.mock.calls.at(-1)?.[0].view.objectFilter).toEqual({}));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument());
+});
+
+it("counts filter bins once per queue criteria, not again for another page", async () => {
+  const bin = { key: "two", label: "Two", filter: { performerCountCriterion: { value: 2, modifier: "EQUALS" } } };
+  api.loadReviews.mockResolvedValueOnce({
+    reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 } }, presentation: { filterBins: [bin] } }],
+    storageKey: "reviews",
+    canWrite: true,
+  });
+  api.findMedia.mockImplementation(async (_review, filter) =>
+    Number(filter.page) === 2
+      ? { items: [video(3), video(4)], totalCount: 4 }
+      : { items: [video(1), video(2)], totalCount: 4 },
+  );
+  api.countMedia.mockResolvedValue(3);
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("button", { name: "Two 3" });
+  expect(api.countMedia).toHaveBeenCalledTimes(1);
+  const nextPage = await screen.findByRole("button", { name: "Next page" });
+  await waitFor(() => expect(nextPage).toBeEnabled());
+  fireEvent.click(nextPage);
+  await screen.findByRole("article", { name: "Video 3" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Two 3" })).toBeEnabled());
+  expect(api.countMedia).toHaveBeenCalledTimes(1);
 });
 
 it("switches between Cards and Wall and keeps the host's view buttons out of the toolbar", async () => {
@@ -3715,7 +3858,7 @@ it("never saves a queue tag bin carried into the workspace, from its drawer or S
     expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument(),
   );
   expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
-  expect(JSON.parse(new URLSearchParams(window.location.search).get("filters")!)).toEqual(binFilter(30));
+  expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual(binFilter(30));
 });
 
 it("keeps the grid's temporary criteria apart from the saved ones in a Single visit, and stays there after saving", async () => {

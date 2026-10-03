@@ -72,7 +72,21 @@ export interface VideoReview extends ReviewBase, MediaReviewSettings {
     annotations?: Array<"date" | "studio" | "performers" | "tags">;
     annotationParents?: number[];
     binParents?: number[];
+    filterBins?: FilterBin[];
   };
+}
+
+/**
+ * A queue bin of the review's own criteria: pressed, it narrows the grid's queue to the videos its
+ * filter matches, as a tag bin does to its tag. Bins sharing a group are pick-one.
+ */
+export interface FilterBin {
+  /** Unique within the review; names the bin, whatever its label. */
+  key: string;
+  label: string;
+  /** A video object filter, as Cove's filter dialog writes it. A saved review's is never empty. */
+  filter: Record<string, unknown>;
+  group?: string;
 }
 
 export interface TagReview extends ReviewBase {
@@ -427,6 +441,9 @@ export function reviewValidation(review: Review): string {
     return "Name the review and complete every action step before saving.";
   if (new Set(review.actions.map((a) => a.id)).size !== review.actions.length)
     return "Action IDs must be unique within a review.";
+  const filterBins = (review as VideoReview).presentation?.filterBins ?? [];
+  if (filterBins.some((bin) => !bin.label.trim() || !Object.keys(bin.filter).length))
+    return "Name every filter bin and give it a filter before saving.";
   return "";
 }
 
@@ -676,7 +693,8 @@ function validPresentation(value: unknown, gridless: boolean): boolean {
     (!gridless ||
       (settings.annotations === undefined &&
         settings.annotationParents === undefined &&
-        settings.binParents === undefined)) &&
+        settings.binParents === undefined &&
+        settings.filterBins === undefined)) &&
     (settings.annotations === undefined ||
       (Array.isArray(settings.annotations) &&
         settings.annotations.every((field) =>
@@ -687,7 +705,23 @@ function validPresentation(value: unknown, gridless: boolean): boolean {
         ids === undefined ||
         (Array.isArray(ids) &&
           ids.every((id) => Number.isSafeInteger(id) && id > 0)),
-    )
+    ) &&
+    (settings.filterBins === undefined ||
+      (Array.isArray(settings.filterBins) &&
+        settings.filterBins.every(
+          (bin) =>
+            !!bin &&
+            typeof bin === "object" &&
+            typeof bin.key === "string" &&
+            !!bin.key &&
+            typeof bin.label === "string" &&
+            (bin.group === undefined || typeof bin.group === "string") &&
+            !!bin.filter &&
+            typeof bin.filter === "object" &&
+            !Array.isArray(bin.filter),
+        ) &&
+        new Set(settings.filterBins.map((bin) => bin.key)).size ===
+          settings.filterBins.length))
   );
 }
 

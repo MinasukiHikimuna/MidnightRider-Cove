@@ -636,14 +636,20 @@
 .dq-review-toolbar > div:first-of-type form {
   width: 15rem;
 }
+/* A queue with a large filter expression renders a chip per condition, which could fill the
+   window and leave the cards, the only part that scrolls, no room: the chips scroll on their own
+   past a few rows. */
 .dq-review-toolbar > [role="region"] {
   order: 6;
   min-width: 0;
+  max-height: min(7.5rem, 25vh);
   flex: 1 1 0;
   margin: 0;
   padding: 0;
   border: 0;
   background: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 /* Its controls wrap only where the trail has a line to itself that is still too narrow for them
    (phones); elsewhere the header wraps before them, or keeps one row (see useOneRowHeader). */
@@ -2893,7 +2899,7 @@
   }
 }
 
-/* Queue tag bins in the header's chip row. */
+/* Queue tag and filter bins in the header's chip row. */
 .dq-bins {
   display: flex;
   min-width: 0;
@@ -3036,6 +3042,35 @@
   margin: 0;
   color: var(--color-secondary);
   font-size: 0.78125rem;
+}
+/* The card's details in the preview header: performers, then the matching tags as on the card. */
+.dq-preview-details {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 0.78125rem;
+}
+.dq-preview-performers {
+  color: var(--color-foreground);
+}
+.dq-preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dq-preview-tags li {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: var(--color-surface);
+  font-size: 0.75rem;
+}
+.dq-preview-details small {
+  color: var(--color-secondary);
 }
 .dq-preview-check {
   display: inline-flex;
@@ -5613,5 +5648,19 @@ html[data-theme-bg-animation][data-component-style*="glass"] body :is(
     .dq-bar-notices > .dq-status
   ) {
     background: Canvas !important;
+  }
+}
+
+/* A filter bin's row in the review drawer: name, pick-one group, filter, delete. */
+.dq-filter-bin {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 7.5rem auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+@media (max-width: 480px) {
+  .dq-filter-bin {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }

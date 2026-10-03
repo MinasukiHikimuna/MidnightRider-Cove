@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   defaultQuery,
+  readCriteria,
   readQuery,
   writeQuery,
   effectiveReview,
@@ -8,10 +9,10 @@ import {
   normalizedReview,
   queryDiffers,
   savableQuery,
-  withoutTagBins,
+  withoutQueueBins,
 } from "../reviewQuery";
 import type { OccurrenceReview, VideoReview } from "../model";
-import { withTagBin } from "../TagPresentation";
+import { withQueueBin } from "../TagPresentation";
 const review: OccurrenceReview = {
   id: "r",
   name: "Review",
@@ -40,7 +41,7 @@ it("serializes saved defaults as a complete query, independent of later defaults
   expect(initial.startAtEnd).toBe(true);
   writeQuery("r", initial.query);
   const params = new URLSearchParams(window.location.search);
-  expect(params.get("filters")).toBe('{"organized":false}');
+  expect(readCriteria(params.get("filters"))).toEqual({ organized: false });
   expect(params.get("q")).toBe("saved");
   const changed = {
     ...review,
@@ -192,7 +193,7 @@ const videoReview: VideoReview = {
   },
 };
 const binned = (objectFilter: Record<string, unknown>, tagId: number) =>
-  withTagBin({ ...videoReview, view: { ...videoReview.view, objectFilter } }, tagId).view.objectFilter;
+  withQueueBin({ ...videoReview, view: { ...videoReview.view, objectFilter } }, tagId).view.objectFilter;
 
 it("normalizes a review's criteria the way a review link reads them", () => {
   // A link round trip fills in the search and the direction; the queue is the same.
@@ -212,7 +213,7 @@ it("normalizes a review's criteria the way a review link reads them", () => {
 it("leaves queue tag bins out of what a video review saves, down to the saved filter", () => {
   const query = defaultQuery(videoReview);
   const one = binned(videoReview.view.objectFilter, 5);
-  const two = withTagBin({ ...videoReview, view: { ...videoReview.view, objectFilter: one } }, 7).view.objectFilter;
+  const two = withQueueBin({ ...videoReview, view: { ...videoReview.view, objectFilter: one } }, 7).view.objectFilter;
   // Bins alone: the savable query is the saved one, so nothing differs that saving would keep.
   expect(savableQuery(videoReview, { ...query, objectFilter: two }).objectFilter).toBe(
     videoReview.view.objectFilter,
@@ -225,15 +226,59 @@ it("leaves queue tag bins out of what a video review saves, down to the saved fi
     savableQuery(videoReview, { ...query, objectFilter: binned(changed, 5) }).objectFilter,
   ).toEqual(changed);
   const live = { ...videoReview, view: { ...videoReview.view, objectFilter: binned(changed, 5) } };
-  expect(withoutTagBins(live, videoReview).view.objectFilter).toEqual(changed);
+  expect(withoutQueueBins(live, videoReview).view.objectFilter).toEqual(changed);
   // Without bins, nothing changes.
   const plain = { ...query, objectFilter: changed };
   expect(savableQuery(videoReview, plain)).toBe(plain);
-  expect(withoutTagBins(videoReview, videoReview)).toBe(videoReview);
+  expect(withoutQueueBins(videoReview, videoReview)).toBe(videoReview);
   // A saved condition of a bin's shape is the review's own and stays.
   const savedBin = { ...videoReview, view: { ...videoReview.view, objectFilter: one } };
   expect(savableQuery(savedBin, { ...query, objectFilter: one }).objectFilter).toBe(one);
   // Only video reviews have bins.
   const occurrenceQuery = { ...defaultQuery(review), objectFilter: binned(review.view.objectFilter, 5) };
   expect(savableQuery(review, occurrenceQuery)).toBe(occurrenceQuery);
+});
+
+it("leaves queue filter bins out of what a video review saves, known by either review's definitions", () => {
+  const bin = { key: "two", label: "Two", filter: { performerCountCriterion: { value: 2, modifier: "EQUALS" } } };
+  const saved = { ...videoReview, presentation: { filterBins: [bin] } };
+  const changed = { organized: true };
+  const pressed = withQueueBin(
+    { ...saved, view: { ...saved.view, objectFilter: changed } },
+    "two",
+  ).view.objectFilter;
+  expect(savableQuery(saved, { ...defaultQuery(saved), objectFilter: pressed }).objectFilter).toEqual(changed);
+  // A draft that has just defined the bin knows it too, before the review is saved with it.
+  const live = { ...saved, view: { ...saved.view, objectFilter: pressed } };
+  expect(withoutQueueBins(live, videoReview).view.objectFilter).toEqual(changed);
+  // Unknown to both, the condition is the queue's own criteria.
+  const unknown = { ...videoReview, view: { ...videoReview.view, objectFilter: pressed } };
+  expect(withoutQueueBins(unknown, videoReview)).toBe(unknown);
+});
+
+it("writes criteria into review links compressed, and still reads links that hold them as JSON", () => {
+  // A filter expression as large as a group-makeup review's: 60 tag conditions.
+  const objectFilter = {
+    _filterExpression: {
+      operator: "OR",
+      children: Array.from({ length: 60 }, (_, index) => ({
+        filter: { tagsCriterion: { value: [1000 + index, 2000 + index], modifier: "INCLUDES_ALL", depth: 0 } },
+      })),
+    },
+  };
+  const query = { ...defaultQuery(review), objectFilter };
+  writeQuery("r", query);
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("filters")).not.toMatch(/^\{/);
+  expect(params.toString().length).toBeLessThan(encodeURIComponent(JSON.stringify(objectFilter)).length / 3);
+  expect(readQuery(review, params).query.objectFilter).toEqual(objectFilter);
+  expect(readQuery(review, params).query.performerScope).toEqual(query.performerScope);
+  // Links written before kept the criteria as JSON.
+  params.set("filters", JSON.stringify(objectFilter));
+  params.set("performerScope", JSON.stringify(query.performerScope));
+  expect(readQuery(review, params).query.objectFilter).toEqual(objectFilter);
+  expect(readQuery(review, params).query.performerScope).toEqual(query.performerScope);
+  // Criteria that are neither say so.
+  params.set("filters", "not-criteria");
+  expect(() => readQuery(review, params)).toThrow(/Invalid review URL criteria/);
 });

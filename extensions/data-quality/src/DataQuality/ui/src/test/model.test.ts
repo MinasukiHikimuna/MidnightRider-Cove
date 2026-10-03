@@ -16,6 +16,7 @@ import {
   reviewValidation,
   toggleShownReviewSelection,
   validAction,
+  type VideoReview,
 } from "../model";
 
 describe("Data Quality review model", () => {
@@ -199,6 +200,26 @@ it("round-trips explicit video layouts and card tag parents and rejects unknown 
   const rule = { id: "layout", name: "Layout", description: "", view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text", reviewMode: "multiple" }, actions: [], presentation: { annotations: ["tags"], annotationParents: [100] } };
   expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
   expect(() => parseReviews(JSON.stringify([{ ...rule, view: { ...rule.view, reviewMode: "unknown" } }]))).toThrow(/could not be read/i);
+});
+
+it("round-trips queue filter bins on video reviews and refuses malformed or misplaced ones", () => {
+  const bin = { key: "ff", label: "Two women", group: "Makeup", filter: { performerCountCriterion: { value: 2, modifier: "EQUALS" } } };
+  const rule = { id: "bins", name: "Bins", description: "", view: { filter: {}, objectFilter: {}, displayMode: "grid", searchMode: "text" }, actions: [], presentation: { filterBins: [bin] } };
+  expect(parseReviews(JSON.stringify([rule]))).toEqual([rule]);
+  for (const filterBins of [
+    [{ ...bin, key: "" }],
+    [{ ...bin, label: 1 }],
+    [{ ...bin, group: 1 }],
+    [{ ...bin, filter: [] }],
+    [bin, { ...bin, label: "Again" }],
+    {},
+  ])
+    expect(() => parseReviews(JSON.stringify([{ ...rule, presentation: { filterBins } }]))).toThrow(/could not be read/i);
+  expect(() => parseReviews(JSON.stringify([{ ...rule, entityType: "audio" }]))).toThrow(/could not be read/i);
+  // A bin is saved only once it is named and filters something.
+  expect(reviewValidation(rule as VideoReview)).toBe("");
+  for (const unfinished of [{ ...bin, label: " " }, { ...bin, filter: {} }])
+    expect(reviewValidation({ ...rule, presentation: { filterBins: [unfinished] } } as VideoReview)).toMatch(/filter bin/i);
 });
 
 it("round-trips answer groups and their setting, refusing them where they do not belong", () => {

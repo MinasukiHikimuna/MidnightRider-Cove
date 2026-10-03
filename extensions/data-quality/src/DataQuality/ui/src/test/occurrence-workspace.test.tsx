@@ -23,6 +23,7 @@ import type { MediaReview, MediaReviewAction, OccurrenceReview, VideoReview } fr
 import type { ReviewItem, TagState } from "../reviewTags";
 import { rankingSignature, type PerformerRanking } from "../performerRanking";
 import { clearProfiles } from "../performerProfiles";
+import { readCriteria } from "../reviewQuery";
 configure({ asyncUtilTimeout: 3000 });
 const api = vi.hoisted(() => ({
   findMedia: vi.fn(),
@@ -432,7 +433,7 @@ it("lets users toggle subtags and save the choice as review defaults", async () 
     expect.objectContaining({ occurrence: expect.objectContaining({ includeSubtags: false }) }),
     null, 1, expect.anything(),
   ));
-  expect(JSON.parse(new URLSearchParams(window.location.search).get("performerScope")!).includeSubtags).toBe(false);
+  expect(readCriteria(new URLSearchParams(window.location.search).get("performerScope")).includeSubtags).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "Save to review" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(
     expect.objectContaining({ occurrence: expect.objectContaining({ includeSubtags: false }) }),
@@ -888,13 +889,13 @@ it("hands resolved tag names to the host toolbar and strips them from the applie
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await ready();
   expect(
-    JSON.parse(new URLSearchParams(window.location.search).get("filters")!),
+    readCriteria(new URLSearchParams(window.location.search).get("filters")),
   ).toEqual({ organized: true, customFieldCriteria });
   fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }));
   fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await ready();
-  expect(new URLSearchParams(window.location.search).get("filters")).toBe("{}");
+  expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual({});
   testFilterControls.result = { organized: true };
 });
 it("restores browser navigation after a pending write without overwriting its URL", async () => {
@@ -1184,7 +1185,7 @@ it("ranks performers beside the queue and focuses the queue on one without savin
   await ready();
   const params = new URLSearchParams(window.location.search);
   expect(params.get("performer")).toBe("12");
-  expect(JSON.parse(params.get("performerScope")!).targetMode).toBe("filter");
+  expect(readCriteria(params.get("performerScope")).targetMode).toBe("filter");
   expect(queue.getByRole("button", { name: "Scenes" })).toHaveAttribute("aria-pressed", "true");
   expect(await screen.findByRole("group", { name: "Performer focus" })).toHaveTextContent("Only Choice");
   expect(screen.queryByRole("button", { name: "Save to review" })).not.toBeInTheDocument();

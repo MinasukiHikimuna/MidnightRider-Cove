@@ -5,12 +5,18 @@ import {
   queueSignature,
   reviewEntityType,
   reviewMediaKind,
+  type FilterBin,
   type MediaReview,
   type OccurrenceReview,
   type Review,
+  type VideoReview,
 } from "./model";
+import {
+  compressToEncodedURIComponent,
+  decompressFromEncodedURIComponent,
+} from "lz-string";
 import { objectFiltersEqual } from "./objectFiltersEqual";
-import { splitTagBins } from "./TagPresentation";
+import { splitQueueBins } from "./TagPresentation";
 export type { MediaReview } from "./model";
 export type PerformerScope = Omit<
   OccurrenceReview["occurrence"],
@@ -80,9 +86,19 @@ export function defaultQuery(review: MediaReview): ReviewQuery {
       : {}),
   };
 }
-function object(value: string | null): Record<string, unknown> {
+/**
+ * Criteria in a review link, compressed: a large filter expression written as JSON outgrew what
+ * servers accept in a request line (a review's link reached 15 KB; Cove's API refuses 8 KB and
+ * its dev server 16 KB of headers, so reloading the page failed with HTTP 431).
+ */
+function encodeCriteria(value: Record<string, unknown>): string {
+  return compressToEncodedURIComponent(JSON.stringify(value));
+}
+/** Criteria from a review link: compressed, or plain JSON as links made before held them. */
+export function readCriteria(value: string | null): Record<string, unknown> {
   if (!value) return {};
-  const result = JSON.parse(value);
+  const json = value.startsWith("{") ? value : decompressFromEncodedURIComponent(value);
+  const result = json ? JSON.parse(json) : null;
   if (!result || typeof result !== "object" || Array.isArray(result))
     throw new Error(
       "Invalid review URL criteria. Reset to review defaults to recover.",
@@ -135,7 +151,7 @@ export function readQuery(
   if (isOccurrenceReview(review)) {
     performerScope = {
       ...allScope,
-      ...object(params.get("performerScope")),
+      ...readCriteria(params.get("performerScope")),
     } as PerformerScope;
     if (
       !["all", "selected", "filter"].includes(performerScope.targetMode) ||
@@ -158,7 +174,7 @@ export function readQuery(
   return {
     query: {
       filter: boundedFilter(filter, reviewMediaKind(review)),
-      objectFilter: object(params.get("filters")),
+      objectFilter: readCriteria(params.get("filters")),
       searchMode: params.get("searchMode") ?? "text",
       startFrom,
       performerScope,
@@ -207,11 +223,11 @@ export function writeQuery(id: string, query: ReviewQuery) {
       "sorts",
       query.filter.sorts.map((s) => `${s.key}:${s.direction}`).join(","),
     );
-  params.set("filters", JSON.stringify(query.objectFilter));
+  params.set("filters", encodeCriteria(query.objectFilter));
   params.set("searchMode", query.searchMode);
   params.set("startFrom", query.startFrom);
   if (query.performerScope)
-    params.set("performerScope", JSON.stringify(query.performerScope));
+    params.set("performerScope", encodeCriteria(query.performerScope));
   if (query.performerFocus)
     params.set("performer", String(query.performerFocus));
   writePageUrl(`${window.location.pathname}?${params}${window.location.hash}`);
@@ -258,21 +274,38 @@ export function queryDiffers(saved: MediaReview, query: ReviewQuery): boolean {
   );
 }
 
+/** The filter bins of a review, by which its pressed filter bins are known. */
+export function filterBinsOf(...reviews: Review[]): FilterBin[] {
+  return reviews.flatMap((review) =>
+    reviewEntityType(review) === "video"
+      ? ((review as VideoReview).presentation?.filterBins ?? [])
+      : [],
+  );
+}
+
 /**
- * Queue tag bins narrow a video queue for the visit only; a review never saves them. This is the
+ * Queue bins narrow a video queue for the visit only; a review never saves them. This is the
  * review with its bins lifted: down to its saved filter, or to the criteria the bins were pressed
- * on, which saving keeps.
+ * on, which saving keeps. Filter bins are known by the definitions of either review.
  */
-export function withoutTagBins<T extends Review>(review: T, saved: Review): T {
+export function withoutQueueBins<T extends Review>(review: T, saved: Review): T {
   if (reviewEntityType(review) !== "video") return review;
-  const { base, bins } = splitTagBins(review.view.objectFilter, saved.view.objectFilter);
+  const { base, bins } = splitQueueBins(
+    review.view.objectFilter,
+    saved.view.objectFilter,
+    filterBinsOf(review, saved),
+  );
   return bins.length ? { ...review, view: { ...review.view, objectFilter: base } } : review;
 }
 
-/** The query as the review would save it: without its queue tag bins. */
+/** The query as the review would save it: without its queue bins. */
 export function savableQuery(saved: MediaReview, query: ReviewQuery): ReviewQuery {
   if (reviewEntityType(saved) !== "video") return query;
-  const { base, bins } = splitTagBins(query.objectFilter, saved.view.objectFilter);
+  const { base, bins } = splitQueueBins(
+    query.objectFilter,
+    saved.view.objectFilter,
+    filterBinsOf(saved),
+  );
   return bins.length ? { ...query, objectFilter: base } : query;
 }
 
