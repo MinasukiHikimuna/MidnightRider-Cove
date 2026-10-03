@@ -26,7 +26,7 @@ public sealed class DataQualityExtensionTests
 
         Assert.Equal("data-quality", page.Route);
         Assert.Equal("Data Quality", page.Label);
-        Assert.Equal("puzzle", page.Icon);
+        Assert.Equal("badge-check", page.Icon);
         Assert.True(page.ShowInNav);
         Assert.Equal(15, page.NavOrder);
         Assert.Equal("videos.read", page.RequiredPermission);

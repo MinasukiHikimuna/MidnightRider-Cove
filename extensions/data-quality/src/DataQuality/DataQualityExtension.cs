@@ -12,7 +12,7 @@ public sealed class DataQualityExtension : CoveExtensionBase
         .AddPage(new UIPageDefinition(
             "data-quality",
             "Data Quality",
-            "puzzle",
+            "badge-check",
             ShowInNav: true,
             NavOrder: 15,
             RequiredPermission: Permissions.VideosRead,
