@@ -304,20 +304,24 @@ async function loadPool(seed, signal) {
   });
 }
 
+// Every seed scans the candidates afresh, so a shuffle can reach any liked moment, not only those an earlier scan
+// found. The previous pool and the seed it was drawn with stay in place until the new scan finishes.
 function usePool(seed) {
   const [attempt, setAttempt] = React.useState(0);
-  const [state, setState] = React.useState({ loading: true, value: null, error: null });
+  const [state, setState] = React.useState({ loading: true, value: null, seed, error: null });
   React.useEffect(() => {
     const controller = new AbortController();
-    setState((previous) => ({ loading: true, value: previous.value, error: null }));
+    setState((previous) => ({ ...previous, loading: true, error: null }));
     loadPool(seed, controller.signal)
-      .then((value) => setState({ loading: false, value, error: null }))
+      .then((value) => {
+        if (!controller.signal.aborted) setState({ loading: false, value, seed, error: null });
+      })
       .catch((error) => {
-        if (error?.name === "AbortError") return;
-        setState({ loading: false, value: null, error: error instanceof Error ? error : new Error("Unable to load moments.") });
+        if (error?.name === "AbortError" || controller.signal.aborted) return;
+        setState({ loading: false, value: null, seed, error: error instanceof Error ? error : new Error("Unable to load moments.") });
       });
     return () => controller.abort();
-  }, [attempt]);
+  }, [seed, attempt]);
   return { ...state, retry: () => setAttempt((value) => value + 1) };
 }
 
@@ -603,14 +607,14 @@ function Skeleton() {
 function BlastFromThePastWidget({ configuration, onNavigate }) {
   const settings = readSettings(configuration);
   const [seed, setSeed] = React.useState(randomSeed);
-  const [loadSeed] = React.useState(randomSeed);
-  const state = usePool(loadSeed);
+  const state = usePool(seed);
   const moments = React.useMemo(
-    () => selectMoments(state.value ?? [], settings.count, seed),
-    [state.value, settings.count, seed],
+    () => selectMoments(state.value ?? [], settings.count, state.seed),
+    [state.value, settings.count, state.seed],
   );
-  const [selectedId, setSelectedId] = React.useState(null);
-  const selected = moments.find((moment) => moment.id === selectedId) ?? moments[0];
+  // A selection belongs to the set it was made in, so the next set opens on its own first moment.
+  const [selection, setSelection] = React.useState({ seed: null, id: null });
+  const selected = (selection.seed === state.seed && moments.find((moment) => moment.id === selection.id)) || moments[0];
 
   let body;
   if (state.error) {
@@ -631,7 +635,7 @@ function BlastFromThePastWidget({ configuration, onNavigate }) {
         settings,
         onWatch: (seekTo) => onNavigate({ page: "video", id: selected.video.id, seekTo }),
       }),
-      h(MomentList, { moments, selectedId: selected.id, onSelect: setSelectedId }));
+      h(MomentList, { moments, selectedId: selected.id, onSelect: (id) => setSelection({ seed: state.seed, id }) }));
   }
 
   return h("section", { className: "bftp", "aria-label": "Blast From The Past" },
@@ -643,11 +647,8 @@ function BlastFromThePastWidget({ configuration, onNavigate }) {
         h("button", {
           type: "button",
           className: "bftp-shuffle",
-          onClick: () => {
-            setSelectedId(null);
-            setSeed(randomSeed());
-          },
-          disabled: !state.value || state.value.length <= 1,
+          onClick: () => setSeed(randomSeed()),
+          disabled: state.loading || !state.value || state.value.length <= 1,
           "aria-label": "Shuffle moments",
           title: "Shuffle moments",
         }, h(ShuffleIcon))),
