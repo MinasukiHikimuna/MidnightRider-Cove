@@ -245,6 +245,14 @@ public static class ShotBoundaryService
         string.Join(",", boundaries.OrderBy(row => row.StartSec).ThenBy(row => row.Id)
             .Select(row => $"{row.Id}:{row.Revision}"));
 
+    // The editor computes the same fingerprint from the rows it was given (shotBoundaryFingerprint).
+    public static string Fingerprint(IEnumerable<ShotBoundaryResponse> boundaries) =>
+        string.Join(",", boundaries.OrderBy(row => row.StartSec).ThenBy(row => row.Id)
+            .Select(row => $"{row.Id}:{row.Revision}"));
+
+    internal static string SnapshotFingerprint(IEnumerable<ShotBoundaryRestoreItem> boundaries) =>
+        RestoreFingerprint(boundaries);
+
     internal static async Task AcquireMutationLocksAsync(
         DbContext db, Guid operationId, int videoId, CancellationToken ct)
     {

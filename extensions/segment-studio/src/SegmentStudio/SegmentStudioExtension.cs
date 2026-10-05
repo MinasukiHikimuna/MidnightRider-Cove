@@ -2016,7 +2016,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/editor",
                 async (int videoId, DbContext db, ICurrentPrincipalAccessor principalAccessor,
-                    Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
+                    Cove.Core.Auth.IAuthorizationService authorization, HttpContext httpContext, CancellationToken ct) =>
                 {
                     if (principalAccessor.Current?.UserId is not int userId)
                         return Results.Unauthorized();
@@ -2257,7 +2257,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     var performerCandidates = performerAccess.Allowed
                         ? await PerformerSlotEditorService.LoadCandidatesAsync(db, videoId, ct)
                         : [];
-                    var shotBoundaries = await ShotBoundaryService.ListAsync(db, videoId, ct);
+                    var shotBoundaries = await ShotBoundaryStore.ListAsync(db, httpContext.RequestServices, videoId, ct);
                     var itemMetadata = provenanceAccess.Allowed
                         ? await SegmentEditorMetadataService.LoadAsync(
                             db,
@@ -2343,8 +2343,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/shot-boundaries",
-                async (int videoId, DbContext db, CancellationToken ct) =>
-                    Results.Ok(await ShotBoundaryService.ListAsync(db, videoId, ct)))
+                async (int videoId, DbContext db, HttpContext httpContext, CancellationToken ct) =>
+                    Results.Ok(await ShotBoundaryStore.ListAsync(db, httpContext.RequestServices, videoId, ct)))
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsRead)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
@@ -2353,34 +2353,10 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
         endpoints.MapPost(
                 "/api/plugins/segment-studio/videos/{videoId:int}/shot-boundaries/split",
-                async Task<IResult> (int videoId, SplitShotBoundaryRequest request, DbContext db, CancellationToken ct) =>
-                {
-                    var duration = await db.Set<Video>().AsNoTracking()
-                        .Where(video => video.Id == videoId)
-                        .Select(video => video.Files.OrderBy(file => file.Id)
-                            .Select(file => (double?)file.Duration).FirstOrDefault())
-                        .SingleOrDefaultAsync(ct);
-                    if (duration is null or <= 0)
-                        return Results.BadRequest(new { error = "The video duration is unavailable." });
-                    var strategy = db.Database.CreateExecutionStrategy();
-                    var result = await strategy.ExecuteAsync(async () =>
-                    {
-                        await using var transaction = db.Database.IsRelational()
-                            ? await db.Database.BeginTransactionAsync(ct)
-                            : null;
-                        var mutation = await ShotBoundaryService.SplitAsync(
-                            db, videoId, request, duration.Value, ct);
-                        if (mutation.Status == ShotBoundaryMutationStatus.Updated && transaction is not null)
-                            await transaction.CommitAsync(ct);
-                        return mutation;
-                    });
-                    return result.Status switch
-                    {
-                        ShotBoundaryMutationStatus.Updated => Results.Ok(result.Boundaries),
-                        ShotBoundaryMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
-                        _ => Results.BadRequest(new { error = result.Error }),
-                    };
-                })
+                (int videoId, SplitShotBoundaryRequest request, DbContext db, HttpContext httpContext, CancellationToken ct) =>
+                    MutateShotBoundariesAsync(db, ct, () => ShotBoundaryStore.SplitAsync(
+                        db, httpContext.RequestServices, videoId, request,
+                        token => LegacyShotBoundaryDurationAsync(db, videoId, token), ct)))
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId")
@@ -2389,26 +2365,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
         endpoints.MapPost(
                 "/api/plugins/segment-studio/videos/{videoId:int}/shot-boundaries/merge",
-                async Task<IResult> (int videoId, MergeShotBoundaryRequest request, DbContext db, CancellationToken ct) =>
-                {
-                    var strategy = db.Database.CreateExecutionStrategy();
-                    var result = await strategy.ExecuteAsync(async () =>
-                    {
-                        await using var transaction = db.Database.IsRelational()
-                            ? await db.Database.BeginTransactionAsync(ct)
-                            : null;
-                        var mutation = await ShotBoundaryService.MergeAsync(db, videoId, request, ct);
-                        if (mutation.Status == ShotBoundaryMutationStatus.Updated && transaction is not null)
-                            await transaction.CommitAsync(ct);
-                        return mutation;
-                    });
-                    return result.Status switch
-                    {
-                        ShotBoundaryMutationStatus.Updated => Results.Ok(result.Boundaries),
-                        ShotBoundaryMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
-                        _ => Results.BadRequest(new { error = result.Error }),
-                    };
-                })
+                (int videoId, MergeShotBoundaryRequest request, DbContext db, HttpContext httpContext, CancellationToken ct) =>
+                    MutateShotBoundariesAsync(db, ct, () => ShotBoundaryStore.MergeAsync(
+                        db, httpContext.RequestServices, videoId, request, ct)))
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId")
@@ -2417,34 +2376,10 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
 
         endpoints.MapPost(
                 "/api/plugins/segment-studio/videos/{videoId:int}/shot-boundaries/restore",
-                async Task<IResult> (int videoId, RestoreShotBoundariesRequest request, DbContext db, CancellationToken ct) =>
-                {
-                    var duration = await db.Set<Video>().AsNoTracking()
-                        .Where(video => video.Id == videoId)
-                        .Select(video => video.Files.OrderBy(file => file.Id)
-                            .Select(file => (double?)file.Duration).FirstOrDefault())
-                        .SingleOrDefaultAsync(ct);
-                    if (duration is null or <= 0)
-                        return Results.BadRequest(new { error = "The video duration is unavailable." });
-                    var strategy = db.Database.CreateExecutionStrategy();
-                    var result = await strategy.ExecuteAsync(async () =>
-                    {
-                        await using var transaction = db.Database.IsRelational()
-                            ? await db.Database.BeginTransactionAsync(ct)
-                            : null;
-                        var mutation = await ShotBoundaryService.RestoreAsync(
-                            db, videoId, request, duration.Value, ct);
-                        if (mutation.Status == ShotBoundaryMutationStatus.Updated && transaction is not null)
-                            await transaction.CommitAsync(ct);
-                        return mutation;
-                    });
-                    return result.Status switch
-                    {
-                        ShotBoundaryMutationStatus.Updated => Results.Ok(result.Boundaries),
-                        ShotBoundaryMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
-                        _ => Results.BadRequest(new { error = result.Error }),
-                    };
-                })
+                (int videoId, RestoreShotBoundariesRequest request, DbContext db, HttpContext httpContext, CancellationToken ct) =>
+                    MutateShotBoundariesAsync(db, ct, () => ShotBoundaryStore.RestoreAsync(
+                        db, httpContext.RequestServices, videoId, request,
+                        token => LegacyShotBoundaryDurationAsync(db, videoId, token), ct)))
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
             .RequireCoveEntityAccess(EntityKinds.Video, "videoId")
@@ -3904,6 +3839,38 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.RecyclingBinEmpty);
     }
+
+    // A shot edit runs in one transaction, which Cove's native shot storage joins, and is committed only
+    // when it applied.
+    private static async Task<IResult> MutateShotBoundariesAsync(
+        DbContext db, CancellationToken ct, Func<Task<ShotBoundaryMutationResult>> mutate)
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+        var result = await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = db.Database.IsRelational()
+                ? await db.Database.BeginTransactionAsync(ct)
+                : null;
+            var mutation = await mutate();
+            if (mutation.Status == ShotBoundaryMutationStatus.Updated && transaction is not null)
+                await transaction.CommitAsync(ct);
+            return mutation;
+        });
+        return result.Status switch
+        {
+            ShotBoundaryMutationStatus.Updated => Results.Ok(result.Boundaries),
+            ShotBoundaryMutationStatus.Conflict => Results.Conflict(new { error = result.Error }),
+            _ => Results.BadRequest(new { error = result.Error }),
+        };
+    }
+
+    // Segment Studio's own rows span the video's first file.
+    private static Task<double?> LegacyShotBoundaryDurationAsync(DbContext db, int videoId, CancellationToken ct) =>
+        db.Set<Video>().AsNoTracking()
+            .Where(video => video.Id == videoId)
+            .Select(video => video.Files.OrderBy(file => file.Id)
+                .Select(file => (double?)file.Duration).FirstOrDefault())
+            .SingleOrDefaultAsync(ct);
 
     private static IResult LegacyUiRequiredResult() => Results.Conflict(new
     {

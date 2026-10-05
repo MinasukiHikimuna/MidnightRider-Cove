@@ -31,4 +31,8 @@
     <EmbeddedResource Include="SegmentStudioDeleteCascadeIndexes.sql" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SegmentStudio.Tests" />
+  </ItemGroup>
+
 </Project>
