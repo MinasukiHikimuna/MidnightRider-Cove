@@ -156,9 +156,11 @@ internal static class NativeShotBoundaries
     }
 
     /// <summary>
-    /// Maps a native set to editor rows. Each row carries the set's revision, so the editor's fingerprint
-    /// changes with every edit of the set; shot type, transition and frames travel in the metadata so that
-    /// undo can restore them.
+    /// Maps a native set to editor rows. Cove stores a set's shots as the cuts between them, so shots have
+    /// no ids: a row's id combines the set's id with the shot's position, from 1, and each row carries the
+    /// set's revision. The editor's fingerprint of the rows therefore changes with every edit of the set,
+    /// and with a set deleted and written again, which starts its revisions over. Shot type, transition and
+    /// frames travel in the metadata so that undo can restore them.
     /// </summary>
     internal static IReadOnlyList<ShotBoundaryResponse> ToResponses(int videoId, VideoShotSetDto? set)
     {
@@ -167,12 +169,18 @@ internal static class NativeShotBoundaries
         var source = string.IsNullOrWhiteSpace(set.Model) ? set.SourceKey : set.Model;
         var createdAt = AsUtc(set.CreatedAt);
         var updatedAt = AsUtc(set.UpdatedAt);
-        return shots.OrderBy(shot => shot.StartSec).ThenBy(shot => shot.Id)
-            .Select(shot => new ShotBoundaryResponse(
-                shot.Id, videoId, shot.StartSec, shot.EndSec, source, Metadata(shot),
+        return shots.OrderBy(shot => shot.StartSec)
+            .Select((shot, index) => new ShotBoundaryResponse(
+                RowId(set.Id, index), videoId, shot.StartSec, shot.EndSec, source, Metadata(shot),
                 set.Revision, createdAt, updatedAt))
             .ToList();
     }
+
+    // Cove allows at most 50,000 shots per set, which fits in the low 20 bits; the result stays below 2^53,
+    // so the editor's JavaScript numbers hold it exactly.
+    private const int ShotPositionBits = 20;
+
+    private static long RowId(int setId, int index) => ((long)setId << ShotPositionBits) | (uint)(index + 1);
 
     private static string? Metadata(VideoShotDto shot)
     {

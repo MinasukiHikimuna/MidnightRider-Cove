@@ -17,8 +17,8 @@ public sealed class NativeShotBoundariesTests
     {
         await using var db = CreateDb();
         var shots = new FakeShotService(Set(revision: 3,
-            Shot(1, 0, 4, startFrame: 0, endFrame: 96, shotType: "Wide"),
-            Shot(2, 4, 10, startFrame: 96, endFrame: 240, transitionIn: "Hard_Cut")));
+            Shot(0, 4, startFrame: 0, endFrame: 96, shotType: "Wide"),
+            Shot(4, 10, startFrame: 96, endFrame: 240, transitionIn: "Hard_Cut")));
 
         var rows = await NativeShotBoundaries.ListAsync(db, shots, VideoId, default);
 
@@ -26,14 +26,25 @@ public sealed class NativeShotBoundariesTests
         Assert.Collection(rows,
             row =>
             {
-                Assert.Equal((1L, 0d, 4d, 3L, "omnishotcut_shot_boundaries"), (row.Id, row.StartSec, row.EndSec, row.Revision, row.Source));
+                Assert.Equal((RowId(1), 0d, 4d, 3L, "omnishotcut_shot_boundaries"), (row.Id, row.StartSec, row.EndSec, row.Revision, row.Source));
                 Assert.Equal(DateTimeKind.Utc, row.CreatedAt.Kind);
                 using var metadata = JsonDocument.Parse(row.Metadata!);
                 Assert.Equal("Wide", metadata.RootElement.GetProperty("shotType").GetString());
                 Assert.Equal(96, metadata.RootElement.GetProperty("endFrame").GetInt32());
             },
-            row => Assert.Equal((2L, 4d, 10d, 3L), (row.Id, row.StartSec, row.EndSec, row.Revision)));
-        Assert.Equal("1:3,2:3", ShotBoundaryService.Fingerprint(rows));
+            row => Assert.Equal((RowId(2), 4d, 10d, 3L), (row.Id, row.StartSec, row.EndSec, row.Revision)));
+        Assert.Equal($"{RowId(1)}:3,{RowId(2)}:3", ShotBoundaryService.Fingerprint(rows));
+    }
+
+    [Fact]
+    public void ASetWrittenAgainAtTheSameRevisionHasADifferentFingerprint()
+    {
+        var first = Set(revision: 1, Shot(0, 4), Shot(4, 10));
+        var rewritten = first with { Id = first.Id + 1 };
+
+        Assert.NotEqual(
+            ShotBoundaryService.Fingerprint(NativeShotBoundaries.ToResponses(VideoId, first)),
+            ShotBoundaryService.Fingerprint(NativeShotBoundaries.ToResponses(VideoId, rewritten)));
     }
 
     [Fact]
@@ -53,11 +64,11 @@ public sealed class NativeShotBoundariesTests
     {
         await using var db = CreateDb();
         await AddLegacyRowAsync(db);
-        var shots = new FakeShotService(Set(revision: 1, Shot(1, 0, 10)));
+        var shots = new FakeShotService(Set(revision: 1, Shot(0, 10)));
 
         var rows = await NativeShotBoundaries.ListAsync(db, shots, VideoId, default);
 
-        Assert.Equal([1L], rows!.Select(row => row.Id));
+        Assert.Equal([RowId(1)], rows!.Select(row => row.Id));
     }
 
     [Fact]
@@ -73,7 +84,7 @@ public sealed class NativeShotBoundariesTests
     public async Task SplitsAgainstTheVersionItReadAndReplaysTheSameOperationWithoutEditingTwice()
     {
         await using var db = CreateDb();
-        var shots = new FakeShotService(Set(revision: 2, Shot(1, 0, 10)));
+        var shots = new FakeShotService(Set(revision: 2, Shot(0, 10)));
         var operation = Guid.NewGuid();
 
         var first = await NativeShotBoundaries.SplitAsync(db, shots, NoPrimaryFile, VideoId, new(operation, 4), default);
@@ -110,7 +121,7 @@ public sealed class NativeShotBoundariesTests
     public async Task ReportsANativeConflictAndKeepsNoReceipt()
     {
         await using var db = CreateDb();
-        var shots = new FakeShotService(Set(revision: 1, Shot(1, 0, 4), Shot(2, 4, 10))) { NextStatus = VideoShotEditStatus.Conflict };
+        var shots = new FakeShotService(Set(revision: 1, Shot(0, 4), Shot(4, 10))) { NextStatus = VideoShotEditStatus.Conflict };
 
         var result = await NativeShotBoundaries.MergeAsync(db, shots, VideoId, new(Guid.NewGuid(), 4), default);
 
@@ -122,10 +133,10 @@ public sealed class NativeShotBoundariesTests
     public async Task RefusesAnUndoWhenTheShotsChangedSinceTheEditorLoadedThem()
     {
         await using var db = CreateDb();
-        var shots = new FakeShotService(Set(revision: 5, Shot(1, 0, 10)));
+        var shots = new FakeShotService(Set(revision: 5, Shot(0, 10)));
 
         var result = await NativeShotBoundaries.RestoreAsync(
-            db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), "1:4", [Restore(1, 0, 10)]), default);
+            db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), $"{RowId(1)}:4", [Restore(1, 0, 10)]), default);
 
         Assert.Equal(ShotBoundaryMutationStatus.Conflict, result!.Status);
         Assert.Empty(shots.Calls);
@@ -135,14 +146,14 @@ public sealed class NativeShotBoundariesTests
     public async Task RestoresAnUndoSnapshotWithItsShotDetailsAgainstTheCurrentVersion()
     {
         await using var db = CreateDb();
-        var shots = new FakeShotService(Set(revision: 4, Shot(1, 0, 4), Shot(2, 4, 10)));
+        var shots = new FakeShotService(Set(revision: 4, Shot(0, 4), Shot(4, 10)));
         IReadOnlyList<ShotBoundaryRestoreItem> snapshot =
         [
             Restore(1, 0, 10, """{"shotType":"Wide","startFrame":0,"endFrame":240}"""),
         ];
 
         var result = await NativeShotBoundaries.RestoreAsync(
-            db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), "1:4,2:4", snapshot), default);
+            db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), $"{RowId(1)}:4,{RowId(2)}:4", snapshot), default);
 
         Assert.Equal(ShotBoundaryMutationStatus.Updated, result!.Status);
         var replace = Assert.IsType<VideoShotReplaceRequest>(Assert.Single(shots.Calls));
@@ -155,9 +166,9 @@ public sealed class NativeShotBoundariesTests
     public async Task DropsFramesFromAnUndoSnapshotUnlessEveryShotHasThem()
     {
         await using var db = CreateDb();
-        var shots = new FakeShotService(Set(revision: 1, Shot(1, 0, 10)));
+        var shots = new FakeShotService(Set(revision: 1, Shot(0, 10)));
 
-        await NativeShotBoundaries.RestoreAsync(db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), "1:1",
+        await NativeShotBoundaries.RestoreAsync(db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), $"{RowId(1)}:1",
         [
             Restore(1, 0, 4, """{"startFrame":0,"endFrame":96}"""),
             Restore(2, 4, 10, """{"transitionIn":"Hard_Cut"}"""),
@@ -172,14 +183,17 @@ public sealed class NativeShotBoundariesTests
     public async Task RestoresAnEmptySnapshotByDeletingTheSet()
     {
         await using var db = CreateDb();
-        var shots = new FakeShotService(Set(revision: 1, Shot(1, 0, 4), Shot(2, 4, 10)));
+        var shots = new FakeShotService(Set(revision: 1, Shot(0, 4), Shot(4, 10)));
 
-        var result = await NativeShotBoundaries.RestoreAsync(db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), "1:1,2:1", []), default);
+        var result = await NativeShotBoundaries.RestoreAsync(db, shots, NoPrimaryFile, VideoId, new(Guid.NewGuid(), $"{RowId(1)}:1,{RowId(2)}:1", []), default);
 
         Assert.Equal(ShotBoundaryMutationStatus.Updated, result!.Status);
         Assert.Empty(result.Boundaries!);
         Assert.Equal(1, Assert.IsType<VideoShotDeleteRequest>(Assert.Single(shots.Calls)).Expected!.Revision);
     }
+
+    // The editor row id of the shot at a 1-based position in the set with id 700.
+    private static long RowId(int position) => (700L << 20) | (uint)position;
 
     private static readonly Func<int, CancellationToken, Task<int?>> NoPrimaryFile = (_, _) => Task.FromResult<int?>(null);
 
@@ -191,10 +205,10 @@ public sealed class NativeShotBoundariesTests
         UpdatedAt = new DateTime(2026, 10, 5, 8, 0, 0, DateTimeKind.Unspecified), Shots = shots,
     };
 
-    private static VideoShotDto Shot(long id, double start, double end, int? startFrame = null, int? endFrame = null,
+    private static VideoShotDto Shot(double start, double end, int? startFrame = null, int? endFrame = null,
         string? shotType = null, string? transitionIn = null) => new()
     {
-        Id = id, StartSec = start, EndSec = end, StartFrame = startFrame, EndFrame = endFrame,
+        StartSec = start, EndSec = end, StartFrame = startFrame, EndFrame = endFrame,
         ShotType = shotType, TransitionIn = transitionIn,
     };
 
@@ -228,7 +242,6 @@ public sealed class NativeShotBoundariesTests
     private sealed class FakeShotService(VideoShotSetDto? set) : IVideoShotService
     {
         private VideoShotSetDto? _set = set;
-        private long _nextShotId = 100;
 
         public List<object> Calls { get; } = [];
         public VideoShotEditStatus? NextStatus { get; set; }
@@ -240,11 +253,11 @@ public sealed class NativeShotBoundariesTests
         {
             Calls.Add(request);
             if (Refused(request.Expected) is { } refused) return Task.FromResult(refused);
-            var shots = (_set?.Shots ?? [Shot(_nextShotId++, 0, 10)]).ToList();
+            var shots = (_set?.Shots ?? [Shot(0, 10)]).ToList();
             var at = shots.FindIndex(shot => shot.StartSec < request.AtSec && request.AtSec < shot.EndSec);
             var target = shots[at];
             shots[at] = target with { EndSec = request.AtSec };
-            shots.Insert(at + 1, target with { Id = _nextShotId++, StartSec = request.AtSec });
+            shots.Insert(at + 1, target with { StartSec = request.AtSec });
             return Task.FromResult(Updated(shots));
         }
 
@@ -258,7 +271,7 @@ public sealed class NativeShotBoundariesTests
         {
             Calls.Add(request);
             return Task.FromResult(Refused(request.Expected) ?? Updated(request.Shots
-                .Select(input => Shot(_nextShotId++, input.StartSec, input.EndSec, input.StartFrame, input.EndFrame, input.ShotType, input.TransitionIn))
+                .Select(input => Shot(input.StartSec, input.EndSec, input.StartFrame, input.EndFrame, input.ShotType, input.TransitionIn))
                 .ToList()));
         }
 

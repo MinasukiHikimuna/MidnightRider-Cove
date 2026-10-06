@@ -259,7 +259,7 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
         }, formatTime(tick))).concat(shotBoundaries.map((shot) => {
           const start = safeDuration > 0 ? shot.startSec / safeDuration * 100 : 0;
           return h("button", {
-            key: `shot-boundary:${shot.id}`,
+            key: `shot-boundary:${shot.startSec}`,
             type: "button",
             "data-shot-boundary-marker": "true",
             "aria-label": `Shot ${formatTime(shot.startSec)} – ${formatTime(shot.endSec)}`,
