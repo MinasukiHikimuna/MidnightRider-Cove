@@ -4,7 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <CoveMinVersion Condition="'$(CoveMinVersion)' == ''">1.1.0</CoveMinVersion>
+    <!-- The earliest published Cove packages that meet the manifest's minCoveVersion (1.4.0-rc.2 was never published). -->
+    <CoveMinVersion Condition="'$(CoveMinVersion)' == ''">1.4.0</CoveMinVersion>
     <CoveSdkVersion Condition="'$(CoveSdkVersion)' == ''">$(CoveMinVersion)</CoveSdkVersion>
     <CoveCoreVersion Condition="'$(CoveCoreVersion)' == ''">$(CoveMinVersion)</CoveCoreVersion>
     <CoveSourceRoot Condition="'$(CoveSourceRoot)' == '' and '$(COVE_SOURCE_ROOT)' != ''">$(COVE_SOURCE_ROOT)</CoveSourceRoot>
