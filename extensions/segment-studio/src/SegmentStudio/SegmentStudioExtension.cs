@@ -49,6 +49,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         // once from the exchange; it opens its own scope per dispatch.
         services.AddSingleton<IAiCapabilityContributor, SegmentStudioAiContributor>();
         services.AddScoped<INativeSegmentImportService, NativeSegmentImportService>();
+        services.AddScoped<IExtensionEntityFilterProvider, SegmentStudioVideoFilterProvider>();
     }
 
     public IEnumerable<PermissionDefinition> ContributePermissions() =>
@@ -185,7 +186,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 order: 45,
                 suppressSuccessAlert: true);
         SegmentStudioKeyboardActions.AddTo(builder);
+        SegmentStudioVideoFilters.AddTo(builder);
         var manifest = builder.Build();
+        manifest.ListFilters.Add(SegmentStudioVideoFilters.SegmentTagsFilter(Id));
         // The editor renders the host's video actions so Run AI is at hand, which
         // would offer to open Segment Studio from inside Segment Studio. The action
         // is restricted to the video page, and the editor passes its own page type.
@@ -1964,9 +1967,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.SegmentGroupsManage);
 
-        endpoints.MapGet(
-                "/api/plugins/segment-studio/videos",
-                async (HttpRequest request, DbContext db, ICurrentPrincipalAccessor principalAccessor,
+        endpoints.MapPost(
+                "/api/plugins/segment-studio/videos/segment-counts",
+                async ([FromBody] SegmentStudioSegmentCountsRequest request, DbContext db, ICurrentPrincipalAccessor principalAccessor,
                     Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
                 {
                     if (principalAccessor.Current?.UserId is not int userId)
@@ -1975,38 +1978,15 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         principalAccessor.Current, authorization, videoId: null, ct);
                     if (!access.Allowed)
                         return Results.Json(new { error = access.Reason ?? "You cannot view segments." }, statusCode: StatusCodes.Status403Forbidden);
-                    var profile = await SegmentStudioFeatureProfileService.GetAsync(
-                        db, userId, ct);
-                    var fullWorkflow = profile.Has(
-                        SegmentStudioCapabilities.SegmentReview);
-                    var query = ParseDiscoveryQuery(
-                        request.Query,
-                        fullWorkflow,
-                        profile.LegacyCompatibilityRequired);
-                    var result = await VideoDiscoveryService.FindAsync(db, query, ct);
-                    if (!fullWorkflow)
-                    {
-                        return Results.Ok(new
-                        {
-                            items = result.Items.Select(item => new
-                            {
-                                item.VideoId,
-                                item.Title,
-                                item.Details,
-                                item.Date,
-                                item.Organized,
-                                item.IsVr,
-                                item.Duration,
-                                item.CreatedAt,
-                                item.UpdatedAt,
-                                item.SegmentCount,
-                            }),
-                            result.TotalCount,
-                            result.Page,
-                            result.PerPage,
-                        });
-                    }
-                    return Results.Ok(result);
+                    var videoIds = (request?.VideoIds ?? []).Where(id => id > 0).Distinct().ToArray();
+                    if (videoIds.Length > 1000)
+                        return Results.BadRequest(new { error = "Request segment counts for at most 1000 videos." });
+                    var workflow = await SegmentStudioVideoFilters.WorkflowForAsync(db, userId, ct);
+                    var counts = await SegmentStudioVideoFilters.CountsAsync(db, workflow, videoIds, ct);
+                    // Basic mode cannot read review states, so it only learns how many segments exist.
+                    if (workflow == SegmentStudioWorkflows.Basic)
+                        return Results.Ok(new { items = counts.Select(item => new { item.VideoId, item.SegmentCount }) });
+                    return Results.Ok(new { items = counts });
                 })
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsRead)
@@ -4026,67 +4006,6 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         ISegmentSpanCacheInvalidator spanCacheInvalidator,
         int videoId) =>
         spanCacheInvalidator.InvalidateVideo(videoId);
-
-    private static VideoDiscoveryQuery ParseDiscoveryQuery(
-        IQueryCollection query,
-        bool fullWorkflow,
-        bool legacyCompatibilityRequired)
-    {
-        static int ReadInt(IQueryCollection values, string key, int fallback) =>
-            int.TryParse(values[key].FirstOrDefault(), out var parsed) ? parsed : fallback;
-        static int? ReadNullableInt(IQueryCollection values, string key) =>
-            int.TryParse(values[key].FirstOrDefault(), out var parsed) ? parsed : null;
-        static bool? ReadNullableBool(IQueryCollection values, string key) =>
-            bool.TryParse(values[key].FirstOrDefault(), out var parsed) ? parsed : null;
-        static int[] ReadIds(IQueryCollection values, string key) =>
-            values[key]
-                .SelectMany(value => (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
-                .Select(value => int.TryParse(value, out var parsed) ? parsed : 0)
-                .Where(value => value > 0)
-                .Distinct()
-                .ToArray();
-
-        var segmentTagId = ReadNullableInt(query, "segmentTagId")
-            ?? ReadNullableInt(query, "tagId");
-
-        var sort = query["sort"].FirstOrDefault();
-        if (!fullWorkflow && sort == "unreviewed_count")
-            sort = null;
-        return new VideoDiscoveryQuery(
-            Page: ReadInt(query, "page", 1),
-            PerPage: ReadInt(query, "perPage", 24),
-            Query: query["q"].FirstOrDefault(),
-            Sort: sort,
-            Direction: query["direction"].FirstOrDefault(),
-            Seed: ReadNullableInt(query, "seed"),
-            HasSegments: ReadNullableBool(query, "hasSegments"),
-            ReviewState: fullWorkflow
-                ? query["reviewState"].FirstOrDefault()
-                : null,
-            SegmentTagId: segmentTagId,
-            SegmentTagIds: ReadIds(query, "segmentTag"),
-            ExcludedSegmentTagIds: ReadIds(query, "excludeSegmentTag"),
-            SegmentTagMode: query["segmentTagMode"].FirstOrDefault(),
-            IncludeSegmentSubtags: ReadNullableBool(query, "includeSegmentSubtags") is true,
-            VideoTagIds: ReadIds(query, "videoTag").Concat(ReadIds(query, "videoTagIds")).Distinct().ToArray(),
-            ExcludedVideoTagIds: ReadIds(query, "excludeVideoTag"),
-            VideoTagMode: query["videoTagMode"].FirstOrDefault(),
-            IncludeVideoSubtags: ReadNullableBool(query, "includeVideoSubtags") is true,
-            PerformerIds: ReadIds(query, "performer").Concat(ReadIds(query, "performerIds")).Distinct().ToArray(),
-            ExcludedPerformerIds: ReadIds(query, "excludePerformer"),
-            PerformerMode: query["performerMode"].FirstOrDefault(),
-            StudioId: ReadNullableInt(query, "studioId"),
-            StudioIds: ReadIds(query, "studio"),
-            ExcludedStudioIds: ReadIds(query, "excludeStudio"),
-            StudioMode: query["studioMode"].FirstOrDefault(),
-            IncludeSubstudios: ReadNullableBool(query, "includeSubstudios") is true,
-            HasShotBoundaries: fullWorkflow
-                ? ReadNullableBool(query, "hasShotBoundaries")
-                : null,
-            Workflow: fullWorkflow
-                ? legacyCompatibilityRequired ? "compatibility" : "full"
-                : "basic");
-    }
 
     private sealed record SegmentStudioVideoFile(string Format, double Duration, string AudioCodec, double FrameRate);
 

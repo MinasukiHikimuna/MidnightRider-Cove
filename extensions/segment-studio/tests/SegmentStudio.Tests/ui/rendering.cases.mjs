@@ -154,10 +154,9 @@ test("selected discovery entities survive reload through Cove object-filter URL 
   const components = sourceByModule["discovery/components.js"];
   const page = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
 
-  assert.match(components, /filterKey: "segmentTagsCriterion"/);
-  assert.match(components, /filterKey: "tagsCriterion"/);
-  assert.match(components, /filterKey: "performersCriterion"/);
-  assert.match(components, /filterKey: "studiosCriterion"/);
+  // Entity criteria and their URL keys come from Cove's own video criteria catalog.
+  assert.match(page, /discoveryCriteria\(VIDEO_CRITERIA\)/);
+  assert.doesNotMatch(components, /filterKey:/);
   assert.match(page, /useListUrlState\(urlOptions\)/);
   assert.match(page, /objectFilter,/);
   assert.doesNotMatch(components, /requestCoveJson/);

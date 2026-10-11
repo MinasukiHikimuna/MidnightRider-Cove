@@ -1690,7 +1690,7 @@ test("selected segment details show compact performer slot assignments", () => {
 test("selected segment detail separates start and end times with a dash", () => {
   const editor = source.slice(
     source.indexOf("function SegmentActiveEditor"),
-    source.indexOf("const DISCOVERY_SORT_OPTIONS"),
+    source.indexOf("const DISCOVERY_URL_OPTIONS"),
   );
 
   assert.match(editor, /key: "time-separator"[\s\S]*"–"/);

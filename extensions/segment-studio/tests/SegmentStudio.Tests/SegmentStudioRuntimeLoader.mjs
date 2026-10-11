@@ -15,6 +15,8 @@ const runtimeModules = {
     "export const EntityReferenceMultiSelector = () => null;",
     "export const EntityReferenceSelector = () => null;",
     "export const ListPage = () => null;",
+    "export const VIDEO_CRITERIA = [{ id: 'hasSegments', filterKey: 'hasSegmentsCriterion' }, { id: 'tags', filterKey: 'tagsCriterion' }];",
+    "export const VIDEO_SORT_OPTIONS = [{ value: 'title', label: 'Title' }, { value: 'random', label: 'Random' }];",
     "export const VideoPlayer = () => null;",
     "export const formatDuration = String;",
     "export const getDefaultFilter = () => null;",

@@ -47,6 +47,19 @@ The **Videos** tab finds videos to open in the editor. The **Segments** tab find
 individual segments to preview or edit. Both use compact video-style cards and
 Cove's numbered pagination controls above and below the results.
 
+The **Videos** tab searches with Cove's own video search, so a search matches
+words in any order, finds partial words, and also looks at details,
+performers, tags, and file paths, with the best matches first. Its sorts and
+filters are the ones on Cove's Videos page, except that Cove's own **Has
+Segments** is replaced by Segment Studio's filters:
+**Has segments**, **Segment tags** (with excluded tags and sub-tags), and in
+Full mode **Review state** and **Has shot boundaries**. In Basic mode the two
+Full-mode filters match no videos. Segment Studio's filters are also available
+on Cove's Videos page. Sorting by segment count or unreviewed count is no
+longer offered; views saved with those sorts open sorted by title.
+Segment Studio's filters work on at most 50,000 videos at a time: in a larger
+library, narrow the list with a search or another Cove filter first.
+
 ## Review performer-slot coverage
 
 Open **Segment Studio → Settings → Performer slots** to see performer roles

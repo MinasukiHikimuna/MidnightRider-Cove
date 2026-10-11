@@ -108,6 +108,11 @@ Basic does not have a review concept. Consequently:
   eligibility, not unreviewed/approved/rejected counts;
 - no Basic background effect fetches review data.
 
+One exception is visible but inert: Segment Studio declares its video list filters
+for every Cove video list, and an extension manifest cannot vary by user, so
+Basic users also see **Review state (Full)** and **Has shot boundaries (Full)**.
+In Basic they match no videos and reveal nothing about Full-mode data.
+
 For merge specifically, two or more selected native segments are eligible when
 they are in one actual editor swimlane and satisfy the native timing/tag rules.
 After a merge and reload, the resulting segment is still native. Selecting the

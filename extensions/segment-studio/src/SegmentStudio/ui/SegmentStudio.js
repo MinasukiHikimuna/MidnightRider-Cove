@@ -17,7 +17,7 @@ export { restoreDisabledToolbarActionFocus } from "./editor/SegmentEditorView.js
 export { provenanceSourceLabel, compactProvenanceSummary } from "./editor/SegmentDetails.js";
 export { groupMaterializationOutputs } from "./editor/dialogs/MaterializationDialog.js";
 export { groupApprovedDraftsForPublishing } from "./editor/dialogs/EditorDialogs.js";
-export { DISCOVERY_SORT_OPTIONS, buildDiscoverySearchParams, normalizeDiscoveryIds, setBackLinkNavigation, updateDiscoverySelection } from "./discovery/components.js";
+export { buildDiscoveryFindRequest, discoveryCriteria, migrateLegacyDiscoveryFilter, migrateLegacyDiscoverySort, normalizeDiscoveryIds, setBackLinkNavigation, toDiscoveryItem, updateDiscoverySelection } from "./discovery/components.js";
 export { ANALYSIS_RUN_CHECK_INTERVAL_MS, createSegmentAnalysisRequestScope, shouldLoadSegmentAnalysis, startCompletedRunWatch } from "./editor/hooks/useSegmentAnalysis.js";
 export { buildPerformerSlotOverview, filterPerformerSlotOverview } from "./settings/organization.js";
 export { buildDerivationRuleGraph, layoutDerivationRuleComponent, layoutDerivationRuleComponents, validateDerivationRuleDraft, resolveSelectedDerivationRule } from "./settings/derivation/model.js";

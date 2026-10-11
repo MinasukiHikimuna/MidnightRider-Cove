@@ -1,23 +1,45 @@
-import { ExtensionSelectionActions, ListPage, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
+import { ExtensionSelectionActions, ListPage, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
 
-import { requestJson } from "../shared/api.js";
+import { requestCoveJson, requestJson } from "../shared/api.js";
 
-import { DISCOVERY_FILTER_CRITERIA, DISCOVERY_SORT_OPTIONS, DISCOVERY_URL_OPTIONS, DiscoveryCard, DiscoveryRow, buildDiscoverySearchParams, updateDiscoverySelection } from "./components.js";
+import { DISCOVERY_URL_OPTIONS, DiscoveryCard, DiscoveryRow, buildDiscoveryFindRequest, discoveryCriteria, migrateLegacyDiscoveryFilter, migrateLegacyDiscoverySort, toDiscoveryItem, updateDiscoverySelection } from "./components.js";
 
 import { SegmentStudioTabs } from "../shared/navigation.js";
 
 const DISCOVERY_SAVED_FILTER_SCOPE = "ext:com.midnightrider.segment-studio:videos";
 
+/** One page of Cove's video search, plus Segment Studio's segment counts for the videos on it. */
+async function loadDiscoveryPage(filter, objectFilter, fullMode, signal) {
+  const page = await requestCoveJson("/api/videos/find", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildDiscoveryFindRequest(filter, objectFilter, { fullMode })),
+    signal,
+  });
+  const videos = Array.isArray(page?.items) ? page.items : [];
+  const counts = videos.length > 0
+    ? await requestJson("/videos/segment-counts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoIds: videos.map((video) => video.id) }),
+      signal,
+    })
+    : { items: [] };
+  const countsByVideo = new Map((counts?.items ?? []).map((item) => [item.videoId, item]));
+  return { items: videos.map((video) => toDiscoveryItem(video, countsByVideo.get(video.id))), totalCount: page?.totalCount ?? 0 };
+}
+
 function SegmentStudioDiscoveryPage({
   onNavigate, compatibilityMode = false, mode = "editor", profile,
 }) {
+  const showReviewStates = compatibilityMode || mode === "review";
   const urlOptions = useMemo(() => {
     const saved = getDefaultFilter(DISCOVERY_SAVED_FILTER_SCOPE);
     const savedDisplayMode = saved?.uiOptions?.displayMode;
     return saved ? {
       ...DISCOVERY_URL_OPTIONS,
-      defaultFilter: { ...DISCOVERY_URL_OPTIONS.defaultFilter, ...(saved.findFilter || {}) },
-      defaultObjectFilter: saved.objectFilter || {},
+      defaultFilter: migrateLegacyDiscoverySort({ ...DISCOVERY_URL_OPTIONS.defaultFilter, ...(saved.findFilter || {}) }),
+      defaultObjectFilter: migrateLegacyDiscoveryFilter(saved.objectFilter || {}, { fullMode: showReviewStates }),
       defaultDisplayMode: DISCOVERY_URL_OPTIONS.allowedDisplayModes.includes(savedDisplayMode) ? savedDisplayMode : DISCOVERY_URL_OPTIONS.defaultDisplayMode,
     } : DISCOVERY_URL_OPTIONS;
   }, []);
@@ -31,7 +53,14 @@ function SegmentStudioDiscoveryPage({
   const selectionAnchorRef = useRef(null);
   const serializedFilter = JSON.stringify(filter);
   const serializedObjectFilter = JSON.stringify(objectFilter);
-  const showReviewStates = compatibilityMode || mode === "review";
+
+  useEffect(() => {
+    // Links and saved views from before Segment Studio used Cove's video search.
+    const migratedObjectFilter = migrateLegacyDiscoveryFilter(objectFilter, { fullMode: showReviewStates });
+    if (migratedObjectFilter !== objectFilter) setObjectFilter(migratedObjectFilter);
+    const migratedFilter = migrateLegacyDiscoverySort(filter);
+    if (migratedFilter !== filter) setFilter(migratedFilter);
+  }, [serializedFilter, serializedObjectFilter, showReviewStates]);
 
   useEffect(() => {
     selectionAnchorRef.current = null;
@@ -43,12 +72,12 @@ function SegmentStudioDiscoveryPage({
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    requestJson(`/videos?${buildDiscoverySearchParams(filter, objectFilter, compatibilityMode ? "compatibility" : mode === "review" ? "full" : null)}`, { signal: controller.signal })
+    loadDiscoveryPage(filter, objectFilter, showReviewStates, controller.signal)
       .then((loaded) => { if (requestId === requestRef.current) setResult(loaded); })
       .catch((requestError) => { if (requestId === requestRef.current && requestError.name !== "AbortError") setError(requestError.message || "Unable to discover videos."); })
       .finally(() => { if (requestId === requestRef.current) setLoading(false); });
     return () => { requestRef.current++; controller.abort(); };
-  }, [serializedFilter, serializedObjectFilter, compatibilityMode, mode, retryNonce]);
+  }, [serializedFilter, serializedObjectFilter, showReviewStates, retryNonce]);
 
   function updateFilter(next) { setFilter({ ...next, page: next.page || 1 }); }
   function updateObjectFilter(next) { setObjectFilter(next); setFilter({ ...filter, page: 1 }); }
@@ -76,9 +105,7 @@ function SegmentStudioDiscoveryPage({
       .map((item) => item.videoId)
       .filter((videoId) => !current.has(videoId))));
   }
-  const criteriaDefinitions = (compatibilityMode || mode === "review")
-    ? DISCOVERY_FILTER_CRITERIA
-    : DISCOVERY_FILTER_CRITERIA.filter((criterion) => !["reviewState", "shotBoundaries"].includes(criterion.id));
+  const criteriaDefinitions = useMemo(() => discoveryCriteria(VIDEO_CRITERIA), []);
 
   return h("div", { className: "w-full space-y-5" }, [
     h(SegmentStudioTabs, {
@@ -92,6 +119,7 @@ function SegmentStudioDiscoveryPage({
       key: "list",
       title: "Videos",
       pageKey: "segment-studio-videos",
+      filterMode: "videos",
       savedFilterScope: DISCOVERY_SAVED_FILTER_SCOPE,
       cardSizeEntityType: "video",
       maxPageSize: 1000,
@@ -101,7 +129,7 @@ function SegmentStudioDiscoveryPage({
       isLoading: loading,
       error: error ? new Error(error) : null,
       onRetry: () => setRetryNonce((value) => value + 1),
-      sortOptions: compatibilityMode || mode === "review" ? [...DISCOVERY_SORT_OPTIONS, { value: "unreviewed_count", label: "Unreviewed count" }] : DISCOVERY_SORT_OPTIONS,
+      sortOptions: VIDEO_SORT_OPTIONS,
       displayMode,
       onDisplayModeChange: setDisplayMode,
       availableDisplayModes: ["grid", "list"],

@@ -12,27 +12,153 @@ const DISCOVERY_URL_OPTIONS = {
   allowedDisplayModes: ["grid", "list"],
 };
 
-const DISCOVERY_SORT_OPTIONS = [
-  { value: "title", label: "Title" },
-  { value: "updated_at", label: "Updated" },
-  { value: "created_at", label: "Created" },
-  { value: "segment_count", label: "Segment count" },
-  { value: "random", label: "Random" },
-];
+const SEGMENT_STUDIO_EXTENSION_ID = "com.midnightrider.segment-studio";
 
-const DISCOVERY_FILTER_CRITERIA = [
-  { id: "hasSegments", label: "Has Segments", type: "bool", filterKey: "hasSegmentsCriterion" },
-  { id: "reviewState", label: "Review State", type: "enum", filterKey: "reviewStateCriterion", modifiers: ["EQUALS"], options: [
-    { value: "unreviewed", label: "Has unreviewed" },
-    { value: "approved", label: "Has approved" },
-    { value: "rejected", label: "Has rejected" },
-  ] },
-  { id: "segmentTags", label: "Segment Tags", type: "multiId", entityType: "tags", filterKey: "segmentTagsCriterion", hierarchyToggleLabel: "Include sub-tags" },
-  { id: "shotBoundaries", label: "Has Shot Boundaries", type: "bool", filterKey: "shotBoundariesCriterion" },
-  { id: "tags", label: "Video Tags", type: "multiId", entityType: "tags", filterKey: "tagsCriterion", hierarchyToggleLabel: "Include sub-tags" },
-  { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion" },
-  { id: "studios", label: "Studios", type: "multiId", entityType: "studios", filterKey: "studiosCriterion", hierarchyToggleLabel: "Include sub-studios" },
-];
+/** Cove's own Has Segments counts only native segments; Segment Studio's filter replaces it here. */
+const CORE_CRITERIA_REPLACED_BY_SEGMENT_STUDIO = new Set(["hasSegments"]);
+
+/** Sorts the old Segment Studio endpoint ran itself; Cove's video search cannot order by them. */
+const RETIRED_DISCOVERY_SORTS = new Set(["segment_count", "unreviewed_count"]);
+
+const CRITERION_MODIFIERS = {
+  EQUALS: "equals",
+  NOT_EQUALS: "notEquals",
+  GREATER_THAN: "greaterThan",
+  LESS_THAN: "lessThan",
+  INCLUDES: "includes",
+  EXCLUDES: "excludes",
+  INCLUDES_ALL: "includesAll",
+  EXCLUDES_ALL: "excludesAll",
+  IS_NULL: "isNull",
+  NOT_NULL: "notNull",
+  BETWEEN: "between",
+  NOT_BETWEEN: "notBetween",
+  MATCHES_REGEX: "matchesRegex",
+  NOT_MATCHES_REGEX: "notMatchesRegex",
+  UNDER_PATH: "underPath",
+  NOT_UNDER_PATH: "notUnderPath",
+};
+
+function segmentStudioCriterion(filterId, modifier, value) {
+  return { extensionId: SEGMENT_STUDIO_EXTENSION_ID, filterId, modifier, value };
+}
+
+function legacyPresence(value) {
+  if (typeof value === "boolean") return value;
+  if (value === "has") return true;
+  if (value === "none") return false;
+  return null;
+}
+
+function legacySegmentTagsCriterion(criterion) {
+  const value = normalizeDiscoveryIds(criterion?.value);
+  const excludes = normalizeDiscoveryIds(criterion?.excludes);
+  const modifier = { INCLUDES_ALL: "includesall", EXCLUDES: "excludes", IS_NULL: "isnull", NOT_NULL: "notnull" }[criterion?.modifier] ?? "includes";
+  if (modifier === "isnull" || modifier === "notnull") return segmentStudioCriterion("segment-tags", modifier, {});
+  if (value.length === 0 && (modifier === "excludes" || excludes.length === 0)) return null;
+  return segmentStudioCriterion("segment-tags", modifier, {
+    ...(value.length > 0 ? { value } : {}),
+    ...(excludes.length > 0 && modifier !== "excludes" ? { excludes } : {}),
+    ...(criterion?.depth === -1 ? { depth: -1 } : {}),
+  });
+}
+
+/**
+ * Rewrites views saved and links made before Segment Studio used Cove's video search: Segment
+ * Studio's own criteria become its extension filters and the old ID shortcuts become Cove's
+ * entity criteria. Criteria already in Segment Studio's current form win over legacy ones, and
+ * outside Full mode the Full-only review-state and shot-boundary criteria are dropped, as the old
+ * endpoint ignored them. Returns the same object when nothing needed rewriting.
+ */
+export function migrateLegacyDiscoveryFilter(objectFilter = {}, { fullMode = true } = {}) {
+  const legacyKeys = [
+    "hasSegmentsCriterion", "segments", "reviewStateCriterion", "reviewState", "shotBoundariesCriterion",
+    "shotBoundaries", "segmentTagsCriterion", "segmentTagId", "tagId", "videoTagIds", "performerIds", "studioId",
+  ];
+  if (!legacyKeys.some((key) => Object.hasOwn(objectFilter, key))) return objectFilter;
+  const next = { ...objectFilter };
+  legacyKeys.forEach((key) => delete next[key]);
+  const added = [];
+  const hasSegments = legacyPresence(objectFilter.hasSegmentsCriterion?.value ?? objectFilter.segments);
+  if (hasSegments !== null) added.push(segmentStudioCriterion("has-segments", "equals", hasSegments));
+  const reviewState = objectFilter.reviewStateCriterion?.value ?? objectFilter.reviewState;
+  if (fullMode && ["unreviewed", "approved", "rejected"].includes(reviewState)) added.push(segmentStudioCriterion("review-state", "equals", reviewState));
+  const shotBoundaries = legacyPresence(objectFilter.shotBoundariesCriterion?.value ?? objectFilter.shotBoundaries);
+  if (fullMode && shotBoundaries !== null) added.push(segmentStudioCriterion("has-shot-boundaries", "equals", shotBoundaries));
+  const segmentTagId = Number(objectFilter.segmentTagId ?? objectFilter.tagId) || null;
+  const segmentTags = objectFilter.segmentTagsCriterion
+    ? legacySegmentTagsCriterion(objectFilter.segmentTagsCriterion)
+    : segmentTagId ? legacySegmentTagsCriterion({ value: [segmentTagId] }) : null;
+  if (segmentTags) added.push(segmentTags);
+  const videoTagIds = normalizeDiscoveryIds(objectFilter.videoTagIds);
+  if (videoTagIds.length > 0 && !next.tagsCriterion) next.tagsCriterion = { modifier: "INCLUDES", value: videoTagIds };
+  const performerIds = normalizeDiscoveryIds(objectFilter.performerIds);
+  if (performerIds.length > 0 && !next.performersCriterion) next.performersCriterion = { modifier: "INCLUDES", value: performerIds };
+  const studioId = Number(objectFilter.studioId) || null;
+  if (studioId && !next.studiosCriterion) next.studiosCriterion = { modifier: "INCLUDES", value: [studioId] };
+  const kept = Array.isArray(objectFilter.extensionCriteria) ? objectFilter.extensionCriteria : [];
+  const current = new Set(kept.filter((criterion) => criterion?.extensionId === SEGMENT_STUDIO_EXTENSION_ID).map((criterion) => criterion.filterId));
+  const extensionCriteria = [...kept, ...added.filter((criterion) => !current.has(criterion.filterId))];
+  if (extensionCriteria.length > 0) next.extensionCriteria = extensionCriteria;
+  else delete next.extensionCriteria;
+  return next;
+}
+
+/** Falls back to the default order for the sorts Cove's video search does not offer. */
+export function migrateLegacyDiscoverySort(filter) {
+  if (!RETIRED_DISCOVERY_SORTS.has(filter?.sort)) return filter;
+  return { ...filter, sort: DISCOVERY_URL_OPTIONS.defaultFilter.sort, direction: DISCOVERY_URL_OPTIONS.defaultFilter.direction };
+}
+
+function normalizeCriterionModifiers(value) {
+  if (Array.isArray(value)) return value.map(normalizeCriterionModifiers);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+    key,
+    key === "modifier" && typeof entry === "string" ? (CRITERION_MODIFIERS[entry] ?? entry) : normalizeCriterionModifiers(entry),
+  ]));
+}
+
+/** The body for Cove's `POST /api/videos/find`, the same request Cove's Videos page sends. */
+export function buildDiscoveryFindRequest(filter, objectFilter, { fullMode = true } = {}) {
+  const listFilter = migrateLegacyDiscoverySort(filter);
+  const findFilter = {
+    page: listFilter.page || 1,
+    perPage: listFilter.perPage || DISCOVERY_URL_OPTIONS.defaultFilter.perPage,
+    sort: listFilter.sort || DISCOVERY_URL_OPTIONS.defaultFilter.sort,
+    direction: listFilter.direction || DISCOVERY_URL_OPTIONS.defaultFilter.direction,
+  };
+  if (listFilter.q) findFilter.q = listFilter.q;
+  if (findFilter.sort === "random" && Number.isInteger(listFilter.seed) && listFilter.seed > 0) findFilter.seed = listFilter.seed;
+  const migrated = { ...migrateLegacyDiscoveryFilter(objectFilter, { fullMode }) };
+  // Compilation grouping is a Videos page presentation; /find always returns plain videos.
+  delete migrated.includeCompilationGroups;
+  return { findFilter, objectFilter: normalizeCriterionModifiers(migrated) };
+}
+
+/** Core video criteria for the Videos tab; Segment Studio's own filters arrive as extension criteria. */
+export function discoveryCriteria(videoCriteria) {
+  return videoCriteria.filter((criterion) => !CORE_CRITERIA_REPLACED_BY_SEGMENT_STUDIO.has(criterion.id));
+}
+
+/** Maps one Cove video plus its Segment Studio counts onto a discovery card item. */
+export function toDiscoveryItem(video, counts) {
+  const file = Array.isArray(video.files) && video.files.length > 0 ? video.files[0] : null;
+  return {
+    videoId: video.id,
+    title: video.title?.trim() || file?.basename || `Video ${video.id}`,
+    details: video.details ?? null,
+    date: video.date ?? null,
+    organized: Boolean(video.organized),
+    isVr: Boolean(video.isVr),
+    duration: Number(file?.duration) || 0,
+    updatedAt: video.updatedAt,
+    segmentCount: counts?.segmentCount ?? 0,
+    unreviewedCount: counts?.unreviewedCount ?? 0,
+    approvedCount: counts?.approvedCount ?? 0,
+    rejectedCount: counts?.rejectedCount ?? 0,
+  };
+}
 
 function setPlainLinkNavigation(event, onNavigate, route) {
   if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
@@ -45,56 +171,6 @@ function setBackLinkNavigation(event, onNavigate, fallbackRoute) {
   event.preventDefault();
   if (window.history.length > 1) window.history.back();
   else onNavigate(fallbackRoute);
-}
-
-function criterionIds(criterion, key = "value") {
-  return Array.isArray(criterion?.[key])
-    ? [...new Set(criterion[key].map(Number).filter((value) => Number.isInteger(value) && value > 0))]
-    : [];
-}
-
-function appendCriterion(params, criterion, name, hierarchyKey = null) {
-  const includes = criterionIds(criterion);
-  const excludes = criterionIds(criterion, "excludes");
-  includes.forEach((value) => params.append(name, String(value)));
-  excludes.forEach((value) => params.append(`exclude${name[0].toUpperCase()}${name.slice(1)}`, String(value)));
-  const mode = { INCLUDES_ALL: "all", IS_NULL: "null", NOT_NULL: "not-null" }[criterion?.modifier];
-  if (mode) params.set(`${name}Mode`, mode);
-  if (hierarchyKey && criterion?.depth === -1 && (includes.length > 0 || excludes.length > 0)) params.set(hierarchyKey, "true");
-}
-
-export function buildDiscoverySearchParams(filter, objectFilter, workflow = null) {
-  const params = new URLSearchParams();
-  if (filter.q) params.set("q", filter.q);
-  if (filter.page) params.set("page", String(filter.page));
-  if (filter.perPage) params.set("perPage", String(filter.perPage));
-  if (filter.sort) params.set("sort", filter.sort);
-  if (filter.direction) params.set("direction", filter.direction);
-  if (filter.sort === "random" && Number.isInteger(filter.seed) && filter.seed > 0) params.set("seed", String(filter.seed));
-  const hasSegments = objectFilter.hasSegmentsCriterion?.value;
-  if (typeof hasSegments === "boolean") params.set("hasSegments", String(hasSegments));
-  else if (objectFilter.segments === "has") params.set("hasSegments", "true");
-  else if (objectFilter.segments === "none") params.set("hasSegments", "false");
-  appendCriterion(params, objectFilter.segmentTagsCriterion, "segmentTag", "includeSegmentSubtags");
-  appendCriterion(params, objectFilter.tagsCriterion, "videoTag", "includeVideoSubtags");
-  appendCriterion(params, objectFilter.performersCriterion, "performer");
-  appendCriterion(params, objectFilter.studiosCriterion, "studio", "includeSubstudios");
-  const segmentTagId = Number(objectFilter.segmentTagId ?? objectFilter.tagId) || null;
-  if (segmentTagId && !params.has("segmentTag")) params.set("segmentTagId", String(segmentTagId));
-  const videoTagIds = normalizeDiscoveryIds(objectFilter.videoTagIds);
-  if (videoTagIds.length > 0 && !params.has("videoTag")) params.set("videoTagIds", videoTagIds.join(","));
-  const performerIds = normalizeDiscoveryIds(objectFilter.performerIds);
-  if (performerIds.length > 0 && !params.has("performer")) params.set("performerIds", performerIds.join(","));
-  const studioId = Number(objectFilter.studioId) || null;
-  if (studioId && !params.has("studio")) params.set("studioId", String(studioId));
-  const reviewState = objectFilter.reviewStateCriterion?.value ?? objectFilter.reviewState;
-  if (workflow && ["unreviewed", "approved", "rejected"].includes(reviewState)) params.set("reviewState", reviewState);
-  if (workflow) params.set("workflow", workflow);
-  const hasShotBoundaries = objectFilter.shotBoundariesCriterion?.value;
-  if (workflow && typeof hasShotBoundaries === "boolean") params.set("hasShotBoundaries", String(hasShotBoundaries));
-  else if (workflow && objectFilter.shotBoundaries === "has") params.set("hasShotBoundaries", "true");
-  else if (workflow && objectFilter.shotBoundaries === "none") params.set("hasShotBoundaries", "false");
-  return params;
 }
 
 export function normalizeDiscoveryIds(value) {
@@ -212,4 +288,4 @@ function DiscoveryRow({ item, onNavigate, showReviewStates = false, selected = f
   ]);
 }
 
-export { DISCOVERY_URL_OPTIONS, DISCOVERY_SORT_OPTIONS, DISCOVERY_FILTER_CRITERIA, setPlainLinkNavigation, setBackLinkNavigation, updateDiscoverySelection, SegmentSummary, DiscoveryCard, DiscoveryRow };
+export { DISCOVERY_URL_OPTIONS, setPlainLinkNavigation, setBackLinkNavigation, updateDiscoverySelection, SegmentSummary, DiscoveryCard, DiscoveryRow };

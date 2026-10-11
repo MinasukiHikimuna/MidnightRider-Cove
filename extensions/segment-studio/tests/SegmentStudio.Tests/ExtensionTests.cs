@@ -31,6 +31,26 @@ public sealed class ExtensionTests
     }
 
     [Fact]
+    public void ContributesVideoListFiltersExecutedByCoveVideoSearch()
+    {
+        var filters = CreateExtension().GetUIManifest().ListFilters;
+
+        Assert.Equal(
+            ["has-segments", "review-state", "has-shot-boundaries", "segment-tags"],
+            filters.Select(filter => filter.FilterId));
+        Assert.All(filters, filter => Assert.Equal("videos", filter.EntityType));
+        var segmentTags = Assert.Single(filters, filter => filter.FilterId == "segment-tags");
+        Assert.Equal("multiid", segmentTags.CriterionType);
+        Assert.Equal("tags", segmentTags.EntityReferenceType);
+        Assert.Equal(["INCLUDES", "INCLUDES_ALL", "EXCLUDES", "IS_NULL", "NOT_NULL"], segmentTags.Modifiers);
+        var reviewState = Assert.Single(filters, filter => filter.FilterId == "review-state");
+        Assert.Equal(["unreviewed", "approved", "rejected"], reviewState.Options!.Select(option => option.Value));
+        Assert.Equal(
+            filters.Select(filter => filter.FilterId),
+            new SegmentStudioVideoFilterProvider(null!, null!, null!).Filters.Select(filter => filter.FilterId));
+    }
+
+    [Fact]
     public void ContributesSegmentStudioPage()
     {
         var extension = CreateExtension();
@@ -131,7 +151,7 @@ public sealed class ExtensionTests
         Assert.Equal(
             [SegmentStudioCapabilities.NavigationVideos],
             capabilityRequirements[
-                "GET /api/plugins/segment-studio/videos"]);
+                "POST /api/plugins/segment-studio/videos/segment-counts"]);
         Assert.Equal(
             [SegmentStudioCapabilities.NativeSegmentsRead],
             capabilityRequirements[
@@ -278,7 +298,7 @@ public sealed class ExtensionTests
                 new([Permissions.TagGroupsWrite]),
             ["DELETE /api/plugins/segment-studio/segment-groups/{groupId:long}"] =
                 new([Permissions.TagGroupsDelete]),
-            ["GET /api/plugins/segment-studio/videos"] =
+            ["POST /api/plugins/segment-studio/videos/segment-counts"] =
                 new([Permissions.SegmentsRead]),
             ["GET /api/plugins/segment-studio/videos/{videoId:int}/editor"] =
                 new([Permissions.SegmentsRead], EntityKinds.Video, "videoId", Permissions.VideosRead),

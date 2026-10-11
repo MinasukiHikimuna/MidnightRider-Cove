@@ -93,7 +93,7 @@ async function requestCoveJson(path, options) {
   const response = await extensionFetch(path, options);
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error || "Unable to load Cove data.");
+    throw new Error(payload?.error || payload?.detail || payload?.title || "Unable to load Cove data.");
   }
   return response.json();
 }

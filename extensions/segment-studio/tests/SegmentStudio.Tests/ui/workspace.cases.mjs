@@ -1009,7 +1009,7 @@ test("settings constrain gender hints to backend-supported enum values", () => {
 });
 
 test("editor mode gates compatibility approval and performer-slot workflow", () => {
-  const editor = source.slice(source.indexOf("function SegmentActiveEditor"), source.indexOf("const DISCOVERY_SORT_OPTIONS"));
+  const editor = source.slice(source.indexOf("function SegmentActiveEditor"), source.indexOf("const DISCOVERY_URL_OPTIONS"));
   assert.doesNotMatch(editor, /compatibilityMode \? h\("div", \{ key: "review"/);
   assert.doesNotMatch(editor, /approve\/unapprove/);
   assert.match(editor, /slotsOpen && compatibilityMode && selectedSegment/);

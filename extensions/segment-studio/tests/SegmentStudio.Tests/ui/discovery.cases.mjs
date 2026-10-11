@@ -1,9 +1,9 @@
 import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
-test("editor discovery preserves filters without reading hidden Full work in Basic", () => {
-  const params = ui.buildDiscoverySearchParams(
-    { q: "sample", page: 2, perPage: 24, sort: "segment_count", direction: "desc" },
-    {
+test("legacy discovery links and saved views become Cove video criteria and Segment Studio filters", () => {
+  const owner = "com.midnightrider.segment-studio";
+  assert.deepEqual(
+    ui.migrateLegacyDiscoveryFilter({
       segments: "has",
       reviewState: "approved",
       segmentTagId: 17,
@@ -11,48 +11,85 @@ test("editor discovery preserves filters without reading hidden Full work in Bas
       performerIds: [21, 22],
       studioId: 31,
       shotBoundaries: "none",
+    }),
+    {
+      tagsCriterion: { modifier: "INCLUDES", value: [41, 42] },
+      performersCriterion: { modifier: "INCLUDES", value: [21, 22] },
+      studiosCriterion: { modifier: "INCLUDES", value: [31] },
+      extensionCriteria: [
+        { extensionId: owner, filterId: "has-segments", modifier: "equals", value: true },
+        { extensionId: owner, filterId: "review-state", modifier: "equals", value: "approved" },
+        { extensionId: owner, filterId: "has-shot-boundaries", modifier: "equals", value: false },
+        { extensionId: owner, filterId: "segment-tags", modifier: "includes", value: { value: [17] } },
+      ],
+    },
+  );
+  assert.deepEqual(ui.migrateLegacyDiscoveryFilter({ tagId: 19 }).extensionCriteria, [
+    { extensionId: owner, filterId: "segment-tags", modifier: "includes", value: { value: [19] } },
+  ]);
+
+  const criteria = ui.migrateLegacyDiscoveryFilter({
+    hasSegmentsCriterion: { modifier: "EQUALS", value: true },
+    reviewStateCriterion: { modifier: "EQUALS", value: "unreviewed" },
+    segmentTagsCriterion: { modifier: "INCLUDES_ALL", value: [17, 18], excludes: [19], depth: -1 },
+    shotBoundariesCriterion: { modifier: "EQUALS", value: false },
+    tagsCriterion: { modifier: "INCLUDES_ALL", value: [41], excludes: [43], depth: -1 },
+    extensionCriteria: [
+      { extensionId: "other.extension", filterId: "kept", modifier: "equals", value: true },
+      { extensionId: owner, filterId: "has-segments", modifier: "equals", value: false },
+    ],
+  });
+  assert.deepEqual(criteria.tagsCriterion, { modifier: "INCLUDES_ALL", value: [41], excludes: [43], depth: -1 });
+  assert.deepEqual(criteria.extensionCriteria, [
+    { extensionId: "other.extension", filterId: "kept", modifier: "equals", value: true },
+    { extensionId: owner, filterId: "has-segments", modifier: "equals", value: false },
+    { extensionId: owner, filterId: "review-state", modifier: "equals", value: "unreviewed" },
+    { extensionId: owner, filterId: "has-shot-boundaries", modifier: "equals", value: false },
+    { extensionId: owner, filterId: "segment-tags", modifier: "includesall", value: { value: [17, 18], excludes: [19], depth: -1 } },
+  ]);
+  assert.deepEqual(
+    ui.migrateLegacyDiscoveryFilter({ segmentTagsCriterion: { modifier: "IS_NULL" } }).extensionCriteria,
+    [{ extensionId: owner, filterId: "segment-tags", modifier: "isnull", value: {} }],
+  );
+
+  assert.deepEqual(
+    ui.migrateLegacyDiscoveryFilter({ reviewState: "approved", shotBoundaries: "has", segments: "has" }, { fullMode: false }).extensionCriteria,
+    [{ extensionId: owner, filterId: "has-segments", modifier: "equals", value: true }],
+  );
+  assert.equal(ui.migrateLegacyDiscoveryFilter({ reviewState: "approved" }, { fullMode: false }).extensionCriteria, undefined);
+
+  const current = { tagsCriterion: { modifier: "INCLUDES", value: [41] } };
+  assert.equal(ui.migrateLegacyDiscoveryFilter(current), current);
+});
+
+test("video discovery sends Cove's video search request with retired sorts falling back", () => {
+  const request = ui.buildDiscoveryFindRequest(
+    { q: "sample", page: 3, perPage: 24, sort: "random", direction: "asc", seed: 2468 },
+    {
+      includeCompilationGroups: true,
+      tagsCriterion: { modifier: "INCLUDES_ALL", value: [41] },
+      extensionCriteria: [{ extensionId: "com.midnightrider.segment-studio", filterId: "segment-tags", modifier: "includesall", value: { value: [17] } }],
     },
   );
 
-  assert.equal(params.get("hasSegments"), "true");
-  assert.equal(params.has("reviewState"), false);
-  assert.equal(params.get("segmentTagId"), "17");
-  assert.equal(params.get("videoTagIds"), "41,42");
-  assert.equal(params.get("performerIds"), "21,22");
-  assert.equal(params.get("studioId"), "31");
-  assert.equal(params.has("hasShotBoundaries"), false);
-  assert.equal(params.has("workspace"), false);
-  const legacyParams = ui.buildDiscoverySearchParams(
-    { page: 1, perPage: 24 },
-    { tagId: 19 },
-  );
-  assert.equal(legacyParams.get("segmentTagId"), "19");
-  assert.equal(legacyParams.has("tagId"), false);
-  const fullParams = ui.buildDiscoverySearchParams(
-    { page: 1, perPage: 24 },
-    { reviewState: "unreviewed" },
-    "full",
-  );
-  assert.equal(fullParams.get("reviewState"), "unreviewed");
-  assert.equal(fullParams.get("workflow"), "full");
+  assert.deepEqual(request, {
+    findFilter: { page: 3, perPage: 24, sort: "random", direction: "asc", q: "sample", seed: 2468 },
+    objectFilter: {
+      tagsCriterion: { modifier: "includesAll", value: [41] },
+      extensionCriteria: [{ extensionId: "com.midnightrider.segment-studio", filterId: "segment-tags", modifier: "includesall", value: { value: [17] } }],
+    },
+  });
+  for (const sort of ["segment_count", "unreviewed_count"]) {
+    const retired = ui.buildDiscoveryFindRequest({ page: 1, perPage: 24, sort, direction: "desc" }, {});
+    assert.equal(retired.findFilter.sort, "title");
+    assert.equal(retired.findFilter.direction, "asc");
+  }
+  assert.equal(ui.buildDiscoveryFindRequest({ sort: "updated_at", direction: "desc" }, {}).findFilter.sort, "updated_at");
+
   const discovery = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));
   assert.doesNotMatch(discovery, /requestJson\("\/review\/segments"/);
   assert.doesNotMatch(discovery, /\/drafts/);
   assert.doesNotMatch(discovery, /method:\s*["']PUT["']/);
-});
-
-test("video discovery exposes Cove's seeded random sort", () => {
-  const params = ui.buildDiscoverySearchParams(
-    { page: 3, perPage: 24, sort: "random", direction: "asc", seed: 2468 },
-    {},
-  );
-
-  assert.equal(params.get("sort"), "random");
-  assert.equal(params.get("seed"), "2468");
-  assert.deepEqual(
-    ui.DISCOVERY_SORT_OPTIONS.find((option) => option.value === "random"),
-    { value: "random", label: "Random" },
-  );
 });
 
 test("video discovery keeps card selection without a private scan", () => {
@@ -91,61 +128,54 @@ test("video discovery selection mode toggles cards and extends ranges", () => {
   assert.match(cards, /h\(selectionActive \? "div" : "a"/);
 });
 
-test("video discovery defines native Cove entity criteria and focused updates", () => {
-  const discovery = source.slice(source.indexOf("function SegmentStudioDiscoveryPage"), source.indexOf("function SegmentStudioEditorPage"));
-
-  assert.match(sourceByModule["discovery/components.js"], /label: "Segment Tags"[\s\S]*entityType: "tags"/);
-  assert.match(sourceByModule["discovery/components.js"], /label: "Video Tags"[\s\S]*entityType: "tags"/);
-  assert.match(sourceByModule["discovery/components.js"], /label: "Performers"[\s\S]*entityType: "performers"/);
-  assert.match(sourceByModule["discovery/components.js"], /label: "Studios"[\s\S]*entityType: "studios"/);
-  assert.match(discovery, /setObjectFilter\(next\); setFilter\(\{ \.\.\.filter, page: 1 \}\)/);
-  assert.doesNotMatch(discovery, /setDisplayMode\("grid"\)|q: ""|sort: "title"/);
+test("video discovery cards combine Cove videos with Segment Studio counts", () => {
+  assert.deepEqual(
+    ui.toDiscoveryItem(
+      { id: 7, title: " ", date: "2014-03-22", organized: true, isVr: false, updatedAt: "2026-01-01T00:00:00Z", files: [{ basename: "clip.mp4", duration: 658 }] },
+      { videoId: 7, segmentCount: 3, unreviewedCount: 1, approvedCount: 2, rejectedCount: 0 },
+    ),
+    {
+      videoId: 7,
+      title: "clip.mp4",
+      details: null,
+      date: "2014-03-22",
+      organized: true,
+      isVr: false,
+      duration: 658,
+      updatedAt: "2026-01-01T00:00:00Z",
+      segmentCount: 3,
+      unreviewedCount: 1,
+      approvedCount: 2,
+      rejectedCount: 0,
+    },
+  );
+  assert.equal(ui.toDiscoveryItem({ id: 8, files: [] }, undefined).title, "Video 8");
+  assert.equal(ui.toDiscoveryItem({ id: 8, files: [] }, { videoId: 8, segmentCount: 2 }).unreviewedCount, 0);
+  assert.deepEqual(
+    ui.discoveryCriteria([{ id: "hasSegments" }, { id: "tags" }, { id: "performers" }]).map((criterion) => criterion.id),
+    ["tags", "performers"],
+  );
 });
 
-test("video discovery uses Cove's native list filtering contract", () => {
-  const params = ui.buildDiscoverySearchParams(
-    { q: "sample", page: 2, perPage: 40, sort: "updated_at", direction: "desc" },
-    {
-      hasSegmentsCriterion: { modifier: "EQUALS", value: true },
-      reviewStateCriterion: { modifier: "EQUALS", value: "approved" },
-      segmentTagsCriterion: { modifier: "INCLUDES_ALL", value: [17, 18], excludes: [19], depth: -1 },
-      shotBoundariesCriterion: { modifier: "EQUALS", value: false },
-      tagsCriterion: { modifier: "INCLUDES_ALL", value: [41, 42], excludes: [43], depth: -1 },
-      performersCriterion: { modifier: "INCLUDES", value: [21, 22], excludes: [23] },
-      studiosCriterion: { modifier: "INCLUDES", value: [31], excludes: [32], depth: -1 },
-    },
-    "full",
-  );
-
-  assert.deepEqual(params.getAll("segmentTag"), ["17", "18"]);
-  assert.deepEqual(params.getAll("excludeSegmentTag"), ["19"]);
-  assert.equal(params.get("segmentTagMode"), "all");
-  assert.equal(params.get("includeSegmentSubtags"), "true");
-  assert.deepEqual(params.getAll("videoTag"), ["41", "42"]);
-  assert.deepEqual(params.getAll("excludeVideoTag"), ["43"]);
-  assert.equal(params.get("videoTagMode"), "all");
-  assert.equal(params.get("includeVideoSubtags"), "true");
-  assert.deepEqual(params.getAll("performer"), ["21", "22"]);
-  assert.deepEqual(params.getAll("excludePerformer"), ["23"]);
-  assert.deepEqual(params.getAll("studio"), ["31"]);
-  assert.deepEqual(params.getAll("excludeStudio"), ["32"]);
-  assert.equal(params.get("includeSubstudios"), "true");
-  assert.equal(params.get("hasSegments"), "true");
-  assert.equal(params.get("reviewState"), "approved");
-  assert.equal(params.get("hasShotBoundaries"), "false");
-
+test("video discovery uses Cove's video search, criteria, and sorts", () => {
   const discovery = sourceByModule["discovery/SegmentStudioDiscoveryPage.js"];
   const runtime = sourceByModule["shared/runtime.js"];
   assert.match(discovery, /h\(ListPage/);
+  assert.match(discovery, /filterMode: "videos"/);
+  assert.match(discovery, /criteriaDefinitions = useMemo\(\(\) => discoveryCriteria\(VIDEO_CRITERIA\), \[\]\)/);
+  assert.match(discovery, /sortOptions: VIDEO_SORT_OPTIONS/);
+  assert.match(discovery, /requestCoveJson\("\/api\/videos\/find"/);
+  assert.match(discovery, /requestJson\("\/videos\/segment-counts", \{\n      method: "POST"/);
   assert.match(discovery, /savedFilterScope:\s*DISCOVERY_SAVED_FILTER_SCOPE/);
   assert.match(discovery, /getDefaultFilter\(DISCOVERY_SAVED_FILTER_SCOPE\)/);
-  assert.match(discovery, /defaultFilter:\s*\{ \.\.\.DISCOVERY_URL_OPTIONS\.defaultFilter, \.\.\.\(saved\.findFilter \|\| \{\}\) \}/);
-  assert.match(discovery, /defaultObjectFilter:\s*saved\.objectFilter \|\| \{\}/);
+  assert.match(discovery, /defaultObjectFilter:\s*migrateLegacyDiscoveryFilter\(saved\.objectFilter \|\| \{\}, \{ fullMode: showReviewStates \}\)/);
+  assert.match(discovery, /setObjectFilter\(next\); setFilter\(\{ \.\.\.filter, page: 1 \}\)/);
+  assert.doesNotMatch(discovery, /setDisplayMode\("grid"\)|q: ""/);
   assert.doesNotMatch(discovery, /initialState:/);
-  assert.doesNotMatch(discovery, /h\(DiscoveryFilters/);
   assert.doesNotMatch(discovery, /h\(DetailListToolbar/);
   assert.doesNotMatch(discovery, /h\(DetailListPagination/);
-  assert.match(runtime, /ListPage/);
+  assert.match(runtime, /VIDEO_CRITERIA/);
+  assert.match(runtime, /VIDEO_SORT_OPTIONS/);
 });
 
 test("video discovery ID filters normalize for URL reload persistence", () => {
@@ -664,7 +694,7 @@ test("Basic recycling errors preserve the fitted editor and only stale conflicts
 });
 
 test("editor tag selection uses Cove's single autocomplete control", () => {
-  const editor = source.slice(source.indexOf("function SegmentActiveEditor"), source.indexOf("const DISCOVERY_SORT_OPTIONS"));
+  const editor = source.slice(source.indexOf("function SegmentActiveEditor"), source.indexOf("const DISCOVERY_URL_OPTIONS"));
   assert.match(editor, /placeholder: "Find a tag…"/);
   assert.match(editor, /h\(EntityReferenceSelector/);
   assert.match(editor, /entityType: "tag"/);

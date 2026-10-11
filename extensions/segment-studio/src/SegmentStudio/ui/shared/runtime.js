@@ -10,6 +10,8 @@ import {
   EntityReferenceMultiSelector,
   EntityReferenceSelector,
   ListPage,
+  VIDEO_CRITERIA,
+  VIDEO_SORT_OPTIONS,
   VideoPlayer,
   formatDuration,
   getDefaultFilter,
@@ -46,4 +48,4 @@ const { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState
 
 const h = React.createElement;
 
-export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, ListPage, VideoPlayer, formatDuration, getDefaultFilter, optionalHostComponent, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };
+export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, ListPage, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, VideoPlayer, formatDuration, getDefaultFilter, optionalHostComponent, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };
