@@ -68,40 +68,51 @@ test("mode-switch confirmations explain hidden and permanently removed data", ()
   assert.match(settings, /requestJson\("\/preferences", \{[\s\S]*method: "PUT"/);
 });
 
-test("Browse defaults to every review state and drops slots without an activity", () => {
+test("Browse sends no slotted performer without a condition and keeps legacy review states", () => {
   assert.deepEqual(ui.selectedBrowseStates(""), ["unreviewed", "approved", "rejected"]);
   assert.deepEqual(ui.selectedBrowseStates("approved,rejected,approved"), ["approved", "rejected"]);
-  assert.deepEqual(ui.parseBrowseSlotFilters('{"slot-a":12,"bad":0}'), { "slot-a": 12 });
-  assert.deepEqual(ui.parseBrowseSlotFilters("not-json"), {});
   assert.deepEqual(ui.buildBrowseRequest(
     { q: " example ", page: 2, perPage: 12 },
-    { states: "rejected", slots: '{"slot-a":12}' },
+    { states: "rejected", slottedPerformerCriterion: { mode: "none" } },
   ), {
     query: "example",
-    activityTagId: null,
     activityTagIds: [],
     includeActivitySubtags: false,
     reviewStates: ["rejected"],
-    slotAssignments: [],
+    slottedPerformer: null,
     page: 2,
     perPage: 12,
     sort: "default",
     direction: "desc",
-    performerIds: [],
   });
 });
 
-test("Browse sends activity-scoped slot filters and restores editor deep links", () => {
-  const request = ui.buildBrowseRequest(
-    { page: 1, perPage: 24, sort: "default", direction: "desc" },
-    { activityId: 7, performerId: 33, slots: '{"slot-b":22,"slot-a":11}' },
-  );
-  assert.deepEqual(request.activityTagIds, [7]);
-  assert.deepEqual(request.performerIds, [33]);
-  assert.deepEqual(request.slotAssignments, [
-    { slotDefinitionId: "slot-b", performerId: 22 },
-    { slotDefinitionId: "slot-a", performerId: 11 },
-  ]);
+test("Browse sends a slotted performer with its slot and Cove's camelCase modifiers and restores editor deep links", () => {
+  const slotted = (value) => ui.buildBrowseRequest({ page: 1 }, { slottedPerformerCriterion: value }).slottedPerformer;
+  assert.deepEqual(slotted({
+    slotCriterion: { modifier: "EQUALS", value: "giver" },
+    mode: "every",
+    conditionOperator: "or",
+    objectFilter: { genderCriterion: { modifier: "EQUALS", value: "Female" }, tagsCriterion: { modifier: "INCLUDES_ALL", value: [3], depth: -1 } },
+    performerIdsCriterion: { modifier: "EXCLUDES", value: [5], _names: { 5: "Name" } },
+    performerOccurrenceTagsCriterion: { modifier: "INCLUDES_ALL", value: [7, 8], depth: -1 },
+    _savedFilterName: "Saved",
+  }), {
+    role: "giver",
+    performers: {
+      mode: "every",
+      conditionOperator: "or",
+      objectFilter: { genderCriterion: { modifier: "equals", value: "Female" }, tagsCriterion: { modifier: "includesAll", value: [3], depth: -1 } },
+      performerIdsCriterion: { modifier: "excludes", value: [5] },
+      performerOccurrenceTagsCriterion: { modifier: "includesAll", value: [7, 8], depth: -1 },
+    },
+    unassigned: null,
+  });
+  assert.deepEqual(slotted({ _matchAll: true }), { role: "*", performers: {}, unassigned: null });
+  assert.deepEqual(slotted({ slotCriterion: { modifier: "EQUALS", value: "receiver" } }), { role: "receiver", performers: {}, unassigned: null });
+  assert.deepEqual(slotted({ slotCriterion: { value: "receiver" }, unassignedSlotCriterion: { value: true } }), { role: "receiver", performers: null, unassigned: true });
+  assert.deepEqual(slotted({ unassignedSlotCriterion: { value: false }, ageAtHostDateCriterion: { modifier: "NOT_BETWEEN", value: 18, value2: 20 } }),
+    { role: "*", performers: { ageAtHostDateCriterion: { modifier: "notBetween", value: 18, value2: 20 } }, unassigned: false });
   assert.equal(ui.browseEditorHref({ videoId: 5, segmentId: 9 }), "/segment-studio/5?segment=9");
   assert.equal(ui.browseEditorHref({ videoId: 5, itemId: 12, published: false }), "/segment-studio/5?item=12");
   assert.equal(ui.requestedSegmentId("?segment=9"), 9);
@@ -121,22 +132,92 @@ test("Browse sends activity-scoped slot filters and restores editor deep links",
   assert.match(source, /active: "segments"/);
 });
 
-test("Browse serializes native multi-value filter criteria", () => {
-  const request = ui.buildBrowseRequest(
-    { page: 1, perPage: 24, sort: "default", direction: "desc" },
-    {
-      activitiesCriterion: { modifier: "INCLUDES", value: [7, 8], depth: -1 },
-      performersCriterion: { modifier: "INCLUDES", value: [33, 34] },
-      reviewStateCriterion: { modifier: "EQUALS", value: "rejected" },
-      slots: '{"slot-a":11}',
+test("Browse sends the advanced filter as an expression of the same criteria", () => {
+  const giver = { slottedPerformerCriterion: { slotCriterion: { value: "giver" }, performerIdsCriterion: { modifier: "INCLUDES", value: [1] } } };
+  const request = ui.buildBrowseRequest({ page: 1 }, {
+    activitiesCriterion: { modifier: "INCLUDES", value: [7] },
+    _filterExpression: {
+      operator: "AND",
+      relatedScope: { filterKey: "slottedPerformerCriterion", matchMode: "distinct" },
+      children: [
+        { filter: giver },
+        { group: { operator: "OR", _semanticNone: true, children: [{ filter: { reviewStateCriterion: { modifier: "EQUALS", value: "rejected" } } }] } },
+      ],
     },
+  });
+  assert.deepEqual(request.activityTagIds, [7]);
+  assert.deepEqual(request.filterExpression, {
+    operator: "AND",
+    relatedScope: { filterKey: "slottedPerformerCriterion", matchMode: "distinct" },
+    children: [
+      { filter: { activityTagIds: [], includeActivitySubtags: false, reviewStates: [], slottedPerformer: { role: "giver", performers: { performerIdsCriterion: { modifier: "includes", value: [1] } }, unassigned: null } } },
+      { group: { operator: "NOT", children: [{ filter: { activityTagIds: [], includeActivitySubtags: false, reviewStates: ["rejected"], slottedPerformer: null } }] } },
+    ],
+  });
+  assert.equal(ui.buildBrowseRequest({ page: 1 }, { _filterExpression: { operator: "AND", children: [] } }).filterExpression, undefined);
+  assert.deepEqual(ui.withoutSlottedPerformers({ reviewStateCriterion: { value: "approved" }, ...giver, _filterExpression: { children: [{ filter: giver }] } }),
+    { reviewStateCriterion: { value: "approved" } });
+  const tags = { activitiesCriterion: { value: [1] } };
+  assert.deepEqual(ui.withoutSlottedPerformers({ _filterExpression: { operator: "AND", relatedScope: { filterKey: "slottedPerformerCriterion", matchMode: "distinct" }, children: [
+    { group: { operator: "OR", children: [{ filter: tags }, { filter: { ...tags, ...giver } }] } },
+    { group: { operator: "NOT", children: [{ filter: giver }] } },
+    { filter: giver },
+  ] } }), { _filterExpression: { operator: "AND", children: [{ group: { operator: "OR", children: [{ filter: tags }, { filter: tags }] } }] } }, "keeps the other conditions");
+  const tagsOnly = { _filterExpression: { operator: "OR", children: [{ filter: { activitiesCriterion: { value: [1] } } }] } };
+  assert.deepEqual(ui.withoutSlottedPerformers(tagsOnly), tagsOnly);
+});
+
+test("Browse offers one Slotted Performer filter whose Slot condition lists the merged roles", () => {
+  const performerCriteria = [{ id: "gender", type: "enum", filterKey: "genderCriterion" }, { id: "relatedVideos", type: "related", filterKey: "videoFilterCriterion" }];
+  const criterion = ui.slottedPerformerCriterion(
+    [{ key: "giver", label: "Giver", tagCount: 2 }, { key: "*", label: "*", tagCount: 1 }],
+    { _filterExpression: { children: [{ filter: { slottedPerformerCriterion: { slotCriterion: { value: "retired" } } } }] } },
+    performerCriteria,
   );
-  assert.deepEqual(request.activityTagIds, [7, 8]);
-  assert.equal(request.includeActivitySubtags, true);
-  assert.deepEqual(request.performerIds, [33, 34]);
-  assert.deepEqual(request.reviewStates, ["rejected"]);
-  assert.equal(request.activityTagId, null);
-  assert.deepEqual(request.slotAssignments, []);
+  assert.equal(criterion.filterKey, "slottedPerformerCriterion");
+  assert.equal(criterion.label, "Slotted Performer");
+  assert.equal(criterion.type, "related");
+  assert.equal(criterion.supportsDistinctSiblingMatches, true);
+  assert.equal(criterion.relatedResultLabel, "segments");
+  assert.deepEqual(criterion.relatedCriteria().map((item) => item.id), ["gender"]);
+  assert.deepEqual(criterion.relatedContextCriteria.map((item) => item.filterKey),
+    ["slotCriterion", "performerIdsCriterion", "ageAtHostDateCriterion", "performerOccurrenceTagsCriterion", "unassignedSlotCriterion"]);
+  assert.deepEqual(criterion.relatedContextCriteria[0].options, [
+    { value: "*", label: "Any" }, { value: "giver", label: "Giver" }, { value: "retired", label: "retired" },
+  ]);
+  assert.deepEqual(criterion.relatedContextCriteria[1].modifiers, ["INCLUDES", "EXCLUDES"]);
+});
+
+test("Browse migrates legacy performer and tag-scoped slot links to slotted performers in distinct slots", () => {
+  const roles = [{ key: "giver", label: "Giver", slotDefinitionIds: ["slot-a", "slot-c"] }];
+  const leaf = (role, ids) => ({ slotCriterion: { modifier: "EQUALS", value: role }, performerIdsCriterion: { modifier: "INCLUDES", value: ids } });
+  assert.deepEqual(ui.migrateLegacyBrowseFilter({ performersCriterion: { modifier: "INCLUDES", value: [3, 4] }, reviewStateCriterion: { value: "approved" } }, null), {
+    reviewStateCriterion: { value: "approved" },
+    slottedPerformerCriterion: { slotCriterion: { modifier: "EQUALS", value: "*" }, performerIdsCriterion: { modifier: "INCLUDES", value: [3, 4] } },
+  });
+  const slots = { slots: '{"activityTagId":7,"values":{"slot-a":11,"slot-b":12,"slot-c":13}}' };
+  assert.equal(ui.migrateLegacyBrowseFilter(slots, null), slots, "waits for the role catalog");
+  assert.deepEqual(ui.migrateLegacyBrowseFilter(slots, roles), {
+    _filterExpression: {
+      operator: "AND",
+      relatedScope: { filterKey: "slottedPerformerCriterion", matchMode: "distinct" },
+      children: [
+        { filter: { slottedPerformerCriterion: leaf("giver", [11]) } },
+        { filter: { slottedPerformerCriterion: leaf("*", [12]) } },
+        { filter: { slottedPerformerCriterion: leaf("giver", [13]) } },
+      ],
+    },
+    activitiesCriterion: { modifier: "INCLUDES", value: [7] },
+  });
+  assert.deepEqual(ui.migrateLegacyBrowseFilter({ performerId: 5, slots: '{"slot-a":12}' }, roles), {
+    _filterExpression: { operator: "AND", children: [
+      { filter: { slottedPerformerCriterion: leaf("giver", [12]) } },
+      { filter: { slottedPerformerCriterion: { slotCriterion: { modifier: "EQUALS", value: "*" }, performerIdsCriterion: { modifier: "INCLUDES", value: [5] } } } },
+    ] },
+  });
+  assert.deepEqual(ui.migrateLegacyBrowseFilter({ slots: '{"slot-c":12}' }, roles), { slottedPerformerCriterion: leaf("giver", [12]) });
+  const current = { slottedPerformerCriterion: { _matchAll: true } };
+  assert.equal(ui.migrateLegacyBrowseFilter(current, roles), current);
 });
 
 test("Browse uses Cove-native filters and saved-filter defaults", () => {
@@ -144,17 +225,21 @@ test("Browse uses Cove-native filters and saved-filter defaults", () => {
   const model = sourceByModule["discovery/model.js"];
   assert.match(browsePage, /h\(ListPage/);
   assert.match(browsePage, /getDefaultFilter\("ext:com\.midnightrider\.segment-studio:segments"\)/);
-  assert.match(browsePage, /criteriaDefinitions: result\.performerSlotsAvailable === false \? BROWSE_FILTER_CRITERIA\.filter/);
+  assert.match(browsePage, /criteriaDefinitions: criteria, objectFilter: migratedFilter, supportsFilterExpressions: true/);
+  assert.match(browsePage, /slottedPerformerCriterion\(roles, objectFilter, PERFORMER_CRITERIA\)/);
+  assert.match(browsePage, /requestJson\("\/browse\/roles"/);
+  assert.match(browsePage, /setRolesError\(requestError\.message/);
+  assert.match(browsePage, /setRolesAttempt\(/);
+  assert.match(browsePage, /setMessage\("Performer slot filters were cleared/);
+  assert.match(browsePage, /setObjectFilter\(withoutSlottedPerformers\(migratedFilter\)\)/);
   assert.match(model, /id: "activities"[\s\S]*type: "multiId"[\s\S]*entityType: "tags"/);
-  assert.match(model, /id: "performers"[\s\S]*entityType: "performers"/);
   assert.match(model, /id: "reviewState"[\s\S]*modifiers: \["EQUALS"\]/);
-  assert.doesNotMatch(model, /multiSelectOptions: true/);
+  assert.doesNotMatch(model, /id: "performers"/);
+  assert.doesNotMatch(model, /slotRole:/);
   assert.match(browsePage, /requestError\.message\.includes\("unrestricted performer read access"\)/);
   assert.match(browsePage, /performerSlotsAvailable: false/);
-  assert.match(browsePage, /performersCriterion: undefined/);
-  assert.match(browsePage, /customFilterSections: slotFilterSections/);
-  assert.match(browsePage, /filterKey: "slots"/);
-  assert.match(browsePage, /serializeBrowseSlotFilters\(activityId/);
+  assert.doesNotMatch(browsePage, /customFilterSections/);
+  assert.doesNotMatch(browsePage, /h\("select"/);
   assert.doesNotMatch(browsePage, /h\(EntityReferenceSelector/);
 });
 

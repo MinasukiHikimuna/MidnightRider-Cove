@@ -135,6 +135,7 @@ function SegmentStudioDiscoveryPage({
       availableDisplayModes: ["grid", "list"],
       criteriaDefinitions,
       objectFilter,
+      supportsFilterExpressions: true,
       onObjectFilterChange: updateObjectFilter,
       searchPlaceholder: "Search Segment Studio videos...",
       selectedIds: showReviewStates ? selectedIds : undefined,

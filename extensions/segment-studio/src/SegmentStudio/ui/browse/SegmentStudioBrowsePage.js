@@ -1,8 +1,8 @@
-import { ListPage, VideoPlayer, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
+import { ListPage, PERFORMER_CRITERIA, VideoPlayer, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
 
 import { completeOperation, confirmDependencyDeletion, dependencyDeletionAllowed, formatTime, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestJson } from "../shared/api.js";
 
-import { BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, browseClipEnd, browseEditorHref, buildBrowseRequest, parseBrowseSlotFilters, serializeBrowseSlotFilters } from "../discovery/model.js";
+import { BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, browseClipEnd, browseEditorHref, buildBrowseRequest, migrateLegacyBrowseFilter, slottedPerformerCriterion, withoutSlottedPerformers } from "../discovery/model.js";
 
 import { SegmentStateBadge, segmentRailItemStyle } from "../shared/presentation.js";
 
@@ -11,25 +11,6 @@ import { PerformerSublaneAvatars } from "../editor/model/swimlanes.js";
 import { performerSlotLabel } from "../editor/model/history.js";
 
 import { SegmentStudioTabs } from "../shared/navigation.js";
-
-function BrowseSlotFilters({ facets, values, disabled, onChange }) {
-  if (disabled) return h("p", { className: "rounded-md border border-dashed border-border p-3 text-xs text-secondary" },
-    "Performer slot filters are unavailable for your current access. Browse and playback remain available.");
-  if (!facets?.slots?.length) return null;
-  return h("div", { className: "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" }, facets.slots.map((slot) =>
-    h("label", { key: slot.id, className: "space-y-1 text-xs text-secondary" }, [
-      h("span", { key: "label" }, performerSlotLabel(slot)),
-      h("select", {
-        key: "select",
-        value: values[slot.id] || "",
-        onChange: (event) => onChange(slot.id, event.target.value),
-        className: "w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground",
-      }, [
-        h("option", { key: "all", value: "" }, "Any assigned performer"),
-        ...(slot.performers || []).map((performer) => h("option", { key: performer.id, value: performer.id }, `${performer.name} (${performer.assignmentCount})`)),
-      ]),
-    ])));
-}
 
 function BrowseSegmentCard({ item, selected, busy, onSelect, onRestore, onPurge }) {
   const slots = [...(item.slots || [])].sort((left, right) => left.sortOrder - right.sortOrder || String(left.slotDefinitionId).localeCompare(String(right.slotDefinitionId)));
@@ -118,7 +99,9 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
     } : BROWSE_URL_OPTIONS;
   }, []);
   const { filter, objectFilter, setFilter, setObjectFilter } = useListUrlState(urlOptions);
-  const [facets, setFacets] = useState(null);
+  const [roles, setRoles] = useState(null);
+  const [rolesError, setRolesError] = useState("");
+  const [rolesAttempt, setRolesAttempt] = useState(0);
   const [result, setResult] = useState({ items: [], totalCount: 0, performerSlotsAvailable: true });
   const [selectedKey, setSelectedKey] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
@@ -127,39 +110,37 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestRef = useRef(0);
-  const request = buildBrowseRequest(filter, objectFilter);
-  const activityId = request.activityTagId;
-  const slotValues = parseBrowseSlotFilters(objectFilter.slots);
-  const slotFilterSections = useMemo(() => [{
-    id: "slots", label: "Performer Slots", filterKey: "slots", defaultValue: undefined,
-    isActive: (value) => Object.keys(parseBrowseSlotFilters(value)).length > 0,
-    sanitize: (value) => serializeBrowseSlotFilters(activityId, parseBrowseSlotFilters(value)),
-    summarize: (value) => `${Object.keys(parseBrowseSlotFilters(value)).length} assigned`,
-    renderEditor: (value, onChange) => activityId
-      ? h(BrowseSlotFilters, {
-        facets, values: parseBrowseSlotFilters(value), disabled: result.performerSlotsAvailable === false || facets?.restricted,
-        onChange: (slotId, performerId) => {
-          const next = { ...parseBrowseSlotFilters(value) };
-          if (performerId) next[slotId] = Number(performerId); else delete next[slotId];
-          onChange(serializeBrowseSlotFilters(activityId, next));
-        },
-      })
-      : h("p", { className: "text-sm text-secondary" }, "Select one tag before filtering performer slots."),
-  }], [activityId, facets, result.performerSlotsAvailable]);
+  const migratedFilter = migrateLegacyBrowseFilter(objectFilter, roles);
+  const migrationPending = migratedFilter.slots !== undefined;
+  const request = buildBrowseRequest(filter, migratedFilter);
+  const performerSlotsAvailable = result.performerSlotsAvailable !== false;
+  const criteria = useMemo(() => performerSlotsAvailable
+    ? [...BROWSE_FILTER_CRITERIA, slottedPerformerCriterion(roles, objectFilter, PERFORMER_CRITERIA)] : BROWSE_FILTER_CRITERIA,
+  [roles, objectFilter, performerSlotsAvailable]);
   const serializedRequest = JSON.stringify(request);
 
   useEffect(() => {
-    setFacets(null);
-    if (!activityId) return undefined;
     const controller = new AbortController();
-    requestJson(`/browse/activities/${activityId}/facets`, { signal: controller.signal }).then(setFacets).catch((requestError) => {
-      if (requestError.status === 403) setFacets({ slots: [], restricted: true });
-      else if (requestError.name !== "AbortError") setError(requestError.message);
+    setRolesError("");
+    requestJson("/browse/roles", { signal: controller.signal }).then(setRoles).catch((requestError) => {
+      if (requestError.name === "AbortError") return;
+      if (requestError.status === 403) {
+        setRoles([]);
+        setResult((current) => ({ ...current, performerSlotsAvailable: false }));
+      } else {
+        // Older slot links wait for the roles so their assignments are not widened to Any Slot.
+        setRolesError(requestError.message || "Unable to load performer slot roles.");
+      }
     });
     return () => controller.abort();
-  }, [activityId]);
+  }, [rolesAttempt]);
 
   useEffect(() => {
+    if (migratedFilter !== objectFilter && !migrationPending) setObjectFilter(migratedFilter);
+  }, [migratedFilter, objectFilter, migrationPending]);
+
+  useEffect(() => {
+    if (migrationPending) return undefined;
     const requestId = ++requestRef.current;
     const controller = new AbortController();
     setLoading(true);
@@ -170,29 +151,19 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
         if (requestId !== requestRef.current || requestError.name === "AbortError") return;
         if (requestError.status === 400 && requestError.message.includes("unrestricted performer read access")) {
           setResult((current) => ({ ...current, performerSlotsAvailable: false }));
-          setObjectFilter({ ...objectFilter, performerId: undefined, performersCriterion: undefined, slots: undefined });
-          setError("Performer filters were cleared because performer details are unavailable.");
+          setObjectFilter(withoutSlottedPerformers(migratedFilter));
+          setMessage("Performer slot filters were cleared because performer details are unavailable.");
           return;
         }
         setError(requestError.message);
       })
       .finally(() => { if (requestId === requestRef.current) setLoading(false); });
     return () => { requestRef.current++; controller.abort(); };
-  }, [serializedRequest, refreshToken]);
+  }, [serializedRequest, refreshToken, migrationPending]);
 
   const selectedIndex = result.items.findIndex((item) => item.key === selectedKey);
   const selected = result.items[selectedIndex] || null;
   function replaceObjectFilter(next) { setObjectFilter(next); setFilter({ ...filter, page: 1 }); }
-  function updateNativeObjectFilter(next) {
-    const nextRequest = buildBrowseRequest(filter, next);
-    const slots = next.slots && nextRequest.activityTagId != null && nextRequest.slotAssignments.length > 0 ? next.slots : undefined;
-    replaceObjectFilter({ ...next, slots });
-  }
-  function updateSlot(slotId, performerId) {
-    const next = { ...slotValues };
-    if (performerId) next[slotId] = Number(performerId); else delete next[slotId];
-    replaceObjectFilter({ ...objectFilter, slots: serializeBrowseSlotFilters(activityId, next) });
-  }
   function closePreview() {
     const trigger = document.querySelector(`[data-segment-key="${selectedKey}"]`);
     setSelectedKey(null);
@@ -278,11 +249,14 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
       error: error ? new Error(error) : null, onRetry: () => setRefreshToken((value) => value + 1),
       sortOptions: [{ value: "default", label: "Updated" }],
       displayMode: "grid", availableDisplayModes: ["grid"],
-      criteriaDefinitions: result.performerSlotsAvailable === false ? BROWSE_FILTER_CRITERIA.filter((criterion) => criterion.id !== "performers") : BROWSE_FILTER_CRITERIA, objectFilter,
-      onObjectFilterChange: updateNativeObjectFilter, customFilterSections: slotFilterSections, searchPlaceholder: "Search segments...",
+      criteriaDefinitions: criteria, objectFilter: migratedFilter, supportsFilterExpressions: true,
+      onObjectFilterChange: replaceObjectFilter, searchPlaceholder: "Search segments...",
     }, [
-    activityId ? h(BrowseSlotFilters, { key: "slots", facets, values: slotValues, disabled: result.performerSlotsAvailable === false || facets?.restricted, onChange: updateSlot }) : null,
     h(BrowsePlayer, { key: "player", item: selected, index: selectedIndex, count: result.items.length, onPrevious: () => setSelectedKey(result.items[selectedIndex - 1]?.key), onNext: () => setSelectedKey(result.items[selectedIndex + 1]?.key), onClose: closePreview, onNavigate }),
+    rolesError ? h("div", { key: "roles-error", role: "alert", className: "flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm text-secondary" }, [
+      h("span", { key: "text" }, `Performer slot roles could not be loaded: ${rolesError}`),
+      h("button", { key: "retry", type: "button", onClick: () => setRolesAttempt((value) => value + 1), className: "font-semibold text-accent hover:underline" }, "Retry"),
+    ]) : null,
     message ? h("p", { key: "message", role: "status", className: "rounded-md border border-border bg-card px-3 py-2 text-sm text-secondary" }, message) : null,
     !loading && result.items.length === 0 ? h("p", { key: "empty", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" }, "No segments match these filters.") : null,
     !loading ? h("section", { key: "cards", "aria-label": "Browse results", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, result.items.map((item) => h(BrowseSegmentCard, {
@@ -298,4 +272,4 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
   ]);
 }
 
-export { BrowseSlotFilters, BrowseSegmentCard, BrowsePlayer, SegmentStudioBrowsePage };
+export { BrowseSegmentCard, BrowsePlayer, SegmentStudioBrowsePage };

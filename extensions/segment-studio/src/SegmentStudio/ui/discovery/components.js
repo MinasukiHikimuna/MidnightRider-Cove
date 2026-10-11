@@ -133,7 +133,13 @@ export function buildDiscoveryFindRequest(filter, objectFilter, { fullMode = tru
   const migrated = { ...migrateLegacyDiscoveryFilter(objectFilter, { fullMode }) };
   // Compilation grouping is a Videos page presentation; /find always returns plain videos.
   delete migrated.includeCompilationGroups;
-  return { findFilter, objectFilter: normalizeCriterionModifiers(migrated) };
+  // The advanced filter travels beside the object filter, as on Cove's Videos page.
+  const { _filterExpression: filterExpression, ...plain } = migrated;
+  return {
+    findFilter,
+    objectFilter: normalizeCriterionModifiers(plain),
+    ...(filterExpression?.children?.length ? { filterExpression: normalizeCriterionModifiers(filterExpression) } : {}),
+  };
 }
 
 /** Core video criteria for the Videos tab; Segment Studio's own filters arrive as extension criteria. */

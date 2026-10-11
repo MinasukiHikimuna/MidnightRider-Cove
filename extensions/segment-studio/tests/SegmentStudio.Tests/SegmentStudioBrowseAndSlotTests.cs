@@ -2,6 +2,8 @@ namespace SegmentStudio.Tests;
 
 using System.Text.Json;
 using Cove.Core.Entities;
+using Cove.Core.Interfaces;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 public sealed class SegmentStudioBrowseAndSlotTests
@@ -29,7 +31,7 @@ public sealed class SegmentStudioBrowseAndSlotTests
         await db.SaveChangesAsync();
 
         var (all, error) = await SegmentStudioBrowseService.SearchAsync(
-            db, new(null, null, [], [], 1, 2), includePerformers: true, CancellationToken.None);
+            db, new(null, [], 1, 2), includePerformers: true, CancellationToken.None);
 
         Assert.Null(error);
         Assert.Equal(4, all!.Total);
@@ -43,7 +45,7 @@ public sealed class SegmentStudioBrowseAndSlotTests
         });
 
         var (rejected, rejectedError) = await SegmentStudioBrowseService.SearchAsync(
-            db, new(null, null, ["rejected"], [], 1, 20), includePerformers: true, CancellationToken.None);
+            db, new(null, ["rejected"], 1, 20), includePerformers: true, CancellationToken.None);
 
         Assert.Null(rejectedError);
         var draft = Assert.Single(rejected!.Items);
@@ -55,7 +57,7 @@ public sealed class SegmentStudioBrowseAndSlotTests
     }
 
     [Fact]
-    public async Task BrowseActivitiesAndSlotFacetsIncludeOwnedDrafts()
+    public async Task BrowseActivitiesAndSlotRolesIncludeOwnedDrafts()
     {
         await using var db = CreateContext();
         var now = DateTime.UtcNow;
@@ -80,20 +82,16 @@ public sealed class SegmentStudioBrowseAndSlotTests
 
         var activity = Assert.Single(await SegmentStudioBrowseService.ActivitiesAsync(db, null, CancellationToken.None));
         Assert.Equal(2, activity.SegmentCount);
-        var facets = await SegmentStudioBrowseService.FacetsAsync(db, 10, CancellationToken.None);
-        Assert.NotNull(facets);
-        Assert.Equal(2, facets.Activity.SegmentCount);
-        var performer = Assert.Single(Assert.Single(facets.Slots).Performers);
-        Assert.Equal(1, performer.Id);
-        Assert.Equal(1, performer.AssignmentCount);
+        var role = Assert.Single(await SegmentStudioBrowseService.RolesAsync(db, CancellationToken.None));
+        Assert.Equal(("slot 0", "Slot 0", 1), (role.Key, role.Label, role.TagCount));
+        Assert.Equal(definition.Id, Assert.Single(role.SlotDefinitionIds));
 
         var (filtered, error) = await SegmentStudioBrowseService.SearchAsync(
-            db, new(null, 10, [], [new(definition.Id, 1)], 1, 20), includePerformers: true, CancellationToken.None);
+            db, new(null, [], 1, 20, SlottedPerformer: new("Slot 0", Includes(1))), includePerformers: true, CancellationToken.None);
         Assert.Null(error);
         var item = Assert.Single(filtered!.Items);
         Assert.Equal(draft.Id, item.ItemId);
     }
-
     [Fact]
     public async Task BrowseTreatsNativeSegmentsAsApprovedBeforeStateFilteringAndPaging()
     {
@@ -102,13 +100,13 @@ public sealed class SegmentStudioBrowseAndSlotTests
         await db.SaveChangesAsync();
 
         var (all, error) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, null, [], [], 1, 2), includePerformers: true, CancellationToken.None);
+            new(null, [], 1, 2), includePerformers: true, CancellationToken.None);
         Assert.Null(error);
         Assert.Equal(3, all!.Total);
         Assert.Equal(2, all.Items.Count);
 
         var (selected, _) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, null, ["approved", "rejected"], [], 1, 20), true, CancellationToken.None);
+            new(null, ["approved", "rejected"], 1, 20), true, CancellationToken.None);
         Assert.Equal(3, selected!.Total);
         Assert.All(selected.Items, item => Assert.Equal("approved", item.ReviewState));
     }
@@ -121,7 +119,7 @@ public sealed class SegmentStudioBrowseAndSlotTests
         await db.SaveChangesAsync();
 
         var (result, error) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, null, [], [], 1, 20, ActivityTagIds: [10, 20]), true, CancellationToken.None);
+            new(null, [], 1, 20, ActivityTagIds: [10, 20]), true, CancellationToken.None);
 
         Assert.Null(error);
         Assert.Equal(3, result!.Total);
@@ -129,80 +127,304 @@ public sealed class SegmentStudioBrowseAndSlotTests
         db.Add(new TagParent { ParentId = 10, ChildId = 20 });
         await db.SaveChangesAsync();
         var (hierarchy, hierarchyError) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, null, [], [], 1, 20, ActivityTagIds: [10], IncludeActivitySubtags: true), true, CancellationToken.None);
+            new(null, [], 1, 20, ActivityTagIds: [10], IncludeActivitySubtags: true), true, CancellationToken.None);
         Assert.Null(hierarchyError);
         Assert.Equal(3, hierarchy!.Total);
 
         var (ascending, ascendingError) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, null, [], [], 1, 20, Direction: "asc"), true, CancellationToken.None);
+            new(null, [], 1, 20, Direction: "asc"), true, CancellationToken.None);
         Assert.Null(ascendingError);
         Assert.Equal(103, ascending!.Items[0].SegmentId);
     }
 
     [Fact]
-    public async Task BrowseRequiresAllSlotFiltersAndRejectsCrossActivitySlots()
+    public async Task BrowseRoleFiltersFollowRelatedPerformerModesAcrossTags()
     {
-        await using var db = CreateContext();
-        SeedBrowse(db);
-        var set = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 10, CreatedAt = DateTime.UtcNow };
-        var first = Definition(set.Id, 0); var second = Definition(set.Id, 1);
-        var otherSet = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 20, CreatedAt = DateTime.UtcNow };
-        var other = Definition(otherSet.Id, 0);
-        var item101 = NativeItem(101); var item102 = NativeItem(102);
-        db.AddRange(set, first, second, otherSet, other,
-            new Performer { Id = 1, Name = "A" }, new Performer { Id = 2, Name = "B" },
-            new SegmentStudioSegmentSlot { Item = item101, SlotDefinitionId = first.Id, PerformerId = 1 },
-            new SegmentStudioSegmentSlot { Item = item101, SlotDefinitionId = second.Id, PerformerId = 2 },
-            new SegmentStudioSegmentSlot { Item = item102, SlotDefinitionId = first.Id, PerformerId = 1 });
-        await db.SaveChangesAsync();
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
 
-        var (result, _) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, 10, [], [new(first.Id, 1), new(second.Id, 2)], 1, 20), true, CancellationToken.None);
-        Assert.Equal([101], result!.Items.Select(item => item.SegmentId));
-        var (invalid, error) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, 10, [], [new(other.Id, 1)], 1, 20), true, CancellationToken.None);
-        Assert.Null(invalid);
-        Assert.Contains("does not belong", error);
+        Assert.Equal([("giver", "Giver", 2), ("receiver", "Receiver", 1)],
+            (await SegmentStudioBrowseService.RolesAsync(db, CancellationToken.None)).Select(role => (role.Key, role.Label, role.TagCount)));
+
+        Assert.Equal(new int?[] { 101, 103 }, await SearchRoles(db, new BrowseRoleFilter("GIVER", Includes(1))));
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, new BrowseRoleFilter("giver", Includes(1)), new BrowseRoleFilter("receiver", Includes(2))));
+        Assert.Equal(new int?[] { 101, 102, 103 }, await SearchRoles(db, new BrowseRoleFilter(SegmentStudioBrowseService.AnySlotRole, Includes(1))));
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, new BrowseRoleFilter("receiver", Includes(1, RelatedFilterMode.None))));
+        var legacyExclude = Includes(1); legacyExclude.Exclude = true;
+        Assert.Equal(new int?[] { 101, 103, 104 }, await SearchRoles(db, new BrowseRoleFilter("receiver", legacyExclude)));
+        Assert.Equal(new int?[] { 101, 103 }, await SearchRoles(db, new BrowseRoleFilter("giver", Includes(1, RelatedFilterMode.Every))));
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("giver", Includes(2, RelatedFilterMode.Every))));
+        Assert.Equal(new int?[] { 101, 102, 103 }, await SearchRoles(db, new BrowseRoleFilter("*", new RelatedFilterCriterion<PerformerFilter>())));
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("unknown", Includes(1))));
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("  ", Includes(1))));
     }
 
     [Fact]
-    public async Task BrowseMatchesPerformerAcrossUnnamedAndOverlappingSlotLabels()
+    public async Task BrowseRoleFiltersFindUnassignedSlotsIncludingSegmentsWithoutSlotRecords()
     {
-        await using var db = CreateContext();
-        SeedBrowse(db);
-        var set = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 10, CreatedAt = DateTime.UtcNow };
-        var unnamed = Definition(set.Id, 0); unnamed.Label = null;
-        var firstNamed = Definition(set.Id, 1); firstNamed.Label = "Participant";
-        var secondNamed = Definition(set.Id, 2); secondNamed.Label = "Participant";
-        var item101 = NativeItem(101); var item102 = NativeItem(102);
-        db.AddRange(set, unnamed, firstNamed, secondNamed,
-            new Performer { Id = 1, Name = "Matched" }, new Performer { Id = 2, Name = "Other" },
-            new SegmentStudioSegmentSlot { Item = item101, SlotDefinitionId = unnamed.Id, PerformerId = 1 },
-            new SegmentStudioSegmentSlot { Item = item102, SlotDefinitionId = secondNamed.Id, PerformerId = 1 },
-            new SegmentStudioSegmentSlot { Item = item102, SlotDefinitionId = firstNamed.Id, PerformerId = 2 });
-        await db.SaveChangesAsync();
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
 
-        var (result, error) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, 10, [], [], 1, 20, PerformerId: 1), includePerformers: true, CancellationToken.None);
-
-        Assert.Null(error);
-        Assert.Equal([101, 102], result!.Items.Select(item => item.SegmentId).Order());
-
-        var (multiResult, multiError) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, 10, [], [], 1, 20, PerformerIds: [2, 3]), includePerformers: true, CancellationToken.None);
-        Assert.Null(multiError);
-        Assert.Equal(102, Assert.Single(multiResult!.Items).SegmentId);
-
-        var (restricted, restrictedError) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, 10, [], [], 1, 20, PerformerId: 1), includePerformers: false, CancellationToken.None);
-        Assert.Null(restricted);
-        Assert.Contains("unrestricted performer read access", restrictedError);
-
-        var (invalid, invalidError) = await SegmentStudioBrowseService.SearchAsync(db,
-            new(null, 10, [], [], 1, 20, PerformerId: 0), includePerformers: true, CancellationToken.None);
-        Assert.Null(invalid);
-        Assert.Contains("invalid", invalidError);
+        Assert.Equal(new int?[] { 102, 104 }, await SearchRoles(db, new BrowseRoleFilter("giver", Unassigned: true)));
+        Assert.Equal(new int?[] { 101, 103 }, await SearchRoles(db, new BrowseRoleFilter("giver", Unassigned: false)));
+        Assert.Equal(new int?[] { 104 }, await SearchRoles(db, new BrowseRoleFilter("receiver", Unassigned: true)));
+        var anyCondition = Includes(1); anyCondition.ConditionOperator = RelatedFilterConditionOperator.Or;
+        Assert.Equal(new int?[] { 101, 102, 103, 104 }, await SearchRoles(db, new BrowseRoleFilter("giver", anyCondition, Unassigned: true)));
+        Assert.Equal(new int?[] { 101, 103 }, await SearchRoles(db, new BrowseRoleFilter("giver", Includes(1), Unassigned: false)));
     }
+
+    [Fact]
+    public async Task BrowseSpecificPerformersAreAConditionOnOneAssignedPerformer()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        RelatedFilterCriterion<PerformerFilter> All(RelatedFilterMode mode, params int[] ids) => new()
+        {
+            Mode = mode,
+            PerformerIdsCriterion = new() { Value = [.. ids], Modifier = CriterionModifier.IncludesAll },
+        };
+
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("*", All(RelatedFilterMode.AtLeastOne, 1, 2))));
+        Assert.Equal(new int?[] { 101, 102, 103 }, await SearchRoles(db, new BrowseRoleFilter("*", All(RelatedFilterMode.AtLeastOne, 1))));
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("giver", All(RelatedFilterMode.None, 1))));
+        Assert.Equal(new int?[] { 102, 103 }, await SearchRoles(db, new BrowseRoleFilter("*", All(RelatedFilterMode.Every, 1))));
+        var withAge = All(RelatedFilterMode.AtLeastOne, 1); withAge.AgeAtHostDateCriterion = new() { Value = 30, Modifier = CriterionModifier.Equals };
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("*", withAge)));
+        var withExcluded = All(RelatedFilterMode.AtLeastOne, 1); withExcluded.PerformerIdsCriterion!.Excludes = [2];
+        Assert.Equal(new int?[] { 101, 102, 103 }, await SearchRoles(db, new BrowseRoleFilter("*", withExcluded)));
+        // A Slot with "none" and no other condition asks for segments with nobody assigned to that role.
+        Assert.Equal(new int?[] { 103, 104 }, await SearchRoles(db, new BrowseRoleFilter("receiver", new() { Mode = RelatedFilterMode.None })));
+    }
+
+    [Fact]
+    public async Task BrowseRoleFiltersMatchAgeOnTheVideoDate()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        RelatedFilterCriterion<PerformerFilter> Age(CriterionModifier modifier, int value = 19) => new()
+        {
+            AgeAtHostDateCriterion = new() { Value = value, Modifier = modifier },
+        };
+
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, new BrowseRoleFilter("giver", Age(CriterionModifier.Equals))));
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("giver", Age(CriterionModifier.NotEquals))));
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, new BrowseRoleFilter("receiver", Age(CriterionModifier.GreaterThan, 25))));
+        Assert.Equal(new int?[] { 103 }, await SearchRoles(db, new BrowseRoleFilter("giver", Age(CriterionModifier.IsNull))));
+    }
+
+    [Fact]
+    public async Task BrowseRoleFiltersResolveNestedPerformerConditionsLikeRelatedPerformers()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        var searches = new List<(PerformerFilter? Filter, FindFilter Find)>();
+        Task<IReadOnlyCollection<int>> Find(PerformerFilter? filter, FindFilter find, CancellationToken _)
+        {
+            searches.Add((filter, find));
+            IReadOnlyCollection<int> ids = filter?.Name == "B" ? [2] : filter?.FavoriteCriterion is not null ? [3] : find.Q == "a" ? [1] : [];
+            return Task.FromResult(ids);
+        }
+        var nested = new RelatedFilterCriterion<PerformerFilter>
+        {
+            ObjectFilter = new() { Name = "B", FavoriteCriterion = new() { Value = true } },
+            FindFilter = new() { Q = "a" },
+            ConditionOperator = RelatedFilterConditionOperator.Or,
+        };
+
+        Assert.Equal(new int?[] { 101, 102, 103 }, await SearchRoles(db, Find, new BrowseRoleFilter("*", nested)));
+        Assert.Equal(3, searches.Count);
+        Assert.All(searches, search => Assert.Equal(int.MaxValue, search.Find.PerPage));
+        Assert.Contains(searches, search => search.Filter is null && search.Find.Q == "a");
+        Assert.Contains(searches, search => search.Filter is { Name: "B", FavoriteCriterion: null });
+        Assert.Contains(searches, search => search.Filter is { Name: null, FavoriteCriterion: not null });
+
+        searches.Clear();
+        nested.ConditionOperator = RelatedFilterConditionOperator.And;
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, Find, new BrowseRoleFilter("*", nested)));
+        var single = Assert.Single(searches);
+        Assert.Equal(("B", "a"), (single.Filter!.Name, single.Find.Q));
+
+        searches.Clear();
+        var empty = Includes(2); empty.ObjectFilter = new(); empty.ConditionOperator = RelatedFilterConditionOperator.Or;
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, Find, new BrowseRoleFilter("*", empty)));
+        Assert.Empty(searches);
+
+        var (unresolved, unresolvedError) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, [], 1, 20, SlottedPerformer: new("giver", nested)), true, CancellationToken.None);
+        Assert.Null(unresolved);
+        Assert.NotNull(unresolvedError);
+    }
+
+    [Fact]
+    public async Task BrowseRoleFiltersRejectRestrictedOrConditionlessRequests()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        async Task<string?> Error(BrowseRoleFilter[] roles, bool includePerformers = true)
+            => (await SegmentStudioBrowseService.SearchAsync(db, Request(roles), includePerformers, CancellationToken.None)).Error;
+
+        Assert.Contains("unrestricted performer read access", await Error([new("giver", Includes(1))], includePerformers: false));
+        Assert.Contains("needs a condition", await Error([new("giver")]));
+        Assert.Contains("At most", await Error(Enumerable.Range(0, 17).Select(_ => new BrowseRoleFilter("giver", Includes(1))).ToArray()));
+        var notWithTwo = new FilterExpression<BrowseCriteria> { Operator = FilterExpressionOperator.Not, Children = [Leaf(new("giver", Includes(1))), Leaf(new("giver", Includes(2)))] };
+        Assert.Contains("exactly one", (await SegmentStudioBrowseService.SearchAsync(db, new(null, FilterExpression: notWithTwo), true, CancellationToken.None)).Error);
+    }
+
+    [Fact]
+    public async Task BrowseFilterExpressionsCombineTagsStatesAndSlottedPerformers()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        async Task<int?[]> Search(FilterExpression<BrowseCriteria> expression, BrowseRoleFilter? topLevel = null)
+        {
+            var (result, error) = await SegmentStudioBrowseService.SearchAsync(db,
+                new(null, SlottedPerformer: topLevel, FilterExpression: expression), true, CancellationToken.None);
+            Assert.Null(error);
+            return result!.Items.Select(item => item.SegmentId).Order().ToArray();
+        }
+        FilterExpression<BrowseCriteria> Group(FilterExpressionOperator op, params FilterExpressionNode<BrowseCriteria>[] children) => new() { Operator = op, Children = [.. children] };
+
+        Assert.Equal(new int?[] { 101, 102, 103 }, await Search(Group(FilterExpressionOperator.Or,
+            Leaf(new("giver", Includes(1))), Leaf(new("receiver", Includes(1))))));
+        Assert.Equal(new int?[] { 104 }, await Search(Group(FilterExpressionOperator.Not,
+            new FilterExpressionNode<BrowseCriteria> { Filter = new(SlottedPerformer: new("*", new RelatedFilterCriterion<PerformerFilter>())) })));
+        Assert.Equal(new int?[] { 102, 103, 104 }, await Search(Group(FilterExpressionOperator.JustOne,
+            Leaf(new("giver", Includes(1))), new FilterExpressionNode<BrowseCriteria> { Filter = new(ActivityTagIds: [10]) })));
+        Assert.Equal(new int?[] { 103 }, await Search(Group(FilterExpressionOperator.And,
+            new FilterExpressionNode<BrowseCriteria> { Filter = new(ActivityTagIds: [20]) },
+            new FilterExpressionNode<BrowseCriteria> { Group = Group(FilterExpressionOperator.Or, Leaf(new("giver", Includes(1))), Leaf(new("receiver", Includes(2)))) })));
+        Assert.Equal(new int?[] { 101 }, await Search(Group(FilterExpressionOperator.And, Leaf(new("receiver", Includes(2)))), new("giver", Includes(1))));
+    }
+
+    [Fact]
+    public async Task BrowseDistinctSlottedPerformersNeedADifferentSlotEach()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        var set = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 30, CreatedAt = DateTime.UtcNow };
+        var first = Definition(set.Id, 0); first.Label = "Giver";
+        var second = Definition(set.Id, 1); second.Label = "Giver";
+        var both = NativeItem(105); var one = NativeItem(106);
+        db.AddRange(new Tag { Id = 30, Name = "Double" }, set, first, second,
+            Segment(105, 1, 30, null, DateTime.UtcNow), Segment(106, 2, 30, null, DateTime.UtcNow),
+            new SegmentStudioSegmentSlot { Item = both, SlotDefinitionId = first.Id, PerformerId = 1 },
+            new SegmentStudioSegmentSlot { Item = both, SlotDefinitionId = second.Id, PerformerId = 3 },
+            new SegmentStudioSegmentSlot { Item = one, SlotDefinitionId = first.Id, PerformerId = 1 });
+        await db.SaveChangesAsync();
+        async Task<int?[]> Search(RelatedScopeMatchMode mode, params BrowseRoleFilter[] roles)
+        {
+            var expression = new FilterExpression<BrowseCriteria>
+            {
+                RelatedScope = new() { FilterKey = "slottedPerformerCriterion", MatchMode = mode },
+                Children = [.. roles.Select(Leaf)],
+            };
+            var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, new(null, ActivityTagIds: [30], FilterExpression: expression), true, CancellationToken.None);
+            Assert.Null(error);
+            return result!.Items.Select(item => item.SegmentId).Order().ToArray();
+        }
+
+        Assert.Equal(new int?[] { 105, 106 }, await Search(RelatedScopeMatchMode.Reuse, new("giver", Includes(1)), new("giver", Includes(1))));
+        Assert.Empty(await Search(RelatedScopeMatchMode.Distinct, new("giver", Includes(1)), new("giver", Includes(1))));
+        Assert.Equal(new int?[] { 105 }, await Search(RelatedScopeMatchMode.Distinct, new("giver", Includes(1)), new("giver", Includes(3))));
+        Assert.Equal(new int?[] { 105 }, await Search(RelatedScopeMatchMode.Distinct, new("giver", Includes(1)), new("*", new RelatedFilterCriterion<PerformerFilter> { PerformerIdsCriterion = new() { Value = [1, 3] } })));
+        Assert.Equal(new int?[] { 106 }, await Search(RelatedScopeMatchMode.Distinct, new("giver", Includes(1)), new("giver", Unassigned: true)));
+        Assert.Equal(new int?[] { 105 }, await Search(RelatedScopeMatchMode.Distinct,
+            new("giver", new RelatedFilterCriterion<PerformerFilter>()), new("giver", new RelatedFilterCriterion<PerformerFilter>())));
+        var ageNineteen = new RelatedFilterCriterion<PerformerFilter> { AgeAtHostDateCriterion = new() { Value = 19, Modifier = CriterionModifier.Equals } };
+        Assert.Empty(await Search(RelatedScopeMatchMode.Distinct, new("giver", Includes(1)), new("giver", ageNineteen)));
+
+        async Task<int?[]> Wrapped(FilterExpressionOperator op, params FilterExpressionNode<BrowseCriteria>[] extra)
+        {
+            var distinct = new FilterExpression<BrowseCriteria>
+            {
+                RelatedScope = new() { FilterKey = "slottedPerformerCriterion", MatchMode = RelatedScopeMatchMode.Distinct },
+                Children = [Leaf(new("giver", Includes(1))), Leaf(new("giver", Includes(3)))],
+            };
+            var expression = new FilterExpression<BrowseCriteria> { Operator = op, Children = [new() { Group = distinct }, .. extra] };
+            var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, new(null, ActivityTagIds: [30], FilterExpression: expression), true, CancellationToken.None);
+            Assert.Null(error);
+            return result!.Items.Select(item => item.SegmentId).Order().ToArray();
+        }
+        Assert.Equal(new int?[] { 106 }, await Wrapped(FilterExpressionOperator.Not));
+        Assert.Equal(new int?[] { 106 }, await Wrapped(FilterExpressionOperator.JustOne, Leaf(new("giver", Includes(1)))));
+    }
+
+    [Fact]
+    public async Task BrowseSlottedPerformersMatchOccurrenceTagsOnTheSegmentsVideo()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedRolesAsync(db);
+        db.AddRange(new Tag { Id = 40, Name = "Natural" }, new Tag { Id = 41, Name = "Large" }, new Tag { Id = 42, Name = "Larger" },
+            new TagParent { ParentId = 41, ChildId = 42 },
+            Occurrence(video: 1, performer: 2, tag: 40), Occurrence(video: 1, performer: 2, tag: 42),
+Occurrence(video: 2, performer: 1, tag: 41));
+        await db.SaveChangesAsync();
+        RelatedFilterCriterion<PerformerFilter> Tags(CriterionModifier modifier, int? depth, params int[] tagIds) => new()
+        {
+            PerformerOccurrenceTagsCriterion = new() { Value = [.. tagIds], Modifier = modifier, Depth = depth },
+        };
+
+        Assert.Empty(await SearchRoles(db, new BrowseRoleFilter("receiver", Tags(CriterionModifier.IncludesAll, null, 40, 41))));
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, new BrowseRoleFilter("receiver", Tags(CriterionModifier.IncludesAll, -1, 40, 41))));
+        Assert.Equal(new int?[] { 101 }, await SearchRoles(db, new BrowseRoleFilter("receiver", Tags(CriterionModifier.Includes, null, 40))));
+        Assert.Equal(new int?[] { 103 }, await SearchRoles(db, new BrowseRoleFilter("giver", Tags(CriterionModifier.Includes, null, 41))));
+        Assert.Equal(new int?[] { 102 }, await SearchRoles(db, new BrowseRoleFilter("receiver", Tags(CriterionModifier.IsNull, null))));
+        Assert.Equal(new int?[] { 101, 103 }, await SearchRoles(db, new BrowseRoleFilter("giver", Tags(CriterionModifier.Excludes, null, 40))));
+    }
+
+    private static TagApplication Occurrence(int video, int performer, int tag) => new()
+    {
+        HostType = AffinityHostType.Video, HostId = video, ContextType = "performer", ContextId = performer, TagId = tag,
+    };
+
+    private static FilterExpressionNode<BrowseCriteria> Leaf(BrowseRoleFilter role) => new() { Filter = new(SlottedPerformer: role) };
+
+    // One condition goes to the top level, like the Segments page sends it; several become an AND expression.
+    private static BrowseRequest Request(BrowseRoleFilter[] roles) => roles.Length == 1
+        ? new(null, SlottedPerformer: roles[0])
+        : new(null, FilterExpression: new() { Children = [.. roles.Select(Leaf)] });
+
+    private static async Task<int?[]> SearchRoles(DbContext db, params BrowseRoleFilter[] roles)
+        => await SearchRoles(db, null, roles);
+
+    private static async Task<int?[]> SearchRoles(DbContext db,
+        Func<PerformerFilter?, FindFilter, CancellationToken, Task<IReadOnlyCollection<int>>>? findPerformerIds, params BrowseRoleFilter[] roles)
+    {
+        var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, Request(roles), true, CancellationToken.None, findPerformerIds);
+        Assert.Null(error);
+        return result!.Items.Select(item => item.SegmentId).Order().ToArray();
+    }
+
+    // Tag 10 has Giver and Receiver slots and tag 20 a " giver " slot. Segment 101 (video dated 2020-06-01) has Giver A
+    // (born 2000-06-02) and Receiver B (born 1990-01-01), 102 only Receiver A, 103 (undated video) Giver A on tag 20,
+    // and 104 on tag 10 has no Segment Studio record at all.
+    private static async Task SeedRolesAsync(TestDb db)
+    {
+        SeedBrowse(db);
+        db.Set<Video>().Local.Single(video => video.Id == 1).Date = new DateOnly(2020, 6, 1);
+        var set = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 10, CreatedAt = DateTime.UtcNow };
+        var giver = Definition(set.Id, 0); giver.Label = "Giver";
+        var receiver = Definition(set.Id, 1); receiver.Label = "Receiver";
+        var otherSet = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 20, CreatedAt = DateTime.UtcNow };
+        var otherGiver = Definition(otherSet.Id, 0); otherGiver.Label = " giver ";
+        var item101 = NativeItem(101); var item102 = NativeItem(102); var item103 = NativeItem(103);
+        db.AddRange(set, giver, receiver, otherSet, otherGiver,
+            Segment(104, 2, 10, null, DateTime.UtcNow),
+            new Performer { Id = 1, Name = "A", Birthdate = new DateOnly(2000, 6, 2) },
+            new Performer { Id = 2, Name = "B", Birthdate = new DateOnly(1990, 1, 1) },
+            new Performer { Id = 3, Name = "C" },
+            new SegmentStudioSegmentSlot { Item = item101, SlotDefinitionId = giver.Id, PerformerId = 1 },
+            new SegmentStudioSegmentSlot { Item = item101, SlotDefinitionId = receiver.Id, PerformerId = 2 },
+            new SegmentStudioSegmentSlot { Item = item102, SlotDefinitionId = receiver.Id, PerformerId = 1 },
+            new SegmentStudioSegmentSlot { Item = item103, SlotDefinitionId = otherGiver.Id, PerformerId = 1 });
+        await db.SaveChangesAsync();
+    }
+
+    private static RelatedFilterCriterion<PerformerFilter> Includes(int performerId, RelatedFilterMode mode = RelatedFilterMode.AtLeastOne) => new()
+    {
+        Mode = mode,
+        PerformerIdsCriterion = new() { Value = [performerId], Modifier = CriterionModifier.Includes },
+    };
 
     [Fact]
     public async Task AssignmentWritesEnforceRevisionActivityAndDuplicatePolicy()
@@ -236,7 +458,7 @@ public sealed class SegmentStudioBrowseAndSlotTests
         var activity = Assert.Single(activities);
         Assert.Equal(10, activity.TagId);
         Assert.Equal(2, activity.SegmentCount);
-        var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, new(null, null, [], [], 1, 20), true, CancellationToken.None);
+        var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, new(null, [], 1, 20), true, CancellationToken.None);
         Assert.Null(error);
         Assert.Equal([101, 102], result!.Items.Select(item => item.SegmentId).Order());
         var visibleTagSet = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 10, CreatedAt = DateTime.UtcNow };
@@ -514,8 +736,24 @@ public sealed class SegmentStudioBrowseAndSlotTests
     private static TestDb CreateContext(int? allowedVideoId = null, int? allowedTagId = null) => new(new DbContextOptionsBuilder<TestDb>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, allowedVideoId, allowedTagId);
 
-    private sealed class TestDb(DbContextOptions<TestDb> options, int? allowedVideoId, int? allowedTagId) : DbContext(options)
+    // Role filters build their own expression trees, so they run against SQLite to exercise SQL translation and null semantics.
+    private static async Task<TestDb> CreateSqliteContextAsync()
     {
+        var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var db = new TestDb(new DbContextOptionsBuilder<TestDb>().UseSqlite(connection).Options, null, null, connection);
+        await db.Database.EnsureCreatedAsync();
+        return db;
+    }
+
+    private sealed class TestDb(DbContextOptions<TestDb> options, int? allowedVideoId, int? allowedTagId, SqliteConnection? connection = null) : DbContext(options)
+    {
+        public override async ValueTask DisposeAsync()
+        {
+            await base.DisposeAsync();
+            if (connection is not null) await connection.DisposeAsync();
+        }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             builder.Ignore<Group>();
@@ -549,6 +787,8 @@ public sealed class SegmentStudioBrowseAndSlotTests
             builder.Entity<SegmentStudioSegmentSlot>().HasOne(item => item.Item).WithMany(item => item.Slots).HasForeignKey(item => item.ItemId);
             builder.Entity<SegmentStudioReviewSegment>().HasKey(item => item.SegmentId);
             builder.Entity<VideoPerformer>().HasKey(item => new { item.VideoId, item.PerformerId });
+            builder.Entity<TagApplication>().HasKey(item => item.Id);
+            builder.Entity<TagApplication>().Ignore(item => item.Tag);
         }
     }
 }

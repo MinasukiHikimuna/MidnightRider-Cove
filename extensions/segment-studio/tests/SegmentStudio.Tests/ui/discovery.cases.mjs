@@ -719,3 +719,17 @@ test("selected videos offer the host's contributed actions, not a private scan",
   assert.doesNotMatch(discovery, /VideoSelectionActions/);
   assert.doesNotMatch(discovery, /Full Scan|startSelectedAnalysis|runSelectedDiscoveryAnalysis/);
 });
+
+test("video discovery sends the advanced filter beside the object filter, as Cove's Videos page does", () => {
+  const request = ui.buildDiscoveryFindRequest({ page: 1 }, {
+    tagsCriterion: { modifier: "INCLUDES", value: [1] },
+    _filterExpression: { operator: "OR", children: [{ filter: { tagsCriterion: { modifier: "INCLUDES_ALL", value: [2, 3] } } }, { filter: { ratingCriterion: { modifier: "GREATER_THAN", value: 60 } } }] },
+  });
+  assert.deepEqual(request.objectFilter, { tagsCriterion: { modifier: "includes", value: [1] } });
+  assert.deepEqual(request.filterExpression, {
+    operator: "OR",
+    children: [{ filter: { tagsCriterion: { modifier: "includesAll", value: [2, 3] } } }, { filter: { ratingCriterion: { modifier: "greaterThan", value: 60 } } }],
+  });
+  assert.equal(ui.buildDiscoveryFindRequest({ page: 1 }, { _filterExpression: { operator: "AND", children: [] } }).filterExpression, undefined);
+  assert.match(sourceByModule["discovery/SegmentStudioDiscoveryPage.js"], /supportsFilterExpressions: true/);
+});

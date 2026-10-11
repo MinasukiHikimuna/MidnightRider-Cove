@@ -2377,26 +2377,26 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.NavigationSegmentInventory);
 
-        endpoints.MapGet("/api/plugins/segment-studio/browse/activities/{tagId:int}/facets",
-                async (int tagId, DbContext db, ICurrentPrincipalAccessor principalAccessor,
+        endpoints.MapGet("/api/plugins/segment-studio/browse/roles",
+                async (DbContext db, ICurrentPrincipalAccessor principalAccessor,
                     Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
                 {
                     var access = await SegmentStudioAuthorization.AuthorizePerformerSlotMetadataReadAsync(principalAccessor.Current, authorization, ct);
                     if (!access.Allowed) return Results.Json(new { error = access.Reason }, statusCode: 403);
-                    var result = await SegmentStudioBrowseService.FacetsAsync(db, tagId, ct);
-                    return result is null ? Results.NotFound(new { error = "Activity tag not found." }) : Results.Ok(result);
+                    return Results.Ok(await SegmentStudioBrowseService.RolesAsync(db, ct));
                 }).RequireAuthorization().RequireCovePermission(PermissionMode.All, Permissions.SegmentsRead, Permissions.TagsRead, Permissions.PerformersRead)
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.NavigationSegmentInventory);
 
         endpoints.MapPost("/api/plugins/segment-studio/browse/segments",
-                async (BrowseRequest request, DbContext db, ICurrentPrincipalAccessor principalAccessor,
+                async (BrowseRequest request, DbContext db, IPerformerRepository performers, ICurrentPrincipalAccessor principalAccessor,
                     Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
                 {
                     var access = await SegmentStudioAuthorization.AuthorizeBrowseReadAsync(principalAccessor.Current, authorization, ct);
                     if (!access.Allowed) return Results.Json(new { error = access.Reason }, statusCode: 403);
                     var performer = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(principalAccessor.Current, authorization, ct);
-                    var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, request, performer.Allowed, ct);
+                    var (result, error) = await SegmentStudioBrowseService.SearchAsync(db, request, performer.Allowed, ct,
+                        async (filter, findFilter, token) => (await performers.FindAsync(filter, findFilter, token)).Items.Select(item => item.Id).ToHashSet());
                     return result is null ? Results.BadRequest(new { error }) : Results.Ok(result);
                 }).RequireAuthorization().RequireCovePermission(PermissionMode.All, Permissions.SegmentsRead, Permissions.TagsRead)
             .RequireSegmentStudioCapability(

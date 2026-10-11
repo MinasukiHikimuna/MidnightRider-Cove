@@ -60,6 +60,40 @@ longer offered; views saved with those sorts open sorted by title.
 Segment Studio's filters work on at most 50,000 videos at a time: in a larger
 library, narrow the list with a search or another Cove filter first.
 
+Both tabs support Cove's advanced filters: combine conditions with AND, OR,
+NOT, or "just one" groups, and add a filter more than once with **+**.
+Segment Studio's own filters on the **Videos** tab (and on Cove's Videos page)
+always apply to the whole list, so they stay outside these groups.
+
+The **Segments** tab's **Slotted Performer** filter finds segments by the
+performers in their performer slots. Its **Slot** condition picks a role such as
+**Giver** or **Receiver**, or **Any** slot, including unlabeled ones such as
+"Slot 1"; slot labels that differ only in capitalization or spacing are one
+role. The rest works like Cove's **Related Performers** filter: choose specific
+performers, any performer condition such as gender, tags, or favorite, the
+performer's age on the video's date, or **Occurrence Tags**, the tags on that
+performer's appearance in the segment's video. Then choose whether at least
+one, every, or no performer in that slot must match; a Slot with **No performer
+matches** and nothing else finds segments where nobody is assigned to that
+role. All the conditions must match the same assigned performer. With two slots
+of the same role, either can match. **Unassigned Slot** finds segments whose
+tag has a slot of that role that
+nobody fills, or with **No**, segments where every slot of that role is filled.
+**Match any condition** combines these conditions, including Unassigned Slot,
+with OR; the Slot itself always applies.
+
+To ask about two slots at once, such as Giver is one performer and Receiver
+another, add another Slotted Performer with **+**. With **Use a different performer for
+each**, each Slotted Performer needs a different slot, so two Giver
+conditions need two Giver slots. Slotted Performer works with or without a
+**Tags** filter and across sub-tags. Segments without performer-slot
+assignments never match a performer condition.
+
+Links saved with the earlier filters still work: the old any-slot
+**Performers** filter becomes a Slotted Performer in **Any** slot, and each old
+slot assignment becomes a Slotted Performer in its slot's role, grouped so that
+each needs a different slot.
+
 ## Review performer-slot coverage
 
 Open **Segment Studio → Settings → Performer slots** to see performer roles

@@ -10,17 +10,98 @@ const BROWSE_URL_OPTIONS = {
 
 const BROWSE_FILTER_CRITERIA = [
   { id: "activities", label: "Tags", type: "multiId", entityType: "tags", filterKey: "activitiesCriterion", modifiers: ["INCLUDES"] },
-  { id: "performers", label: "Performers", type: "multiId", entityType: "performers", filterKey: "performersCriterion", modifiers: ["INCLUDES"] },
   { id: "reviewState", label: "Review State", type: "enum", filterKey: "reviewStateCriterion", modifiers: ["EQUALS"], options: REVIEW_STATES.map((state) => ({ value: state, label: state[0].toUpperCase() + state.slice(1) })) },
 ];
+
+// One Related Performers style filter over performer slots; its Slot condition picks the role, merged by label.
+const SLOTTED_PERFORMER_KEY = "slottedPerformerCriterion";
+const SLOT_KEY = "slotCriterion";
+const ANY_SLOT_ROLE = "*";
+const UNASSIGNED_SLOT_KEY = "unassignedSlotCriterion";
+const FILTER_EXPRESSION_KEY = "_filterExpression";
+
+/** The Slotted Performer criterion, offering "Any" and every role, plus any role a saved filter still names. */
+export function slottedPerformerCriterion(roles, objectFilter = {}, performerCriteria = []) {
+  const nested = performerCriteria.filter((criterion) => criterion.type !== "related");
+  const known = new Map((roles || []).filter((role) => role.key !== ANY_SLOT_ROLE).map((role) => [role.key, role.label]));
+  for (const role of referencedSlotRoles(objectFilter)) if (role !== ANY_SLOT_ROLE && !known.has(role)) known.set(role, role);
+  return {
+    id: "slottedPerformer",
+    label: "Slotted Performer",
+    type: "related",
+    entityType: "performers",
+    filterKey: SLOTTED_PERFORMER_KEY,
+    category: "related",
+    supportsDistinctSiblingMatches: true,
+    relatedCriteria: () => nested,
+    relatedContextCriteria: [
+      { id: "slot", label: "Slot", type: "enum", filterKey: SLOT_KEY, modifiers: ["EQUALS"],
+        options: [{ value: ANY_SLOT_ROLE, label: "Any" }, ...[...known].map(([value, label]) => ({ value, label }))] },
+      { id: "specificPerformer", label: "Specific Performer", type: "multiId", entityType: "performers", filterKey: "performerIdsCriterion", modifiers: ["INCLUDES", "EXCLUDES"] },
+      { id: "ageAtVideoDate", label: "Age (then)", type: "number", filterKey: "ageAtHostDateCriterion" },
+      { id: "performerOccurrenceTags", label: "Occurrence Tags", type: "multiId", entityType: "tags", filterKey: "performerOccurrenceTagsCriterion" },
+      { id: "unassignedSlot", label: "Unassigned Slot", type: "bool", filterKey: UNASSIGNED_SLOT_KEY },
+    ],
+    relatedResultLabel: "segments",
+  };
+}
+
+function referencedSlotRoles(filter) {
+  const roles = [];
+  const visit = (value) => {
+    if (!value || typeof value !== "object") return;
+    const role = value[SLOTTED_PERFORMER_KEY]?.[SLOT_KEY]?.value;
+    if (typeof role === "string") roles.push(role);
+    for (const child of value[FILTER_EXPRESSION_KEY]?.children || value.children || []) visit(child.filter || child.group);
+  };
+  visit(filter);
+  return roles;
+}
+
+function slottedLeaf(role, performerIds) {
+  return {
+    [SLOT_KEY]: { modifier: "EQUALS", value: role },
+    performerIdsCriterion: { modifier: "INCLUDES", value: performerIds },
+  };
+}
+
+/**
+ * Rewrites performer filters from older links. The any-slot Performers filter becomes a Slotted Performer in any
+ * slot; tag-scoped slot assignments become Slotted Performers in their slot's role, each in a different slot.
+ */
+export function migrateLegacyBrowseFilter(objectFilter, roles) {
+  const legacyPerformers = criterionIds(objectFilter.performersCriterion, objectFilter.performerId);
+  const hasSlots = objectFilter.slots !== undefined;
+  if (!legacyPerformers.length && objectFilter.performersCriterion === undefined && objectFilter.performerId === undefined && !hasSlots)
+    return objectFilter;
+  if (hasSlots && !roles) return objectFilter;
+  const next = { ...objectFilter };
+  delete next.performersCriterion;
+  delete next.performerId;
+  delete next.slots;
+  const slots = parseBrowseSlotState(objectFilter.slots);
+  const roleByDefinition = new Map((roles || []).flatMap((role) => (role.slotDefinitionIds || []).map((id) => [String(id), role.key])));
+  const leaves = Object.entries(slots.values).map(([definitionId, performerId]) =>
+    slottedLeaf(roleByDefinition.get(String(definitionId)) ?? ANY_SLOT_ROLE, [Number(performerId)]));
+  if (legacyPerformers.length) leaves.push({ [SLOT_KEY]: { modifier: "EQUALS", value: ANY_SLOT_ROLE }, performerIdsCriterion: { modifier: "INCLUDES", value: legacyPerformers } });
+  if (leaves.length === 1 && next[SLOTTED_PERFORMER_KEY] === undefined) next[SLOTTED_PERFORMER_KEY] = leaves[0];
+  else if (leaves.length) {
+    const slotLeaves = leaves.slice(0, Object.keys(slots.values).length).map((leaf) => ({ filter: { [SLOTTED_PERFORMER_KEY]: leaf } }));
+    const migrated = slotLeaves.length > 1
+      ? [{ group: { operator: "AND", relatedScope: { filterKey: SLOTTED_PERFORMER_KEY, matchMode: "distinct" }, children: slotLeaves } }]
+      : slotLeaves;
+    if (legacyPerformers.length) migrated.push({ filter: { [SLOTTED_PERFORMER_KEY]: leaves.at(-1) } });
+    const children = [...(next[FILTER_EXPRESSION_KEY] ? [{ group: next[FILTER_EXPRESSION_KEY] }] : []), ...migrated];
+    next[FILTER_EXPRESSION_KEY] = children.length === 1 && children[0].group ? children[0].group : { operator: "AND", children };
+  }
+  if (slots.activityTagId && next.activitiesCriterion === undefined && next.activityId === undefined)
+    next.activitiesCriterion = { modifier: "INCLUDES", value: [slots.activityTagId] };
+  return next;
+}
 
 export function selectedBrowseStates(value) {
   const selected = String(value || "").split(",").filter((state) => REVIEW_STATES.includes(state));
   return selected.length === 0 ? [...REVIEW_STATES] : [...new Set(selected)];
-}
-
-export function parseBrowseSlotFilters(value) {
-  return parseBrowseSlotState(value).values;
 }
 
 function parseBrowseSlotState(value) {
@@ -32,48 +113,107 @@ function parseBrowseSlotState(value) {
     return {
       activityTagId: Number.isInteger(Number(parsed.activityTagId)) && Number(parsed.activityTagId) > 0 ? Number(parsed.activityTagId) : null,
       values: Object.fromEntries(Object.entries(rawValues).filter(([slotId, performerId]) =>
-        slotId && Number.isInteger(Number(performerId)) && Number(performerId) > 0)),
+        slotId && slotId !== "activityTagId" && Number.isInteger(Number(performerId)) && Number(performerId) > 0)),
     };
   } catch {
     return { activityTagId: null, values: {} };
   }
 }
 
-export function serializeBrowseSlotFilters(activityTagId, values) {
-  return Object.keys(values || {}).length ? JSON.stringify({ activityTagId, values }) : undefined;
+// The Segment Studio endpoint binds Cove's camelCase criterion modifiers, as Cove's own API client sends them.
+function toApiCriteria(value) {
+  if (Array.isArray(value)) return value.map(toApiCriteria);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !key.startsWith("_")).map(([key, item]) => [key,
+    key === "modifier" && typeof item === "string" && /^[A-Z_]+$/.test(item)
+      ? item.toLowerCase().replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+      : toApiCriteria(item)]));
+}
+
+function slottedPerformerRequest(value) {
+  if (!value || typeof value !== "object") return null;
+  const { [UNASSIGNED_SLOT_KEY]: unassignedCriterion, [SLOT_KEY]: slotCriterion, ...related } = value;
+  const role = typeof slotCriterion?.value === "string" && slotCriterion.value ? slotCriterion.value : ANY_SLOT_ROLE;
+  const unassigned = typeof unassignedCriterion?.value === "boolean" ? unassignedCriterion.value : null;
+  const hasConditions = related._matchAll === true || Boolean(related.findFilter?.q?.trim())
+    || Object.keys(related.objectFilter || {}).length > 0 || related.performerIdsCriterion !== undefined
+    || related.ageAtHostDateCriterion !== undefined || related.performerOccurrenceTagsCriterion !== undefined;
+  // A Slot with nothing else asks for any assigned performer in that slot.
+  if (!hasConditions && unassigned === null && !slotCriterion) return null;
+  return { role, performers: hasConditions || unassigned === null ? toApiCriteria(related) : null, unassigned };
+}
+
+function browseCriteria(filter, { legacyStates = false } = {}) {
+  const reviewStates = REVIEW_STATES.includes(filter.reviewStateCriterion?.value) ? [filter.reviewStateCriterion.value]
+    : legacyStates && filter.states ? selectedBrowseStates(filter.states) : [];
+  return {
+    activityTagIds: criterionIds(filter.activitiesCriterion, filter.activityId),
+    includeActivitySubtags: filter.activitiesCriterion?.depth === -1,
+    reviewStates,
+    slottedPerformer: slottedPerformerRequest(filter[SLOTTED_PERFORMER_KEY]),
+  };
+}
+
+// Cove's filter dialog stores "none of" groups as a marked OR group; the server reads them as NOT.
+function toApiExpression(expression) {
+  if (!expression || typeof expression !== "object" || !Array.isArray(expression.children)) return null;
+  const children = expression.children.flatMap((child) => {
+    if (child?.group) {
+      const group = toApiExpression(child.group);
+      return group ? [{ group }] : [];
+    }
+    return child?.filter && typeof child.filter === "object" ? [{ filter: browseCriteria(child.filter) }] : [];
+  });
+  if (!children.length) return null;
+  if (expression._semanticNone)
+    return { operator: "NOT", children: children.length === 1 ? children : [{ group: { operator: "OR", children } }] };
+  return {
+    operator: ["OR", "NOT", "JUST_ONE"].includes(expression.operator) ? expression.operator : "AND",
+    ...(expression.relatedScope ? { relatedScope: expression.relatedScope } : {}),
+    ...(expression.distinctRelatedMatches === true ? { distinctRelatedMatches: true } : {}),
+    children,
+  };
 }
 
 export function buildBrowseRequest(filter, objectFilter) {
-  const activityTagIds = criterionIds(objectFilter.activitiesCriterion, objectFilter.activityId);
-  const performerIds = criterionIds(objectFilter.performersCriterion, objectFilter.performerId);
-  const activityId = activityTagIds.length === 1 ? activityTagIds[0] : null;
-  const slotState = parseBrowseSlotState(objectFilter.slots);
-  const slotAssignments = activityId && (slotState.activityTagId == null || slotState.activityTagId === activityId) ? Object.entries(slotState.values).map(([slotDefinitionId, performerId]) => ({
-    slotDefinitionId,
-    performerId: Number(performerId),
-  })) : [];
+  const filterExpression = toApiExpression(objectFilter[FILTER_EXPRESSION_KEY]);
   return {
     query: String(filter.q || "").trim() || null,
-    activityTagId: activityId,
-    activityTagIds,
-    includeActivitySubtags: objectFilter.activitiesCriterion?.depth === -1,
-    reviewStates: selectedCriterionStates(objectFilter.reviewStateCriterion, objectFilter.states),
-    slotAssignments,
+    ...browseCriteria(objectFilter, { legacyStates: true }),
+    ...(filterExpression ? { filterExpression } : {}),
     page: Math.max(1, Number(filter.page) || 1),
     perPage: Math.max(1, Number(filter.perPage) || 24),
     sort: filter.sort || "default",
     direction: filter.direction || "desc",
-    performerIds,
   };
+}
+
+/** Drops slotted performer conditions, including those inside the advanced filter, for users who cannot read performers. */
+export function withoutSlottedPerformers(objectFilter) {
+  const { [SLOTTED_PERFORMER_KEY]: _slotted, [FILTER_EXPRESSION_KEY]: expression, ...rest } = objectFilter;
+  const pruned = withoutSlottedConditions(expression);
+  return pruned ? { ...rest, [FILTER_EXPRESSION_KEY]: pruned } : rest;
+}
+
+function withoutSlottedConditions(expression) {
+  if (!expression || typeof expression !== "object" || !Array.isArray(expression.children)) return null;
+  const children = expression.children.flatMap((child) => {
+    if (child?.group) {
+      const group = withoutSlottedConditions(child.group);
+      return group ? [{ ...child, group }] : [];
+    }
+    if (!child?.filter || typeof child.filter !== "object") return [];
+    const { [SLOTTED_PERFORMER_KEY]: _removed, ...filter } = child.filter;
+    return Object.keys(filter).length ? [{ ...child, filter }] : [];
+  });
+  if (!children.length) return null;
+  const { relatedScope, ...group } = expression;
+  return { ...group, ...(relatedScope && relatedScope.filterKey !== SLOTTED_PERFORMER_KEY ? { relatedScope } : {}), children };
 }
 
 function criterionIds(criterion, legacyValue) {
   const values = Array.isArray(criterion?.value) ? criterion.value : [legacyValue];
   return [...new Set(values.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
-}
-
-function selectedCriterionStates(criterion, legacyValue) {
-  return REVIEW_STATES.includes(criterion?.value) ? [criterion.value] : selectedBrowseStates(legacyValue);
 }
 
 export function browseEditorHref(item) {
@@ -352,4 +492,4 @@ export function rankPerformerOptions(performers, videoPerformers, genderHints) {
   });
 }
 
-export { BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, interchangeableSlotKey };
+export { ANY_SLOT_ROLE, BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, interchangeableSlotKey };

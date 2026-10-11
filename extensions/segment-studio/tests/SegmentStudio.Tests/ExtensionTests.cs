@@ -103,6 +103,7 @@ public sealed class ExtensionTests
         builder.Services.AddScoped<INativeAiProvenanceIngestionService>(_ => null!);
         builder.Services.AddScoped<INativeSegmentImportService>(_ => null!);
         builder.Services.AddSingleton<IJobService>(_ => null!);
+        builder.Services.AddScoped<IPerformerRepository>(_ => null!);
         await using var app = builder.Build();
         CreateExtension().MapEndpoints(app);
 
@@ -356,7 +357,7 @@ public sealed class ExtensionTests
                 new([Permissions.SegmentsDelete], EntityKinds.Video, "videoId"),
             ["GET /api/plugins/segment-studio/browse/activities"] =
                 new([Permissions.SegmentsRead, Permissions.TagsRead]),
-            ["GET /api/plugins/segment-studio/browse/activities/{tagId:int}/facets"] =
+            ["GET /api/plugins/segment-studio/browse/roles"] =
                 new([Permissions.SegmentsRead, Permissions.TagsRead, Permissions.PerformersRead]),
             ["POST /api/plugins/segment-studio/browse/segments"] =
                 new([Permissions.SegmentsRead, Permissions.TagsRead]),
