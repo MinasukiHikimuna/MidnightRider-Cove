@@ -110,6 +110,8 @@ public sealed class SegmentGroupServiceTests
             fixture.Context, review.Id, new SegmentGroupUpdateRequest("Review", [11, 12]), CancellationToken.None);
         await SegmentGroupService.UpdateAsync(
             fixture.Context, other.Id, new SegmentGroupUpdateRequest("Other", [13]), CancellationToken.None);
+        fixture.Context.Set<TagGroup>().Single(group => group.Id == review.Id).Color = "#66a9f0";
+        await fixture.Context.SaveChangesAsync();
 
         // The editor keeps the whole catalog so a segment retagged to a tag with no segments in its video is placed at once.
         var groups = await SegmentGroupService.ListPlacementAsync(fixture.Context, CancellationToken.None);
@@ -117,6 +119,8 @@ public sealed class SegmentGroupServiceTests
         Assert.Equal([review.Id, other.Id, empty.Id], groups.Select(group => group.Id));
         Assert.Equal([11, 12], groups[0].Tags.Select(tag => tag.TagId));
         Assert.Equal("Sorted twelve", groups[0].Tags.Single(tag => tag.TagId == 12).TagSortName);
+        // Swimlanes draw each group in its Cove tag group color.
+        Assert.Equal(["#66a9f0", null, null], groups.Select(group => group.Color));
         // Tag names stay behind the catalog endpoint's own permissions.
         Assert.All(groups.SelectMany(group => group.Tags), tag => Assert.Null(tag.TagName));
         Assert.Equal([13], groups[1].Tags.Select(tag => tag.TagId));

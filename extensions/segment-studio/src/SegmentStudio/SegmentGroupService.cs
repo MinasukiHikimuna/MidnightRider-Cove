@@ -7,7 +7,8 @@ namespace SegmentStudio;
 public enum SegmentGroupMutationStatus { Updated, NotFound, Invalid, Conflict, Forbidden }
 
 public sealed record SegmentGroupTagResponse(int TagId, string? TagName, int SortOrder, string? TagSortName = null);
-public sealed record SegmentGroupResponse(long Id, string Name, int SortOrder, IReadOnlyList<SegmentGroupTagResponse> Tags);
+public sealed record SegmentGroupResponse(
+    long Id, string Name, int SortOrder, IReadOnlyList<SegmentGroupTagResponse> Tags, string? Color);
 public sealed record SegmentGroupUpdateRequest(string Name, IReadOnlyList<int> TagIds);
 public sealed record SegmentGroupCreateRequest(string Name);
 public sealed record SegmentGroupReorderRequest(IReadOnlyList<long> GroupIds);
@@ -22,7 +23,7 @@ public static class SegmentGroupService
     {
         var groups = await db.Set<TagGroup>().AsNoTracking()
             .OrderBy(group => group.SortOrder).ThenBy(group => group.Name).ThenBy(group => group.Id)
-            .Select(group => new { group.Id, group.Name, group.SortOrder }).ToListAsync(ct);
+            .Select(group => new { group.Id, group.Name, group.SortOrder, group.Color }).ToListAsync(ct);
         if (groups.Count == 0) return [];
 
         var groupIds = groups.Select(group => group.Id).ToArray();
@@ -39,7 +40,7 @@ public static class SegmentGroupService
                 .ToList());
 
         return groups.Select((group, groupIndex) => new SegmentGroupResponse(
-            group.Id, group.Name, groupIndex, membersByGroup.GetValueOrDefault(group.Id) ?? [])).ToList();
+            group.Id, group.Name, groupIndex, membersByGroup.GetValueOrDefault(group.Id) ?? [], group.Color)).ToList();
     }
 
     // The editor's copy of the catalog: every grouped tag's placement and ordering, without tag names,
@@ -67,7 +68,7 @@ public static class SegmentGroupService
             var group = new TagGroup { Name = normalizedName, SortOrder = nextOrder, CreatedAt = now, UpdatedAt = now };
             db.Add(group);
             await db.SaveChangesAsync(ct);
-            return MutationExecution.Changed(new SegmentGroupResponse(group.Id, group.Name, group.SortOrder, []));
+            return MutationExecution.Changed(new SegmentGroupResponse(group.Id, group.Name, group.SortOrder, [], group.Color));
         }, ct);
     }
 

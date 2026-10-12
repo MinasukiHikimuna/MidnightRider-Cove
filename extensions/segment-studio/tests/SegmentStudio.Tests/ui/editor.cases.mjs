@@ -1303,6 +1303,7 @@ test("selected segment details mirror segment groups and swimlanes", () => {
       key: "group:7",
       id: 7,
       name: "First group",
+      color: null,
       selectedCount: 2,
       counts: { unreviewed: 0, approved: 1, rejected: 1 },
       lanes: [
@@ -1324,6 +1325,7 @@ test("selected segment details mirror segment groups and swimlanes", () => {
       key: "ungrouped",
       id: null,
       name: "Ungrouped",
+      color: null,
       selectedCount: 1,
       counts: { unreviewed: 0, approved: 1, rejected: 0 },
       lanes: [

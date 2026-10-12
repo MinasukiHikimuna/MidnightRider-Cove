@@ -128,6 +128,7 @@ export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], perform
       tagPlacement.set(tag.tagId, {
         segmentGroupId: group.id,
         segmentGroupName: group.name,
+        segmentGroupColor: group.color ?? null,
         segmentGroupSortOrder: groupIndex,
         segmentGroupTagSortOrder: tag.sortOrder,
         tagSortName: tag.tagSortName || null,
@@ -148,6 +149,7 @@ export function groupSegmentsIntoSwimlanes(segments, segmentGroups = [], perform
         tagSortName: segment.tagSortName || placement?.tagSortName || null,
         segmentGroupId: placement?.segmentGroupId ?? null,
         segmentGroupName: placement?.segmentGroupName ?? null,
+        segmentGroupColor: placement?.segmentGroupColor ?? null,
         segmentGroupSortOrder: placement?.segmentGroupSortOrder ?? Number.MAX_SAFE_INTEGER,
         segmentGroupTagSortOrder: placement?.segmentGroupTagSortOrder ?? Number.MAX_SAFE_INTEGER,
         segments: [],
@@ -186,6 +188,7 @@ export function groupSwimlanesBySegmentGroup(lanes) {
         key,
         id: lane.segmentGroupId,
         name: lane.segmentGroupName || "Ungrouped",
+        color: lane.segmentGroupColor ?? null,
         lanes: [],
         counts: { unreviewed: 0, approved: 0, rejected: 0 },
       };

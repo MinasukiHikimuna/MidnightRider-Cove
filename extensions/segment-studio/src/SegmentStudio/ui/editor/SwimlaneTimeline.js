@@ -4,7 +4,7 @@ import { DEFAULT_EDITOR_LAYOUT, TIMELINE_END_MARGIN_PX } from "../shared/constan
 
 import { formatTime } from "../shared/api.js";
 
-import { SLOT_STATUS_PRESENTATION, activeSwimlaneLabelStyle, basicSegmentTimelineStyle, segmentGroupHeaderBackground, segmentTimelineStyle, swimlaneMarkerTop, swimlaneStripeBackground, timelineSegmentWidth } from "../shared/presentation.js";
+import { SLOT_STATUS_PRESENTATION, activeSwimlaneLabelStyle, basicSegmentTimelineStyle, segmentGroupEdgeColor, segmentGroupHeaderBackground, segmentTimelineStyle, swimlaneMarkerTop, swimlaneStripeBackground, timelineSegmentWidth } from "../shared/presentation.js";
 
 import { PerformerSublaneAvatars, buildTimelineRows, groupSegmentsIntoSwimlanes, groupSwimlanesBySegmentGroup, hasGroupedSwimlanes, swimlaneDisplayLabel, visibleVirtualRows } from "./model/swimlanes.js";
 
@@ -318,7 +318,7 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
             const group = row.group;
             const collapsed = collapsedGroupKeys.includes(group.key);
             const groupSelected = selectedGroupKey === group.key;
-            const groupHeaderBackground = segmentGroupHeaderBackground(groupSelected);
+            const groupHeaderBackground = segmentGroupHeaderBackground(groupSelected, group.color);
             if (row.kind === "group") return h("div", {
               key: row.key,
               "data-segment-group": group.key,
@@ -348,8 +348,11 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
                 "data-selected-timeline-group": groupSelected ? "true" : "false",
                 className: "sticky left-0 z-40 flex min-w-0 items-center gap-1.5 border-l-4 border-r border-border px-2 text-left hover:ring-1 hover:ring-inset hover:ring-accent/50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent",
                 style: {
-                  borderLeftColor: group.id == null ? "var(--color-border)" : "var(--color-accent)",
+                  borderLeftColor: segmentGroupEdgeColor(group),
                   backgroundColor: groupHeaderBackground,
+                  // Headers are tinted by their own group colors, so selection needs the accent to stand out.
+                  // An outline leaves the box-shadow hover and focus rings free.
+                  ...(groupSelected ? { outline: "1px solid var(--color-accent)", outlineOffset: "-1px" } : {}),
                 },
                 title: `${collapsed ? "Expand" : "Collapse"} ${group.name}`,
               }, [
@@ -382,7 +385,7 @@ function SwimlaneTimeline({ segments, shotBoundaries = [], segmentGroups, perfor
                 "data-timeline-label-gutter": "true",
                 "data-active-swimlane": activeLane ? "true" : undefined,
                 className: "sticky left-0 z-40 flex min-w-0 items-center gap-2 border-r border-border px-3 pl-5",
-                style: activeSwimlaneLabelStyle(activeLane, stripeBackground),
+                style: activeSwimlaneLabelStyle(activeLane, stripeBackground, group.color),
                 title: `${swimlaneDisplayLabel(lane)} · Cmd/Ctrl+click to toggle all segments`,
                 "aria-label": swimlaneDisplayLabel(lane),
                 onClick: (event) => {

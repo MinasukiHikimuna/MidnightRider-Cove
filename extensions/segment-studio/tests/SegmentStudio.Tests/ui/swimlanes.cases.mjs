@@ -229,12 +229,58 @@ test("Segment group headers use a subtle hierarchy surface outside swimlane stri
   assert.match(ui.segmentGroupHeaderBackground(false), /color-mix.*--color-accent.*8%.*--color-surface/);
   assert.match(ui.segmentGroupHeaderBackground(true), /color-mix.*--color-accent.*14%.*--color-surface/);
   assert.match(source, /className: "absolute left-0 right-0 grid border-b border-border"/);
-  assert.match(source, /const groupHeaderBackground = segmentGroupHeaderBackground\(groupSelected\)/);
+  assert.match(source, /const groupHeaderBackground = segmentGroupHeaderBackground\(groupSelected, group\.color\)/);
   assert.equal(source.match(/backgroundColor: groupHeaderBackground/g)?.length, 2);
   assert.doesNotMatch(source, /className: "grid h-8 border-b border-border bg-muted\/50"/);
   assert.doesNotMatch(source, /data-selected-timeline-group[\s\S]{0,300}bg-transparent/);
   assert.doesNotMatch(source, /data-selected-timeline-group[\s\S]{0,300}hover:opacity/);
   assert.doesNotMatch(source, /className: "grid h-8 border-y border-border"/);
+});
+
+test("swimlane groups carry their Cove tag group color from the catalog", () => {
+  const lanes = ui.groupSegmentsIntoSwimlanes([
+    { id: 1, tagId: 10, tagName: "Alpha", startSec: 1, endSec: 2, reviewState: "approved" },
+    { id: 2, tagId: 20, tagName: "Beta", startSec: 3, endSec: 4, reviewState: "approved" },
+    { id: 3, tagId: 30, tagName: "Gamma", startSec: 5, endSec: 6, reviewState: "approved" },
+  ], [
+    { id: 7, name: "Colored", color: "#66A9F0", tags: [{ tagId: 10, sortOrder: 0 }] },
+    { id: 8, name: "Plain", tags: [{ tagId: 20, sortOrder: 0 }] },
+  ]);
+
+  assert.deepEqual(lanes.map((lane) => lane.segmentGroupColor), ["#66A9F0", null, null]);
+  assert.deepEqual(ui.groupSwimlanesBySegmentGroup(lanes).map((group) => [group.key, group.color]), [
+    ["group:7", "#66A9F0"],
+    ["group:8", null],
+    ["ungrouped", null],
+  ]);
+});
+
+test("swimlane group headers and lane titles use the tag group color", () => {
+  assert.equal(ui.normalizeSegmentGroupColor(" #66A9F0 "), "#66a9f0");
+  assert.equal(ui.normalizeSegmentGroupColor("#66a9f080"), "#66a9f0");
+  for (const invalid of [null, undefined, "", "66a9f0", "#abc", "red", "#66a9f0; color: red"])
+    assert.equal(ui.normalizeSegmentGroupColor(invalid), null);
+
+  assert.match(ui.segmentGroupHeaderBackground(false, "#66a9f0"), /^color-mix\(in srgb, #66a9f0 8%, var\(--color-surface\)\)$/);
+  assert.match(ui.segmentGroupHeaderBackground(true, "#66a9f0"), /^color-mix\(in srgb, #66a9f0 14%, var\(--color-surface\)\)$/);
+  assert.match(ui.segmentGroupHeaderBackground(false, "not a color"), /--color-accent\) 8%/);
+
+  assert.equal(ui.segmentGroupEdgeColor({ id: 7, color: "#66a9f0" }), "#66a9f0");
+  assert.equal(ui.segmentGroupEdgeColor({ id: 7, color: null }), "var(--color-accent)");
+  assert.equal(ui.segmentGroupEdgeColor({ id: null, color: null }), "var(--color-border)");
+
+  assert.deepEqual(ui.activeSwimlaneLabelStyle(false, "var(--color-surface)", "#66a9f0"), {
+    backgroundColor: "var(--color-surface)",
+    boxShadow: "inset 3px 0 0 color-mix(in srgb, #66a9f0 55%, transparent)",
+  });
+  assert.deepEqual(ui.activeSwimlaneLabelStyle(false, "var(--color-surface)", null), { backgroundColor: "var(--color-surface)" });
+  // The active lane's accent replaces the group edge rather than stacking on it.
+  const active = ui.activeSwimlaneLabelStyle(true, "var(--color-surface)", "#66a9f0");
+  assert.match(active.boxShadow, /^inset 3px 0 0 var\(--color-accent\)/);
+  assert.doesNotMatch(active.boxShadow, /#66a9f0/);
+
+  assert.match(source, /borderLeftColor: segmentGroupEdgeColor\(group\)/);
+  assert.match(source, /groupSelected \? \{ outline: "1px solid var\(--color-accent\)", outlineOffset: "-1px" \} : \{\}/);
 });
 
 test("initial and deep-linked selections reveal a persisted collapsed group", () => {

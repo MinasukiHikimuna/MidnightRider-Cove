@@ -139,7 +139,9 @@ unchanged so it can be reloaded and retried safely.
 
 The segment rail and swimlane timeline use Cove's native tag groups. Group order
 comes from Cove, and tags use **Sort Name** when set and otherwise use their
-name. Select a group heading in either surface, or press **B**, to collapse or
+name. In the swimlane timeline, each group heading and its swimlane titles carry
+the tag group's color; set or change it under **Tags → Groups** in Cove. Select a
+group heading in either surface, or press **B**, to collapse or
 expand the group containing the selected segment. Collapsing changes
 only the presentation: it does not clear the selected segment or modify segment
 data. The group heading remains available so it can be expanded again with the

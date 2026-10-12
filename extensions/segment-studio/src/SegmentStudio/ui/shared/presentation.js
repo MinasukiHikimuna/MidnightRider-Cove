@@ -112,17 +112,35 @@ export function swimlaneStripeBackground(laneIndex) {
     : "color-mix(in srgb, var(--color-muted) 14%, var(--color-surface))";
 }
 
-export function activeSwimlaneLabelStyle(active, backgroundColor) {
-  return {
-    backgroundColor,
-    ...(active ? {
-      boxShadow: "inset 3px 0 0 var(--color-accent), inset 0 0 16px color-mix(in srgb, var(--color-accent) 22%, transparent)",
-    } : {}),
-  };
+// Cove stores tag group colors as `#rrggbb` or `#rrggbbaa`; anything else is treated as no color.
+export function normalizeSegmentGroupColor(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(trimmed) ? trimmed.slice(0, 7).toLowerCase() : null;
 }
 
-export function segmentGroupHeaderBackground(selected = false) {
-  return `color-mix(in srgb, var(--color-accent) ${selected ? 14 : 8}%, var(--color-surface))`;
+// A group's header edge: its tag group color, the accent for a group without one, and the plain border
+// for ungrouped lanes.
+export function segmentGroupEdgeColor(group) {
+  if (group?.id == null) return "var(--color-border)";
+  return normalizeSegmentGroupColor(group.color) || "var(--color-accent)";
+}
+
+export function activeSwimlaneLabelStyle(active, backgroundColor, groupColor = null) {
+  const color = normalizeSegmentGroupColor(groupColor);
+  if (active) return {
+    backgroundColor,
+    boxShadow: "inset 3px 0 0 var(--color-accent), inset 0 0 16px color-mix(in srgb, var(--color-accent) 22%, transparent)",
+  };
+  // Lanes continue their group header's colored edge at reduced strength. An inset shadow rather than
+  // a border keeps the title and its hover-only configure button where they are.
+  return color
+    ? { backgroundColor, boxShadow: `inset 3px 0 0 color-mix(in srgb, ${color} 55%, transparent)` }
+    : { backgroundColor };
+}
+
+export function segmentGroupHeaderBackground(selected = false, groupColor = null) {
+  const tint = normalizeSegmentGroupColor(groupColor) || "var(--color-accent)";
+  return `color-mix(in srgb, ${tint} ${selected ? 14 : 8}%, var(--color-surface))`;
 }
 
 export function swimlaneMarkerTop(track) {
