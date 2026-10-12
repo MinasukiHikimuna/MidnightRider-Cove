@@ -37,6 +37,17 @@ internal static class NativeShotBoundaries
         return ToResponses(videoId, set);
     }
 
+    /// <summary>
+    /// The videos whose primary file has a native set, which is the set the editor shows for them. Like
+    /// <c>IVideoShotService.GetForVideoAsync</c>, it ignores query filters; callers narrow the result to
+    /// what the user can see.
+    /// </summary>
+    internal static Task<List<int>> VideosWithSetsAsync(DbContext db, CancellationToken ct) =>
+        db.Set<Video>().IgnoreQueryFilters().AsNoTracking()
+            .Where(video => db.Set<VideoShotSet>().Any(set => set.FileId == video.PrimaryFileId))
+            .Select(video => video.Id)
+            .ToListAsync(ct);
+
     internal static Task<ShotBoundaryMutationResult?> SplitAsync(
         DbContext db, IServiceProvider services, int videoId, SplitShotBoundaryRequest request, CancellationToken ct) =>
         SplitAsync(db, services.GetService<IVideoShotService>(), PrimaryFileResolver(db), videoId, request, ct);

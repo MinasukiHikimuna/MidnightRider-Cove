@@ -155,8 +155,8 @@ public static class SegmentStudioVideoFilters
         CancellationToken ct)
     {
         var segments = SegmentRows(db, workflow);
-        // Review states and shot boundaries are Full-only data: Basic users get no matches rather
-        // than a hint about work their mode cannot read.
+        // Review states and shot boundaries are Full-only in Segment Studio: Basic users get no matches
+        // rather than a hint about work their mode cannot read.
         if (workflow == SegmentStudioWorkflows.Basic && filterId is ReviewState or HasShotBoundaries)
             return VideoMembership.None;
         switch (filterId)
@@ -169,9 +169,13 @@ public static class SegmentStudioVideoFilters
                     return VideoMembership.None;
                 return VideoMembership.Of(await VideosAsync(segments.Where(row => row.ReviewState == state), ct), include: true);
             case HasShotBoundaries:
-                var boundaries = await db.Set<SegmentStudioShotBoundary>().AsNoTracking()
-                    .Select(boundary => boundary.VideoId).Distinct().ToListAsync(ct);
-                return VideoMembership.Of(boundaries.ToHashSet(), include: value.GetBoolean());
+                // The editor shows a native set on the video's primary file where there is one, and Segment
+                // Studio's own rows otherwise; a video has boundaries if either is present.
+                var boundaries = (await db.Set<SegmentStudioShotBoundary>().AsNoTracking()
+                    .Select(boundary => boundary.VideoId).Distinct().ToListAsync(ct)).ToHashSet();
+                if (NativeShotSupport.IsAvailable)
+                    boundaries.UnionWith(await NativeShotBoundaries.VideosWithSetsAsync(db, ct));
+                return VideoMembership.Of(boundaries, include: value.GetBoolean());
             case SegmentTags:
                 return await SegmentTagMembershipAsync(db, segments, modifier, value, ct);
             default:

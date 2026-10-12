@@ -25,6 +25,28 @@ public sealed class SegmentStudioVideoFiltersTests
         Assert.Equal(expected, await MatchingAsync(fixture, SegmentStudioWorkflows.Compatibility, filterId, modifier, valueJson));
     }
 
+    [Fact]
+    public async Task ShotBoundaryFilterCountsNativeSetsOnTheEditorsPrimaryFile()
+    {
+        await using var fixture = await DiscoveryFixture.CreateAsync();
+        var now = DateTime.UtcNow;
+        // Video 2 has only Cove's native shots, on its primary file; video 5's set is on a file that is not
+        // its primary file, so the editor doesn't show it.
+        (await fixture.Context.Set<Video>().SingleAsync(video => video.Id == 2)).PrimaryFileId = 902;
+        (await fixture.Context.Set<Video>().SingleAsync(video => video.Id == 5)).PrimaryFileId = 905;
+        fixture.Context.AddRange(
+            new VideoShotSet { Id = 1, FileId = 902, SourceKey = "user", DurationSec = 10, ShotCount = 1, CreatedAt = now, UpdatedAt = now },
+            new VideoShotSet { Id = 2, FileId = 906, SourceKey = "user", DurationSec = 10, ShotCount = 1, CreatedAt = now, UpdatedAt = now });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        Assert.True(NativeShotSupport.IsAvailable);
+        Assert.Equal(new[] { 1, 2, 3 }, await MatchingAsync(fixture, SegmentStudioWorkflows.Compatibility, "has-shot-boundaries", "equals", "true"));
+        Assert.Equal(new[] { 5 }, await MatchingAsync(fixture, SegmentStudioWorkflows.Compatibility, "has-shot-boundaries", "equals", "false"));
+        Assert.Equal(new[] { 1, 2, 3 }, await MatchingAsync(fixture, SegmentStudioWorkflows.Full, "has-shot-boundaries", "equals", "true"));
+        Assert.Empty(await MatchingAsync(fixture, SegmentStudioWorkflows.Basic, "has-shot-boundaries", "equals", "true"));
+    }
+
     [Theory]
     [InlineData("includes", """{"value":[11]}""", new[] { 1 })]
     [InlineData("includes", """{"value":[12,13]}""", new[] { 1, 2, 3 })]
@@ -302,6 +324,12 @@ public sealed class SegmentStudioVideoFiltersTests
             modelBuilder.Entity<SegmentStudioShotBoundary>(builder =>
             {
                 builder.HasKey(boundary => boundary.Id);
+            });
+            modelBuilder.Entity<VideoShotSet>(builder =>
+            {
+                builder.HasKey(set => set.Id);
+                builder.Ignore(set => set.File);
+                builder.Ignore(set => set.Payload);
             });
         }
     }
