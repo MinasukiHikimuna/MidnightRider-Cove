@@ -703,6 +703,65 @@ test("the next unprocessed segment prefers the nearest lane and nearest time onc
   assert.notEqual(ui.findNextUnprocessed(lanes, reference, { removedIds: [6, 7] })?.id, 1);
 });
 
+test("removing a whole swimlane selects the segment nearest the removed span, not the active end", () => {
+  const lanes = [
+    {
+      key: "above",
+      markers: [{ segment: { id: 1, startSec: 495, endSec: 503, reviewState: "approved" } }],
+    },
+    {
+      key: "removed",
+      markers: [
+        { segment: { id: 2, startSec: 52, endSec: 67, reviewState: "approved" } },
+        { segment: { id: 3, startSec: 483, endSec: 492, reviewState: "approved" } },
+        { segment: { id: 4, startSec: 819, endSec: 825, reviewState: "approved" } },
+      ],
+    },
+    {
+      key: "below",
+      markers: [{ segment: { id: 5, startSec: 1068, endSec: 1098, reviewState: "approved" } }],
+    },
+  ];
+  // The active segment is the last one in the lane, so the lane below is closer to it,
+  // but the lane above holds a segment inside the stretch the reviewer just removed.
+  const reference = ui.selectionReferenceForSegment(lanes, 4);
+  assert.equal(ui.findNextUnprocessed(lanes, reference, { removedIds: [2, 3, 4] })?.id, 1);
+  // Removing only part of the lane keeps the active segment as the reference.
+  assert.equal(ui.findNextUnprocessed(lanes, reference, { removedIds: [4] })?.id, 3);
+
+  // Within the removed span, the segment nearest the active one wins, not the span start.
+  const crowded = lanes.map((lane) => lane.key !== "above" ? lane : {
+    ...lane,
+    markers: [100, 500, 800].map((startSec, index) =>
+      ({ segment: { id: 11 + index, startSec, endSec: startSec + 5, reviewState: "approved" } })),
+  });
+  assert.equal(ui.findNextUnprocessed(crowded, reference, { removedIds: [2, 3, 4] })?.id, 13);
+});
+
+test("lanes equally far from the emptied lane compete on time before the lane below wins", () => {
+  const lanes = [
+    { key: "above", markers: [{ segment: { id: 1, startSec: 900, endSec: 905, reviewState: "approved" } }] },
+    { key: "removed", markers: [{ segment: { id: 2, startSec: 1000, endSec: 1010, reviewState: "approved" } }] },
+    { key: "below", markers: [{ segment: { id: 3, startSec: 1300, endSec: 1310, reviewState: "approved" } }] },
+  ];
+  const reference = ui.selectionReferenceForSegment(lanes, 2);
+  assert.equal(ui.findNextUnprocessed(lanes, reference, { removedIds: [2] })?.id, 1);
+});
+
+test("removing several segments from a lane that keeps others stays near the active segment", () => {
+  const lanes = [{
+    key: "lane",
+    markers: [
+      { segment: { id: 1, startSec: 10, endSec: 15, reviewState: "rejected" } },
+      { segment: { id: 2, startSec: 50, endSec: 55, reviewState: "approved" } },
+      { segment: { id: 3, startSec: 1900, endSec: 1905, reviewState: "approved" } },
+      { segment: { id: 4, startSec: 2000, endSec: 2005, reviewState: "rejected" } },
+    ],
+  }];
+  const reference = ui.selectionReferenceForSegment(lanes, 4);
+  assert.equal(ui.findNextUnprocessed(lanes, reference, { removedIds: [1, 4] })?.id, 3);
+});
+
 test("the next unprocessed segment falls back to any remaining segment, then to nothing", () => {
   const reviewed = [
     { key: "current", markers: [{ segment: { id: 1, startSec: 10, endSec: 20, reviewState: "approved" } }] },

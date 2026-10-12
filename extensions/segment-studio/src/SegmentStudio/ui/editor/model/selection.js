@@ -351,14 +351,18 @@ function segmentTimelineDistance(reference, candidate) {
   return 0;
 }
 
+// A removed-span reference keeps the active segment as its anchor, so segments the span
+// covers equally are still ordered by how close they are to where the reviewer was.
 function closestSegmentOnTimeline(markers, reference, removedIds, accept = () => true) {
+  const anchor = reference.anchor ?? reference;
   return (markers || [])
     .map((marker) => marker.segment)
     .filter((segment) => segment && !removedIds.has(segment.id) && accept(segment))
     .sort((left, right) =>
       segmentTimelineDistance(reference, left) - segmentTimelineDistance(reference, right)
-      || Math.abs(Number(left.startSec) - Number(reference.startSec))
-        - Math.abs(Number(right.startSec) - Number(reference.startSec))
+      || segmentTimelineDistance(anchor, left) - segmentTimelineDistance(anchor, right)
+      || Math.abs(Number(left.startSec) - Number(anchor.startSec))
+        - Math.abs(Number(right.startSec) - Number(anchor.startSec))
       || Number(left.startSec) - Number(right.startSec)
       || Number(left.id) - Number(right.id))[0] ?? null;
 }
@@ -381,21 +385,35 @@ function segmentFollowsReference(segment, reference) {
   return Number(segment.id) > Number(reference.id);
 }
 
+// Lanes at the same distance compete on time, so the lane below only wins a true tie.
 function nearestSegmentAcrossLanes(lanes, laneIndex, reference, removedIds, accept) {
   if (laneIndex < 0)
     return closestSegmentOnTimeline(lanes.flatMap((lane) => lane.markers || []), reference, removedIds, accept);
   const ranked = lanes
-    .map((lane, index) => ({ lane, index }))
-    .filter(({ lane }) => laneRemainingSegments(lane, removedIds).some(accept))
+    .map((lane, index) => ({ index, found: closestSegmentOnTimeline(lane.markers, reference, removedIds, accept) }))
+    .filter(({ found }) => found)
     .sort((left, right) =>
       Math.abs(left.index - laneIndex) - Math.abs(right.index - laneIndex)
+      || segmentTimelineDistance(reference, left.found) - segmentTimelineDistance(reference, right.found)
+      || segmentTimelineDistance(reference.anchor ?? reference, left.found)
+        - segmentTimelineDistance(reference.anchor ?? reference, right.found)
       || Number(left.index < laneIndex) - Number(right.index < laneIndex)
       || left.index - right.index);
-  for (const { lane } of ranked) {
-    const found = closestSegmentOnTimeline(lane.markers, reference, removedIds, accept);
-    if (found) return found;
-  }
-  return null;
+  return ranked[0]?.found ?? null;
+}
+
+// Emptying the reference lane leaves the reviewer at the whole stretch it covered, not at
+// whichever end happened to be active. A lane with segments left keeps the active reference.
+function removedSpanReference(lane, reference, removedIds) {
+  if (laneRemainingSegments(lane, removedIds).length > 0) return reference;
+  const removed = (lane?.markers || [])
+    .map((marker) => marker.segment)
+    .filter((segment) => segment && removedIds.has(segment.id));
+  if (removed.length <= 1) return reference;
+  const startSec = Math.min(reference.startSec, ...removed.map((segment) => Number(segment.startSec) || 0));
+  const endSec = Math.max(reference.endSec, ...removed.map((segment) =>
+    Number(segment.endSec ?? segment.startSec) || 0));
+  return { ...reference, startSec, endSec, anchor: reference };
 }
 
 export function selectionReferenceForSegment(lanes, segmentId) {
@@ -436,8 +454,9 @@ export function findNextUnprocessed(lanes, reference, options = {}) {
     const backward = unreviewed.filter((segment) => !segmentFollowsReference(segment, reference)).at(-1);
     if (backward) return backward;
   }
-  return nearestSegmentAcrossLanes(orderedLanes, laneIndex, reference, removedIds, isUnreviewedSegment)
-    ?? nearestSegmentAcrossLanes(orderedLanes, laneIndex, reference, removedIds, () => true);
+  const span = removedSpanReference(orderedLanes[laneIndex], reference, removedIds);
+  return nearestSegmentAcrossLanes(orderedLanes, laneIndex, span, removedIds, isUnreviewedSegment)
+    ?? nearestSegmentAcrossLanes(orderedLanes, laneIndex, span, removedIds, () => true);
 }
 
 export function percentageSeekTime(duration, digit) {
