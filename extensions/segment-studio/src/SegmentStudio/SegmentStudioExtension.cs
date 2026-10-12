@@ -2572,6 +2572,37 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.OwnedSegmentsRead);
 
+        endpoints.MapPost("/api/plugins/segment-studio/videos/{videoId:int}/segments/{segmentId:int}/duplicate-draft",
+                async Task<IResult> (int videoId, int segmentId, DuplicatePublishedSegmentDraftRequest request, DbContext db,
+                    ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,
+                    [FromServices] ISegmentSpanCacheInvalidator spanCacheInvalidator, ISegmentDuplicationProvenanceService duplicateProvenance,
+                    CancellationToken ct) =>
+                {
+                    if (await SegmentStudioCompatibilityService.RequiresLegacyUiAsync(db, ct))
+                        return LegacyUiRequiredResult();
+                    var strategy = db.Database.CreateExecutionStrategy();
+                    var result = await strategy.ExecuteAsync(async () =>
+                    {
+                        await using var transaction = db.Database.IsRelational()
+                            ? await db.Database.BeginTransactionAsync(ct)
+                            : null;
+                        var mutation = await SegmentStudioDraftService.DuplicatePublishedAsync(
+                            db, videoId, segmentId, request, principalAccessor.Current, authorization,
+                            duplicateProvenance, ct);
+                        if (mutation.Status == SegmentDraftMutationStatus.Updated && transaction is not null)
+                            await transaction.CommitAsync(ct);
+                        return mutation;
+                    });
+                    if (result.Status == SegmentDraftMutationStatus.Updated)
+                        PublishSegmentInvalidation(spanCacheInvalidator, videoId);
+                    return ToDraftHttpResult(result);
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(Permissions.SegmentsWrite)
+            .RequireCoveEntityAccess(EntityKinds.Video, "videoId")
+            .RequireSegmentStudioCapability(
+                SegmentStudioCapabilities.OwnedSegmentsRead);
+
         endpoints.MapPost("/api/plugins/segment-studio/videos/{videoId:int}/drafts/{itemId:long}/merge",
                 async Task<IResult> (int videoId, long itemId, MergeSegmentDraftRequest request, DbContext db,
                     ICurrentPrincipalAccessor principalAccessor, Cove.Core.Auth.IAuthorizationService authorization,

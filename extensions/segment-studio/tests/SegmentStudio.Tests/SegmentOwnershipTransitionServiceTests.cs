@@ -2180,6 +2180,167 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
+    public async Task PublishedDuplicateCreatesApprovedDraftWithSlotsAndProvenance()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var anchor = new SegmentStudioItem
+        {
+            NativeSegmentId = fixture.SegmentId,
+            RepresentationSchemaVersion = 1,
+            CreatedAt = fixture.UpdatedAt,
+            UpdatedAt = fixture.UpdatedAt,
+        };
+        fixture.Context.Add(anchor);
+        await fixture.Context.SaveChangesAsync();
+        var slotDefinitionId = Guid.NewGuid();
+        fixture.Context.Add(new SegmentStudioSegmentSlot
+        {
+            ItemId = anchor.Id,
+            SlotDefinitionId = slotDefinitionId,
+            PerformerId = 29,
+            CreatedAt = fixture.UpdatedAt,
+        });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+
+        var nodes = new LineageNodeService();
+        var provenance = new SegmentProvenanceService();
+        var sourceDefinition = await new SegmentSourceRegistry().RegisterAsync(
+            fixture.Context,
+            new SegmentSourceRegistration(
+                "stash-marker-studio", "Stash Marker Studio", "migration", "Stash",
+                null, null, "{}"),
+            CancellationToken.None);
+        var sourceNode = await nodes.EnsureAsync(fixture.Context, anchor.Id, CancellationToken.None);
+        await provenance.AppendAsync(
+            fixture.Context,
+            new SegmentProvenanceAppend(
+                sourceNode.Id, sourceDefinition.Id, "origin", null, null, null, null,
+                0.77f, fixture.UpdatedAt, """{"classification":"ai"}"""),
+            CancellationToken.None);
+        var duplicateProvenance = new SegmentDuplicationProvenanceService(nodes, provenance);
+
+        var request = new DuplicatePublishedSegmentDraftRequest(Guid.NewGuid(), fixture.UpdatedAt, 30);
+        var duplicated = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId, request,
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+        var replay = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId, request,
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+
+        Assert.Equal(SegmentDraftMutationStatus.Updated, duplicated.Status);
+        var created = duplicated.CreatedDraft!;
+        Assert.Null(created.NativeSegmentId);
+        Assert.False(created.Published);
+        Assert.Equal("approved", created.ReviewState);
+        Assert.Equal((30, 35.25), (created.StartSec, created.EndSec));
+        Assert.True(replay.Replayed);
+        Assert.Equal(created.ItemId, replay.CreatedDraft!.ItemId);
+        // The published source stays as it was: no second native segment and no timestamp bump.
+        var natives = await fixture.Context.Set<Segment>().ToListAsync();
+        var native = Assert.Single(natives);
+        Assert.Equal(fixture.UpdatedAt, native.UpdatedAt);
+        var draft = await fixture.Context.Set<SegmentStudioItem>().SingleAsync(item => item.Id == created.ItemId);
+        Assert.Equal(fixture.VideoId, draft.VideoId);
+        Assert.Equal(11, draft.TagId);
+        Assert.Equal("""{"producer":7}""", draft.PayloadJson);
+        Assert.Equal("producer/example", draft.SourceKey);
+        Assert.Equal("Example", draft.Title);
+        Assert.Null(draft.ExtensionImageBlobId);
+        var slots = await fixture.Context.Set<SegmentStudioSegmentSlot>().OrderBy(slot => slot.ItemId).ToListAsync();
+        Assert.Equal(new[] { anchor.Id, draft.Id }, slots.Select(slot => slot.ItemId));
+        Assert.All(slots, slot =>
+        {
+            Assert.Equal(slotDefinitionId, slot.SlotDefinitionId);
+            Assert.Equal(29, slot.PerformerId);
+        });
+        var copied = Assert.Single(await provenance.GetForItemAsync(
+            fixture.Context, draft.Id, CancellationToken.None));
+        Assert.Equal("stash-marker-studio", copied.SourceKey);
+        Assert.Equal(0.77f, copied.Confidence);
+    }
+
+    [Fact]
+    public async Task PublishedDuplicateRejectsAStaleSource()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var duplicateProvenance = new SegmentDuplicationProvenanceService(
+            new LineageNodeService(), new SegmentProvenanceService());
+
+        var result = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId,
+            new DuplicatePublishedSegmentDraftRequest(Guid.NewGuid(), fixture.UpdatedAt.AddSeconds(-1), null),
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+
+        Assert.Equal(SegmentDraftMutationStatus.Conflict, result.Status);
+        Assert.Empty(await fixture.Context.Set<SegmentStudioItem>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task PublishedDuplicateDropsALegacyReviewMarkerFromThePayload()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var native = await fixture.Context.Set<Segment>().SingleAsync();
+        native.Payload = JsonDocument.Parse(
+            """{"producer":7,"segmentStudio":{"schemaVersion":1,"reviewState":"rejected"}}""");
+        await fixture.Context.SaveChangesAsync();
+        fixture.Context.ChangeTracker.Clear();
+        var duplicateProvenance = new SegmentDuplicationProvenanceService(
+            new LineageNodeService(), new SegmentProvenanceService());
+
+        var result = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId,
+            new DuplicatePublishedSegmentDraftRequest(Guid.NewGuid(), fixture.UpdatedAt),
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+
+        Assert.Equal(SegmentDraftMutationStatus.Updated, result.Status);
+        var draft = await fixture.Context.Set<SegmentStudioItem>().SingleAsync();
+        Assert.Equal("approved", draft.ReviewState);
+        Assert.Equal("""{"producer":7}""", draft.PayloadJson);
+    }
+
+    [Fact]
+    public async Task PublishedDuplicateRefusesWhileLineageWritesArePausedAndRejectsReusedOperations()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var duplicateProvenance = new SegmentDuplicationProvenanceService(
+            new LineageNodeService(), new SegmentProvenanceService());
+        var state = await fixture.Context.Set<SegmentStudioInstallationState>()
+            .SingleAsync(candidate => candidate.Id == 1);
+        state.LineageRolloutPaused = true;
+        await fixture.Context.SaveChangesAsync();
+
+        var paused = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId,
+            new DuplicatePublishedSegmentDraftRequest(Guid.NewGuid(), fixture.UpdatedAt),
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+        Assert.Equal(SegmentDraftMutationStatus.Conflict, paused.Status);
+        Assert.Empty(await fixture.Context.Set<SegmentStudioItem>().ToListAsync());
+
+        state.LineageRolloutPaused = false;
+        await fixture.Context.SaveChangesAsync();
+        var operationId = Guid.NewGuid();
+        var first = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId,
+            new DuplicatePublishedSegmentDraftRequest(operationId, fixture.UpdatedAt, 30),
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+        var reused = await SegmentStudioDraftService.DuplicatePublishedAsync(
+            fixture.Context, fixture.VideoId, fixture.SegmentId,
+            new DuplicatePublishedSegmentDraftRequest(operationId, fixture.UpdatedAt, 40),
+            CovePrincipal.System(), fixture.Authorization, duplicateProvenance,
+            CancellationToken.None);
+        Assert.Equal(SegmentDraftMutationStatus.Updated, first.Status);
+        Assert.Equal(SegmentDraftMutationStatus.Conflict, reused.Status);
+        Assert.Single(await fixture.Context.Set<SegmentStudioItem>().ToListAsync());
+    }
+
+    [Fact]
     public async Task ManualDuplicateDoesNotCreateAnItemWhileLineageWritesArePaused()
     {
         await using var fixture = await TransitionFixture.CreateAsync();

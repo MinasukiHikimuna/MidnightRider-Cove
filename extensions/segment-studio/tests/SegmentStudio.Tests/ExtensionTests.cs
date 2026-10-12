@@ -114,7 +114,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(90, endpoints.Length);
+        Assert.Equal(91, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -370,6 +370,8 @@ public sealed class ExtensionTests
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/drafts/{itemId:long}/split"] =
                 new([Permissions.SegmentsWrite], EntityKinds.Video, "videoId"),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/drafts/{itemId:long}/duplicate"] =
+                new([Permissions.SegmentsWrite], EntityKinds.Video, "videoId"),
+            ["POST /api/plugins/segment-studio/videos/{videoId:int}/segments/{segmentId:int}/duplicate-draft"] =
                 new([Permissions.SegmentsWrite], EntityKinds.Video, "videoId"),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/drafts/{itemId:long}/merge"] =
                 new([Permissions.SegmentsWrite, Permissions.SegmentsDelete], EntityKinds.Video, "videoId", Permissions.SegmentsWrite),

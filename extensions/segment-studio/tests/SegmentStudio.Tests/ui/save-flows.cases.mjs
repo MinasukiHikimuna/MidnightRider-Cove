@@ -391,6 +391,36 @@ test("save flow: a Full-mode duplicate shows the approved copy the server create
   });
 });
 
+test("save flow: a Full-mode duplicate of a published segment becomes an approved draft to publish", { timeout: 5000 }, async () => {
+  const published = segment({ reviewState: "approved" });
+  const copy = segment({ id: -57, itemId: 57, nativeSegmentId: null, published: false, reviewState: "approved" });
+  const api = createFakeApi();
+  const post = api.hold("POST", "/videos/7/segments/101/duplicate-draft");
+  let server;
+  const editor = createFakeEditor({ segments: [published], compatibilityMode: true, server: () => server.serve() });
+  editor.state.detail = { ...editor.state.detail, performerSlots: [slotFor(101, 17, "Alpha")] };
+  server = duplicateServer(editor, copy);
+  await withEditorGlobals(api, async () => {
+    const duplicating = actionsFor(editor).duplicateSegment(true);
+    await post.arrived();
+    // The copy is shown as the unpublished draft the server is creating, not as published.
+    const shown = editor.displayedSegments.find((item) => item.id === -1);
+    assert.deepEqual([shown.published, shown.reviewState], [false, "approved"]);
+    assert.deepEqual(editor.state.detail.performerSlots.filter((slot) => slot.segmentId === -1), [slotFor(-1, 17, "Alpha")]);
+    const [request] = api.sent("POST", "/videos/7/segments/101/duplicate-draft");
+    assert.equal(request.body.expectedUpdatedAt, published.updatedAt);
+    assert.equal(request.body.startSec, 0);
+    assert.ok(request.body.operationId);
+
+    server.duplicate();
+    post.release({ createdDraft: { itemId: 57 } });
+    await duplicating;
+    assert.equal(api.sent("POST", "/videos/7/segments/101/duplicate").length, 0);
+    assert.equal(editor.state.selectedSegmentId, -57);
+    assert.equal(editor.state.saveMessage, "Duplicate created at the playhead.");
+  });
+});
+
 test("save flow: a duplicate whose reload fails keeps its identity so a repeat selects it without a second request", { timeout: 5000 }, async () => {
   const existing = segment();
   const duplicated = segment({ id: 206, nativeSegmentId: 206, updatedAt: "2026-01-05T00:00:00Z" });

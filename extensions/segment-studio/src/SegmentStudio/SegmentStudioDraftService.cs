@@ -40,6 +40,11 @@ public sealed record DuplicateSegmentDraftRequest(
     long ExpectedRevision,
     double? StartSec = null);
 
+public sealed record DuplicatePublishedSegmentDraftRequest(
+    Guid OperationId,
+    DateTime ExpectedUpdatedAt,
+    double? StartSec = null);
+
 public sealed record MergeSegmentDraftRequest(
     Guid OperationId,
     long SourceItemId,
@@ -87,6 +92,7 @@ public static class SegmentStudioDraftService
     private const string UpdateKind = "update-draft";
     private const string SplitKind = "split-draft";
     private const string DuplicateKind = "duplicate-draft";
+    private const string DuplicatePublishedKind = "duplicate-published-draft";
     private const string MergeKind = "merge-drafts";
 
     public static async Task<SegmentDraftMutationResult> CreateAsync(
@@ -396,6 +402,113 @@ public static class SegmentStudioDraftService
             ToSnapshot(item),
             CreatedDraft: ToSnapshot(duplicate));
         db.Add(CreateReceipt(request.OperationId, DuplicateKind, fingerprint, principal, item.Id, result));
+        await db.SaveChangesAsync(ct);
+        return result;
+    }
+
+    // Review mode copies a published segment into an approved draft, so the copy is reviewed and
+    // published like any other draft instead of bypassing the Publish approved step.
+    public static async Task<SegmentDraftMutationResult> DuplicatePublishedAsync(
+        DbContext db,
+        int videoId,
+        int segmentId,
+        DuplicatePublishedSegmentDraftRequest request,
+        CovePrincipal? principal,
+        IAuthorizationService authorization,
+        ISegmentDuplicationProvenanceService duplicateProvenance,
+        CancellationToken ct)
+    {
+        var accessError = await AuthorizeWriteAsync(db, videoId, principal, authorization, ct);
+        if (accessError is not null)
+            return accessError;
+        await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
+        if (request.StartSec is not null && (!double.IsFinite(request.StartSec.Value) || request.StartSec.Value < 0))
+            return new(SegmentDraftMutationStatus.Invalid, Error: "Duplicate start time must be finite and non-negative.");
+        var fingerprint = Fingerprint(DuplicatePublishedKind, videoId, segmentId, request.ExpectedUpdatedAt, request.StartSec);
+        var lockError = await LockOperationAsync(db, request.OperationId, ct);
+        if (lockError is not null)
+            return lockError;
+        var replay = await ReplayAsync(db, request.OperationId, DuplicatePublishedKind, fingerprint, principal, ct);
+        if (replay is not null)
+            return replay;
+        try
+        {
+            await SegmentStudioRolloutService.EnsureWritesEnabledAsync(db, ct);
+        }
+        catch (LineageConflictException exception)
+        {
+            return new(
+                SegmentDraftMutationStatus.Conflict,
+                Error: exception.Message,
+                Code: exception.Code);
+        }
+
+        // Hold the published row so a core edit or delete cannot slip between the check and the copy.
+        if (db.Database.IsRelational())
+            _ = await db.Database.SqlQuery<int>(
+                    $"SELECT \"Id\" AS \"Value\" FROM segments WHERE \"Id\" = {segmentId} FOR SHARE")
+                .SingleOrDefaultAsync(ct);
+        var source = await db.Set<Segment>().AsNoTracking().SingleOrDefaultAsync(segment =>
+            segment.Id == segmentId
+            && segment.HostType == SegmentHostType.Video
+            && segment.HostId == videoId
+            && segment.Kind == "tag"
+            && segment.TagId != null, ct);
+        if (source is null)
+            return new(SegmentDraftMutationStatus.NotFound, Error: "Segment not found.");
+        if (source.UpdatedAt != request.ExpectedUpdatedAt)
+            return new(SegmentDraftMutationStatus.Conflict,
+                Error: "This segment changed in another session. Reload it before duplicating it.");
+        var now = DateTime.UtcNow;
+        var duration = source.EndSec is null ? null : source.EndSec - source.StartSec;
+        var startSec = request.StartSec ?? source.StartSec;
+        var duplicate = new SegmentStudioItem
+        {
+            ReviewState = "approved",
+            RepresentationSchemaVersion = 1,
+            VideoId = videoId,
+            StartSec = startSec,
+            EndSec = duration is null ? null : startSec + duration.Value,
+            TagId = source.TagId,
+            Kind = source.Kind,
+            RefId = source.RefId,
+            // The draft's review state lives in its column; a legacy marker in the payload would
+            // otherwise come back with the copy when it is published.
+            PayloadJson = DirectSegmentReviewService.MergeReviewState(source.Payload, "unreviewed")
+                ?.RootElement.GetRawText(),
+            SourceKey = source.SourceKey,
+            SourceRunId = source.SourceRunId,
+            Confidence = source.Confidence,
+            Title = source.Title,
+            ColorHint = source.ColorHint,
+            // The published image stays with the published segment; blob ownership is exclusive.
+            ExtensionImageBlobId = null,
+            Revision = 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.Add(duplicate);
+        await db.SaveChangesAsync(ct);
+        var anchorItemId = await db.Set<SegmentStudioItem>().AsNoTracking()
+            .Where(item => item.NativeSegmentId == segmentId)
+            .Select(item => (long?)item.Id)
+            .SingleOrDefaultAsync(ct);
+        if (anchorItemId is not null)
+        {
+            await CopySlotsAsync(db, anchorItemId.Value, duplicate.Id, now, ct);
+            await duplicateProvenance.CopyAsync(db, anchorItemId.Value, duplicate.Id, ct);
+        }
+        var slotAccess = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(
+            principal, authorization, ct);
+        if (slotAccess.Allowed)
+            await PerformerSlotAutoAssignmentService.TryAssignItemAsync(
+                db, duplicate, ct, videoId);
+        var result = new SegmentDraftMutationResult(
+            SegmentDraftMutationStatus.Updated,
+            CreatedDraft: ToSnapshot(duplicate));
+        var receipt = CreateReceipt(request.OperationId, DuplicatePublishedKind, fingerprint, principal, duplicate.Id, result);
+        receipt.SourceNativeSegmentId = segmentId;
+        db.Add(receipt);
         await db.SaveChangesAsync(ct);
         return result;
     }

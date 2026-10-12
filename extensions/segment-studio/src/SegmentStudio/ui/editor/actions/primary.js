@@ -496,8 +496,10 @@ function createPrimarySegmentActions(context) {
         nativeSegmentId: null,
         startSec,
         endSec: duration == null ? null : startSec + duration,
-        // Full mode creates the copy already approved; match it so a queued review toggles as displayed.
+        // Full mode creates the copy as an approved draft, even from a published segment; match it so a
+        // queued review toggles as displayed and the copy waits for Publish approved like other drafts.
         reviewState: compatibilityMode ? "approved" : source.reviewState,
+        published: compatibilityMode ? false : source.published,
         revision: 0,
         updatedAt: null,
       };
@@ -534,15 +536,18 @@ function createPrimarySegmentActions(context) {
             ? pendingDuplicateRef.current
             : null;
           let duplicateIdentity = pendingDuplicate?.duplicateIdentity ?? null;
-          if (duplicateIdentity == null
-              && compatibilityMode
-              && source.nativeSegmentId == null) {
-            const result = await requestJson(`/videos/${video.id}/drafts/${source.itemId}/duplicate`, {
+          if (duplicateIdentity == null && compatibilityMode) {
+            const draftDuplicatePath = source.nativeSegmentId == null
+              ? `/videos/${video.id}/drafts/${source.itemId}/duplicate`
+              : `/videos/${video.id}/segments/${source.nativeSegmentId}/duplicate-draft`;
+            const result = await requestJson(draftDuplicatePath, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 operationId: operationIdFor(operationKey),
-                expectedRevision: source.revision,
+                ...(source.nativeSegmentId == null
+                  ? { expectedRevision: source.revision }
+                  : { expectedUpdatedAt: source.updatedAt }),
                 startSec: atPlayhead ? startSec : null,
               }),
             });
@@ -593,7 +598,7 @@ function createPrimarySegmentActions(context) {
             groupSegmentsIntoSwimlanes(loaded.segments || [], loaded.segmentGroups || [], loaded.performerSlots || []),
             duplicatedSegment.id,
           ));
-          if (compatibilityMode && source.nativeSegmentId == null)
+          if (compatibilityMode)
             completeOperation(operationKey);
           pendingDuplicateRef.current = null;
           setSaveMessage(atPlayhead
