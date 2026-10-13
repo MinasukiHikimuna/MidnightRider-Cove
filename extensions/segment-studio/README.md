@@ -8,7 +8,7 @@ extension-owned drafts and derived segments.
 Its extension ID is `com.midnightrider.segment-studio`. The shorter
 `segment-studio` name remains in user-facing routes and internal data namespaces.
 
-Version 0.1.11 requires Cove 1.4.0-rc.1 or later and the AI Core extension
+Version 0.1.12 requires Cove 1.4.0-rc.1 or later and the AI Core extension
 (`cove.community.ai.core`) 0.6.0 or later, which itself requires Cove 1.5.0.
 Segment Studio compiles against the AI contract that AI Core ships and does
 not load without it. Its Run AI buttons in the editor and discovery appear only
