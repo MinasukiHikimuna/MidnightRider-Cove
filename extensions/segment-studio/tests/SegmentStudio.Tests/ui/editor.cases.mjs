@@ -1798,3 +1798,9 @@ test("the editor toolbar offers the host's video actions instead of its own scan
     /export const SEGMENT_STUDIO_EDITOR_PAGE_TYPE = "segment-studio-editor";/,
   );
 });
+
+test("the editor names its video in the browser title", () => {
+  const view = sourceByModule["editor/SegmentEditorView.js"];
+
+  assert.match(view, /useDocumentTitle\(video \? video\.title \|\| `Video \$\{video\.id\}` : null\);/);
+});

@@ -51,4 +51,8 @@ const h = React.createElement;
 // Cove 1.5 added the performer criteria catalog; older hosts offer role filters without nested performer conditions.
 const PERFORMER_CRITERIA = hostComponents.PERFORMER_CRITERIA ?? [];
 
-export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, ListPage, PERFORMER_CRITERIA, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, VideoPlayer, formatDuration, getDefaultFilter, optionalHostComponent, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };
+// Cove 1.6 lets extensions name a view in the browser title; older hosts leave the title alone.
+// The choice is fixed for the module's lifetime, so every render calls the same hook.
+const useDocumentTitle = typeof hostComponents.useDocumentTitle === "function" ? hostComponents.useDocumentTitle : () => {};
+
+export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, ListPage, PERFORMER_CRITERIA, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, VideoPlayer, formatDuration, getDefaultFilter, optionalHostComponent, useDocumentTitle, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };

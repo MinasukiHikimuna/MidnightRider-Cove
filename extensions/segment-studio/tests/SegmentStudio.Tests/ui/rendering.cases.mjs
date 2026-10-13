@@ -28,12 +28,14 @@ test("host components newer than the declared runtime render nothing when missin
   assert.equal(runtime.optionalHostComponent({ ExtensionEntityActions: Memoized }, "ExtensionEntityActions"), Memoized);
   for (const notAComponent of ["not a component", {}, null])
     assert.equal(runtime.optionalHostComponent({ ExtensionEntityActions: notAComponent }, "ExtensionEntityActions")({}), null);
+  // Nor does it export useDocumentTitle, so the editor leaves the host's title alone there.
+  assert.equal(runtime.useDocumentTitle("A video"), undefined);
 
   // The built bundle is what hosts load: it must look them up on the namespace too.
   const bundle = fs.readFileSync(new URL("src/SegmentStudio/dist/ui.mjs", repositoryRoot), "utf8");
   assert.doesNotMatch(
     bundle,
-    /import\s*\{[^}]*\bExtension(?:Entity|Selection)Actions\b[^}]*\}\s*from\s*["']@cove\/runtime\/components["']/,
+    /import\s*\{[^}]*\b(?:Extension(?:Entity|Selection)Actions|useDocumentTitle)\b[^}]*\}\s*from\s*["']@cove\/runtime\/components["']/,
   );
   assert.match(bundle, /import \* as \w+ from "@cove\/runtime\/components"/);
 });
