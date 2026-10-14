@@ -1,3 +1,5 @@
+using Cove.Core.Enums;
+
 namespace CompleteTheCove;
 
 public sealed record RemoteKey(string Endpoint, string RemoteId)
@@ -69,6 +71,7 @@ public sealed class CompletionVideo
     public string? Code { get; set; }
     public string? Details { get; set; }
     public DateOnly? ReleaseDate { get; set; }
+    public DatePrecision ReleaseDatePrecision { get; set; }
     public string? StudioRemoteId { get; set; }
     public int? CoveStudioId { get; set; }
     public string? StudioName { get; set; }

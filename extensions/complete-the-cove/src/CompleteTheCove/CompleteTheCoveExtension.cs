@@ -1,5 +1,6 @@
 using Cove.Core.Auth;
 using Cove.Core.Entities;
+using Cove.Core.Helpers;
 using Cove.Core.Interfaces;
 using Cove.Plugins;
 using Cove.Sdk;
@@ -398,6 +399,11 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         ALTER INDEX IF EXISTS ix_complete_the_cove_scene_performer_cove_id RENAME TO ix_complete_the_cove_video_performer_cove_id;
         ALTER INDEX IF EXISTS ix_complete_the_cove_scene_tag_cove_id RENAME TO ix_complete_the_cove_video_tag_cove_id;
         """);
+        // Matches Cove's DatePrecision: 0 day, 1 month, 2 year. Existing dates count as days until their next refresh.
+        Migration("011_release_date_precision", """
+        ALTER TABLE complete_the_cove_videos
+          ADD COLUMN IF NOT EXISTS "ReleaseDatePrecision" integer NOT NULL DEFAULT 0;
+        """);
     }
 
     public override void MapEndpoints(IEndpointRouteBuilder endpoints)
@@ -474,7 +480,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
         query = ApplyVideoSort(request, query);
         var items = await query.Skip((page - 1) * perPage).Take(perPage).Select(x => new
         {
-            x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId, x.RemoteEndpoint, x.IsIgnored,
+            x.Id, x.Title, x.Code, x.Details, releaseDate = PartialDate.Format(x.ReleaseDate, x.ReleaseDatePrecision), x.StudioName, x.StudioRemoteId, x.CoveStudioId, x.RemoteEndpoint, x.IsIgnored,
             coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/com.midnightrider.complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
             performers = x.Performers.OrderBy(p => p.Name).Select(p => new
             {
@@ -566,7 +572,7 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     {
         var video = await db.Set<CompletionVideo>().AsNoTracking().Where(x => x.Id == id).Select(x => new
         {
-            x.Id, x.Title, x.Code, x.Details, releaseDate = x.ReleaseDate, x.StudioName, x.StudioRemoteId, x.CoveStudioId,
+            x.Id, x.Title, x.Code, x.Details, releaseDate = PartialDate.Format(x.ReleaseDate, x.ReleaseDatePrecision), x.StudioName, x.StudioRemoteId, x.CoveStudioId,
             x.ParentStudioName, x.ParentStudioRemoteId, x.RemoteEndpoint, x.RemoteId, x.CoverError, x.IsIgnored, x.CreatedAt, x.UpdatedAt,
             coverUrl = x.CoverBlobId == null ? null : $"/api/plugins/com.midnightrider.complete-the-cove/videos/{x.Id}/cover?v={x.UpdatedAt.Ticks}",
             performers = x.Performers.OrderBy(p => p.Name).Select(p => new

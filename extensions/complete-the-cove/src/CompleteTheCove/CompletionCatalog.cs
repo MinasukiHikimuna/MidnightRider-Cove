@@ -1,4 +1,5 @@
 using Cove.Core.Entities;
+using Cove.Core.Helpers;
 using Cove.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -339,18 +340,20 @@ public sealed class CompletionCatalog(
             video = new CompletionVideo { RemoteEndpoint = endpoint, RemoteId = remoteId };
             db.Add(video);
         }
-        var before = (video.Title, video.Code, video.Details, video.ReleaseDate, video.StudioRemoteId,
+        var before = (video.Title, video.Code, video.Details, video.ReleaseDate, video.ReleaseDatePrecision, video.StudioRemoteId,
             video.StudioName, video.CoveStudioId, video.ParentStudioRemoteId, video.ParentStudioName);
         video.Title = source.Title;
         video.Code = source.Code;
         video.Details = source.Details;
-        video.ReleaseDate = DateOnly.TryParse(source.Date, out var date) ? date : null;
+        var date = PartialDate.TryParse(source.Date, out var parsed) ? parsed : default;
+        video.ReleaseDate = date.Value;
+        video.ReleaseDatePrecision = date.Precision;
         video.StudioRemoteId = source.Studio?.RemoteIds.FirstOrDefault()?.RemoteId;
         video.StudioName = source.Studio?.Name;
         video.CoveStudioId = video.StudioRemoteId is not null && identities.Studios.TryGetValue(video.StudioRemoteId, out var studioId) ? studioId : null;
         video.ParentStudioRemoteId = source.Studio?.Parent?.RemoteIds.FirstOrDefault()?.RemoteId;
         video.ParentStudioName = source.Studio?.Parent?.Name;
-        var changed = before != (video.Title, video.Code, video.Details, video.ReleaseDate, video.StudioRemoteId,
+        var changed = before != (video.Title, video.Code, video.Details, video.ReleaseDate, video.ReleaseDatePrecision, video.StudioRemoteId,
             video.StudioName, video.CoveStudioId, video.ParentStudioRemoteId, video.ParentStudioName);
         var performers = source.Performers.Select(x => new CompletionVideoPerformer
         {

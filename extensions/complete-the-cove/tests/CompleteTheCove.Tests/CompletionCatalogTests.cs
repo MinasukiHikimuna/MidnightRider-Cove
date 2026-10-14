@@ -1,5 +1,7 @@
 using Cove.Core.Auth;
 using Cove.Core.Entities;
+using Cove.Core.Enums;
+using Cove.Core.Helpers;
 using Cove.Core.Interfaces;
 using Cove.Plugins;
 using Microsoft.AspNetCore.Builder;
@@ -67,6 +69,45 @@ public sealed class CompletionCatalogTests
             .Select(video => video.RemoteId).ToArrayAsync();
 
         Assert.Equal(expected.Split(','), actual);
+    }
+
+    [Theory]
+    [InlineData("2019", "2019-01-01", DatePrecision.Year)]
+    [InlineData("2019-05", "2019-05-01", DatePrecision.Month)]
+    [InlineData("2019-05-17", "2019-05-17", DatePrecision.Day)]
+    [InlineData("May 2019", null, DatePrecision.Day)]
+    [InlineData(null, null, DatePrecision.Day)]
+    public async Task Refresh_stores_partial_release_dates_with_their_precision(string? remoteDate, string? expectedDate, DatePrecision expectedPrecision)
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+
+        await Catalog(db).RefreshAsync(new FakeDiscovery(Video("partial") with { Date = remoteDate }), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+
+        var stored = await db.Set<CompletionVideo>().AsNoTracking().SingleAsync();
+        Assert.Equal(expectedDate is null ? null : DateOnly.Parse(expectedDate, System.Globalization.CultureInfo.InvariantCulture), stored.ReleaseDate);
+        Assert.Equal(expectedPrecision, stored.ReleaseDatePrecision);
+        Assert.Equal(expectedDate is null ? null : remoteDate, PartialDate.Format(stored.ReleaseDate, stored.ReleaseDatePrecision));
+    }
+
+    [Fact]
+    public async Task Refresh_updates_a_release_date_that_only_gains_precision()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var catalog = Catalog(db);
+        var settings = new CompleteSettings(new HashSet<string>());
+        await catalog.RefreshAsync(new FakeDiscovery(Video("partial") with { Date = "2019" }), settings, null, null, new ProgressStub(), default);
+        var updatedAt = await db.Set<CompletionVideo>().AsNoTracking().Select(x => x.UpdatedAt).SingleAsync();
+
+        await catalog.RefreshAsync(new FakeDiscovery(Video("partial") with { Date = "2019-01-01" }), settings, null, null, new ProgressStub(), default);
+
+        var stored = await db.Set<CompletionVideo>().AsNoTracking().SingleAsync();
+        Assert.Equal(new DateOnly(2019, 1, 1), stored.ReleaseDate);
+        Assert.Equal(DatePrecision.Day, stored.ReleaseDatePrecision);
+        Assert.True(stored.UpdatedAt > updatedAt, "A precision change alone must count as a metadata change.");
     }
 
     [Fact]
@@ -441,6 +482,7 @@ public sealed class CompletionCatalogTests
             "008_ignored_scenes",
             "009_provider_completion_progress",
             "010_video_terminology",
+            "011_release_date_precision",
         ], migrations.Select(migration => migration.Name).ToArray());
 
         var migration = Assert.Single(migrations, migration => migration.Name == "010_video_terminology").UpSql;
