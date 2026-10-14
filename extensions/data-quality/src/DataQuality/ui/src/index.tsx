@@ -2543,6 +2543,8 @@ export function DataQualityPage({
                 cardSizeEntityType={tagReview ? "tags" : "videos"}
                 criteriaDefinitions={tagReview ? TAG_CRITERIA : VIDEO_CRITERIA}
                 customFieldEntityType={entityType === "video" ? "video" : undefined}
+                // Tag queries carry no filter expression, so only media filters combine conditions.
+                supportsFilterExpressions={!tagReview}
                 objectFilter={toolbarObjectFilter}
                 onObjectFilterChange={(objectFilter) => {
                   if (!toolbarLocked)

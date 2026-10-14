@@ -96,6 +96,8 @@ declare module "@cove/runtime/components" {
     objectFilter?: Record<string, unknown>;
     onObjectFilterChange?(filter: Record<string, unknown>): void;
     showPagingControls?: boolean;
+    /** Lets the filter dialog repeat and combine conditions; present since before the extension's floor. */
+    supportsFilterExpressions?: boolean;
     /** Shown after the range text ("1–40 of 172"); present since before the extension's floor. */
     metadataByline?: ReactNode;
   }>;

@@ -1474,6 +1474,7 @@ export function ReviewWorkspace({
                 mediaKind === "audio" ? AUDIO_CRITERIA : VIDEO_CRITERIA
               }
               customFieldEntityType={mediaKind}
+              supportsFilterExpressions
               totalCount={total}
               sortOptions={
                 mediaKind === "audio" ? AUDIO_SORT_OPTIONS : VIDEO_SORT_OPTIONS

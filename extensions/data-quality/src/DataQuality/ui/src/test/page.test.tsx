@@ -2058,6 +2058,25 @@ it("applies saved layout preferences while URL criteria remain active", async ()
   expect(readCriteria(new URLSearchParams(window.location.search).get("filters"))).toEqual({ organized: true });
 });
 
+it("lets video queue filters combine repeated conditions in the grid and the single video", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(screen.getByRole("toolbar", { name: "Video list controls" })).toHaveAttribute("data-supports-filter-expressions", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Single" }));
+  await screen.findByRole("heading", { name: "Reviewing this video" });
+  expect(screen.getByRole("toolbar", { name: "Video list controls" })).toHaveAttribute("data-supports-filter-expressions", "true");
+});
+
+it("keeps tag queue filters to single conditions, which tag queries cannot combine", async () => {
+  const tagReview = { id: "tags", entityType: "tag" as const, name: "Review tags", description: "", view: { filter: { page: 1, perPage: 40 }, objectFilter: {}, displayMode: "grid" as const, searchMode: "text" }, actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }] };
+  window.history.replaceState(null, "", "/data-quality?review=tags");
+  api.loadReviews.mockResolvedValueOnce({ reviews: [tagReview], storageKey: "reviews", canWrite: true, canWriteTags: true, canReadTagGroups: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Tag 11" });
+  expect(screen.getByRole("toolbar", { name: "Video list controls" })).not.toHaveAttribute("data-supports-filter-expressions");
+});
+
 it("keeps newly saved queue criteria when the editor switches to single video", async () => {
   window.history.replaceState(null, "", "/data-quality?review=review&page=1&perPage=24&filters=%7B%22organized%22%3Afalse%7D");
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });

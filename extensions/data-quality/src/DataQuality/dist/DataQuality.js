@@ -8739,6 +8739,7 @@ function yp({
                     objectFilter: ce,
                     criteriaDefinitions: u === "audio" ? Ts : Qa,
                     customFieldEntityType: u,
+                    supportsFilterExpressions: !0,
                     totalCount: Ce,
                     sortOptions: u === "audio" ? _l : Is,
                     showSearch: !0,
@@ -11041,6 +11042,7 @@ function Op({
                     cardSizeEntityType: q ? "tags" : "videos",
                     criteriaDefinitions: q ? Kl : Qa,
                     customFieldEntityType: ke === "video" ? "video" : void 0,
+                    supportsFilterExpressions: !q,
                     objectFilter: oi,
                     onObjectFilterChange: (xe) => {
                       aa || (Nn.current = ke === "video" ? Uc(

@@ -655,6 +655,7 @@ export function DetailListToolbar({
   customFieldEntityType,
   onObjectFilterChange,
   metadataByline,
+  supportsFilterExpressions,
 }: {
   filter: Record<string, unknown>;
   onFilterChange(filter: Record<string, unknown>): void;
@@ -676,6 +677,7 @@ export function DetailListToolbar({
   onObjectFilterChange?(filter: Record<string, unknown>): void;
   customFieldEntityType?: string;
   metadataByline?: React.ReactNode;
+  supportsFilterExpressions?: boolean;
 }) {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const criteriaDefinitions = givenCriteria ?? [];
@@ -699,6 +701,7 @@ export function DetailListToolbar({
         aria-label="Video list controls"
         data-custom-field-entity-type={customFieldEntityType}
         data-object-filter={JSON.stringify(objectFilter)}
+        data-supports-filter-expressions={supportsFilterExpressions ? "true" : undefined}
       >
         <span>{totalCount ? `${start}–${end} of ${totalCount}` : "0 items"}</span>
         {metadataByline}
