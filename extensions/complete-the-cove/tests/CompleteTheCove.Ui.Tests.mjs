@@ -128,7 +128,7 @@ test("mirrors Cove's native video-card layout with missing-video data", async ()
   assert.match(source, /complete-the-cove-card-popover-performer/);
   assert.match(source, /complete-the-cove-card-popover-tag/);
   assert.match(source, /performer\.covePerformerId/);
-  assert.match(source, /\/api\/performers\/\$\{performer\.covePerformerId\}\/image/);
+  assert.match(source, /const imageUrl = item\.imagePath;/);
   assert.match(source, /href: `\/performer\/\$\{item\.covePerformerId\}`/);
   assert.doesNotMatch(source, /`\/performers\/\$\{item\.covePerformerId\}`/);
   assert.match(source, /complete-the-cove-performer-badge-fallback/);
@@ -402,6 +402,36 @@ test("persists missing-video catalog filters in the URL", async () => {
   });
 });
 
+test("renders Cove's native performer badges and tiles, falling back on older hosts", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  // A named import of an export the host lacks fails the whole bundle at link time, so newer exports go through the namespace.
+  const namedImport = source.match(/import \{([^}]*)\} from "@cove\/runtime\/components"/)?.[1];
+  assert.ok(namedImport);
+  assert.doesNotMatch(namedImport, /MediaCardPerformerBadges/);
+  assert.match(source, /import \* as coveComponents from "@cove\/runtime\/components"/);
+
+  const resolution = source.match(/const MediaCardPerformerBadges = [^\n]*/)?.[0];
+  assert.ok(resolution);
+  const resolve = (coveComponents) => Function("coveComponents", "LegacyPerformerBadges", `${resolution}; return MediaCardPerformerBadges;`)(coveComponents, "legacy");
+  const hostBadges = () => null;
+  assert.equal(resolve({ MediaCardPerformerBadges: hostBadges }), hostBadges);
+  assert.equal(resolve({}), "legacy");
+
+  assert.match(source, /h\(MediaCardPerformerBadges, \{ key: "performers", performerItems: performers\.map\(\(performer\) => \(\{ id: performer\.covePerformerId, name: performer\.name, imagePath: performer\.imagePath \}\)\), onNavigate \}\)/);
+  assert.match(source, /const HOST_RENDERS_UNLINKED_PERFORMERS = Boolean\(coveComponents\.MediaCardPerformerBadges\);/);
+  assert.match(source, /performer\.covePerformerId \|\| HOST_RENDERS_UNLINKED_PERFORMERS \? h\(PerformerTile, \{ key: performer\.remoteId, performer: performerTileData\(performer, libraryPerformers\)/);
+
+  const tileData = source.match(/function performerTileData\([\s\S]*?\n\}/)?.[0];
+  assert.ok(tileData);
+  const performerTileData = Function(`${tileData}; return performerTileData;`)();
+  const remote = { remoteId: "r", covePerformerId: null, name: "Remote", imagePath: "/remote.jpg", gender: "Female", birthdate: "1990-05", deathDate: null, country: "CZ" };
+  assert.deepEqual(performerTileData(remote, {}), { id: null, name: "Remote", imagePath: "/remote.jpg", gender: "Female", birthdate: "1990-05", deathDate: undefined, country: "CZ" });
+  const library = { id: 42, name: "Library", videoCount: 3 };
+  assert.equal(performerTileData({ ...remote, covePerformerId: 42 }, { 42: library }), library);
+  assert.match(source, /referenceDate: video\.releaseDate \|\| undefined/);
+  assert.match(source, /\}, \[libraryPerformerIds\]\);/);
+});
+
 test("sorts the catalog by release date, created date, or title", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
   const declarations = source.match(/const DEFAULT_CATALOG_FILTERS[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
@@ -451,7 +481,7 @@ test("filters videos by provider and renders linked native-like detail entities"
   assert.match(source, /rounded-full border border-border bg-card px-3 py-1 text-xs text-accent/);
   assert.match(source, /video\.coveStudioId/);
   assert.match(source, /tag\.coveTagId/);
-  assert.match(source, /performerImageUrl\(performer\)/);
+  assert.match(source, /imagePath: performer\.imagePath \}/);
   assert.match(source, /PerformerTile/);
   assert.match(source, /TagBadge/);
   assert.match(source, /headerImage/);

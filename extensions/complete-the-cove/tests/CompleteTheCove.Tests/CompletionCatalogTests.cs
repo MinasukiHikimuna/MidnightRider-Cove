@@ -483,6 +483,7 @@ public sealed class CompletionCatalogTests
             "009_provider_completion_progress",
             "010_video_terminology",
             "011_release_date_precision",
+            "012_remote_performer_profiles",
         ], migrations.Select(migration => migration.Name).ToArray());
 
         var migration = Assert.Single(migrations, migration => migration.Name == "010_video_terminology").UpSql;
@@ -747,6 +748,157 @@ public sealed class CompletionCatalogTests
         Assert.Equal("Performer", Assert.Single(video.Performers).Name);
         Assert.Equal("Tag", Assert.Single(video.Tags).Name);
         Assert.Equal("https://example.test/scene", Assert.Single(video.Urls));
+    }
+
+    [Fact]
+    public async Task Stashdb_discovery_requests_and_maps_performer_profiles()
+    {
+        string? query = null;
+        using var client = new StashBoxDiscoveryClient(
+            new() { Name = "Provider", Endpoint = "https://stashdb.org/graphql" },
+            new DelegateHandler(request =>
+            {
+                using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                query = body.RootElement.GetProperty("query").GetString();
+                return JsonResponse("""
+                {"data":{"queryScenes":{"count":1,"scenes":[{"id":"scene-1","title":"Missing","urls":[],"tags":[],
+                 "performers":[{"performer":{"id":"performer-1","name":"Performer","gender":"TRANSGENDER_FEMALE",
+                   "birth_date":"1990-05","death_date":"2020-01-02","country":"CZ",
+                   "images":[{"url":"https://stashdb.org/performer.jpg"},{"url":"https://stashdb.org/second.jpg"}]}}]}]}}}
+                """);
+            }));
+
+        var video = Assert.Single(await client.DiscoverAsync(Target(1, "performer-1"), default));
+
+        Assert.Contains("performer { id name disambiguation gender birth_date death_date country images { url } }", query);
+        var performer = Assert.Single(video.Performers);
+        Assert.Equal("TRANSGENDER_FEMALE", performer.Gender);
+        Assert.Equal("1990-05", performer.Birthdate);
+        Assert.Equal("2020-01-02", performer.DeathDate);
+        Assert.Equal("CZ", performer.Country);
+        Assert.Equal("https://stashdb.org/performer.jpg", performer.ImageUrl);
+    }
+
+    [Fact]
+    public async Task Refresh_stores_one_profile_and_image_per_remote_performer_outside_the_library()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        db.Add(new Cove.Core.Entities.PerformerRemoteId { PerformerId = 42, Endpoint = "https://stashdb.org/graphql", RemoteId = "library" });
+        await db.SaveChangesAsync();
+        var downloads = new List<string>();
+        using var handler = new DelegateHandler(request =>
+        {
+            downloads.Add(request.RequestUri!.AbsoluteUri);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([1, 2, 3]) { Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg") } }
+            };
+        });
+        var catalog = new CompletionCatalog(db, new BlobStub(), NullLogger<CompletionCatalog>.Instance, host => new CoverDownloadClient(host, handler));
+        var remote = RemotePerformer("remote") with { Gender = "FEMALE", Birthdate = "1990-05-06", Country = "CZ", ImageUrl = "https://stashdb.org/remote.jpg" };
+        var library = RemotePerformer("library") with { Gender = "MALE", ImageUrl = "https://stashdb.org/library.jpg" };
+        var discovery = new FakeDiscovery(
+            Video("first") with { Performers = [remote, library] },
+            Video("second") with { Performers = [remote] });
+
+        await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+        await catalog.RefreshAsync(discovery, new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+
+        // Library performers render from the library, so only the remote-only performer's image is fetched, and only once.
+        Assert.Equal(["https://stashdb.org/remote.jpg"], downloads);
+        var profiles = await db.Set<CompletionRemotePerformer>().AsNoTracking().OrderBy(x => x.RemoteId).ToListAsync();
+        Assert.Equal(["library", "remote"], profiles.Select(x => x.RemoteId).ToArray());
+        var stored = profiles[1];
+        Assert.Equal("https://stashdb.org/graphql", stored.Endpoint);
+        Assert.Equal("Female", stored.Gender);
+        Assert.Equal("1990-05-06", stored.Birthdate);
+        Assert.Equal("CZ", stored.Country);
+        Assert.NotNull(stored.ImageBlobId);
+        Assert.Null(profiles[0].ImageBlobId);
+        Assert.Equal("Male", profiles[0].Gender);
+    }
+
+    [Fact]
+    public async Task A_performer_no_video_lists_any_more_loses_its_profile_and_image()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var blobs = new RecordingBlobs();
+        using var handler = new DelegateHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([1, 2, 3]) { Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg") } }
+        });
+        var catalog = new CompletionCatalog(db, blobs, NullLogger<CompletionCatalog>.Instance, host => new CoverDownloadClient(host, handler));
+        var settings = new CompleteSettings(new HashSet<string>());
+        var departing = RemotePerformer("departing") with { ImageUrl = "https://stashdb.org/departing.jpg" };
+        await catalog.RefreshAsync(new FakeDiscovery(Video("first") with { Performers = [departing] }), settings, null, null, new ProgressStub(), default);
+        var blobId = (await db.Set<CompletionRemotePerformer>().AsNoTracking().SingleAsync()).ImageBlobId;
+        Assert.NotNull(blobId);
+
+        await catalog.RefreshAsync(new FakeDiscovery(Video("first") with { Performers = [RemotePerformer("staying")] }), settings, null, null, new ProgressStub(), default);
+
+        Assert.Equal(["staying"], await db.Set<CompletionRemotePerformer>().Select(x => x.RemoteId).ToArrayAsync());
+        Assert.Contains(blobId, blobs.Deleted);
+    }
+
+    [Fact]
+    public async Task A_performer_across_batches_is_downloaded_once_and_a_failed_image_is_tried_once_per_refresh()
+    {
+        await using var db = CreateDb();
+        db.Add(Target(1, "one"));
+        await db.SaveChangesAsync();
+        var downloads = new List<string>();
+        using var handler = new DelegateHandler(request =>
+        {
+            downloads.Add(request.RequestUri!.AbsoluteUri);
+            return request.RequestUri.AbsolutePath == "/broken.jpg"
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent([1, 2, 3]) { Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg") } }
+                };
+        });
+        var catalog = new CompletionCatalog(db, new BlobStub(), NullLogger<CompletionCatalog>.Instance, host => new CoverDownloadClient(host, handler));
+        var shared = RemotePerformer("shared") with { ImageUrl = "https://stashdb.org/shared.jpg" };
+        var broken = RemotePerformer("broken") with { ImageUrl = "https://stashdb.org/broken.jpg" };
+        // 205 videos make three batches of 100; both performers appear in every one.
+        var videos = Enumerable.Range(0, 205).Select(i => Video($"video-{i}") with { Performers = [shared, broken] }).ToArray();
+
+        var totals = await catalog.RefreshAsync(new FakeDiscovery(videos), new CompleteSettings(new HashSet<string>()), null, null, new ProgressStub(), default);
+
+        Assert.Equal(0, totals.Failed);
+        Assert.Equal(["https://stashdb.org/shared.jpg", "https://stashdb.org/broken.jpg"], downloads);
+        var profiles = await db.Set<CompletionRemotePerformer>().AsNoTracking().OrderBy(x => x.RemoteId).ToListAsync();
+        Assert.Equal(["broken", "shared"], profiles.Select(x => x.RemoteId).ToArray());
+        Assert.Null(profiles[0].ImageBlobId);
+        Assert.NotNull(profiles[0].ImageError);
+        Assert.NotNull(profiles[1].ImageBlobId);
+    }
+
+    [Fact]
+    public void Performer_view_prefers_the_library_image_and_falls_back_to_the_stored_one()
+    {
+        var updatedAt = new DateTime(2026, 8, 28, 10, 58, 37, DateTimeKind.Utc);
+        var remote = new CompletionRemotePerformer
+        {
+            Id = 9, Endpoint = "https://stashdb.org/graphql", RemoteId = "remote", Gender = "TransgenderFemale",
+            Birthdate = "1990-05", DeathDate = "2020-01-02", Country = "CZ", ImageBlobId = "blob", UpdatedAt = updatedAt,
+        };
+
+        var library = CompleteTheCoveExtension.PerformerView("remote", "Name", null, 42, updatedAt, remote);
+        Assert.Equal("/api/performers/42/image?max=640&v=2026-08-28T10%3A58%3A37.0000000Z", library.ImagePath);
+        var storedPath = $"/api/plugins/com.midnightrider.complete-the-cove/remote-performers/9/image?v={updatedAt.Ticks}";
+        // Joined the library, but the library has no image yet: the stored one still shows.
+        Assert.Equal(storedPath, CompleteTheCoveExtension.PerformerView("remote", "Name", null, 42, null, remote).ImagePath);
+
+        var outside = CompleteTheCoveExtension.PerformerView("remote", "Name", null, null, null, remote);
+        Assert.Equal(storedPath, outside.ImagePath);
+        Assert.Equal(("TransgenderFemale", "1990-05", "2020-01-02", "CZ"), (outside.Gender, outside.Birthdate, outside.DeathDate, outside.Country));
+        remote.ImageBlobId = null;
+        Assert.Null(CompleteTheCoveExtension.PerformerView("remote", "Name", null, null, null, remote).ImagePath);
+        Assert.Null(CompleteTheCoveExtension.PerformerView("remote", "Name", null, null, null, null).Gender);
     }
 
     [Fact]
@@ -1254,6 +1406,7 @@ public sealed class CompletionCatalogTests
         new SourceStudio(0, "Studio", false, null, false, [], [], [new RemoteKey("https://stashdb.org/graphql", "studio")]),
         [new SourceTag(0, "Tag", null, null, false, [], [new RemoteKey("https://stashdb.org/graphql", "tag")], false)],
         [new SourcePerformer(0, "Performer", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], [], [new RemoteKey("https://stashdb.org/graphql", "performer")])]);
+    private static SourcePerformer RemotePerformer(string id) => new(0, id, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], [], [new RemoteKey("https://stashdb.org/graphql", id)]);
     private static CompletionVideo FilterVideo(
         string id,
         IReadOnlyList<string> performerIds,

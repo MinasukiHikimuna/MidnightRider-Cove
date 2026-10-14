@@ -12,6 +12,9 @@ public sealed class CompletionCatalog(
     ILogger<CompletionCatalog> logger,
     Func<string, CoverDownloadClient>? coverDownloaderFactory = null)
 {
+    // Performer images that failed in this refresh, so a performer in many batches or targets is tried once per run.
+    private readonly HashSet<string> _failedPerformerImages = new(StringComparer.Ordinal);
+
     public async Task<CompletionTarget?> GetTargetAsync(CompletionTargetType type, int entityId, CancellationToken ct) =>
         await db.Set<CompletionTarget>().AsNoTracking()
             .FirstOrDefaultAsync(x => x.EntityType == type && x.EntityId == entityId, ct);
@@ -130,6 +133,7 @@ public sealed class CompletionCatalog(
             db.RemoveRange(staleTargets);
             await db.SaveChangesAsync(ct);
             await DeleteOrphansAsync(ct);
+            await DeleteOrphanPerformerProfilesAsync(ct);
         }
         var selections = await targets.AsNoTracking()
             .Select(x => new { x.EntityType, x.EntityId }).Distinct().ToListAsync(ct);
@@ -152,6 +156,7 @@ public sealed class CompletionCatalog(
         db.RemoveRange(targets);
         await db.SaveChangesAsync(ct);
         await DeleteOrphansAsync(ct);
+        await DeleteOrphanPerformerProfilesAsync(ct);
     }
 
     public async Task<bool> SetIgnoredAsync(int videoId, bool ignored, CancellationToken ct)
@@ -188,6 +193,7 @@ public sealed class CompletionCatalog(
             .Where(x => ownedEndpoints.Contains(x.Endpoint)).Select(x => x.RemoteId).ToListAsync(ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var totals = new RefreshTotals(targets.Count, 0, 0, 0, 0);
+        _failedPerformerImages.Clear();
         for (var index = 0; index < targets.Count; index++)
         {
             var target = targets[index];
@@ -222,6 +228,8 @@ public sealed class CompletionCatalog(
             progress.Report(0.05 + (0.95 * (index + 1) / targets.Count),
                 $"Refreshed {index + 1}/{targets.Count}; missing {totals.Missing}; removed {totals.Removed}; failed {totals.Failed}.");
         }
+        // Once per run rather than per target: it scans every video's performers.
+        await DeleteOrphanPerformerProfilesAsync(ct);
         progress.Report(1, $"Targets {totals.Targets}; examined {totals.Examined}; missing {totals.Missing}; removed {totals.Removed}; failed {totals.Failed}.");
         return totals;
     }
@@ -276,6 +284,7 @@ public sealed class CompletionCatalog(
                     db.Add(new CompletionVideoTarget { Video = video, Target = target });
                 saved.Add(video);
             }
+            var profiles = await StageRemotePerformersAsync(batch, endpoint, ct);
             await db.SaveChangesAsync(ct);
             // Metadata is durable before network cover work. Only new/changed
             // covers require an individual save; cached covers do no work.
@@ -285,6 +294,14 @@ public sealed class CompletionCatalog(
                 await EnsureCoverAsync(saved[index], batch[index].CoverUrl, downloader, ct);
             }
             // A failed cover records an error without saving inside its catch.
+            // A library performer renders from the library, so only performers outside it need an image of their own.
+            // One stored before the performer joined the library stays until orphan cleanup, since other targets'
+            // videos may not have been relinked to the library performer yet.
+            foreach (var (profile, imageUrl) in profiles.Where(item => !identities.Performers.ContainsKey(item.Profile.RemoteId)))
+            {
+                ct.ThrowIfCancellationRequested();
+                await EnsurePerformerImageAsync(profile, imageUrl, downloader, ct);
+            }
             await db.SaveChangesAsync(ct);
             foreach (var video in saved) keepVideoIds.Add(video.Id);
             // Keep the EF tracker bounded over large catalogs and subsequent targets.
@@ -399,7 +416,7 @@ public sealed class CompletionCatalog(
     private void DetachVideoGraphs()
     {
         foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.Entity is CompletionVideo
-            or CompletionVideoTarget or CompletionVideoPerformer or CompletionVideoTag or CompletionVideoUrl).ToArray())
+            or CompletionVideoTarget or CompletionVideoPerformer or CompletionVideoTag or CompletionVideoUrl or CompletionRemotePerformer).ToArray())
             entry.State = EntityState.Detached;
     }
 
@@ -429,12 +446,105 @@ public sealed class CompletionCatalog(
         }
     }
 
+    // Creates or updates the batch's performer profiles; the caller saves them with the batch's videos.
+    private async Task<List<(CompletionRemotePerformer Profile, string? ImageUrl)>> StageRemotePerformersAsync(
+        SourceVideo[] batch, string endpoint, CancellationToken ct)
+    {
+        var sources = batch.SelectMany(video => video.Performers)
+            .Select(performer => (Source: performer, RemoteId: performer.RemoteIds.FirstOrDefault()?.RemoteId ?? string.Empty))
+            .Where(item => item.RemoteId.Length > 0)
+            .DistinctBy(item => item.RemoteId, StringComparer.Ordinal)
+            .ToList();
+        if (sources.Count == 0) return [];
+        var remoteIds = sources.Select(item => item.RemoteId).ToArray();
+        var profiles = await db.Set<CompletionRemotePerformer>()
+            .Where(x => x.Endpoint == endpoint && remoteIds.Contains(x.RemoteId))
+            .ToDictionaryAsync(x => x.RemoteId, StringComparer.Ordinal, ct);
+        foreach (var (source, remoteId) in sources)
+        {
+            if (!profiles.TryGetValue(remoteId, out var profile))
+            {
+                profile = new CompletionRemotePerformer { Endpoint = endpoint, RemoteId = remoteId };
+                db.Add(profile);
+                profiles[remoteId] = profile;
+            }
+            var before = (profile.Gender, profile.Birthdate, profile.DeathDate, profile.Country);
+            profile.Gender = MapGender(source.Gender);
+            profile.Birthdate = source.Birthdate;
+            profile.DeathDate = source.DeathDate;
+            profile.Country = source.Country;
+            if (before != (profile.Gender, profile.Birthdate, profile.DeathDate, profile.Country)) profile.UpdatedAt = DateTime.UtcNow;
+        }
+        return sources.Select(item => (profiles[item.RemoteId], item.Source.ImageUrl)).ToList();
+    }
+
+    private async Task EnsurePerformerImageAsync(CompletionRemotePerformer profile, string? sourceUrl, CoverDownloadClient downloader, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sourceUrl) || _failedPerformerImages.Contains(sourceUrl)) return;
+        if (profile.ImageBlobId is not null && string.Equals(profile.ImageSourceUrl, sourceUrl, StringComparison.Ordinal)) return;
+        string blobId;
+        try
+        {
+            var image = await downloader.DownloadAsync(sourceUrl, ct);
+            await using var stream = new MemoryStream(image.Bytes, writable: false);
+            blobId = await blobs.StoreBlobAsync(stream, image.ContentType, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _failedPerformerImages.Add(sourceUrl);
+            profile.ImageError = SafeError(ex);
+            logger.LogWarning(ex, "Could not store a remote performer image");
+            return;
+        }
+        var previous = profile.ImageBlobId;
+        profile.ImageBlobId = blobId;
+        profile.ImageSourceUrl = sourceUrl;
+        profile.ImageError = null;
+        profile.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            // Persist the new image before releasing the previous one, even if the refresh is being cancelled.
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // The profile could not record the new image, so nothing will ever reference or release it.
+            await blobs.DeleteBlobAsync(blobId, CancellationToken.None);
+            throw;
+        }
+        if (!string.IsNullOrWhiteSpace(previous)) await blobs.DeleteBlobAsync(previous, CancellationToken.None);
+    }
+
+    // Cove's own gender names, which its performer cards recognise.
+    private static string? MapGender(string? value) => value?.ToUpperInvariant() switch
+    {
+        "MALE" => "Male",
+        "FEMALE" => "Female",
+        "TRANSGENDER_MALE" => "TransgenderMale",
+        "TRANSGENDER_FEMALE" => "TransgenderFemale",
+        "INTERSEX" => "Intersex",
+        "NON_BINARY" => "NonBinary",
+        _ => null,
+    };
+
     private async Task DeleteOrphansAsync(CancellationToken ct)
     {
         var orphans = await db.Set<CompletionVideo>().Where(x => !x.Targets.Any()).ToListAsync(ct);
         db.RemoveRange(orphans);
         await db.SaveChangesAsync(ct);
         foreach (var blobId in orphans.Select(x => x.CoverBlobId).Where(x => !string.IsNullOrWhiteSpace(x)))
+            await blobs.DeleteBlobAsync(blobId!, ct);
+    }
+
+    private async Task DeleteOrphanPerformerProfilesAsync(CancellationToken ct)
+    {
+        var orphanProfiles = await db.Set<CompletionRemotePerformer>()
+            .Where(profile => !db.Set<CompletionVideoPerformer>()
+                .Any(performer => performer.RemoteId == profile.RemoteId && performer.Video!.RemoteEndpoint == profile.Endpoint))
+            .ToListAsync(ct);
+        db.RemoveRange(orphanProfiles);
+        await db.SaveChangesAsync(ct);
+        foreach (var blobId in orphanProfiles.Select(x => x.ImageBlobId).Where(x => !string.IsNullOrWhiteSpace(x)))
             await blobs.DeleteBlobAsync(blobId!, ct);
     }
 

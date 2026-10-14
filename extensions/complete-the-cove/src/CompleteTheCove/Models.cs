@@ -18,7 +18,7 @@ public sealed record SourcePerformer(
     string? FakeTits, double? PenisLength, string? Circumcised, string? CareerStart,
     string? CareerEnd, string? Tattoos, string? Piercings, bool Favorite,
     string? Details, IReadOnlyList<string> Urls, IReadOnlyList<string> Aliases,
-    IReadOnlyList<RemoteKey> RemoteIds);
+    IReadOnlyList<RemoteKey> RemoteIds, string? ImageUrl = null);
 
 public sealed record SourceStudio(
     int Id, string Name, bool Favorite, string? Details, bool Organized,
@@ -106,6 +106,23 @@ public sealed class CompletionVideoPerformer
     public int? CovePerformerId { get; set; }
     public required string Name { get; set; }
     public string? Disambiguation { get; set; }
+}
+
+// What the metadata server says about a performer, kept once per provider performer rather than per video so a
+// performer outside the library still shows a gender, age, country and image.
+public sealed class CompletionRemotePerformer
+{
+    public int Id { get; set; }
+    public required string Endpoint { get; set; }
+    public required string RemoteId { get; set; }
+    public string? Gender { get; set; }
+    public string? Birthdate { get; set; }
+    public string? DeathDate { get; set; }
+    public string? Country { get; set; }
+    public string? ImageBlobId { get; set; }
+    public string? ImageSourceUrl { get; set; }
+    public string? ImageError { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class CompletionVideoTag

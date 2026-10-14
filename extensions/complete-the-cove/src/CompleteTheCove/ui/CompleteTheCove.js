@@ -1,6 +1,8 @@
 import React from "@cove/runtime/react";
 import { createPortal } from "@cove/runtime/react-dom";
 import { ConfirmDialog, ListPage, MediaDetailLayout, PerformerTile, TagBadge, getDefaultFilter } from "@cove/runtime/components";
+// Namespace import so hosts that predate an export still load the extension; see MediaCardPerformerBadges below.
+import * as coveComponents from "@cove/runtime/components";
 import { extensionFetch } from "@cove/runtime/api";
 import { RefreshCw, ChevronDown, Search, Puzzle, ExternalLink, Check, X, AlertTriangle, Users, Building2, Tags, Eye, EyeOff } from "@cove/runtime/lucide-react";
 
@@ -20,8 +22,25 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "Invalid Date" : date.toISOString().slice(0, 10);
 }
 
-function performerImageUrl(performer) {
-  return performer.covePerformerId ? `/api/performers/${performer.covePerformerId}/image?max=640` : null;
+// The host's own card performer row where the host exports it; older hosts get this copy of it instead.
+function LegacyPerformerBadges({ performerItems }) {
+  return h("div", { className: "complete-the-cove-card-performers relative flex flex-wrap items-center gap-1.5 overflow-hidden" }, [
+    ...performerItems.slice(0, 4).map((performer, index) => h("span", { key: performer.id ?? `unlinked-${index}`, className: "complete-the-cove-performer-badge flex min-w-0 items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-0.5" }, [performer.imagePath ? h("span", { key: "portrait", className: "complete-the-cove-performer-badge-portrait" }, [h("img", { key: "image", src: performer.imagePath, alt: "", loading: "lazy", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.nextElementSibling.style.display = "block"; } }), h(Users, { key: "fallback", className: "complete-the-cove-performer-badge-fallback h-3.5 w-3.5 text-muted" })]) : h(Users, { key: "icon", className: "h-3.5 w-3.5 shrink-0 text-muted" }), h("span", { key: "name", className: "max-w-[80px] truncate text-[10px] text-secondary" }, performer.name)])),
+    performerItems.length > 4 ? h("span", { key: "more", className: "text-[10px] text-muted" }, `+${performerItems.length - 4}`) : null,
+  ]);
+}
+const MediaCardPerformerBadges = coveComponents.MediaCardPerformerBadges || LegacyPerformerBadges;
+// The same host release lets PerformerTile show a performer without a library id; an older one would link it to a
+// performer page that does not exist, so there those performers keep a plain name.
+const HOST_RENDERS_UNLINKED_PERFORMERS = Boolean(coveComponents.MediaCardPerformerBadges);
+
+// What PerformerTile shows: the library's full record when it is loaded, otherwise what the metadata server says.
+function performerTileData(performer, libraryPerformers) {
+  return libraryPerformers[performer.covePerformerId] || {
+    id: performer.covePerformerId ?? null, name: performer.name, imagePath: performer.imagePath,
+    gender: performer.gender ?? undefined, birthdate: performer.birthdate ?? undefined,
+    deathDate: performer.deathDate ?? undefined, country: performer.country ?? undefined,
+  };
 }
 
 function providerLabel(endpoint) {
@@ -301,7 +320,7 @@ function VideoMetadataPopover({ Icon, items, label, kind }) {
       h("div", { key: "heading", className: "complete-the-cove-card-popover-heading" }, label),
       h("div", { key: "items", className: `complete-the-cove-card-popover-items complete-the-cove-card-popover-items-${kind}` }, items.map((item, index) => {
         if (kind !== "performers") return h("div", { key: item.remoteId || `${item.name}-${index}`, className: "complete-the-cove-card-popover-tag" }, [h(Tags, { key: "icon", className: "h-3.5 w-3.5 shrink-0 text-muted" }), h("span", { key: "name", title: item.name }, item.name)]);
-        const imageUrl = performerImageUrl(item);
+        const imageUrl = item.imagePath;
         const content = [
           h("div", { key: "portrait", className: "complete-the-cove-card-popover-portrait" }, imageUrl ? [
             h("img", { key: "image", src: imageUrl, alt: "", loading: "lazy", className: "complete-the-cove-card-popover-portrait-image", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.nextElementSibling.style.display = "flex"; } }),
@@ -350,10 +369,7 @@ function MissingVideoCard({ video, onNavigate }) {
         h("p", { key: "title", className: "complete-the-cove-card-title card-title line-clamp-2 font-semibold leading-snug text-foreground", title }, title),
         h("div", { key: "meta", className: "complete-the-cove-card-meta mt-1 flex items-center gap-2 text-muted" }, [h("span", { key: "provider" }, providerLabel(video.remoteEndpoint)), video.releaseDate ? h("span", { key: "date" }, video.releaseDate) : null, video.studioName ? h("span", { key: "studio", className: "truncate" }, video.studioName) : null]),
       ]),
-      performers.length ? h("div", { key: "performers", className: "complete-the-cove-card-performers relative flex flex-wrap items-center gap-1.5 overflow-hidden" }, [
-        ...performers.slice(0, 4).map((performer) => h("span", { key: performer.remoteId, className: "complete-the-cove-performer-badge flex min-w-0 items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-0.5" }, [performerImageUrl(performer) ? h("span", { key: "portrait", className: "complete-the-cove-performer-badge-portrait" }, [h("img", { key: "image", src: performerImageUrl(performer), alt: "", loading: "lazy", onError: (event) => { event.currentTarget.style.display = "none"; event.currentTarget.nextElementSibling.style.display = "block"; } }), h(Users, { key: "fallback", className: "complete-the-cove-performer-badge-fallback h-3.5 w-3.5 text-muted" })]) : h(Users, { key: "icon", className: "h-3.5 w-3.5 shrink-0 text-muted" }), h("span", { key: "name", className: "max-w-[80px] truncate text-[10px] text-secondary" }, performer.name)])),
-        performers.length > 4 ? h("span", { key: "more", className: "text-[10px] text-muted" }, `+${performers.length - 4}`) : null,
-      ]) : null,
+      performers.length ? h(MediaCardPerformerBadges, { key: "performers", performerItems: performers.map((performer) => ({ id: performer.covePerformerId, name: performer.name, imagePath: performer.imagePath })), onNavigate }) : null,
       video.details ? h("p", { key: "details", className: "complete-the-cove-card-details line-clamp-2 text-xs leading-snug text-secondary" }, video.details) : null,
     ]),
     h("hr", { key: "divider", className: "my-0 border-border/50" }),
@@ -822,6 +838,18 @@ function MissingVideoDetailPage({ id, onNavigate }) {
   const [video, setVideo] = useState(null); const [error, setError] = useState("");
   const [ignoreBusy, setIgnoreBusy] = useState(false); const [ignoreError, setIgnoreError] = useState("");
   useEffect(() => { request(`${API}/videos/${id}`).then(setVideo).catch((err) => setError(err.message)); }, [id]);
+  // PerformerTile shows counts, age, gender and tags only from the full performer record, as native detail pages pass it.
+  // Keyed on the ids rather than the video object, so toggling Ignore does not refetch every performer.
+  const [libraryPerformers, setLibraryPerformers] = useState({});
+  const libraryPerformerIds = [...new Set((video?.performers || []).map((performer) => performer.covePerformerId).filter(Boolean))].join(",");
+  useEffect(() => {
+    if (!libraryPerformerIds) return undefined;
+    let cancelled = false;
+    Promise.all(libraryPerformerIds.split(",").map((performerId) => request(`/api/performers/${performerId}`).catch(() => null))).then((loaded) => {
+      if (!cancelled) setLibraryPerformers(Object.fromEntries(loaded.filter(Boolean).map((performer) => [performer.id, performer])));
+    });
+    return () => { cancelled = true; };
+  }, [libraryPerformerIds]);
   async function toggleIgnored() {
     setIgnoreBusy(true); setIgnoreError("");
     try {
@@ -843,7 +871,7 @@ function MissingVideoDetailPage({ id, onNavigate }) {
     h("dl", { key: "metadata", className: "grid gap-y-1.5 text-sm", style: { gridTemplateColumns: "auto 1fr" } }, metadataRows.flatMap(([label, value]) => [h("dt", { key: `${label}-l`, className: "pr-3 text-muted" }, label), h("dd", { key: `${label}-v`, className: "text-foreground" }, value)])),
     video.details ? h("p", { key: "details", className: "whitespace-pre-wrap text-sm text-foreground" }, video.details) : null,
     video.tags?.length ? h("section", { key: "tags" }, [h("h6", { className: "mb-2 text-sm text-muted" }, "Tags"), h("div", { className: "flex flex-wrap gap-1.5" }, video.tags.map((tag) => h(TagBadge, { key: tag.remoteId, name: tag.name, tag: tag.coveTagId ? { id: tag.coveTagId, name: tag.name } : undefined, onClick: tag.coveTagId ? () => onNavigate({ page: "tag", id: tag.coveTagId }) : undefined })))]) : null,
-    video.performers?.length ? h("section", { key: "performers" }, [h("h6", { className: "mb-2 text-sm text-muted" }, `Performer${video.performers.length > 1 ? "s" : ""}`), h("div", { className: video.performers.length > 1 ? "grid grid-cols-2 gap-3" : "grid max-w-[220px] gap-3" }, video.performers.map((performer) => performer.covePerformerId ? h(PerformerTile, { key: performer.remoteId, performer: { id: performer.covePerformerId, name: performer.name, imagePath: performerImageUrl(performer) }, onClick: () => onNavigate({ page: "performer", id: performer.covePerformerId }), onNavigate }) : h("div", { key: performer.remoteId, className: "rounded border border-border bg-card p-3 text-sm" }, performer.name)))]) : null,
+    video.performers?.length ? h("section", { key: "performers" }, [h("h6", { className: "mb-2 text-sm text-muted" }, `Performer${video.performers.length > 1 ? "s" : ""}`), h("div", { className: video.performers.length > 1 ? "grid grid-cols-2 gap-3" : "grid max-w-[220px] gap-3" }, video.performers.map((performer) => performer.covePerformerId || HOST_RENDERS_UNLINKED_PERFORMERS ? h(PerformerTile, { key: performer.remoteId, performer: performerTileData(performer, libraryPerformers), referenceDate: video.releaseDate || undefined, onClick: () => { if (performer.covePerformerId) onNavigate({ page: "performer", id: performer.covePerformerId }); }, onNavigate }) : h("div", { key: performer.remoteId, className: "rounded border border-border bg-card p-3 text-sm" }, performer.name)))]) : null,
     sourceUrl || video.urls?.length ? h("section", { key: "links" }, [h("h6", { className: "mb-2 text-sm text-muted" }, "URLs"), h("div", { className: "space-y-2" }, [sourceUrl ? h("div", { key: "metadata", className: "flex flex-wrap gap-2" }, h("a", { href: sourceUrl, target: "_blank", rel: "noopener noreferrer", title: `Open ${providerLabel(video.remoteEndpoint)} metadata page`, "aria-label": `Open ${providerLabel(video.remoteEndpoint)} metadata page`, className: "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-accent transition hover:border-accent/60 hover:text-accent-hover" }, [h(ExternalLink, { key: "icon", className: "h-3 w-3" }), h("span", { key: "label" }, providerLabel(video.remoteEndpoint))])) : null, video.urls?.length ? h("div", { key: "urls", className: "space-y-1" }, video.urls.map((url) => h("a", { key: url, href: url, target: "_blank", rel: "noopener noreferrer", className: "block break-all text-sm text-accent hover:underline" }, url))) : null])]) : null,
   ]) : null;
   return h(MediaDetailLayout, { title: video?.title || "Missing video", headerImage, subtitle, backLabel: "Back to Missing Videos", onGoBack: () => {

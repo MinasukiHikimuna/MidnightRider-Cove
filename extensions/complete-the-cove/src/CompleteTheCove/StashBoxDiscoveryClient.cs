@@ -113,7 +113,7 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
         var query = $$"""
           query($ids: [ID!]!, $page: Int!, $includeCount: Boolean!) { queryScenes(input: { {{field}}: { value: $ids, modifier: INCLUDES }, per_page: 100, page: $page }) { count @include(if: $includeCount) scenes {
             id title details release_date code urls { url } images { url } studio { id name parent { id name } }
-            performers { performer { id name disambiguation } } tags { id name }
+            performers { performer { id name disambiguation gender birth_date death_date country images { url } } } tags { id name }
           } } }
           """;
         using var doc = await SendAsync(query, new { ids, page, includeCount = page == 1 }, ct);
@@ -134,10 +134,9 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
             studio = new(0, studioJson.GetProperty("name").GetString()!, false, null, false, [], [], [new(endpoint, studioJson.GetProperty("id").GetString()!)], parent);
         }
         var performers = video.GetProperty("performers").EnumerateArray().Select(x => x.GetProperty("performer")).Where(x => x.ValueKind == JsonValueKind.Object).Select(x =>
-            new SourcePerformer(0, x.GetProperty("name").GetString()!, Text(x, "disambiguation"), Text(x, "gender"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], Strings(x, "aliases"), [new(endpoint, x.GetProperty("id").GetString()!)])).ToArray();
+            new SourcePerformer(0, x.GetProperty("name").GetString()!, Text(x, "disambiguation"), Text(x, "gender"), Text(x, "birth_date"), Text(x, "death_date"), null, Text(x, "country"), null, null, null, null, null, null, null, null, null, null, null, null, false, null, [], Strings(x, "aliases"), [new(endpoint, x.GetProperty("id").GetString()!)], FirstImageUrl(x))).ToArray();
         var tags = video.GetProperty("tags").EnumerateArray().Select(x => new SourceTag(0, x.GetProperty("name").GetString()!, null, null, false, [], [new(endpoint, x.GetProperty("id").GetString()!)], false)).ToArray();
-        var coverUrl = video.TryGetProperty("images", out var images) && images.ValueKind == JsonValueKind.Array
-            ? images.EnumerateArray().Select(x => Text(x, "url")).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) : null;
+        var coverUrl = FirstImageUrl(video);
         return new SourceVideo(0, Text(video, "title"), Text(video, "code"), Text(video, "details"), null, Text(video, "release_date"), false, false, null,
             video.GetProperty("urls").EnumerateArray().Select(x => x.GetProperty("url").GetString()!).ToArray(), [new(endpoint, remoteId)], studio, tags, performers, coverUrl);
     }
@@ -156,6 +155,8 @@ public class StashBoxDiscoveryClient : ICompletionDiscovery, IDisposable
         }
         return doc;
     }
+    private static string? FirstImageUrl(JsonElement value) => value.TryGetProperty("images", out var images) && images.ValueKind == JsonValueKind.Array
+        ? images.EnumerateArray().Select(x => Text(x, "url")).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) : null;
     private static string? Text(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
     private static string[] Strings(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Array ? item.EnumerateArray().Select(x => x.GetString()!).ToArray() : [];
     public void Dispose() => _http.Dispose();
