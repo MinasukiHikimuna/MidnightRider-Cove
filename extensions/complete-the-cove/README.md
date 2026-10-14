@@ -22,6 +22,7 @@ Reconciliation reports progress after each batch. Refreshing still reads the ful
 - Successful refreshes reconcile the selected entity: new missing videos are added, videos now present in Cove are removed, and videos shared by another selection remain.
 - Individual missing videos can be ignored from their detail page. The **Ignored status** filter can show all videos, only ignored videos, or only videos that are not ignored.
 - Missing Videos uses Cove's native list controls for search, sorting, pagination, saved filters, and performer, studio, and tag criteria. URLs preserve the current view in both the top-level catalog and entity tabs. Opening a video and using **Back to Missing Videos** restores the originating catalog view, and the URL can be bookmarked or shared.
+- The **Created at** sort orders videos by when they entered the catalog, newest first by default, to surface recently discovered videos. A video that leaves the catalog, for example when its provider is disabled or its tracked record is untracked, counts as new if a later refresh adds it again.
 - Exact, case-insensitive tag names configured in `excluded_tags` are omitted.
 
 ## Intentionally unsupported legacy behavior

@@ -43,6 +43,32 @@ public sealed class CompletionCatalogTests
         Assert.Equal(expected.Split(','), actual);
     }
 
+    [Theory]
+    [InlineData("asc", "earliest,same-time-first,same-time-second,latest")]
+    [InlineData("desc", "latest,same-time-second,same-time-first,earliest")]
+    [InlineData(null, "latest,same-time-second,same-time-first,earliest")]
+    public async Task Created_sort_orders_videos_by_when_the_catalog_first_stored_them(string? direction, string expected)
+    {
+        await using var db = CreateDb();
+        var sameTime = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        db.AddRange(
+            new CompletionVideo { Id = 1, RemoteEndpoint = "https://example.test", RemoteId = "latest", ReleaseDate = new DateOnly(2010, 1, 1), CreatedAt = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc) },
+            // Added out of ID order so the tie-break, not insertion order, decides both directions.
+            new CompletionVideo { Id = 3, RemoteEndpoint = "https://example.test", RemoteId = "same-time-second", CreatedAt = sameTime },
+            new CompletionVideo { Id = 2, RemoteEndpoint = "https://example.test", RemoteId = "same-time-first", CreatedAt = sameTime },
+            new CompletionVideo { Id = 4, RemoteEndpoint = "https://example.test", RemoteId = "earliest", ReleaseDate = new DateOnly(2025, 1, 1), CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
+        await db.SaveChangesAsync();
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = direction is null
+            ? QueryString.Create("sort", "created")
+            : QueryString.Create("sort", "created").Add("direction", direction);
+
+        var actual = await CompleteTheCoveExtension.ApplyVideoSort(context.Request, db.Set<CompletionVideo>().AsNoTracking())
+            .Select(video => video.RemoteId).ToArrayAsync();
+
+        Assert.Equal(expected.Split(','), actual);
+    }
+
     [Fact]
     public async Task Failed_last_cover_persists_its_error_without_failing_reconciliation()
     {
@@ -162,12 +188,13 @@ public sealed class CompletionCatalogTests
         var settings = new CompleteSettings(new HashSet<string>());
         var source = Video("shared");
         await catalog.RefreshAsync(new FakeDiscovery(source), settings, null, null, new ProgressStub(), default);
-        var videoId = await db.Set<CompletionVideo>().Select(x => x.Id).SingleAsync();
+        var (videoId, createdAt) = await db.Set<CompletionVideo>().Select(x => ValueTuple.Create(x.Id, x.CreatedAt)).SingleAsync();
         await catalog.SetIgnoredAsync(videoId, true, default);
         var updated = source with { Title = "Updated", Tags = [], Performers = [], Urls = ["https://example.test/updated"] };
         await catalog.RefreshAsync(new FakeDiscovery(updated), settings, CompletionTargetType.Performer, 1, new ProgressStub(), default);
         var video = await db.Set<CompletionVideo>().Include(x => x.Tags).Include(x => x.Performers).Include(x => x.Urls).SingleAsync();
         Assert.Equal("Updated", video.Title);
+        Assert.Equal(createdAt, video.CreatedAt);
         Assert.True(video.IsIgnored);
         Assert.Empty(video.Tags);
         Assert.Empty(video.Performers);

@@ -402,6 +402,22 @@ test("persists missing-video catalog filters in the URL", async () => {
   });
 });
 
+test("sorts the catalog by release date, created date, or title", async () => {
+  const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
+  const declarations = source.match(/const DEFAULT_CATALOG_FILTERS[\s\S]*?(?=\n\nfunction navigateUrl)/)?.[0];
+  assert.ok(declarations, "catalog filter URL helpers should be present");
+  const window = { location: { pathname: "/missing-videos", search: "?sort=created&direction=asc" }, history: { replaceState: () => {} } };
+  const helpers = Function("window", `"use strict"; ${declarations}; return { readCatalogFilters, CATALOG_SORT_OPTIONS };`)(window);
+
+  assert.deepEqual(helpers.CATALOG_SORT_OPTIONS.map((option) => option.value), ["release", "created", "title"]);
+  assert.equal(helpers.CATALOG_SORT_OPTIONS.find((option) => option.value === "created").label, "Created at");
+  assert.equal(helpers.readCatalogFilters().sort, "created");
+  assert.equal(helpers.readCatalogFilters().direction, "asc");
+  assert.match(source, /sortOptions: CATALOG_SORT_OPTIONS/);
+  assert.match(source, /sort: isCatalogSort\(find\.sort\) \? find\.sort : filters\.sort/, "saved views must restore the created sort");
+  assert.match(source, /sort: isCatalogSort\(next\.sort\) \? next\.sort : DEFAULT_CATALOG_FILTERS\.sort/, "the list shell must be able to select the created sort");
+});
+
 test("carries the catalog query through missing-video detail navigation", async () => {
   const source = await readFile(new URL("../src/CompleteTheCove/ui/CompleteTheCove.js", import.meta.url), "utf8");
 

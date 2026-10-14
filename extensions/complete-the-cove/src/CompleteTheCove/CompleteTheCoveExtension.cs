@@ -489,11 +489,17 @@ public sealed class CompleteTheCoveExtension : FullExtensionBase
     }
 
     internal static IOrderedQueryable<CompletionVideo> ApplyVideoSort(HttpRequest request, IQueryable<CompletionVideo> query) =>
-        request.Query["sort"] == "title"
-            ? request.Query["direction"] == "desc" ? query.OrderByDescending(x => x.Title) : query.OrderBy(x => x.Title)
-            : request.Query["direction"] == "asc"
+        request.Query["sort"].ToString() switch
+        {
+            "title" => request.Query["direction"] == "desc" ? query.OrderByDescending(x => x.Title) : query.OrderBy(x => x.Title),
+            // The insertion-ordered ID breaks CreatedAt ties so paging stays stable.
+            "created" => request.Query["direction"] == "asc"
+                ? query.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+                : query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id),
+            _ => request.Query["direction"] == "asc"
                 ? query.OrderBy(x => x.ReleaseDate.HasValue).ThenBy(x => x.ReleaseDate)
-                : query.OrderByDescending(x => x.ReleaseDate.HasValue).ThenByDescending(x => x.ReleaseDate);
+                : query.OrderByDescending(x => x.ReleaseDate.HasValue).ThenByDescending(x => x.ReleaseDate),
+        };
 
     private static async Task<IReadOnlyDictionary<int, IReadOnlyCollection<int>>> ExpandSelectedTagIdsAsync(
         HttpRequest request,

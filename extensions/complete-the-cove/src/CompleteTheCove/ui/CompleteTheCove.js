@@ -52,6 +52,12 @@ const DEFAULT_CATALOG_FILTERS = Object.freeze({
   tag: [], excludeTag: [], tagMode: "any", includeSubtags: false,
   ignored: "not-ignored", sort: "release", direction: "desc", page: 1, perPage: 40,
 });
+const CATALOG_SORT_OPTIONS = [
+  { value: "release", label: "Release date" },
+  { value: "created", label: "Created at" },
+  { value: "title", label: "Title" },
+];
+const isCatalogSort = (sort) => CATALOG_SORT_OPTIONS.some((option) => option.value === sort);
 const CATALOG_FILTER_KEYS = [
   "q", "provider",
   "performer", "excludePerformer", "performerMode",
@@ -95,7 +101,7 @@ function readCatalogFilters() {
     ignored: ["all", "ignored", "not-ignored"].includes(value("ignored"))
       ? value("ignored")
       : value("showIgnored") === "true" ? "all" : "not-ignored",
-    sort: value("sort") === "title" ? "title" : "release",
+    sort: isCatalogSort(value("sort")) ? value("sort") : DEFAULT_CATALOG_FILTERS.sort,
     direction: value("direction") === "asc" ? "asc" : "desc",
     page: Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1,
     perPage: Number.isInteger(parsedPerPage) && parsedPerPage > 0 ? Math.min(parsedPerPage, 1000) : DEFAULT_CATALOG_FILTERS.perPage,
@@ -446,7 +452,7 @@ function readInitialCatalogFilters() {
     q: typeof find.q === "string" ? find.q : filters.q,
     page: Number.isInteger(find.page) && find.page > 0 ? find.page : filters.page,
     perPage: Number.isInteger(find.perPage) && find.perPage > 0 ? Math.min(find.perPage, 1000) : filters.perPage,
-    sort: ["release", "title"].includes(find.sort) ? find.sort : filters.sort,
+    sort: isCatalogSort(find.sort) ? find.sort : filters.sort,
     direction: find.direction === "asc" ? "asc" : filters.direction,
   };
   return saved?.objectFilter ? applyCatalogObjectFilter(base, saved.objectFilter) : base;
@@ -648,14 +654,14 @@ function VideoGrid({ scope, onNavigate, allowRefresh = true, onRefreshed }) {
       q: next.q || "",
       page: next.page || 1,
       perPage: Math.min(next.perPage || DEFAULT_CATALOG_FILTERS.perPage, 1000),
-      sort: ["release", "title"].includes(next.sort) ? next.sort : DEFAULT_CATALOG_FILTERS.sort,
+      sort: isCatalogSort(next.sort) ? next.sort : DEFAULT_CATALOG_FILTERS.sort,
       direction: next.direction === "asc" ? "asc" : "desc",
     })),
     totalCount: data.total || 0,
     isLoading: data.total == null && !error,
     error: error ? new Error(error) : null,
     onRetry: () => setReloadVersion((current) => current + 1),
-    sortOptions: [{ value: "release", label: "Release date" }, { value: "title", label: "Title" }],
+    sortOptions: CATALOG_SORT_OPTIONS,
     displayMode: "grid",
     searchPlaceholder: "Search missing videos...",
     criteriaDefinitions,
