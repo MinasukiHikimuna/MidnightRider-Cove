@@ -47,6 +47,13 @@ The **Videos** tab finds videos to open in the editor. The **Segments** tab find
 individual segments to preview or edit. Both use compact video-style cards and
 Cove's numbered pagination controls above and below the results.
 
+In either mode, tick videos on the **Videos** tab to act on them together, for
+example with **Run AI** (see [Run AI](#run-ai)). The selection offers the
+actions other extensions add to Cove's Videos page selection, such as Run AI,
+for your permissions; running AI needs AI Core's permission to run AI. Cove's
+own bulk actions, such as Edit, Play and Delete, are not offered here. While any
+video is selected, clicking a card toggles it instead of opening the editor.
+
 The **Videos** tab searches with Cove's own video search, so a search matches
 words in any order, finds partial words, and also looks at details,
 performers, tags, and file paths, with the best matches first. Its sorts and
@@ -381,11 +388,13 @@ result is not silently discarded.
 Segment Studio requires AI Core. It uses the AI contract that AI Core ships, so
 Cove does not load Segment Studio unless AI Core is installed.
 
-The same **Run AI** action is available inside Segment Studio: in the editor
-toolbar for the open video and, in Full mode, in discovery for the selected
-videos. These buttons need a Cove version that lets extensions show other
-extensions' video actions; on older versions Segment Studio works without them,
-and Run AI stays available on each video's own page.
+The same **Run AI** action is available inside Segment Studio in both modes: in
+the editor toolbar for the open video and in discovery for the selected videos.
+It opens the same dialog, so Basic mode can run capabilities that write ordinary
+Cove segments, such as AI Tagging, which Basic shows directly. These buttons
+need a Cove version that lets extensions show other extensions' video actions;
+on older versions Segment Studio works without them, discovery offers no video
+selection, and Run AI stays available on each video's own page.
 
 In Full mode, an open editor reloads by itself when a Segment Studio review run
 for its video completes, so new drafts appear without reloading the page. It

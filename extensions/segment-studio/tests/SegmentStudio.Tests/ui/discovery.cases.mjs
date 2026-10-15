@@ -710,9 +710,16 @@ test("selected videos offer the host's contributed actions, not a private scan",
 
   // Run AI reaches Segment Studio because the host renders what extensions
   // contribute for a video selection, so it is the same action and the same
-  // dialog as the native videos page rather than a second implementation.
-  assert.match(discovery, /selectionActions: showReviewStates && selectedIds\.size > 0/);
-  assert.match(discovery, /h\(ExtensionSelectionActions, \{ entityType: "video", selectedIds \}\)/);
+  // dialog as the native videos page rather than a second implementation. It
+  // writes native segments too, so Basic mode offers selection as Full does.
+  // Selection only feeds that bar, so it is offered whenever the host renders it.
+  assert.match(discovery, /selectionActions: hasExtensionSelectionActions && selectedIds\.size > 0\n\s+\? h\(ExtensionSelectionActions, \{ entityType: "video", selectedIds \}\)\n\s+: null,/);
+  for (const prop of ["selectedIds: hasExtensionSelectionActions ? selectedIds : undefined", "onSelectAll: hasExtensionSelectionActions ? selectAll : undefined", "onSelectNone: hasExtensionSelectionActions ? selectNone : undefined", "onInvertSelection: hasExtensionSelectionActions ? invertSelection : undefined"]) {
+    assert.ok(discovery.includes(prop), prop);
+  }
+  assert.equal(discovery.split("onSelect: hasExtensionSelectionActions ? toggleSelection : null }").length - 1, 2);
+  assert.doesNotMatch(discovery, /(selectedIds|onSelectAll|onSelectNone|onInvertSelection|selectionActions|onSelect):[^,\n]*showReviewStates/);
+  assert.match(sourceByModule["shared/runtime.js"], /const hasExtensionSelectionActions = ExtensionSelectionActions !== MissingHostComponent;/);
 
   // Segment Studio governs its own deletion through ownership and lineage, so the
   // native bulk mutations that would bypass those rules stay out of this bar.

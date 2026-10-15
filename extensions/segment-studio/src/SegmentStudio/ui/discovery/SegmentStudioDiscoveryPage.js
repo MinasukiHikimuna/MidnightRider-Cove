@@ -1,4 +1,4 @@
-import { ExtensionSelectionActions, ListPage, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
+import { ExtensionSelectionActions, ListPage, hasExtensionSelectionActions, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, getDefaultFilter, h, useEffect, useListUrlState, useMemo, useRef, useState } from "../shared/runtime.js";
 
 import { requestCoveJson, requestJson } from "../shared/api.js";
 
@@ -138,22 +138,24 @@ function SegmentStudioDiscoveryPage({
       supportsFilterExpressions: true,
       onObjectFilterChange: updateObjectFilter,
       searchPlaceholder: "Search Segment Studio videos...",
-      selectedIds: showReviewStates ? selectedIds : undefined,
-      onSelectAll: showReviewStates ? selectAll : undefined,
-      onSelectNone: showReviewStates ? selectNone : undefined,
-      onInvertSelection: showReviewStates ? invertSelection : undefined,
+      selectedIds: hasExtensionSelectionActions ? selectedIds : undefined,
+      onSelectAll: hasExtensionSelectionActions ? selectAll : undefined,
+      onSelectNone: hasExtensionSelectionActions ? selectNone : undefined,
+      onInvertSelection: hasExtensionSelectionActions ? invertSelection : undefined,
       // The host renders whatever extensions contribute for a video selection, so
       // Run AI here is the same action, and the same dialog, as the native videos
-      // page. Only the contributed actions are rendered: Segment Studio's own
-      // ownership and lineage rules govern deletion, so the native bulk mutations
-      // that would bypass them stay out of this bar.
-      selectionActions: showReviewStates && selectedIds.size > 0
+      // page, in Basic and Full mode alike. Selection serves only this bar, so it
+      // is offered only on hosts that render it. Only the contributed actions are
+      // rendered: Segment Studio's own ownership and lineage rules govern
+      // deletion, so the native bulk mutations that would bypass them stay out of
+      // this bar.
+      selectionActions: hasExtensionSelectionActions && selectedIds.size > 0
         ? h(ExtensionSelectionActions, { entityType: "video", selectedIds })
         : null,
     }, [
       !loading && result.items.length === 0 ? h("p", { key: "empty", className: "rounded-lg border border-dashed border-border p-8 text-center text-sm text-secondary" }, "No videos match these filters.") : null,
-      !loading && displayMode === "grid" ? h("section", { key: "grid", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, result.items.map((item) => h(DiscoveryCard, { key: item.videoId, item, onNavigate, showReviewStates, selected: selectedIds.has(item.videoId), selectionActive: selectedIds.size > 0, onSelect: showReviewStates ? toggleSelection : null }))) : null,
-      !loading && displayMode === "list" ? h("section", { key: "rows", className: "space-y-3" }, result.items.map((item) => h(DiscoveryRow, { key: item.videoId, item, onNavigate, showReviewStates, selected: selectedIds.has(item.videoId), selectionActive: selectedIds.size > 0, onSelect: showReviewStates ? toggleSelection : null }))) : null,
+      !loading && displayMode === "grid" ? h("section", { key: "grid", className: "grid gap-3", style: { gridTemplateColumns: "repeat(auto-fill, minmax(var(--card-min-width, 275px), 1fr))" } }, result.items.map((item) => h(DiscoveryCard, { key: item.videoId, item, onNavigate, showReviewStates, selected: selectedIds.has(item.videoId), selectionActive: selectedIds.size > 0, onSelect: hasExtensionSelectionActions ? toggleSelection : null }))) : null,
+      !loading && displayMode === "list" ? h("section", { key: "rows", className: "space-y-3" }, result.items.map((item) => h(DiscoveryRow, { key: item.videoId, item, onNavigate, showReviewStates, selected: selectedIds.has(item.videoId), selectionActive: selectedIds.size > 0, onSelect: hasExtensionSelectionActions ? toggleSelection : null }))) : null,
     ]),
   ]);
 }

@@ -43,6 +43,9 @@ function optionalHostComponent(components, name) {
 
 const ExtensionEntityActions = optionalHostComponent(hostComponents, "ExtensionEntityActions");
 const ExtensionSelectionActions = optionalHostComponent(hostComponents, "ExtensionSelectionActions");
+// Selecting videos only feeds the host's selection actions, so pages offer
+// selection only on hosts that render them.
+const hasExtensionSelectionActions = ExtensionSelectionActions !== MissingHostComponent;
 
 const { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } = React;
 
@@ -55,4 +58,4 @@ const PERFORMER_CRITERIA = hostComponents.PERFORMER_CRITERIA ?? [];
 // The choice is fixed for the module's lifetime, so every render calls the same hook.
 const useDocumentTitle = typeof hostComponents.useDocumentTitle === "function" ? hostComponents.useDocumentTitle : () => {};
 
-export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, ListPage, PERFORMER_CRITERIA, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, VideoPlayer, formatDuration, getDefaultFilter, optionalHostComponent, useDocumentTitle, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };
+export { React, createPortal, extensionFetch, DetailListPagination, DetailListToolbar, EntityReferenceMultiSelector, EntityReferenceSelector, ExtensionEntityActions, ExtensionSelectionActions, hasExtensionSelectionActions, ListPage, PERFORMER_CRITERIA, VIDEO_CRITERIA, VIDEO_SORT_OPTIONS, VideoPlayer, formatDuration, getDefaultFilter, optionalHostComponent, useDocumentTitle, useListUrlState, useRegisterExtensionKeyboardActions, useExtensionKeyboardBindings, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, h };

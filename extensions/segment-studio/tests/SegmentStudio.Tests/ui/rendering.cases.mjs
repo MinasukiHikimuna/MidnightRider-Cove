@@ -21,6 +21,8 @@ test("host components newer than the declared runtime render nothing when missin
     assert.equal(typeof runtime[name], "function", name);
     assert.equal(runtime[name]({ entityType: "video" }), null, name);
   }
+  // Discovery selection only feeds the missing actions bar, so it is not offered.
+  assert.equal(runtime.hasExtensionSelectionActions, false);
   const Present = () => "rendered";
   assert.equal(runtime.optionalHostComponent({ ExtensionEntityActions: Present }, "ExtensionEntityActions"), Present);
   // React.memo and forwardRef return objects carrying $$typeof, not functions.
