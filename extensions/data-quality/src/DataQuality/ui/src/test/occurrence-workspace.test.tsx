@@ -331,10 +331,9 @@ it("retains editor inputs on partial failure and refreshes actual tags", async (
   open();
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
-  fireEvent.change(
-    screen.getByPlaceholderText("Choose tags for this item..."),
-    { target: { value: "40,41" } },
-  );
+  const field = screen.getByRole("group", { name: "Edit occurrence tags" });
+  const input = screen.getByPlaceholderText("Choose tags for this item...");
+  fireEvent.change(input, { target: { value: "40,41" } });
   fireEvent.click(screen.getByRole("button", { name: "Save & next" }));
   await screen.findByRole("alert");
   expect(
@@ -343,9 +342,13 @@ it("retains editor inputs on partial failure and refreshes actual tags", async (
   expect(
     screen.getByRole("heading", { name: "Reviewing First performer" }),
   ).toBeInTheDocument();
+  // The saved tags now differ from where the editor started, so they show beside the draft.
   await waitFor(() =>
     expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Saved part"),
   );
+  // The editor stays the same element, keeping focus and its picker's state.
+  expect(screen.getByRole("group", { name: "Edit occurrence tags" })).toBe(field);
+  expect(input).toHaveFocus();
 });
 it("Skip only moves the stable cursor and reloading makes items available again", async () => {
   const view = open();
@@ -2731,18 +2734,29 @@ it("hands focus to More after Save to review, or back to it when the save fails"
 });
 
 it("pauses the pad and its preview while tags are edited by hand", async () => {
-  state = { ids: [30], names: ["Kept"], absent: [] };
-  open({ ...review, actions: numberedActions(2) });
+  state = { ids: [30], names: ["Kept"], absent: [60] };
+  open({
+    ...review,
+    actions: [
+      ...numberedActions(1),
+      { id: "found", label: "Found", steps: [{ mode: "CLEAR_ABSENCE" as const, tagIds: [60] }] },
+    ],
+  });
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
   const tile = screen.getByRole("button", { name: "q Action 1" });
   expect(tile).toBeDisabled();
   expect(screen.getByRole("button", { name: "Find action" })).toBeDisabled();
-  fireEvent.mouseEnter(tile.parentElement!);
-  expect(screen.getByRole("list", { name: "Current tags" }).querySelector("ins")).toBeNull();
-  // The current tags stay in view above the editor.
+  // The editor lists the tags in their place, so they are shown once.
+  expect(screen.queryByRole("list", { name: "Current tags" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Current tags" })).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText("Choose tags for this item...")).toHaveValue("30");
+  // Confirmed absences, which the editor does not change, stay in view without a preview.
+  const absent = screen.getByRole("list", { name: "Confirmed absent tags" });
+  fireEvent.mouseEnter(screen.getByRole("button", { name: "w Found" }).parentElement!);
+  expect(absent.querySelector("del")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Kept");
-  expect(screen.getByRole("group", { name: "Edit occurrence tags" })).toBeInTheDocument();
 });
 
 it("keeps the open scope popover under its button when Save to review and Reset join the row", async () => {

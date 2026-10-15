@@ -209,26 +209,33 @@ function QueueThumbnail({ media, kind }: { media: MediaItem; kind: MediaKind }) 
  * The item's current tags as Cove's badges, in Cove's display order, with the previewed action's
  * effect drawn over them: "+" and a dashed outline for tags it adds, "−" and a strike-through for
  * tags it removes, and an "absent" mark for tags it records as confirmed absent. Only this part
- * re-renders while the pointer moves along the pad.
+ * re-renders while the pointer moves along the pad. While the tags are edited by hand, the editor
+ * shows them in their place, so they are listed once; confirmed absences, which it does not edit,
+ * stay below it. Once the saved tags differ from the editor's starting point, as after a save that
+ * stopped partway, they are listed above the editor again, so they can be compared with the draft.
  */
 function CurrentTags({
   tags,
   preview,
-  showPreview,
+  editor,
+  tagsChangedSinceEditing = false,
   trees,
   actionTagIds,
   label,
 }: {
   tags: TagState | null;
   preview: ActionPreviewStore;
-  /** False while the tags are being edited by hand. */
-  showPreview: boolean;
+  /** The hand editor while the tags are edited by hand, shown with no preview. */
+  editor?: ReactNode;
+  /** The saved tags no longer match the ones the editor started from, or could not be read. */
+  tagsChangedSinceEditing?: boolean;
   trees: TagTrees;
   actionTagIds: readonly number[];
   label: string;
 }) {
+  const editorOnly = !!editor && !tagsChangedSinceEditing;
   const previewed = useActionPreview(preview);
-  const action = showPreview ? previewed : null;
+  const action = editor ? null : previewed;
   const absentIds = tags?.absent;
   const known = useTags(
     useMemo(() => [...actionTagIds, ...(absentIds ?? [])], [actionTagIds, absentIds]),
@@ -251,7 +258,31 @@ function CurrentTags({
   );
   const added = inOrder(effect?.added ?? []);
   const newlyAbsent = inOrder((effect?.markedAbsent ?? []).filter((id) => !has.has(id)));
-  return (
+  // Alone under the editor, the absences head their own section.
+  const AbsentHeading = editorOnly ? "h3" : "h4";
+  const absent = !!tags?.absent.length && (
+    <>
+      <AbsentHeading className="dq-subheading">Confirmed absent</AbsentHeading>
+      <ul className="dq-tags" aria-label="Confirmed absent tags">
+        {inOrder(tags.absent).map((tag) => (
+          <li
+            key={tag.id}
+            className={`dq-tag dq-tag-absent${cleared.has(tag.id) ? " dq-tag-removed" : ""}`}
+          >
+            <Ban aria-hidden="true" />
+            {cleared.has(tag.id) ? (
+              <del>
+                − <ReviewTagBadge tag={tag} />
+              </del>
+            ) : (
+              <ReviewTagBadge tag={tag} />
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+  const section = (
     <section className="dq-panel-section" aria-label={label}>
       <h3 className="dq-eyebrow">Current tags</h3>
       {!tags ? (
@@ -293,31 +324,23 @@ function CurrentTags({
           ) : (
             <p className="dq-muted">None</p>
           )}
-          {tags.absent.length > 0 && (
-            <>
-              <h4 className="dq-subheading">Confirmed absent</h4>
-              <ul className="dq-tags" aria-label="Confirmed absent tags">
-                {inOrder(tags.absent).map((tag) => (
-                  <li
-                    key={tag.id}
-                    className={`dq-tag dq-tag-absent${cleared.has(tag.id) ? " dq-tag-removed" : ""}`}
-                  >
-                    <Ban aria-hidden="true" />
-                    {cleared.has(tag.id) ? (
-                      <del>
-                        − <ReviewTagBadge tag={tag} />
-                      </del>
-                    ) : (
-                      <ReviewTagBadge tag={tag} />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          {absent}
         </>
       )}
     </section>
+  );
+  // Each part keeps its place whichever are shown, so the editor is never remounted (losing focus
+  // and its picker's state) when the tags appear above it.
+  return (
+    <>
+      {!editorOnly && section}
+      {editor}
+      {editorOnly && absent && (
+        <section className="dq-panel-section" aria-label="Confirmed absent">
+          {absent}
+        </section>
+      )}
+    </>
   );
 }
 
@@ -453,10 +476,10 @@ export function ReviewWorkspace({
   const editorBase = useRef<number[]>([]);
   const editButton = useRef<HTMLButtonElement>(null);
   const filterReturnFocus = useRef<HTMLButtonElement | null>(null);
-  const editor = useRef<HTMLFieldSetElement>(null);
+  const editorField = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
     if (editing)
-      editor.current?.querySelector<HTMLInputElement>("input")?.focus();
+      editorField.current?.querySelector<HTMLInputElement>("input")?.focus();
   }, [editing]);
   const [performerDialog, setPerformerDialog] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
@@ -1884,57 +1907,66 @@ export function ReviewWorkspace({
                     <CurrentTags
                       tags={tags}
                       preview={preview}
-                      showPreview={!editing}
                       trees={trees}
                       actionTagIds={actionTagIds}
                       label={`Current ${scope ? "occurrence" : labels.one} tags`}
+                      // Not while a save runs: Save & next loads the next item's tags under it.
+                      tagsChangedSinceEditing={
+                        editing &&
+                        !pending &&
+                        (!tags ||
+                          tags.ids.length !== editorBase.current.length ||
+                          tags.ids.some((id) => !editorBase.current.includes(id)))
+                      }
+                      editor={
+                        editing && (
+                          <fieldset
+                            ref={editorField}
+                            disabled={pending}
+                            className="dq-panel-section dq-tag-editor"
+                          >
+                            <legend className="dq-eyebrow">
+                              Edit {scope ? "occurrence" : labels.one} tags
+                            </legend>
+                            <EntityReferenceMultiSelector
+                              entityType="tag"
+                              values={draft}
+                              onChange={setDraft}
+                              placeholder="Choose tags for this item..."
+                              allowCreate={false}
+                            />
+                            <div className="dq-row">
+                              <button
+                                type="button"
+                                className="dq-button primary"
+                                disabled={!tags}
+                                onClick={() => void execute(undefined, true, true)}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="dq-button"
+                                disabled={!tags}
+                                onClick={() => void execute(undefined, false, true)}
+                              >
+                                Save & next
+                              </button>
+                              <button
+                                type="button"
+                                className="dq-button"
+                                onClick={() => {
+                                  setEditing(false);
+                                  requestAnimationFrame(() => editButton.current?.focus());
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </fieldset>
+                        )
+                      }
                     />
-                    {editing && (
-                      <fieldset
-                        ref={editor}
-                        disabled={pending}
-                        className="dq-panel-section dq-tag-editor"
-                      >
-                        <legend className="dq-eyebrow">
-                          Edit {scope ? "occurrence" : labels.one} tags
-                        </legend>
-                        <EntityReferenceMultiSelector
-                          entityType="tag"
-                          values={draft}
-                          onChange={setDraft}
-                          placeholder="Choose tags for this item..."
-                          allowCreate={false}
-                        />
-                        <div className="dq-row">
-                          <button
-                            type="button"
-                            className="dq-button primary"
-                            disabled={!tags}
-                            onClick={() => void execute(undefined, true, true)}
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            className="dq-button"
-                            disabled={!tags}
-                            onClick={() => void execute(undefined, false, true)}
-                          >
-                            Save & next
-                          </button>
-                          <button
-                            type="button"
-                            className="dq-button"
-                            onClick={() => {
-                              setEditing(false);
-                              requestAnimationFrame(() => editButton.current?.focus());
-                            }}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </fieldset>
-                    )}
                   </>
                 )}
                 {/* Stays while the focused queue loads or runs out, so it is not read again. */}
