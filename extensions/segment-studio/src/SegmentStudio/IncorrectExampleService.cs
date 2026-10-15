@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -549,6 +550,47 @@ public static class IncorrectExampleService
         IBlobService blobs,
         CancellationToken ct)
     {
+        // Cove rejects saving blob references inside an explicit transaction, so the capture
+        // serializes on the session-level review lock and writes the export, its examples, and
+        // their frame references in one SaveChanges. Each retry repeats the whole capture,
+        // because a dropped connection also releases the session lock.
+        var strategy = db.Database.CreateExecutionStrategy();
+        var attempt = 0;
+        return await strategy.ExecuteAsync(async cancellationToken =>
+        {
+            if (attempt++ > 0)
+                db.ChangeTracker.Clear();
+            return await CaptureExportCoreAsync(
+                db, videoId, userId, request, uploads, blobs, cancellationToken);
+        }, ct);
+    }
+
+    private static async Task<bool> TrainingExportMayExistAsync(DbContext db, Guid exportId)
+    {
+        try
+        {
+            // A lost session may still be committing; a new session cannot see that outcome yet.
+            if (db.Database.IsRelational()
+                && db.Database.GetDbConnection().State != ConnectionState.Open)
+                return true;
+            return await db.Set<SegmentStudioTrainingExport>().AsNoTracking()
+                .AnyAsync(row => row.Id == exportId, CancellationToken.None);
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static async Task<TrainingExportResult> CaptureExportCoreAsync(
+        DbContext db,
+        int videoId,
+        int? userId,
+        TrainingExportCaptureRequest request,
+        IReadOnlyList<TrainingFrameUpload> uploads,
+        IBlobService blobs,
+        CancellationToken ct)
+    {
         if (request.OperationId == Guid.Empty)
             throw new IncorrectExampleException("Operation ID is required.");
         if (request.Examples.Count is < 1 or > MaximumExamplesPerExport)
@@ -578,7 +620,7 @@ public static class IncorrectExampleService
         if (replay is not null)
             return replay;
 
-        await SegmentStudioReviewLock.AcquireAsync(db, videoId, ct);
+        await using var reviewLock = await SegmentStudioReviewLock.AcquireSessionAsync(db, videoId, ct);
         replay = await FindCaptureReplayAsync(
             db, videoId, userId, request.OperationId, fingerprint, ct);
         if (replay is not null)
@@ -687,27 +729,27 @@ public static class IncorrectExampleService
                     ItemId = candidate.Example.ItemId,
                     NativeBinEntryId = candidate.Example.NativeBinEntryId,
                     SnapshotJson = candidate.Example.SnapshotJson,
+                    Frames = candidate.Request!.Frames.Select((frame, framePosition) =>
+                        new SegmentStudioTrainingExportFrame
+                        {
+                            Position = framePosition,
+                            TimestampSec = RoundTimestamp(frame.TimestampSec),
+                            ImageBlobId = storedFrames[frame.FieldName],
+                        }).ToList(),
                 }).ToArray();
             db.AddRange(exportExamples);
-            await db.SaveChangesAsync(ct);
-            foreach (var pair in captures.Select((candidate, position) =>
-                         new { Candidate = candidate, ExportExample = exportExamples[position] }))
-            {
-                db.AddRange(pair.Candidate.Request!.Frames.Select((frame, position) =>
-                    new SegmentStudioTrainingExportFrame
-                    {
-                        ExportExampleId = pair.ExportExample.Id,
-                        Position = position,
-                        TimestampSec = RoundTimestamp(frame.TimestampSec),
-                        ImageBlobId = storedFrames[frame.FieldName],
-                    }));
-            }
             await db.SaveChangesAsync(ct);
         }
         catch
         {
-            foreach (var copiedBlobId in copiedBlobIds)
-                await blobs.DeleteBlobAsync(copiedBlobId, CancellationToken.None);
+            // SaveChanges commits here, so a failure can be reported after the server committed
+            // (for example a lost COMMIT acknowledgement). Cove's blob reference count does not
+            // see extension tables, so delete the frames only when the export is known to be absent.
+            if (copiedBlobIds.Count > 0 && !await TrainingExportMayExistAsync(db, exportId))
+            {
+                foreach (var copiedBlobId in copiedBlobIds)
+                    await blobs.DeleteBlobAsync(copiedBlobId, CancellationToken.None);
+            }
             throw;
         }
 

@@ -537,25 +537,14 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                                 file.ContentType,
                                 output.ToArray()));
                         }
-                        var strategy = db.Database.CreateExecutionStrategy();
-                        var result = await strategy.ExecuteAsync(async () =>
-                        {
-                            await using var transaction = db.Database.IsRelational()
-                                ? await db.Database.BeginTransactionAsync(ct)
-                                : null;
-                            var captured = await IncorrectExampleService
-                                .CaptureExportAsync(
-                                    db,
-                                    videoId,
-                                    principalAccessor.Current?.UserId,
-                                    capture,
-                                    uploads,
-                                    blobs,
-                                    ct);
-                            if (transaction is not null)
-                                await transaction.CommitAsync(ct);
-                            return captured;
-                        });
+                        var result = await IncorrectExampleService.CaptureExportAsync(
+                            db,
+                            videoId,
+                            principalAccessor.Current?.UserId,
+                            capture,
+                            uploads,
+                            blobs,
+                            ct);
                         return Results.Ok(result);
                     }
                     catch (IncorrectExampleConflictException exception)

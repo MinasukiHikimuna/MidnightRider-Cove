@@ -88,22 +88,7 @@ public sealed class ExtensionTests
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddScoped<DbContext>(_ => null!);
         builder.Services.AddScoped<ICurrentPrincipalAccessor>(_ => null!);
-        builder.Services.AddScoped<Cove.Core.Auth.IAuthorizationService>(_ => null!);
-        builder.Services.AddScoped<Cove.Core.Events.IEventBus>(_ => null!);
-        builder.Services.AddScoped<Cove.Core.Interfaces.IFieldProvenanceService>(_ => null!);
-        builder.Services.AddScoped<ISegmentSourceRegistry>(_ => null!);
-        builder.Services.AddScoped<ILineageNodeService>(_ => null!);
-        builder.Services.AddScoped<ISegmentProvenanceService>(_ => null!);
-        builder.Services.AddScoped<ISegmentDuplicationProvenanceService>(_ => null!);
-        builder.Services.AddScoped<IDerivationGraphService>(_ => null!);
-        builder.Services.AddScoped<ILineageMutationService>(_ => null!);
-        builder.Services.AddScoped<ILineageReconciliationService>(_ => null!);
-        builder.Services.AddScoped<ISegmentLineageDeletionService>(_ => null!);
-        builder.Services.AddScoped<ILineageIntegrityService>(_ => null!);
-        builder.Services.AddScoped<INativeAiProvenanceIngestionService>(_ => null!);
-        builder.Services.AddScoped<INativeSegmentImportService>(_ => null!);
-        builder.Services.AddSingleton<IJobService>(_ => null!);
-        builder.Services.AddScoped<IPerformerRepository>(_ => null!);
+        AddEndpointServicePlaceholders(builder.Services);
         await using var app = builder.Build();
         CreateExtension().MapEndpoints(app);
 
@@ -616,7 +601,28 @@ public sealed class ExtensionTests
         Assert.Equal("SegmentStudioPage", page.ComponentName);
     }
 
-    private static SegmentStudioExtension CreateExtension()
+    /// <summary>Registers the services minimal-API parameter inference needs to map every endpoint.</summary>
+    internal static void AddEndpointServicePlaceholders(IServiceCollection services)
+    {
+        services.AddScoped<Cove.Core.Auth.IAuthorizationService>(_ => null!);
+        services.AddScoped<Cove.Core.Events.IEventBus>(_ => null!);
+        services.AddScoped<Cove.Core.Interfaces.IFieldProvenanceService>(_ => null!);
+        services.AddScoped<ISegmentSourceRegistry>(_ => null!);
+        services.AddScoped<ILineageNodeService>(_ => null!);
+        services.AddScoped<ISegmentProvenanceService>(_ => null!);
+        services.AddScoped<ISegmentDuplicationProvenanceService>(_ => null!);
+        services.AddScoped<IDerivationGraphService>(_ => null!);
+        services.AddScoped<ILineageMutationService>(_ => null!);
+        services.AddScoped<ILineageReconciliationService>(_ => null!);
+        services.AddScoped<ISegmentLineageDeletionService>(_ => null!);
+        services.AddScoped<ILineageIntegrityService>(_ => null!);
+        services.AddScoped<INativeAiProvenanceIngestionService>(_ => null!);
+        services.AddScoped<INativeSegmentImportService>(_ => null!);
+        services.AddSingleton<IJobService>(_ => null!);
+        services.AddScoped<IPerformerRepository>(_ => null!);
+    }
+
+    internal static SegmentStudioExtension CreateExtension()
     {
         var extension = new SegmentStudioExtension();
         ((IManifestAware)extension).ApplyManifest(new ExtensionManifestFile

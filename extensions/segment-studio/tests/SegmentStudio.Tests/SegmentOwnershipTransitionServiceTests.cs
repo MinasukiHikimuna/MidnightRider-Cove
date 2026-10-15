@@ -1,5 +1,6 @@
 namespace SegmentStudio.Tests;
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +8,13 @@ using AI.Extensions.Abstractions;
 using Cove.Core.Auth;
 using Cove.Core.Entities;
 using Cove.Core.Interfaces;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 public sealed class SegmentOwnershipTransitionServiceTests
@@ -706,6 +713,175 @@ public sealed class SegmentOwnershipTransitionServiceTests
         Assert.Equal(restored.Id, restoredProvenance.HostId);
         Assert.Equal("model-7", restoredProvenance.ModelKey);
         Assert.Equal(provenanceCreatedAt, restoredProvenance.CreatedAt);
+    }
+
+    [Fact]
+    public async Task BasicNativeAiExportEndpointSavesFrameBlobReferencesOutsideAnExplicitTransaction()
+    {
+        await using var fixture = await TransitionFixture.CreateRelationalAsync();
+        var segment = await fixture.Context.Set<Segment>().AsNoTracking().SingleAsync();
+        var collected = await IncorrectExampleService.ToggleAsync(
+            fixture.Context,
+            fixture.VideoId,
+            new(Guid.NewGuid(), segment.Id, null, segment.UpdatedAt, null),
+            CovePrincipal.System(),
+            fixture.Authorization,
+            fixture.Blobs,
+            CancellationToken.None,
+            SegmentStudioModes.Basic,
+            fixture.NativeAiIngestion);
+        Assert.Equal(SegmentTransitionStatus.Updated, collected.Status);
+        var example = await fixture.Context.Set<SegmentStudioIncorrectExample>().SingleAsync();
+        var entry = await fixture.Context.Set<SegmentStudioNativeRecycleBinEntry>().SingleAsync();
+        var timestamp = Assert.Single(
+            IncorrectExampleService.FrameTimestamps(entry.StartSec, entry.EndSec));
+        fixture.Context.ChangeTracker.Clear();
+
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddScoped<DbContext>(_ => fixture.CreateSiblingContext());
+        builder.Services.AddSingleton<ICurrentPrincipalAccessor>(new FixedPrincipalAccessor(new CovePrincipal
+        {
+            UserId = 1,
+            Username = "owner",
+            Kind = PrincipalKind.User,
+            Roles = new HashSet<string>(),
+            Permissions = new HashSet<string>(),
+        }));
+        builder.Services.AddSingleton<IBlobService>(fixture.Blobs);
+        ExtensionTests.AddEndpointServicePlaceholders(builder.Services);
+        await using var app = builder.Build();
+        ExtensionTests.CreateExtension().MapEndpoints(app);
+        var endpoint = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Single(candidate => candidate.RoutePattern.RawText
+                == "/api/plugins/segment-studio/videos/{videoId:int}/incorrect-examples/export");
+        await using var scope = app.Services.CreateAsyncScope();
+        var metadata = JsonSerializer.Serialize(new
+        {
+            operationId = Guid.NewGuid(),
+            examples = new[]
+            {
+                new
+                {
+                    exampleId = example.Id,
+                    expectedExampleRevision = example.Revision,
+                    expectedRepresentationRevision = entry.Revision,
+                    frames = new[] { new { fieldName = "frame-1", timestampSec = timestamp } },
+                },
+            },
+        });
+        var frameContent = new MemoryStream([0xff, 0xd8, 0xff, 0xd9]);
+        var http = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        http.Request.Method = HttpMethods.Post;
+        http.Request.ContentType = "multipart/form-data; boundary=test";
+        http.Request.RouteValues["videoId"] = fixture.VideoId.ToString(CultureInfo.InvariantCulture);
+        http.Request.Form = new FormCollection(
+            new() { ["metadata"] = metadata },
+            new FormFileCollection
+            {
+                new FormFile(frameContent, 0, frameContent.Length, "frame-1", "frame-1.jpg")
+                {
+                    Headers = new HeaderDictionary(),
+                    ContentType = "image/jpeg",
+                },
+            });
+        http.Response.Body = new MemoryStream();
+
+        await endpoint.RequestDelegate!(http);
+
+        http.Response.Body.Position = 0;
+        var body = await new StreamReader(http.Response.Body).ReadToEndAsync();
+        Assert.True(http.Response.StatusCode == StatusCodes.Status200OK, body);
+        var frame = await fixture.Context.Set<SegmentStudioTrainingExportFrame>()
+            .Include(row => row.ExportExample)
+            .SingleAsync();
+        using var result = JsonDocument.Parse(body);
+        Assert.Equal(result.RootElement.GetProperty("id").GetGuid(), frame.ExportExample.ExportId);
+        Assert.Equal("export-blob-1", frame.ImageBlobId);
+        Assert.Empty(fixture.Blobs.DeletedBlobIds);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ExportCaptureFailureKeepsFrameBlobsOnlyWhenTheExportMayHaveCommitted(
+        bool failAfterCommit, bool expectFrameBlobDeleted)
+    {
+        var failure = new FailNextTrainingExportSave(failAfterCommit);
+        await using var fixture = await TransitionFixture.CreateRelationalAsync(failure);
+        var segment = await fixture.Context.Set<Segment>().AsNoTracking().SingleAsync();
+        await IncorrectExampleService.ToggleAsync(
+            fixture.Context,
+            fixture.VideoId,
+            new(Guid.NewGuid(), segment.Id, null, segment.UpdatedAt, null),
+            CovePrincipal.System(),
+            fixture.Authorization,
+            fixture.Blobs,
+            CancellationToken.None,
+            SegmentStudioModes.Basic,
+            fixture.NativeAiIngestion);
+        var example = await fixture.Context.Set<SegmentStudioIncorrectExample>().AsNoTracking().SingleAsync();
+        var entry = await fixture.Context.Set<SegmentStudioNativeRecycleBinEntry>().AsNoTracking().SingleAsync();
+        var timestamp = Assert.Single(IncorrectExampleService.FrameTimestamps(entry.StartSec, entry.EndSec));
+        fixture.Context.ChangeTracker.Clear();
+        failure.Armed = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IncorrectExampleService.CaptureExportAsync(
+            fixture.Context,
+            fixture.VideoId,
+            null,
+            new(Guid.NewGuid(), [new(example.Id, example.Revision, entry.Revision, [new("frame-1", timestamp)])]),
+            [new("frame-1", "image/jpeg", [0xff, 0xd8, 0xff, 0xd9])],
+            fixture.Blobs,
+            CancellationToken.None));
+
+        fixture.Context.ChangeTracker.Clear();
+        Assert.Equal(
+            failAfterCommit,
+            await fixture.Context.Set<SegmentStudioTrainingExport>().AnyAsync());
+        Assert.Equal(expectFrameBlobDeleted, fixture.Blobs.DeletedBlobIds.Contains("export-blob-1"));
+    }
+
+    /// <summary>Fails the next save that writes a training export, before or after it commits.</summary>
+    private sealed class FailNextTrainingExportSave(bool afterCommit) : SaveChangesInterceptor
+    {
+        public bool Armed { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (!afterCommit)
+                ThrowIfArmed(eventData.Context!);
+            return ValueTask.FromResult(result);
+        }
+
+        public override ValueTask<int> SavedChangesAsync(
+            SaveChangesCompletedEventData eventData,
+            int result,
+            CancellationToken cancellationToken = default)
+        {
+            if (afterCommit)
+                ThrowIfArmed(eventData.Context!);
+            return ValueTask.FromResult(result);
+        }
+
+        private void ThrowIfArmed(DbContext db)
+        {
+            if (Armed && db.ChangeTracker.Entries<SegmentStudioTrainingExport>().Any())
+            {
+                Armed = false;
+                throw new InvalidOperationException("Injected training export save failure.");
+            }
+        }
+    }
+
+    private sealed class FixedPrincipalAccessor(CovePrincipal principal) : ICurrentPrincipalAccessor
+    {
+        public CovePrincipal? Current => principal;
+        public void Set(CovePrincipal? value) { }
     }
 
     [Fact]
@@ -3642,14 +3818,18 @@ public sealed class SegmentOwnershipTransitionServiceTests
         public int SegmentId => 101;
         public DateTime UpdatedAt { get; } = new(2026, 7, 22, 9, 0, 0, DateTimeKind.Utc);
 
+        private readonly SqliteConnection? _connection;
+
         private TransitionFixture(
             TransitionDbContext context,
             DbContextOptions<TransitionDbContext> options,
-            bool blobExists)
+            bool blobExists,
+            SqliteConnection? connection = null)
         {
             Context = context;
             _options = options;
             Blobs = new(blobExists);
+            _connection = connection;
         }
 
         public TransitionDbContext CreateSiblingContext() => new(_options);
@@ -3658,7 +3838,28 @@ public sealed class SegmentOwnershipTransitionServiceTests
         {
             var options = new DbContextOptionsBuilder<TransitionDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-            var fixture = new TransitionFixture(new(options), options, blobExists);
+            return await SeedAsync(new TransitionFixture(new(options), options, blobExists));
+        }
+
+        /// <summary>
+        /// A relational fixture whose context enforces Cove's rule that blob-reference changes
+        /// cannot be saved inside an explicit database transaction.
+        /// </summary>
+        public static async Task<TransitionFixture> CreateRelationalAsync(params IInterceptor[] interceptors)
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<TransitionDbContext>()
+                .UseSqlite(connection)
+                .AddInterceptors([new CoveBlobReferenceTransactionRule(), .. interceptors])
+                .Options;
+            var fixture = new TransitionFixture(new(options), options, blobExists: true, connection);
+            await fixture.Context.Database.EnsureCreatedAsync();
+            return await SeedAsync(fixture);
+        }
+
+        private static async Task<TransitionFixture> SeedAsync(TransitionFixture fixture)
+        {
             fixture.Context.AddRange(
                 new SegmentStudioInstallationState { Id = 1, RequiresLegacyNormalization = false, UpdatedAt = fixture.UpdatedAt },
                 new SegmentStudioSource
@@ -3686,7 +3887,38 @@ public sealed class SegmentOwnershipTransitionServiceTests
             return fixture;
         }
 
-        public async ValueTask DisposeAsync() => await Context.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await Context.DisposeAsync();
+            if (_connection is not null)
+                await _connection.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Mirrors Cove's BlobReferenceSaveChangesInterceptor, which rejects saving any added,
+    /// modified, or deleted *BlobId reference while an explicit transaction is open.
+    /// </summary>
+    private sealed class CoveBlobReferenceTransactionRule : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            var db = eventData.Context!;
+            var changesBlobReference = db.ChangeTracker.Entries()
+                .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+                .SelectMany(entry => entry.Properties
+                    .Where(property => entry.State != EntityState.Modified || property.IsModified))
+                .Any(property => property.Metadata.ClrType == typeof(string)
+                    && property.Metadata.Name.EndsWith("BlobId", StringComparison.Ordinal)
+                    && (property.CurrentValue ?? property.OriginalValue) is string { Length: > 0 });
+            if (changesBlobReference && db.Database.CurrentTransaction is not null)
+                throw new InvalidOperationException(
+                    "Blob reference changes cannot be saved inside an explicit, enlisted, or ambient database transaction.");
+            return ValueTask.FromResult(result);
+        }
     }
 
     private sealed class TransitionDbContext(DbContextOptions<TransitionDbContext> options) : DbContext(options)
