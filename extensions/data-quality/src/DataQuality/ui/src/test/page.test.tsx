@@ -2558,6 +2558,8 @@ it("lands on the new last page when staying empties the last page of a review th
   await screen.findByRole("article", { name: /^Video 3/ });
   await waitFor(() => expect(new URLSearchParams(window.location.search).get("page")).toBe("2"));
   expect(screen.queryByRole("article", { name: /^Video 1/ })).not.toBeInTheDocument();
+  // Only the page moved, so nothing was restored.
+  expect(screen.queryByText("Review queue defaults restored.")).not.toBeInTheDocument();
 });
 
 it("keeps walking towards the first page when an earlier page refills from the tail", async () => {
