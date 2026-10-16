@@ -1490,6 +1490,10 @@ export function DataQualityPage({
     if (event.key === "Escape") {
       consumeShortcut(event);
       updateSelection(() => new Set());
+      // From the action bar, Esc also hands focus back to the focused card, so a following Space
+      // selects it rather than pressing the tile that had focus.
+      if (target instanceof HTMLElement && target.closest(".dq-action-bar"))
+        focusCard(focusedRef.current, false);
       return;
     }
     if (!previewOpen && event.key === " " && plainTarget) {

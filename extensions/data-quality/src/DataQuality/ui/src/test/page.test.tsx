@@ -2351,8 +2351,11 @@ it("selects and clears every shown video from the action bar", async () => {
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
   expect(bar.getByText("2 selected")).toBeInTheDocument();
   // Esc clears the selection from the bar's own controls too.
+  clear.focus();
   fireEvent.keyDown(clear, { key: "Escape" });
   expect(bar.getByText("Applies to the focused video")).toBeInTheDocument();
+  // and hands focus back to the focused card, so Space then selects it rather than pressing a tile.
+  await waitFor(() => expect(screen.getByRole("article", { name: "Video 1" })).toHaveFocus());
 });
 
 it("selects every video on each page load when the review asks for it", async () => {
