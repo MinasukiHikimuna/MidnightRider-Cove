@@ -1002,6 +1002,69 @@ it("disables duplicate saves while the first write is pending", async () => {
   finish();
   await screen.findByRole("heading", { name: "Reviewing Second performer" });
 });
+it("applies a key pressed during the previous save to the item it was pressed on", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    .mockResolvedValue({ items: [later], totalCount: 1 });
+  let finish!: () => void;
+  api.applyTags.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  open(rule);
+  await ready();
+
+  fireEvent.keyDown(document.body, { key: "q" });
+  await screen.findByRole("link", { name: "Next scene" });
+  // The first save is still running: the key waits for it rather than being lost.
+  fireEvent.keyDown(document.body, { key: "q" });
+  expect(api.applyTags).toHaveBeenCalledTimes(1);
+
+  await act(async () => finish());
+
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  expect(api.applyTags).toHaveBeenLastCalledWith(
+    expect.anything(),
+    expect.objectContaining({ media: third.media }),
+    rule.actions[0],
+  );
+  await screen.findByRole("link", { name: "Later scene" });
+});
+it("drops a key pressed during a save that fails", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  api.findMedia.mockResolvedValue({ items: [video, third.media, later], totalCount: 3 });
+  let fail!: (error: Error) => void;
+  api.applyTags.mockImplementationOnce(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  open(rule);
+  await ready();
+
+  fireEvent.keyDown(document.body, { key: "q" });
+  await screen.findByRole("link", { name: "Next scene" });
+  fireEvent.keyDown(document.body, { key: "q" });
+  await act(async () => fail(new Error("write failed")));
+
+  await screen.findByRole("link", { name: "First scene" });
+  await ready();
+  expect(api.applyTags).toHaveBeenCalledTimes(1);
+});
 it.each(["sort", "direction"])(
   "replaces multicolumn URL sorts when changing %s in the native toolbar",
   async (mode) => {

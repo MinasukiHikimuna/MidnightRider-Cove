@@ -463,6 +463,8 @@ export function ReviewWorkspace({
   const lock = useRef(false);
   // Moves on whenever the user does something a background queue refresh must not undo.
   const refreshToken = useRef(0);
+  const actionRunning = useRef(false);
+  const queuedAction = useRef<{ action: MediaReviewAction; stay: boolean; key: string } | null>(null);
   const alive = useRef(true);
   const deferredRestore = useRef<{
     query: ReviewQuery;
@@ -999,6 +1001,12 @@ export function ReviewWorkspace({
     adHoc = false,
     legacy = false,
   ) {
+    // An action asked for while the previous one is still saving waits for it, on the item it was
+    // asked for (the latest such request wins). It is dropped if that item is gone by then.
+    if (actionRunning.current && action && current && !adHoc && !legacy && !ruleDraft && !editing) {
+      queuedAction.current = { action, stay, key: current.key };
+      return;
+    }
     if (ruleDraft || !current || lock.current || loading || (editing && !adHoc))
       return;
     const mutating = adHoc || legacy || Boolean(action?.steps.length);
@@ -1021,6 +1029,7 @@ export function ReviewWorkspace({
     setPending(true);
     setError("");
     setNotice("");
+    actionRunning.current = true;
     // The next loaded item, also when apply and stay has let this one leave the queue. Showing it
     // drops the stayed cursor, which the refresh and a failed write still need.
     const kept = stayedCursor.current;
@@ -1079,6 +1088,7 @@ export function ReviewWorkspace({
           // refresh, and that action's own refresh reconciles the queue instead.
           const token = refreshToken.current;
           released = true;
+          actionRunning.current = false;
           endOperation();
           void advance(true, false, true, () => refreshToken.current === token && !lock.current, kept)
             .catch((error) => {
@@ -1115,13 +1125,29 @@ export function ReviewWorkspace({
         }
       }
     } finally {
-      if (!released) endOperation();
+      if (!released) {
+        actionRunning.current = false;
+        endOperation();
+      }
     }
   }
+  // Runs an action asked for during the previous save once that save is over and the item it was
+  // asked for is ready; a failure, or the item being gone, drops it.
+  useEffect(() => {
+    const queued = queuedAction.current;
+    if (!queued || pending || lock.current) return;
+    if (current?.key !== queued.key || error) {
+      queuedAction.current = null;
+      return;
+    }
+    if (!tags) return;
+    queuedAction.current = null;
+    void execute(queued.action, queued.stay);
+  }, [pending, tags, current, error]);
   // Action keys belong to the workspace while an item is shown, or is about to be, and no tag
   // editor, rule editor or dialog of its own is open. They stay claimed while a write or load
-  // runs, when execute ignores them, so a quick f, g, k or m never falls through to Cove's
-  // fullscreen, go-to chords, play/pause or mute in between items.
+  // runs, when execute holds them for later or ignores them, so a quick f, g, k or m never falls
+  // through to Cove's fullscreen, go-to chords, play/pause or mute in between items.
   const keysActive =
     !editing &&
     !ruleDraft &&
