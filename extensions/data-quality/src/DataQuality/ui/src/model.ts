@@ -229,6 +229,15 @@ export type ReviewEntityType =
   | "tag"
   | "performerOccurrence"
   | "audioPerformerOccurrence";
+/**
+ * The card widths a grid can have, in pixels: Cove's card size slider goes from 225 to 625 (levels
+ * 0 to 8 of 50 pixels), and earlier versions of this page kept widths down to 115.
+ */
+export const CARD_SIZE_RANGE = { min: 115, max: 625 } as const;
+/** A stored card width within the range the grid can show. */
+export const clampCardSize = (size: number) =>
+  Math.min(CARD_SIZE_RANGE.max, Math.max(CARD_SIZE_RANGE.min, size));
+
 export const REVIEW_ENTITY_TYPES: ReviewEntityType[] = [
   "video",
   "audio",
@@ -688,8 +697,8 @@ function validPresentation(value: unknown, gridless: boolean): boolean {
     (settings.cardSize === undefined ||
       settings.cardSize === null ||
       (Number.isFinite(settings.cardSize) &&
-        settings.cardSize >= 115 &&
-        settings.cardSize <= 380)) &&
+        settings.cardSize >= CARD_SIZE_RANGE.min &&
+        settings.cardSize <= CARD_SIZE_RANGE.max)) &&
     (!gridless ||
       (settings.annotations === undefined &&
         settings.annotationParents === undefined &&

@@ -1,5 +1,5 @@
 import { request } from "./api";
-import { mergeReviews, parseReviews, type Review } from "./model";
+import { clampCardSize, mergeReviews, parseReviews, type Review } from "./model";
 
 const CONFIG_SCOPE = "ext:com.midnightrider.data-quality:configuration";
 const IMPORT_SCOPE = "ext:cove-data-quality:video-reviews";
@@ -451,10 +451,7 @@ function progressValue(raw: string): ReviewProgress {
     (value.focusedId !== null &&
       (!Number.isSafeInteger(value.focusedId) || value.focusedId <= 0)) ||
     !["grid", "list", "wall"].includes(value.displayMode) ||
-    (value.cardSize !== null &&
-      (!Number.isFinite(value.cardSize) ||
-        value.cardSize < 115 ||
-        value.cardSize > 380)) ||
+    (value.cardSize !== null && !Number.isFinite(value.cardSize)) ||
     !Number.isFinite(value.updatedAt) ||
     (value.occurrence !== undefined && (
       !value.occurrence ||
@@ -467,7 +464,8 @@ function progressValue(raw: string): ReviewProgress {
     throw new Error(
       "Saved review progress could not be read. Existing progress has been kept.",
     );
-  return value;
+  // A width outside what the grid shows, as the card size slider once saved, is brought within it.
+  return value.cardSize === null ? value : { ...value, cardSize: clampCardSize(value.cardSize) };
 }
 export async function loadProgress(
   key: string,

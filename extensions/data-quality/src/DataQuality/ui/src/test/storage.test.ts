@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
-import { loadReviews, saveReviews } from "../api";
+import { loadProgress, loadReviews, saveReviews } from "../api";
 import type { Review } from "../model";
 
 const review = {
@@ -462,5 +462,45 @@ describe("saves that overlap", () => {
       renamed,
       copy,
     ]);
+  });
+});
+
+describe("review progress", () => {
+  const progress = (cardSize: number | null) => ({
+    version: 1,
+    signature: "queue",
+    filter: { page: 3 },
+    focusedId: 7,
+    index: 2,
+    displayMode: "grid",
+    cardSize,
+    updatedAt: 1,
+  });
+  const stored = (cardSize: number | null) =>
+    records.push({
+      id: records.length + 1,
+      mode: "ext:com.midnightrider.data-quality:progress",
+      name: "review-id",
+      uiOptions: JSON.stringify(progress(cardSize)),
+    });
+
+  it("reads back a card width from anywhere on Cove's card size slider", async () => {
+    const loaded = await loadReviews();
+    // 425 pixels is level 4 of Cove's slider, which goes to 625.
+    stored(425);
+    expect(await loadProgress(loaded.storageKey, "review-id")).toMatchObject({
+      cardSize: 425,
+      focusedId: 7,
+      filter: { page: 3 },
+    });
+  });
+
+  it("brings a stored card width outside the grid's range within it rather than losing the progress", async () => {
+    const loaded = await loadReviews();
+    stored(1000);
+    expect(await loadProgress(loaded.storageKey, "review-id")).toMatchObject({
+      cardSize: 625,
+      focusedId: 7,
+    });
   });
 });
