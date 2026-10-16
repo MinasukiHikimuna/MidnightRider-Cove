@@ -260,8 +260,9 @@ function CurrentTags({
   );
   const added = inOrder(effect?.added ?? []);
   const newlyAbsent = inOrder((effect?.markedAbsent ?? []).filter((id) => !has.has(id)));
-  // Alone under the editor, the absences head their own section.
-  const AbsentHeading = editorOnly ? "h3" : "h4";
+  // While the tags are edited by hand the absences, which the editor does not change, head their
+  // own section under it, also when the saved tags show above it.
+  const AbsentHeading = editor ? "h3" : "h4";
   const absent = !!tags?.absent.length && (
     <>
       <AbsentHeading className="dq-subheading">Confirmed absent</AbsentHeading>
@@ -326,7 +327,7 @@ function CurrentTags({
           ) : (
             <p className="dq-muted">None</p>
           )}
-          {absent}
+          {!editor && absent}
         </>
       )}
     </section>
@@ -337,7 +338,7 @@ function CurrentTags({
     <>
       {!editorOnly && section}
       {editor}
-      {editorOnly && absent && (
+      {editor && absent && (
         <section className="dq-panel-section" aria-label="Confirmed absent">
           {absent}
         </section>

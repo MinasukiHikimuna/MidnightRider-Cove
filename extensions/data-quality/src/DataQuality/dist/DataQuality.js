@@ -8054,7 +8054,7 @@ function mp({
   ), h = (Q) => m[Q] ?? { id: Q, name: m[Q] === void 0 ? "…" : "Unavailable tag" }, g = (Q) => Cr(Q.map(h)), y = f && e ? po(f, e, i) : null, N = e ? Qd(e) : [], v = new Set(N.map((Q) => Q.id)), w = new Set(y == null ? void 0 : y.removed), E = new Set(y == null ? void 0 : y.markedAbsent), O = new Set(y == null ? void 0 : y.absenceCleared), F = /* @__PURE__ */ u("span", { className: "dq-chip-marker", children: [
     /* @__PURE__ */ a(Ha, { "aria-hidden": "true" }),
     "absent"
-  ] }), B = g((y == null ? void 0 : y.added) ?? []), C = g(((y == null ? void 0 : y.markedAbsent) ?? []).filter((Q) => !v.has(Q))), L = c ? "h3" : "h4", x = !!(e != null && e.absent.length) && /* @__PURE__ */ u(he, { children: [
+  ] }), B = g((y == null ? void 0 : y.added) ?? []), C = g(((y == null ? void 0 : y.markedAbsent) ?? []).filter((Q) => !v.has(Q))), L = n ? "h3" : "h4", x = !!(e != null && e.absent.length) && /* @__PURE__ */ u(he, { children: [
     /* @__PURE__ */ a(L, { className: "dq-subheading", children: "Confirmed absent" }),
     /* @__PURE__ */ a("ul", { className: "dq-tags", "aria-label": "Confirmed absent tags", children: g(e.absent).map((Q) => /* @__PURE__ */ u(
       "li",
@@ -8092,13 +8092,13 @@ function mp({
           F
         ] }, `absent-${Q.id}`))
       ] }) : /* @__PURE__ */ a("p", { className: "dq-muted", children: "None" }),
-      x
+      !n && x
     ] }) : /* @__PURE__ */ a("p", { className: "dq-muted", children: "Loading…" })
   ] });
   return /* @__PURE__ */ u(he, { children: [
     !c && re,
     n,
-    c && x && /* @__PURE__ */ a("section", { className: "dq-panel-section", "aria-label": "Confirmed absent", children: x })
+    n && x && /* @__PURE__ */ a("section", { className: "dq-panel-section", "aria-label": "Confirmed absent", children: x })
   ] });
 }
 function gp({ entries: e }) {

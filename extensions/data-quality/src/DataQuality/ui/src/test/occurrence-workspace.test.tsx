@@ -3040,6 +3040,33 @@ it("pauses the pad and its preview while tags are edited by hand", async () => {
   expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Kept");
 });
 
+it("keeps confirmed absences under the editor when a failed save shows the tags above it", async () => {
+  state = { ids: [30], names: ["Kept"], absent: [60] };
+  api.editTags.mockImplementation(async () => {
+    state = { ids: [30, 40], names: ["Kept", "Saved part"], absent: [60] };
+    throw new Error("Denied");
+  });
+  open();
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+  fireEvent.change(screen.getByPlaceholderText("Choose tags for this item..."), {
+    target: { value: "30,40,41" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByRole("alert");
+  await waitFor(() =>
+    expect(screen.getByRole("list", { name: "Current tags" })).toHaveTextContent("Saved part"),
+  );
+  const editor = screen.getByRole("group", { name: "Edit occurrence tags" });
+  const absent = screen.getAllByRole("list", { name: "Confirmed absent tags" });
+  // Shown once, and after the editor, where it was before the save.
+  expect(absent).toHaveLength(1);
+  expect(
+    editor.compareDocumentPosition(absent[0]) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Confirmed absent" }).tagName).toBe("H3");
+});
+
 it("keeps the open scope popover under its button when Save to review and Reset join the row", async () => {
   // jsdom has no layout: the Scope button's right edge is what the popover is placed from, and
   // only observers of an element that changed size hear about it.
