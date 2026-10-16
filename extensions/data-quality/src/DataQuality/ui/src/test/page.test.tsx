@@ -1100,34 +1100,41 @@ it("imports the reviews a file adds, keeps the ones already listed, and says so"
   expect(
     await screen.findByRole("cell", { name: "Matching video count unavailable" }),
   ).toBeInTheDocument();
-  chooseImportFile(JSON.stringify([{ ...review, name: "Changed elsewhere" }, added]));
+  chooseImportFile(
+    JSON.stringify([{ ...review, name: "Changed elsewhere" }, added]),
+  );
   await waitFor(() => expect(api.saveReviews).toHaveBeenCalledTimes(1));
-  // The listed review keeps its own version; the new one is added after it.
-  expect(savedList(0)).toEqual([review, added]);
+  // The listed review keeps its own version; a different version of it, such as a draft exported
+  // after an edit in another browser, comes in beside it as a copy, and the new one after them.
+  expect(savedList(0)).toEqual([
+    review,
+    { ...review, id: expect.not.stringMatching(/^review$/), name: "Changed elsewhere copy" },
+    added,
+  ]);
   await waitFor(() =>
-    expect(announced()).toBe("Imported 1 review. 1 review already in the list stays as it is."),
+    expect(announced()).toBe(
+      "Imported 2 reviews (1 as a copy beside a listed version that differs).",
+    ),
   );
   expect(screen.getByText(announced(), { selector: ".dq-status" })).toHaveAttribute(
     "aria-hidden",
     "true",
   );
-  expect(listedReviews()).toEqual(["Added review", "Review"]);
-  // The added review is counted, and so is the one whose count failed; counted ones keep theirs.
-  await waitFor(() =>
-    expect(api.findMedia.mock.calls.map(([target]) => target.id)).toEqual([
-      "review",
-      "review",
-      "added",
-    ]),
-  );
-  expect(await screen.findAllByRole("cell", { name: "2 matching videos" })).toHaveLength(2);
+  expect(listedReviews()).toEqual(["Added review", "Changed elsewhere copy", "Review"]);
+  // The added reviews are counted, and so is the one whose count failed; counted ones keep theirs.
+  await waitFor(() => expect(api.findMedia).toHaveBeenCalledTimes(4));
+  expect(api.findMedia.mock.calls.slice(0, 2).map(([target]) => target.id)).toEqual([
+    "review",
+    "review",
+  ]);
+  expect(await screen.findAllByRole("cell", { name: "2 matching videos" })).toHaveLength(3);
   // The same file again adds nothing and saves nothing (its change keeps the saved list).
   chooseImportFile(JSON.stringify([added]));
   await waitFor(() =>
     expect(announced()).toBe("Nothing imported: the reviews in this file are already in the list."),
   );
   expect(account.written.filter(Boolean)).toHaveLength(1);
-  expect(api.findMedia).toHaveBeenCalledTimes(3);
+  expect(api.findMedia).toHaveBeenCalledTimes(4);
 });
 
 it("refuses a file that is not a review file, or too large, without changing anything", async () => {

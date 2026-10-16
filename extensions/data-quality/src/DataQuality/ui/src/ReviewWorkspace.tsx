@@ -24,6 +24,7 @@ import {
   Tag,
 } from "@cove/runtime/lucide-react";
 import {
+  draftSaveFailure,
   findMedia,
   mediaCoverUrl,
   mediaLabel,
@@ -1276,9 +1277,7 @@ export function ReviewWorkspace({
       finishRuleEdit();
       setNotice("Review saved.");
     } catch (error) {
-      setRuleError(
-        "Could not save review. Your edits are still open. " + errorText(error),
-      );
+      setRuleError(draftSaveFailure(error));
     } finally {
       endOperation();
     }

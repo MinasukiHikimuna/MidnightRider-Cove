@@ -53,6 +53,7 @@ import {
   runReviewAction,
   runTagReviewAction,
   saveReviews,
+  draftSaveFailure,
   videoPreviewStatusUrl,
   videoPreviewUrl,
   videoScreenshotUrl,
@@ -74,7 +75,6 @@ import {
   isReviewEscapeTarget,
   isReviewGridArrowTarget,
   reviewGridArrowDelta,
-  mergeReviews,
   reviewEntityType,
   toggleShownReviewSelection,
   type Review,
@@ -1771,7 +1771,9 @@ export function DataQualityPage({
 
   /**
    * Import adds the reviews of a review file that the list does not have yet; a review already in
-   * the list (the same id) stays as it is. A deleted review comes back when imported again.
+   * the list (the same id) stays as it is. One that differs from the listed review, such as a draft
+   * exported when another browser changed the review, comes in beside it as a copy. A deleted
+   * review comes back when imported again.
    */
   async function importReviews(file: File) {
     if (listLocked || !canConfigure) return;
@@ -1781,12 +1783,22 @@ export function DataQualityPage({
       const imported = await readReviewFile(file);
       // What the file adds is decided against the reviews saved when the import's turn comes.
       let added = 0;
+      let copies = 0;
       if (
         imported.length &&
         !(await updateReviews((current) => {
-          const merged = mergeReviews(current, imported);
-          added = merged.length - current.length;
-          return added ? merged : current;
+          const next = [...current];
+          added = copies = 0;
+          for (const review of imported) {
+            const listed = next.find((item) => item.id === review.id);
+            if (!listed) next.push(review);
+            else if (JSON.stringify(listed) !== JSON.stringify(review)) {
+              next.push(duplicateReview(review, next, crypto.randomUUID()));
+              copies++;
+            } else continue;
+            added++;
+          }
+          return added ? next : current;
         }))
       )
         throw new Error("Could not save reviews.");
@@ -1797,7 +1809,11 @@ export function DataQualityPage({
           ? "Nothing to import: the file holds no reviews."
           : !added
             ? "Nothing imported: the reviews in this file are already in the list."
-            : `Imported ${added === 1 ? "1 review" : `${added} reviews`}.` +
+            : `Imported ${added === 1 ? "1 review" : `${added} reviews`}` +
+              (copies
+                ? ` (${copies === 1 ? "1 as a copy" : `${copies} as copies`} beside a listed version that differs)`
+                : "") +
+              "." +
               (kept === 1
                 ? " 1 review already in the list stays as it is."
                 : kept
@@ -2433,9 +2449,7 @@ export function DataQualityPage({
           editor && {
             ...editor,
             saving: false,
-            error:
-              "Could not save review. Your edits are still open. " +
-              (error instanceof Error ? error.message : "Retry saving."),
+            error: draftSaveFailure(error),
           },
       );
     }

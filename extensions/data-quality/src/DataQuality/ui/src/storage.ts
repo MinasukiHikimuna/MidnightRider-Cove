@@ -37,6 +37,17 @@ export class StaleReviewsError extends Error {
   }
 }
 
+/** Why an open review draft could not be saved, and how a draft refused for a newer edit is kept. */
+export function draftSaveFailure(error: unknown): string {
+  const reason = error instanceof Error ? error.message : "Retry saving.";
+  return (
+    `Could not save review. Your edits are still open. ${reason}` +
+    (error instanceof StaleReviewsError
+      ? " Export draft keeps your version: import it after reloading to add it as a copy."
+      : "")
+  );
+}
+
 const sessions = new Map<string, Session>();
 const writes = new Map<string, Promise<unknown>>();
 const has = (permissions: string[], value: string) =>

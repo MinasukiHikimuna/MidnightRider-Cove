@@ -19,6 +19,7 @@ import {
 } from "./runtime-components";
 import { setViewportWidth } from "./viewport";
 import { ReviewWorkspace, orderedItems } from "../ReviewWorkspace";
+import { StaleReviewsError } from "../storage";
 import type { MediaReview, MediaReviewAction, OccurrenceReview, VideoReview } from "../model";
 import type { ReviewItem, TagState } from "../reviewTags";
 import { rankingSignature, type PerformerRanking } from "../performerRanking";
@@ -1346,6 +1347,25 @@ it("cancels rule criteria without changing saved defaults or the selected partne
   expect(save).not.toHaveBeenCalled();
 });
 
+it("says how to keep a draft refused for another browser's edit of the review", async () => {
+  const save = vi
+    .fn()
+    .mockRejectedValueOnce(
+      new StaleReviewsError(
+        "“Review” was also changed in another browser. Reload the page to get that version.",
+      ),
+    );
+  open(review, true, save, 1);
+  await screen.findByRole("dialog", { name: "Edit review" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Review name" }), {
+    target: { value: "Mine" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Could not save review. Your edits are still open. “Review” was also changed in another browser. Reload the page to get that version. Export draft keeps your version: import it after reloading to add it as a copy.",
+  );
+  expect(screen.getByRole("dialog", { name: "Edit review" })).toBeInTheDocument();
+});
 it("keeps a failed rule save open and persists performer scope when retried", async () => {
   const female = { genderCriterion: { value: "Female", modifier: "EQUALS" } };
   testFilterControls.result = female;
