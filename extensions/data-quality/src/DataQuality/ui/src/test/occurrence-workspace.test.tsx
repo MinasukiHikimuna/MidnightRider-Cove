@@ -721,6 +721,49 @@ it("frees the next item's actions while the queue refresh is still loading", asy
   await ready();
   expect(screen.getByRole("link", { name: "Later scene" })).toBeInTheDocument();
 });
+it("moves on at once after apply and stay let the item leave the queue", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  const earlier = { ...video, id: 5, title: "Earlier scene" };
+  api.findMedia
+    .mockResolvedValueOnce({ items: [earlier, video, third.media, later], totalCount: 4 })
+    .mockResolvedValue({ items: [earlier, third.media, later], totalCount: 3 });
+  open({ ...rule, view: { ...rule.view, filter: { ...rule.view.filter, perPage: 4 } } });
+  await ready();
+  // Skipped past, the earlier scene stays in the queue behind the reviewed one.
+  fireEvent.click(screen.getByRole("button", { name: "Skip video" }));
+  await screen.findByRole("link", { name: "First scene" });
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
+  await waitFor(() => expect(screen.queryByRole("button", { name: "First scene" })).not.toBeInTheDocument());
+  await ready();
+  expect(screen.getByRole("link", { name: "First scene" })).toBeInTheDocument();
+  // The stayed item has left the queue; the one after it is prepared all the same.
+  expect(screen.getByTestId("video-player-preload")).toBeInTheDocument();
+  let finish!: () => void;
+  api.applyTags.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+
+  // It moves on before the write ends, as from any other item.
+  expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(2));
+  await act(async () => finish());
+  await ready();
+  // The refresh keeps the review where it is rather than back on the earlier scene.
+  await waitFor(() => expect(api.findMedia.mock.calls.length).toBeGreaterThanOrEqual(3));
+  await ready();
+  expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+});
 it("remounts the prepared successor paused when a write fails", async () => {
   const rule: VideoReview = {
     ...review,

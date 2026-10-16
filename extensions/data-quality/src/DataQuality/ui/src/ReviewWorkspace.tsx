@@ -446,12 +446,16 @@ export function ReviewWorkspace({
   const nextItemToPreload = useMemo(() => {
     if (!current) return null;
     const currentIndex = items.findIndex((item) => item.key === current.key);
-    if (currentIndex < 0) return null;
-    return (
-      items
-        .slice(currentIndex + 1)
-        .find((item) => item.media.id !== current.media.id) ?? null
-    );
+    // An item kept on screen by apply and stay may have left the queue; what follows it is what
+    // it had not reached yet.
+    const stayed = stayedCursor.current?.key === current.key ? stayedCursor.current : null;
+    const ahead =
+      currentIndex >= 0
+        ? items.slice(currentIndex + 1)
+        : stayed
+          ? items.filter((item) => !stayed.before.includes(item.key))
+          : [];
+    return ahead.find((item) => item.media.id !== current.media.id) ?? null;
   }, [current, items]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -886,25 +890,33 @@ export function ReviewWorkspace({
     };
   }, [saved]);
 
+  /** Where the queue stands around the item on screen, and the loaded item that comes next. */
+  function traversal(shown: ReviewItem, kept = stayedCursor.current) {
+    const index = items.findIndex((item) => item.key === shown.key);
+    const direction = query.startFrom === "end" ? -1 : 1;
+    const stayed = kept?.key === shown.key;
+    // Apply & stay may remove the current row. Retain its place among the old
+    // keys so the next action cannot return to a skipped row or reverse refill.
+    const cursor = stayed
+      ? kept!
+      : { key: shown.key, page, before: items.slice(0, index + 1).map(item => item.key), after: items.slice(index + 1).map(item => item.key) };
+    const remainingKeys = new Set(cursor.after);
+    const visitedKeys = new Set(cursor.before);
+    const nextLoaded = items.find(item => remainingKeys.has(item.key) ||
+      ((direction === 1 || page < cursor.page) && stayed && !visitedKeys.has(item.key)));
+    return { direction, cursor, remainingKeys, visitedKeys, nextLoaded };
+  }
   async function advance(
     refresh = false,
     stay = false,
     resumePlayback = false,
     /** A background refresh applies its page only while this holds. */
     wanted: () => boolean = () => true,
+    /** The stayed cursor as it was before the next item was shown. */
+    kept = stayedCursor.current,
   ) {
     if (!current) return;
-    const index = items.findIndex((item) => item.key === current.key);
-    const direction = query.startFrom === "end" ? -1 : 1;
-    // Apply & stay may remove the current row. Retain its place among the old
-    // keys so the next action cannot return to a skipped row or reverse refill.
-    const cursor = stayedCursor.current?.key === current.key
-      ? stayedCursor.current
-      : { key: current.key, page, before: items.slice(0, index + 1).map(item => item.key), after: items.slice(index + 1).map(item => item.key) };
-    const remainingKeys = new Set(cursor.after);
-    const visitedKeys = new Set(cursor.before);
-    const nextLoaded = items.find(item => remainingKeys.has(item.key) ||
-      ((direction === 1 || page < cursor.page) && stayedCursor.current?.key === current.key && !visitedKeys.has(item.key)));
+    const { direction, cursor, remainingKeys, visitedKeys, nextLoaded } = traversal(current, kept);
     if (!refresh && nextLoaded) {
       showItem(nextLoaded, resumePlayback);
       return;
@@ -1009,10 +1021,12 @@ export function ReviewWorkspace({
     setPending(true);
     setError("");
     setNotice("");
-    const currentIndex = items.findIndex((item) => item.key === current.key);
+    // The next loaded item, also when apply and stay has let this one leave the queue. Showing it
+    // drops the stayed cursor, which the refresh and a failed write still need.
+    const kept = stayedCursor.current;
     const optimisticNext =
-      mutating && !stay && !waitingForGroups && currentIndex >= 0
-        ? (items[currentIndex + 1] ?? null)
+      mutating && !stay && !waitingForGroups
+        ? (traversal(current).nextLoaded ?? null)
         : null;
     if (optimisticNext) {
       setItems((currentItems) =>
@@ -1066,7 +1080,7 @@ export function ReviewWorkspace({
           const token = refreshToken.current;
           released = true;
           endOperation();
-          void advance(true, false, true, () => refreshToken.current === token && !lock.current)
+          void advance(true, false, true, () => refreshToken.current === token && !lock.current, kept)
             .catch((error) => {
               if (refreshToken.current === token)
                 setError(`Tags saved, but the queue could not refresh. Retry navigation with Skip. ${errorText(error)}`);
@@ -1088,6 +1102,7 @@ export function ReviewWorkspace({
           setAutostartMediaId(null);
           setPlayerRevision((revision) => revision + 1);
           setCurrent(current);
+          stayedCursor.current = kept;
         }
         try {
           setTags(await readTags(mediaKind, current));
