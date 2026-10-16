@@ -4983,14 +4983,6 @@ textarea.dq-input {
     gap: 2px 12px;
     padding-block: 4px;
   }
-  /* What it changes still shortens beside the name rather than taking a line of its own. */
-  .dq-action-row-summary > .dq-action-row-label,
-  .dq-action-row-summary > .dq-action-row-effect {
-    flex-basis: 0;
-  }
-  .dq-action-row-summary > .dq-action-row-label {
-    flex-grow: 1;
-  }
   .dq-action-row-summary > .dq-action-problem {
     flex-basis: 100%;
   }
