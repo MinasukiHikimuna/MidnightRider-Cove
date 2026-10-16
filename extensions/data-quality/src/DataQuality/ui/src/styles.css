@@ -749,6 +749,8 @@
   display: flex;
   min-width: min(100%, 16rem);
   flex: 1 1 0;
+  /* Tag bins and filter bins each take a line of their own when they do not fit side by side. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -762,6 +764,12 @@
   margin: 0 4px;
   background: var(--color-border);
   content: "";
+}
+/* In phone-sized windows the bins wrap under the filter chips, where the divider would stand alone. */
+@media (max-width: 760px) {
+  .dq-review-header:has(> .dq-review-toolbar > [role="region"]) > .dq-review-chips-after::before {
+    display: none;
+  }
 }
 .dq-review-chips-end {
   order: 8;
@@ -2903,6 +2911,7 @@
 .dq-bins {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 8px;
