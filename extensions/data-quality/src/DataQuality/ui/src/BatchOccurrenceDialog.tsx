@@ -1345,7 +1345,11 @@ export function BatchOccurrenceDialog({
         type="button"
         className="dq-header-button"
         ref={opener}
-        title="Apply answers to all matching occurrences"
+        title={
+          actions.length
+            ? "Apply answers to all matching occurrences"
+            : "No action here can run as a batch: a batch adds and removes tags, while marking tags present or absent is answered one occurrence at a time"
+        }
         disabled={disabled || !actions.length}
         onClick={() => {
           reset();

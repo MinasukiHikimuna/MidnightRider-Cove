@@ -325,6 +325,11 @@ it("keeps the batch control disabled for legacy choice-only reviews and reviews 
     />,
   );
   expect(openButton()).toBeDisabled();
+  // It says why, since assessments are answered one occurrence at a time.
+  expect(openButton()).toHaveAttribute(
+    "title",
+    expect.stringMatching(/^No action here can run as a batch: a batch adds and removes tags/),
+  );
 });
 
 it("blocks closing during a run, then closing discards the results and their undo", async () => {
