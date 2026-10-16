@@ -3462,6 +3462,14 @@
   border: 0;
   background: none;
 }
+/* The batch only shows the queue's performer criteria: Cove's chips keep their look, without the
+   remove buttons and Clear all, which have nothing to do here. Clear all is Cove's only button in
+   the chips without a label, a title or a filter key. */
+.dq-batch-filter-summary button[title^="Remove"],
+.dq-batch-filter-summary button[aria-label^="Remove"],
+.dq-batch-filter-summary [role="region"] button:not([aria-label]):not([title]):not([data-active-filter-key]) {
+  display: none;
+}
 .dq-batch-flag {
   display: flex;
   gap: 12px;
