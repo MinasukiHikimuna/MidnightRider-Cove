@@ -2535,9 +2535,12 @@ it("selects every tag on load for tag reviews that ask for it", async () => {
 it("keeps walking towards the first page when an earlier page refills from the tail", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, startFrom: "end", selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
   let remaining = [video(1), video(2), video(3), video(4), video(5), video(6)];
+  let slowHead = false;
   api.findMedia.mockImplementation(async (_review, filter) => {
     const perPage = Number(filter.perPage);
     const page = Number(filter.page);
+    // A slow first page leaves time to show the page before it, were it shown.
+    if (slowHead && page === 1) await new Promise((resolve) => setTimeout(resolve, 50));
     return {
       items: remaining.slice((page - 1) * perPage, page * perPage),
       totalCount: remaining.length,
@@ -2562,6 +2565,13 @@ it("keeps walking towards the first page when an earlier page refills from the t
   await waitFor(() => expect(previousPage).toBeEnabled());
   fireEvent.click(previousPage);
   await screen.findByRole("article", { name: "Video 3, selected" });
+  // The page this answer leaves is not shown in between, holding only the card from the tail.
+  let tailShown = false;
+  const watch = new MutationObserver(() => {
+    if (document.querySelector('article[aria-label^="Video 6"]')) tailShown = true;
+  });
+  watch.observe(document.body, { childList: true, subtree: true, attributes: true });
+  slowHead = true;
   fireEvent.keyDown(screen.getByRole("article", { name: "Video 3, selected" }), { key: "q" });
   await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(2));
   expect(api.runReviewAction.mock.calls[1][2]).toEqual([3, 4]);
@@ -2569,6 +2579,8 @@ it("keeps walking towards the first page when an earlier page refills from the t
   await screen.findByRole("article", { name: "Video 1, selected" });
   expect(screen.getByRole("article", { name: "Video 2, selected" })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^Video 6/ })).not.toBeInTheDocument();
+  watch.disconnect();
+  expect(tailShown).toBe(false);
 });
 
 function numberedActions(count: number) {

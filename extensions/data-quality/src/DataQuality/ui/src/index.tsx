@@ -804,6 +804,8 @@ export function DataQualityPage({
       targetFilter: Record<string, unknown>,
       startFromEnd = false,
       selectAll = false,
+      /** Whether to show the page loaded; a caller that moves straight on to another skips it. */
+      shows: (result: ReviewPage) => boolean = () => true,
     ) => {
       const generation = ++loadGeneration.current;
       queueAbort.current?.abort();
@@ -841,7 +843,7 @@ export function DataQualityPage({
           targetFilter = { ...targetFilter, page: targetPage };
           result = await load(targetFilter);
         }
-        if (generation === loadGeneration.current) {
+        if (generation === loadGeneration.current && shows(result)) {
           // Landing on a different page starts a fresh cursor; a post-action
           // refresh of the same page keeps the arrival set it recorded.
           if (pageCursor.current?.page !== targetPage)
@@ -1352,23 +1354,27 @@ export function DataQualityPage({
           selectAllOnLoad &&
           previousIds.length > 0 &&
           previousIds.every((id) => targetSet.has(id));
-        const refreshed = await fetchQueue(review, filter, false, reselect);
-        if (!isCurrent()) return;
-        let nextIds = refreshed.items.map((item) => item.id);
         // Reviews that start from the end walk towards the first page, so a
         // card that was not here on arrival shifted in from the pages already
         // reviewed. Once this page's own cards are answered, continue towards
         // the head instead of turning back to the tail the reviewer left.
         const arrived = pageCursor.current;
-        const ownCardsLeft =
-          arrived?.page === Number(filter.page) &&
-          nextIds.some((id) => arrived.ids.has(id));
         const reverse = (review.view.startFrom ?? "end") !== "beginning";
-        if (
-          refreshed.totalCount > 0 &&
-          Number(filter.page) > 1 &&
-          (!nextIds.length || (reverse && !ownCardsLeft))
-        ) {
+        const movesOn = (result: ReviewPage) => {
+          const ids = result.items.map((item) => item.id);
+          const ownCardsLeft =
+            arrived?.page === Number(filter.page) && ids.some((id) => arrived.ids.has(id));
+          return (
+            result.totalCount > 0 &&
+            Number(filter.page) > 1 &&
+            (!ids.length || (reverse && !ownCardsLeft))
+          );
+        };
+        // A page that is left at once for the one before it is not shown in between.
+        const refreshed = await fetchQueue(review, filter, false, reselect, (result) => !movesOn(result));
+        if (!isCurrent()) return;
+        let nextIds = refreshed.items.map((item) => item.id);
+        if (movesOn(refreshed)) {
           const previousPage = Math.max(1, Number(filter.page) - 1);
           const previousFilter = { ...filter, page: previousPage };
           setFilter(previousFilter);
