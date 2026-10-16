@@ -3,6 +3,7 @@ import { extensionFetch } from "@cove/runtime/api";
 import {
   countPerformer,
   extendRanking,
+  LOCAL_RANKING_SCENES,
   rankingSignature,
   recountRanked,
 } from "../performerRanking";
@@ -48,6 +49,10 @@ const performers = basePerformers.map((performer) => ({ ...performer }));
 let counts: Record<number, number>;
 let aggregates: Array<{ path: string; body: any }>;
 let finds: any[];
+// Matching scenes in the whole queue: by default more than is read whole, so performers are counted
+// one by one.
+let sceneTotal: number;
+let sceneCounts: any[];
 const response = (body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 const dto = (performer: (typeof performers)[number]) => ({
@@ -57,14 +62,17 @@ const dto = (performer: (typeof performers)[number]) => ({
   audioCount: performer.audioCount,
   tags: performer.id === 4 ? [{ id: 7, name: "Changed" }, { id: 8, name: "Other" }] : [],
 });
+// The performer a one-performer count is for, or undefined for a count of the whole queue.
 const counted = (body: any) =>
-  JSON.stringify(body).match(/"performerIdsCriterion":\{"modifier":"includes","value":\[(\d+)\]/)![1];
+  JSON.stringify(body).match(/"performerIdsCriterion":\{"modifier":"includes","value":\[(\d+)\]\}/)?.[1];
 beforeEach(() => {
   fetchMock.mockReset();
   performers.splice(0, performers.length, ...basePerformers.map((performer) => ({ ...performer })));
   counts = Object.fromEntries(performers.map((p) => [p.id, p.count]));
   aggregates = [];
   finds = [];
+  sceneTotal = LOCAL_RANKING_SCENES + 1;
+  sceneCounts = [];
   fetchMock.mockImplementation((path, init) => {
     const url = new URL(String(path), "http://test");
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
@@ -85,6 +93,11 @@ beforeEach(() => {
       return response(dto(performer));
     }
     if (url.pathname.endsWith("/aggregate")) {
+      // A count of the whole queue names every performer in scope, or none for everyone.
+      if (!counted(body)) {
+        sceneCounts.push(body);
+        return response({ count: sceneTotal, duration: 0, fileSize: 0 });
+      }
       aggregates.push({ path: url.pathname, body });
       return response({ count: counts[Number(counted(body))], duration: 0, fileSize: 0 });
     }
@@ -222,7 +235,8 @@ it("stops counting when cancelled", async () => {
   const controller = new AbortController();
   const original = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation((path, init) => {
-    if (String(path).endsWith("/aggregate")) controller.abort();
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    if (String(path).endsWith("/aggregate") && counted(body)) controller.abort();
     return original(path, init);
   });
   await expect(
@@ -349,4 +363,60 @@ it("lends no performers from a condition that could not match", async () => {
   const ranking = await extendRanking(review, empty, 3, signal(), { concurrency: 1 });
   expect(finds).toHaveLength(1);
   expect(ranking.ranked.slice(0, 3).map((p) => p.name)).toEqual(["B", "C", "D"]);
+});
+
+it("counts every performer from the queue in one pass when the queue is small", async () => {
+  sceneTotal = 3;
+  const scenes = [
+    { id: 101, performers: [{ id: 2, name: "B" }, { id: 3, name: "C" }] },
+    { id: 102, performers: [{ id: 2, name: "B" }, { id: 3, name: "C" }, { id: 5, name: "E" }] },
+    { id: 103, performers: [{ id: 5, name: "E" }] },
+  ];
+  const sceneFinds: any[] = [];
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((path, init) => {
+    const url = new URL(String(path), "http://test");
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    if (url.pathname === "/api/videos/find") {
+      sceneFinds.push(body);
+      const { page, perPage } = body.findFilter;
+      return response({ items: scenes.slice((page - 1) * perPage, page * perPage), totalCount: scenes.length });
+    }
+    if (url.pathname === "/api/tagapplications") {
+      const hostId = Number(url.searchParams.get("hostId"));
+      // C has already answered in scene 102: both condition tags, so it no longer matches there.
+      return response(
+        hostId === 102
+          ? [30, 40].map((tagId) => ({
+              id: tagId,
+              hostType: "video",
+              hostId,
+              contextType: "performer",
+              contextId: 3,
+              tag: { id: tagId, name: `Tag ${tagId}` },
+            }))
+          : [],
+      );
+    }
+    return original(path, init);
+  });
+  const rule = { ...review, occurrence: { ...review.occurrence, includeSubtags: false } };
+
+  const ranking = await extendRanking(rule, null, 3, signal());
+
+  expect(ranking.ranked.map((p) => [p.name, p.count])).toEqual([
+    ["B", 2],
+    ["E", 2],
+    ["C", 1],
+  ]);
+  expect(ranking.complete).toBe(true);
+  // No performer was counted on their own, and the queue was read once, in a fixed order.
+  expect(aggregates).toHaveLength(0);
+  expect(sceneCounts).toHaveLength(1);
+  expect(sceneFinds).toHaveLength(1);
+  expect(sceneFinds[0].findFilter).toMatchObject({ page: 1, perPage: 250, sort: "id", direction: "asc" });
+  // Asking for more places needs nothing more.
+  const more = await extendRanking(rule, ranking, 10, signal());
+  expect(more.complete).toBe(true);
+  expect(sceneFinds).toHaveLength(1);
 });

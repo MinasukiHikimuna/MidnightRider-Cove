@@ -1,7 +1,7 @@
 import { countMedia, normalizeCriteria, request, requestIfFound } from "./api";
 import type { ProfileTag } from "./attention";
-import { reviewMediaKind, type OccurrenceReview } from "./model";
-import { conditionCannotMatch, occurrenceSceneReview } from "./occurrences";
+import { reviewMediaKind, targetsAllPerformers, type OccurrenceReview } from "./model";
+import { conditionCannotMatch, loadOccurrencePage, occurrenceSceneReview } from "./occurrences";
 
 export interface RankedPerformer {
   id: number;
@@ -129,6 +129,46 @@ async function loadCandidates(
   return candidates.sort((a, b) => b.total - a.total || a.id - b.id);
 }
 
+/**
+ * Up to this many matching scenes, the whole queue is read once and every performer's occurrences
+ * counted from it, which beats counting performers one by one when few of them match much. Larger
+ * queues are counted one performer at a time, most items first, as only the first places need it.
+ */
+export const LOCAL_RANKING_SCENES = 3000;
+const LOCAL_RANKING_PAGE = 250;
+
+/**
+ * Each in-scope performer's matching occurrences, read from the queue's own scene pages, or null
+ * when the queue holds more scenes than reading it whole is worth.
+ */
+async function countAllInQueue(
+  review: OccurrenceReview,
+  performerIds: number[] | null,
+  signal: AbortSignal,
+  onPage: (counts: Map<number, number>) => void,
+): Promise<Map<number, number> | null> {
+  const scenes = occurrenceSceneReview(review, performerIds);
+  if ((await countMedia(scenes, scenes.view.filter, signal)) > LOCAL_RANKING_SCENES) return null;
+  // A fixed order, so no scene is read on two pages or missed between them.
+  const { sorts: _sorts, seed: _seed, ...filter } = review.view.filter;
+  const paged: OccurrenceReview = {
+    ...review,
+    view: {
+      ...review.view,
+      filter: { ...filter, perPage: LOCAL_RANKING_PAGE, sort: "id", direction: "asc" },
+    },
+  };
+  const counts = new Map<number, number>();
+  for (let page = 1; ; page++) {
+    signal.throwIfAborted();
+    const result = await loadOccurrencePage(paged, performerIds, page, signal);
+    for (const occurrence of result.items)
+      counts.set(occurrence.performer.id, (counts.get(occurrence.performer.id) ?? 0) + 1);
+    onPage(counts);
+    if (page * LOCAL_RANKING_PAGE >= result.totalCount) return counts;
+  }
+}
+
 export function countPerformer(
   review: OccurrenceReview,
   performerId: number,
@@ -196,6 +236,27 @@ export async function extendRanking(
           complete: false,
         };
   const { candidates } = base;
+  // A fresh ranking of a queue small enough to read whole is counted from it in one pass, for
+  // every performer at once.
+  if (base.cursor === 0 && !base.ranked.length && candidates.length > 1) {
+    const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+    const rankedFrom = (counts: Map<number, number>) =>
+      [...counts]
+        .flatMap(([id, count]) => {
+          const candidate = byId.get(id);
+          return candidate && count > 0 ? [{ ...candidate, count }] : [];
+        })
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    const counts = await countAllInQueue(
+      review,
+      targetsAllPerformers(review.occurrence) ? null : candidates.map((candidate) => candidate.id),
+      signal,
+      (sofar) =>
+        options.onProgress?.({ ...base, ranked: rankedFrom(sofar), limit, complete: false, partial: true }),
+    );
+    if (counts)
+      return { ...base, cursor: candidates.length, ranked: rankedFrom(counts), limit, complete: true };
+  }
   const ranked = [...base.ranked];
   let cursor = base.cursor;
   let stopped = false;
