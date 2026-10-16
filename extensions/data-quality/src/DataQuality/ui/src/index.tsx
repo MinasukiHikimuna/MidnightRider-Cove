@@ -2836,7 +2836,9 @@ export function DataQualityPage({
                 hints={notes.length ? notes.join(" ") : undefined}
                 keyHints={
                   tagReview
-                    ? "Arrows move · Space selects · Enter opens"
+                    ? gridEditor
+                      ? "Arrows move · Space selects · Enter opens"
+                      : "Arrows move · Space selects · Enter opens · Shift + key stays"
                     : gridEditor
                       ? "Arrows move · Space selects"
                       : "Arrows move · Space selects · Enter previews · Shift + key stays"

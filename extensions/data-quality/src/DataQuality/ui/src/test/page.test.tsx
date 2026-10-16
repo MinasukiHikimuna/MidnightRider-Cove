@@ -491,7 +491,7 @@ describe("Data Quality extension page", () => {
     // The action bar names the target and says what each action does.
     const bar = screen.getByRole("region", { name: "Actions" });
     expect(within(bar).getByText("Applies to the focused tag")).toBeInTheDocument();
-    expect(within(bar).getByText("Arrows move · Space selects · Enter opens")).toBeInTheDocument();
+    expect(within(bar).getByText("Arrows move · Space selects · Enter opens · Shift + key stays")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "q Classify" })).toHaveAccessibleDescription(
         "Assign Classification",
