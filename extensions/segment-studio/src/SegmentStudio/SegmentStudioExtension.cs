@@ -1982,6 +1982,29 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             .RequireSegmentStudioCapability(
                 SegmentStudioCapabilities.NavigationVideos);
 
+        // Provenance and lineage of one editor item, read when the editor selects it.
+        endpoints.MapGet(
+                "/api/plugins/segment-studio/videos/{videoId:int}/items/{itemId:long}/metadata",
+                async Task<IResult> (int videoId, long itemId, DbContext db, ICurrentPrincipalAccessor principalAccessor,
+                    Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>
+                {
+                    var access = await SegmentStudioAuthorization.AuthorizeReadAsync(
+                        principalAccessor.Current, authorization, videoId, ct);
+                    if (!access.Allowed)
+                        return Results.Json(new { error = access.Reason ?? "You cannot view segments for this video." }, statusCode: StatusCodes.Status403Forbidden);
+                    // An item from another video would expose provenance the video access check did not cover.
+                    if (await ResolveItemVideoIdAsync(db, itemId, ct) != videoId)
+                        return Results.NotFound(new { error = "Segment not found." });
+                    var metadata = await SegmentEditorMetadataService.LoadAsync(
+                        db, videoId, [itemId], includeProvenance: true, includeLineage: true, ct);
+                    return Results.Ok(metadata[itemId]);
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(PermissionMode.All, Permissions.SegmentsRead, ProvenanceReadPermission)
+            .RequireCoveEntityAccess(EntityKinds.Video, "videoId", Permissions.VideosRead)
+            .RequireSegmentStudioCapability(
+                SegmentStudioCapabilities.OwnedSegmentsRead);
+
         endpoints.MapGet(
                 "/api/plugins/segment-studio/videos/{videoId:int}/editor",
                 async (int videoId, DbContext db, ICurrentPrincipalAccessor principalAccessor,
@@ -2227,15 +2250,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         ? await PerformerSlotEditorService.LoadCandidatesAsync(db, videoId, ct)
                         : [];
                     var shotBoundaries = await ShotBoundaryStore.ListAsync(db, httpContext.RequestServices, videoId, ct);
-                    var itemMetadata = provenanceAccess.Allowed
-                        ? await SegmentEditorMetadataService.LoadAsync(
-                            db,
-                            videoId,
-                            editorItemIds,
-                            provenanceAccess.Allowed,
-                            provenanceAccess.Allowed,
-                            ct)
-                        : new Dictionary<long, SegmentEditorItemMetadata>();
+                    // Provenance and lineage are read for the selected segment from the item metadata
+                    // endpoint; loading them for every item made each editor load several megabytes.
+                    var itemMetadata = new Dictionary<long, SegmentEditorItemMetadata>();
                     return Results.Ok(new SegmentStudioEditorResponse(
                         SegmentStudioModes.Full,
                         video,
@@ -2455,7 +2472,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     });
                     if (result.Status == SegmentDraftMutationStatus.Updated)
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return ToDraftHttpResult(result);
+                    return ToDraftHttpResult(await WithDraftEditorDeltaAsync(
+                        db, videoId, result, true, principalAccessor.Current, authorization, ct));
                 })
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
@@ -2493,7 +2511,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         });
                     if (result.Status == SegmentDraftMutationStatus.Updated)
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return ToDraftHttpResult(result);
+                    return ToDraftHttpResult(await WithDraftEditorDeltaAsync(
+                        db, videoId, result, result.ProjectionChanged, principalAccessor.Current, authorization, ct));
                 })
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
@@ -2522,7 +2541,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     });
                     if (result.Status == SegmentDraftMutationStatus.Updated)
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return ToDraftHttpResult(result);
+                    return ToDraftHttpResult(await WithDraftEditorDeltaAsync(
+                        db, videoId, result, true, principalAccessor.Current, authorization, ct));
                 })
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
@@ -2553,7 +2573,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     });
                     if (result.Status == SegmentDraftMutationStatus.Updated)
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return ToDraftHttpResult(result);
+                    return ToDraftHttpResult(await WithDraftEditorDeltaAsync(
+                        db, videoId, result, true, principalAccessor.Current, authorization, ct));
                 })
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
@@ -2584,7 +2605,8 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                     });
                     if (result.Status == SegmentDraftMutationStatus.Updated)
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
-                    return ToDraftHttpResult(result);
+                    return ToDraftHttpResult(await WithDraftEditorDeltaAsync(
+                        db, videoId, result, true, principalAccessor.Current, authorization, ct));
                 })
             .RequireAuthorization()
             .RequireCovePermission(Permissions.SegmentsWrite)
@@ -3001,7 +3023,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         entity: null,
                         ct);
                     var strategy = db.Database.CreateExecutionStrategy();
-                    return await strategy.ExecuteAsync(async () =>
+                    // Set once the update commits, so its editor description is read outside the retrying strategy.
+                    DirectSegmentSnapshot? committedProjectionChange = null;
+                    var response = await strategy.ExecuteAsync(async () =>
                     {
                         await using var transaction = db.Database.IsRelational()
                             ? await db.Database.BeginTransactionAsync(ct)
@@ -3067,6 +3091,9 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             if (transaction is not null)
                                 await transaction.CommitAsync(ct);
                             spanCacheInvalidator.InvalidateVideo(videoId);
+                            committedProjectionChange = preserveExtensionMetadata && result.ProjectionChanged
+                                ? result.Segment
+                                : null;
                         }
 
                         return result.Status switch
@@ -3077,6 +3104,16 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                             DirectSegmentMutationStatus.Conflict => Results.Conflict(new { error = result.Error, code = result.Code, segment = result.Segment }),
                             _ => Results.NotFound(new { error = result.Error }),
                         };
+                    });
+                    if (committedProjectionChange is null)
+                        return response;
+                    // A retag or cascading rejection reaches beyond the row, so the Full editor is told what changed.
+                    var slotAccess = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(
+                        principalAccessor.Current, authorization, ct);
+                    return Results.Ok(committedProjectionChange with
+                    {
+                        EditorDelta = await SegmentEditorDeltaService.LoadNativeMutationDeltaAsync(
+                            db, videoId, [segmentId], slotAccess.Allowed, ct),
                     });
                 })
             .RequireAuthorization()
@@ -3383,7 +3420,23 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                         return mutation;
                     });
                     if (result.Status == DirectSegmentMutationStatus.Updated)
+                    {
                         PublishSegmentInvalidation(spanCacheInvalidator, videoId);
+                        // The Full editor shows the split without refetching its whole projection.
+                        if (preserveExtensionMetadata && result.Segment is not null)
+                        {
+                            var slotAccess = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(
+                                principalAccessor.Current, authorization, ct);
+                            result = result with
+                            {
+                                Segment = result.Segment with
+                                {
+                                    EditorDelta = await SegmentEditorDeltaService.LoadNativeMutationDeltaAsync(
+                                        db, videoId, [segmentId, result.Segment.Id], slotAccess.Allowed, ct),
+                                },
+                            };
+                        }
+                    }
                     return result.Status switch
                     {
                         DirectSegmentMutationStatus.Updated => Results.Ok(result.Segment),
@@ -3991,6 +4044,34 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
         SegmentTransitionStatus.Conflict => Results.Conflict(new { error = result.Error, code = result.Code, result }),
         _ => Results.NotFound(new { error = result.Error }),
     };
+
+    // Describes a committed draft mutation to the editor so it applies the change instead of refetching
+    // its whole projection. An update that only changed the draft's own fields needs no description.
+    private static async Task<SegmentDraftMutationResult> WithDraftEditorDeltaAsync(
+        DbContext db,
+        int videoId,
+        SegmentDraftMutationResult result,
+        bool describe,
+        CovePrincipal? principal,
+        Cove.Core.Auth.IAuthorizationService authorization,
+        CancellationToken ct)
+    {
+        if (result.Status != SegmentDraftMutationStatus.Updated || !describe)
+            return result;
+        var rootItemIds = new[] { result.Draft?.ItemId, result.CreatedDraft?.ItemId }
+            .OfType<long>()
+            .Distinct()
+            .ToArray();
+        if (rootItemIds.Length == 0)
+            return result;
+        var slotAccess = await SegmentStudioAuthorization.AuthorizePerformerSlotReadAsync(
+            principal, authorization, ct);
+        return result with
+        {
+            EditorDelta = await SegmentEditorDeltaService.LoadMutationDeltaAsync(
+                db, videoId, rootItemIds, slotAccess.Allowed, ct),
+        };
+    }
 
     private static IResult ToDraftHttpResult(SegmentDraftMutationResult result) => result.Status switch
     {

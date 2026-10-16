@@ -237,6 +237,8 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         swimlanes: allSwimlanes,
         performerSlots: state.detail.performerSlots,
         selectedSegment,
+        // What the editor shows for the selection, including unconfirmed changes.
+        displayedSelectedSegment: editor.displayedSegments.find((item) => item.id === selectedSegment?.id) || selectedSegment,
         selectedSegments: state.selectedSegmentIds.map((id) => byId.get(id)).filter(Boolean),
         savingSegmentId: savingSegmentIdFrom(saveQueue.getSnapshot()),
         acquireSaveLock: (kind, lockId) => saveQueue.acquire({ kind, lockId }),
@@ -248,6 +250,8 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
           state.pendingChanges = pendingChangesReducer(state.pendingChanges, action);
         },
         getSaveQueueSnapshot: saveQueue.getSnapshot,
+        // The raw selection state, which the editor reads to tell whether the user moved on.
+        getRequestedSelectionId: () => state.selectedSegmentId,
         creatingSegmentId: state.creatingSegmentId,
         pendingChanges: state.pendingChanges,
         tagEditing: state.tagEditing,
@@ -273,6 +277,8 @@ export function createFakeEditor({ segments = [segment()], compatibilityMode = f
         },
         replaceSegmentSelection(segmentId) {
           setSelectedSegmentId(segmentId);
+          // The editor renders the new selection before any save settles, which updates this ref.
+          refs.selectedSegmentIdRef.current = segmentId;
           setSelectedSegmentIds(segmentId == null ? [] : [segmentId]);
           refs.selectionAnchorIdRef.current = segmentId;
           refs.selectionRangeBaseIdsRef.current = [];

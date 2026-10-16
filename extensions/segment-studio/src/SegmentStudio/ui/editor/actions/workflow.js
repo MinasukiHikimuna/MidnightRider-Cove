@@ -10,7 +10,7 @@ import { segmentGroupKeyForSegment } from "../model/swimlanes.js";
 import { applyFeedbackEditorDelta, extractFeedbackFrames, feedbackResultMatchesAction, feedbackSelectionPlan } from "../model/feedback.js";
 
 function createWorkflowActions(context) {
-  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, stableSaveIdentity, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, swimlanes, video } = context;
+  const { acceptHistory, acquireSaveLock, allSwimlanes, autoAssignCandidates, autoAssigning, binEmptyingRef, canMoveSelectionToBin, closeTagEditing, compatibilityMode, creatingSegmentId, detail, displayedSelectedSegment, editorFilters, editorRef, cancelSaveTasks, dispatchPendingChanges, enqueueSave, stableSaveIdentity, exportingExamples, hideDerivedSegments, incorrectExamples, lineage, materializeButtonRef, materializePreview, materializeRestoreFocusRef, materializing, mutateSegment, runSegmentMutation, pendingChanges, onConflict, onDetailChange, onReload, performerSlots, recordHistoryAction, refreshMaterializationPreview, removingExampleId, revealSegmentGroupForSelection, savingSegmentId, segmentGroups, segments, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setAutoAssignError, setAutoAssignOpen, setAutoAssigning, setEditorFilters, setExportingExamples, setHideDerivedSegments, setIncorrectExamples, setMaterializeError, setMaterializeLoading, setMaterializeOpen, setMaterializePreview, setMaterializing, setRejectedDeletionPreview, setRemovingExampleId, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setSelectedSegmentIds, swimlanes, video } = context;
 
   async function toggleIncorrectExample() {
       if (selectedSegments.length === 0 || !selectedSegment || savingSegmentId != null) return;
@@ -731,11 +731,27 @@ function createWorkflowActions(context) {
         closeTagEditing();
         return;
       }
-      if (selectedSegment.itemId != null && lineage.data?.children?.length > 0) {
+      // Lineage is read when the segment is selected; a tag picked before it arrives reads it now,
+      // because a segment with derived descendants needs the reconciling tag change.
+      let lineageChildren = lineage.data?.children ?? null;
+      if (lineageChildren == null && lineage.loading && selectedSegment.itemId != null) {
+        // Close the field first, so a second pick cannot race this one while lineage loads.
+        closeTagEditing();
+        try {
+          const metadata = await requestJson(`/videos/${video.id}/items/${selectedSegment.itemId}/metadata`);
+          lineageChildren = metadata?.lineage?.children ?? null;
+        } catch {
+          // The server still refuses a plain retag of a segment with descendants.
+        }
+      }
+      if (selectedSegment.itemId != null && lineageChildren?.length > 0) {
         // One lock spans the preview, the confirmation and the execution: the confirmation blocks the page,
         // so releasing the lock around it would only let queued work take the lock first.
         const releaseSaveLock = acquireSaveLock("lineage-tag", selectedSegment.id);
-        if (!releaseSaveLock) return;
+        if (!releaseSaveLock) {
+          setSaveMessage("Wait for the current save to finish, then choose the tag again.");
+          return;
+        }
         setSaveMessage("Checking lineage impact…");
         let pendingChangeId = null;
         try {
@@ -791,9 +807,11 @@ function createWorkflowActions(context) {
         return;
       }
       closeTagEditing();
+      // The shown timing includes a timing save still waiting in the queue, which this keeps.
+      const shown = displayedSelectedSegment?.id === selectedSegment.id ? displayedSelectedSegment : selectedSegment;
       await mutateSegment(selectedSegment, {
-        startSec: selectedSegment.startSec,
-        endSec: selectedSegment.endSec,
+        startSec: shown.startSec,
+        endSec: shown.endSec,
         tagId,
       }, true, null, true, optimisticValues);
     }

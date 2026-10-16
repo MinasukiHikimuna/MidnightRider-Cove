@@ -266,14 +266,17 @@ export function isCurrentEditorRequest(requestId, currentRequestId, videoId, cur
 export function createEditorReloader({ beginRequest, fetchDetail, isCurrent, isSameVideo }) {
   let latest = null;
   let latestRequest = null;
-  return function reload({ onLoaded, onError }) {
+  // `prepare` lets the host adjust a loaded snapshot before it is shown and returned, for example to
+  // replay changes it applied after this reload began.
+  return function reload({ onLoaded, onError, prepare = null }) {
     const request = beginRequest();
     const run = (async () => {
       try {
         const loaded = await fetchDetail(request);
         if (isCurrent(request)) {
-          onLoaded(loaded);
-          return loaded;
+          const shown = prepare ? prepare(loaded, request) : loaded;
+          onLoaded(shown);
+          return shown;
         }
       } catch (error) {
         if (isCurrent(request)) {

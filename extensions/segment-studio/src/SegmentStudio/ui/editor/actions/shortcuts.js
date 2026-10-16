@@ -5,7 +5,7 @@ import { clampTimelineZoom, findNearestSegmentInCurrentSwimlane, findSegmentFrom
 import { readTimingClipboard, writeTimingClipboard } from "../model/layout.js";
 
 function createShortcutHandler(context) {
-  const { allSwimlanes, applyShortcutTiming, centerTimelineRef, compatibilityMode, createSegment, currentTime, deleteRejectedSegments, duplicateSegment, editorLayout, editorRef, emptyRecyclingBin, lineage, mediaDuration, mergeSelectedSwimlane, moveToBin, mutateShotBoundary, openPublishApprovedDialog, playbackControlsRef, playbackShortcutConfig, saveSelectedReviewState, seekRef, segmentGroupKeys, selectSegment, selectedSegment, selectedSegmentGroupForSegment, selectedSegmentGroupKey, selectedSegments, setCollapsedSegmentGroups, setIncorrectExamplesOpen, setQuickSearchOpen, setSaveMessage, setSelectedSegmentGroupKey, setTagEditing, setTimelineZoom, shotBoundaries, slotButtonRef, splitSegment, swimlanes, timelineDuration, toggleIncorrectExample, toggleSegmentGroup, updateTimelineRatio, videoFrameRate, visibleSegments } = context;
+  const { allSwimlanes, applyShortcutTiming, centerTimelineRef, compatibilityMode, createSegment, currentTime, deleteRejectedSegments, displayedSelectedSegment, duplicateSegment, editorLayout, editorRef, emptyRecyclingBin, lineage, mediaDuration, mergeSelectedSwimlane, moveToBin, mutateShotBoundary, openPublishApprovedDialog, playbackControlsRef, playbackShortcutConfig, saveSelectedReviewState, seekRef, segmentGroupKeys, selectSegment, selectedSegment, selectedSegmentGroupForSegment, selectedSegmentGroupKey, selectedSegments, setCollapsedSegmentGroups, setIncorrectExamplesOpen, setQuickSearchOpen, setSaveMessage, setSelectedSegmentGroupKey, setTagEditing, setTimelineZoom, shotBoundaries, slotButtonRef, splitSegment, swimlanes, timelineDuration, toggleIncorrectExample, toggleSegmentGroup, updateTimelineRatio, videoFrameRate, visibleSegments } = context;
 
   function stepVideoFrames(frameCount) {
     playbackControlsRef.current?.pause();
@@ -116,16 +116,19 @@ function createShortcutHandler(context) {
           setSaveMessage("Derived segments cannot be retagged because their tags are set by derivation rules.");
           return;
         }
-        if (lineage.data?.tagReadOnly) {
+        // Until lineage loads, the projection's derived flag says whether a rule sets the tag.
+        if (lineage.data ? lineage.data.tagReadOnly : selectedSegment?.isDerived) {
           setSaveMessage("This tag is read-only because it is set by a derivation rule.");
           return;
         }
         setTagEditing(true);
       };
+      // The other bound is the one the editor shows, so it keeps a timing save still waiting in the queue.
+      const shownSegment = displayedSelectedSegment?.id === selectedSegment?.id ? displayedSelectedSegment : selectedSegment;
       if (shortcut.id === "marker.setStart" && selectedSegment)
-        action = () => applyShortcutTiming(currentTime, selectedSegment.endSec);
+        action = () => applyShortcutTiming(currentTime, shownSegment.endSec);
       if (shortcut.id === "marker.setEnd" && selectedSegment)
-        action = () => applyShortcutTiming(selectedSegment.startSec, currentTime);
+        action = () => applyShortcutTiming(shownSegment.startSec, currentTime);
       if (shortcut.id === "marker.copyTiming" && selectedSegment) action = () => {
         setSaveMessage(writeTimingClipboard(selectedSegment) ? "Segment timing copied." : "Unable to copy segment timing.");
       };

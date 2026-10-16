@@ -61,20 +61,27 @@ export function applyFeedbackEditorDelta(detail, delta) {
     Number(left.startSec) - Number(right.startSec)
       || String(left.key || "").localeCompare(String(right.key || "")));
 
+  // A delta that carries performer slots carries every slot of its upserted segments.
+  const replacedSlotIds = delta.performerSlots != null ? new Set(upserted.keys()) : new Set();
   const nextSlots = (detail.performerSlots || [])
     .filter((slot) => !removedIds.has(slot.segmentId)
       || identityChanges.has(slot.segmentId))
     .map((slot) => identityChanges.has(slot.segmentId)
       ? { ...slot, segmentId: identityChanges.get(slot.segmentId) }
-      : slot);
+      : slot)
+    .filter((slot) => !replacedSlotIds.has(slot.segmentId));
+  if (delta.performerSlots != null) nextSlots.push(...delta.performerSlots);
   const nextRevisions = {};
   for (const [segmentId, revision] of Object.entries(
     detail.performerSlotRevisions || {},
   )) {
     const numericId = Number(segmentId);
     if (removedIds.has(numericId) && !identityChanges.has(numericId)) continue;
-    nextRevisions[identityChanges.get(numericId) ?? segmentId] = revision;
+    const nextId = identityChanges.get(numericId) ?? numericId;
+    if (replacedSlotIds.has(nextId)) continue;
+    nextRevisions[nextId] = revision;
   }
+  if (delta.performerSlotRevisions != null) Object.assign(nextRevisions, delta.performerSlotRevisions);
 
   return {
     ...detail,

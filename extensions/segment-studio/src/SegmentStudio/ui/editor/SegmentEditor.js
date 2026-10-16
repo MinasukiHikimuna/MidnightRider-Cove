@@ -29,7 +29,7 @@ import { createHistoryAndLayoutActions } from "./actions/history-and-layout.js";
 import { createShortcutHandler } from "./actions/shortcuts.js";
 import { useSegmentAnalysis } from "./hooks/useSegmentAnalysis.js";
 import { hideCollectedFeedbackSegments } from "./model/feedback.js";
-import { createSaveQueue, isKindRunning, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./model/save-queue.js";
+import { areSegmentsBusy, createSaveQueue, isEditorHeldByOtherWork, isKindRunning, isSegmentCreationPending, savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "./model/save-queue.js";
 import { applyPendingChanges, pendingChangesReducer, pendingInsertedSegments, prunePendingChanges } from "./model/pending-changes.js";
 
 const EMPTY_EDITOR_COLLECTION = Object.freeze([]);
@@ -44,8 +44,30 @@ function restorePublishApprovedFocus(target, fallback) {
   focusTarget?.focus?.({ preventScroll: true });
 }
 
-function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysisCompleted, onSlotsChanged, splitLayout, initialSegmentId, compatibilityMode = false, profile, onNavigate }) {
+function SegmentEditor({ detail, onDetailChange, onConflict: onConflictProjection, onReload: onReloadProjection, onAnalysisCompleted, onSlotsChanged, splitLayout, initialSegmentId, compatibilityMode = false, profile, onNavigate }) {
   const lastSelectionReferenceRef = useRef(null);
+  // Provenance and lineage are read per item when it is selected. A full reload can change any
+  // item's lineage, so it starts a new generation and empties the cache.
+  const itemMetadataCacheRef = useRef(new Map());
+  const [metadataGeneration, setMetadataGeneration] = useState(0);
+  const projectionHandlersRef = useRef(null);
+  projectionHandlersRef.current = { onReloadProjection, onConflictProjection };
+  const [{ onReload, onConflict }] = useState(() => {
+    const startGeneration = () => {
+      itemMetadataCacheRef.current.clear();
+      setMetadataGeneration((generation) => generation + 1);
+    };
+    return {
+      onReload: (...args) => {
+        startGeneration();
+        return projectionHandlersRef.current.onReloadProjection(...args);
+      },
+      onConflict: (...args) => {
+        startGeneration();
+        return projectionHandlersRef.current.onConflictProjection(...args);
+      },
+    };
+  });
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
   const selectedSegmentIdRef = useRef(null);
@@ -197,8 +219,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
       slot.performerId,
       slot.sortOrder,
     ]),
-    itemMetadata: detail.itemMetadata || {},
-  }), [segments, detail.performerSlots, detail.itemMetadata]);
+  }), [segments, detail.performerSlots]);
   useEffect(() => {
     if (!compatibilityMode) {
       setMaterializePreview(null);
@@ -494,12 +515,18 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
     : actionSegments.find((segment) => segment.id === displayedSelectedSegment.id) || displayedSelectedSegment;
   const selectedSegments = resolveSelectedSegments(actionSegments, resolveSelectedSegments(visibleSegments, selectedSegmentIds)
     .map((segment) => segment.id));
+  // Edits of the selection wait only for saves of the same segments; other work holds the whole editor.
+  const selectionBusy = areSegmentsBusy(saveQueueSnapshot, selectedSegments);
+  const editorHeldByOtherWork = isEditorHeldByOtherWork(saveQueueSnapshot);
+  const segmentCreationPending = isSegmentCreationPending(saveQueueSnapshot);
   const canMoveSelectionToBin = !compatibilityMode
     && selectedSegments.length > 0
     && selectedSegments.every((segment) => segment.nativeSegmentId != null);
   const visibleSegmentIds = visibleSegments.map((segment) => segment.id);
   const visibleSegmentIdsFingerprint = visibleSegmentIds.join("|");
   selectedSegmentIdRef.current = selectedSegment?.id ?? null;
+  const requestedSelectionIdRef = useRef(null);
+  requestedSelectionIdRef.current = selectedSegmentId;
   const selectedPerformerSlots = performerSlotsBySegment.get(selectedSegment?.id) || [];
   const selectedSlotStatus = performerSlotStatusFromSegmentSlots(selectedPerformerSlots);
   const selectedGroups = useMemo(
@@ -554,19 +581,56 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
     });
   }, [visibleSegmentIdsFingerprint, selectedSegment?.id]);
 
-  const selectedItemMetadata = selectedSegment?.itemId == null
+  const metadataItemId = detail.itemMetadataAvailable ? selectedSegment?.itemId ?? null : null;
+  // A merge returns its survivor's metadata with the projection; otherwise it is read for the selection.
+  const projectedItemMetadata = metadataItemId == null ? null : detail.itemMetadata?.[metadataItemId] || null;
+  const metadataKey = metadataItemId == null || projectedItemMetadata
     ? null
-    : detail.itemMetadata?.[selectedSegment.itemId] || null;
+    : `${metadataGeneration}:${metadataItemId}:${selectedSegment.revision}:${selectedSegment.updatedAt}`;
+  const [loadedItemMetadata, setLoadedItemMetadata] = useState({ key: null, value: null, error: null });
+  useEffect(() => {
+    if (metadataKey == null) return undefined;
+    const cached = itemMetadataCacheRef.current.get(metadataKey);
+    if (cached) {
+      setLoadedItemMetadata({ key: metadataKey, value: cached, error: null });
+      return undefined;
+    }
+    const controller = new AbortController();
+    // Stepping quickly through segments reads only the one the reviewer stops on.
+    const timer = setTimeout(() => {
+      requestJson(`/videos/${video.id}/items/${metadataItemId}/metadata`, { signal: controller.signal })
+        .then((value) => {
+          const cache = itemMetadataCacheRef.current;
+          if (cache.size >= 500) cache.delete(cache.keys().next().value);
+          cache.set(metadataKey, value);
+          setLoadedItemMetadata({ key: metadataKey, value, error: null });
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setLoadedItemMetadata({ key: metadataKey, value: null, error: error.message || "Unable to load provenance." });
+        });
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [metadataKey, video.id]);
+  const itemMetadataState = metadataKey == null
+    ? { loading: false, error: null, value: projectedItemMetadata }
+    : loadedItemMetadata.key === metadataKey
+      ? { loading: false, error: loadedItemMetadata.error, value: loadedItemMetadata.value }
+      : { loading: true, error: null, value: null };
+  const selectedItemMetadata = itemMetadataState.value;
   const provenance = {
     key: selectedSegment?.itemId != null
       ? `item:${selectedSegment.itemId}`
       : selectedSegment?.nativeSegmentId != null
         ? `native:${selectedSegment.nativeSegmentId}`
         : null,
-    loading: false,
+    loading: itemMetadataState.loading,
     error: detail.itemMetadataAvailable === false
       ? "Provenance is unavailable."
-      : null,
+      : itemMetadataState.error,
     items: detail.itemMetadataAvailable
       ? selectedItemMetadata?.provenance
         || selectedSegment?.fieldProvenance
@@ -575,8 +639,8 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
   };
   const lineage = selectedSegment?.itemId != null
     ? {
-        loading: false,
-        error: detail.lineageMetadataAvailable === false ? "Lineage is unavailable." : null,
+        loading: itemMetadataState.loading,
+        error: detail.lineageMetadataAvailable === false ? "Lineage is unavailable." : itemMetadataState.error,
         data: detail.lineageMetadataAvailable ? selectedItemMetadata?.lineage || null : null,
       }
     : {
@@ -654,6 +718,9 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
   });
   const { acceptHistory, recordHistoryAction, mutateSegment, runSegmentMutation, completeReview, createSegment, splitSegment, duplicateSegment, saveTiming, applyShortcutTiming } = createPrimarySegmentActions({
     compatibilityMode,
+    getRequestedSelectionId: () => requestedSelectionIdRef.current,
+    displayedSelectedSegment,
+    getSaveQueueSnapshot,
     currentTime,
     detail,
     editorFilters,
@@ -731,6 +798,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
   }
   const { closeMergeConfirmation, mergeSelectedSwimlane, saveSelectedReviewState } = createReviewActions({
     acceptHistory,
+    pendingChanges,
     compatibilityMode,
     detail,
     detailPanelRef,
@@ -784,6 +852,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
   });
   const { toggleIncorrectExample, removeIncorrectExample, captureTrainingExport, deleteRejectedSegments, autoAssignPerformers, previewDerivedSegments, closeMaterializeDialog, materializeDerivedSegments, saveTag, moveToBin, emptyRecyclingBin } = createWorkflowActions({
     acceptHistory,
+    displayedSelectedSegment,
     allSwimlanes,
     autoAssignCandidates,
     autoAssigning,
@@ -882,6 +951,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
   });
   const { executeShortcutById, stepVideoFrame } = createShortcutHandler({
     allSwimlanes,
+    displayedSelectedSegment,
     applyShortcutTiming,
     centerTimelineRef,
     compatibilityMode,
@@ -1038,6 +1108,9 @@ function SegmentEditor({ detail, onDetailChange, onConflict, onReload, onAnalysi
     saveTag,
     saveTiming,
     savingSegmentId,
+    selectionBusy,
+    editorHeldByOtherWork,
+    segmentCreationPending,
     acquireSaveLock,
     seekRef,
     segmentGroups,

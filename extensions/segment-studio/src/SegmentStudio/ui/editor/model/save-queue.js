@@ -35,6 +35,36 @@ export function isSaveQueueBusy(snapshot) {
   return snapshot.running != null || snapshot.queued.length > 0;
 }
 
+// Saves aimed at particular segments. They queue behind each other and only hold their own segments;
+// any other work (publishing, history, bulk or lineage changes) holds the whole editor.
+const SEGMENT_SCOPED_KINDS = new Set(["segment", "split", "create", "duplicate", "review", "held-tag"]);
+
+function snapshotTasks(snapshot) {
+  return snapshot.running ? [snapshot.running, ...snapshot.queued] : snapshot.queued;
+}
+
+// A create or duplicate already waiting, so a repeated key press does not add a second copy.
+export function isSegmentCreationPending(snapshot) {
+  return snapshotTasks(snapshot).some((task) => task.kind === "create" || task.kind === "duplicate");
+}
+
+export function isEditorHeldByOtherWork(snapshot) {
+  return snapshotTasks(snapshot).some((task) => !SEGMENT_SCOPED_KINDS.has(task.kind));
+}
+
+// A segment that has never been saved has no identity to send yet.
+export function isTemporarySegment(segment) {
+  return segment != null && segment.itemId == null && segment.nativeSegmentId == null && segment.id < 0;
+}
+
+// Whether editing these segments now would race work already running or queued for them.
+export function areSegmentsBusy(snapshot, segments) {
+  if (isEditorHeldByOtherWork(snapshot)) return true;
+  if ((segments || []).some(isTemporarySegment)) return true;
+  const identities = (segments || []).map(segmentIdentity);
+  return snapshotTasks(snapshot).some((task) => targetsOverlap(task.targets, identities));
+}
+
 const IDLE_SNAPSHOT = Object.freeze({ running: null, queued: Object.freeze([]), lastFailure: null });
 
 function describe(task) {

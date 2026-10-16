@@ -280,3 +280,52 @@ test("save queue locks are free again as soon as they are released", () => {
   assert.equal(typeof next, "function");
   next();
 });
+
+test("a segment save holds only its own segments while other work holds the whole editor", () => {
+  const queue = ui.createSaveQueue();
+  const first = { id: 101, itemId: null, nativeSegmentId: 101 };
+  const second = { id: 102, itemId: null, nativeSegmentId: 102 };
+  const temporary = { id: -3, itemId: null, nativeSegmentId: null };
+  assert.equal(ui.areSegmentsBusy(queue.getSnapshot(), [first]), false);
+
+  queue.enqueue({ kind: "segment", lockId: 101, targets: [first], run: () => new Promise(() => {}) });
+  assert.equal(ui.areSegmentsBusy(queue.getSnapshot(), [first]), true);
+  assert.equal(ui.areSegmentsBusy(queue.getSnapshot(), [second]), false);
+  assert.equal(ui.isEditorHeldByOtherWork(queue.getSnapshot()), false);
+  // A segment that has not been saved yet has no identity to edit.
+  assert.equal(ui.areSegmentsBusy(queue.getSnapshot(), [temporary]), true);
+
+  queue.enqueue({ kind: "create", lockId: -1, whenBusy: "enqueue", run: () => Promise.resolve() });
+  assert.equal(ui.isSegmentCreationPending(queue.getSnapshot()), true);
+  assert.equal(ui.areSegmentsBusy(queue.getSnapshot(), [second]), false);
+
+  const publishing = ui.createSaveQueue();
+  publishing.acquire({ kind: "publish", lockId: -1 });
+  assert.equal(ui.isEditorHeldByOtherWork(publishing.getSnapshot()), true);
+  assert.equal(ui.areSegmentsBusy(publishing.getSnapshot(), [second]), true);
+});
+
+test("an editor delta replaces the performer slots of the segments it carries", () => {
+  const detail = {
+    segments: [{ id: -55, itemId: 55, startSec: 10, key: "item:55" }, { id: 101, startSec: 30, key: "native:101" }],
+    performerSlots: [
+      { segmentId: -55, slotDefinitionId: "old", performerId: 1 },
+      { segmentId: 101, slotDefinitionId: "kept", performerId: 2 },
+    ],
+    performerSlotRevisions: { "-55": "old", 101: "kept" },
+  };
+
+  const next = ui.applyFeedbackEditorDelta(detail, {
+    upsertedSegments: [{ id: -55, itemId: 55, startSec: 10, key: "item:55", tagId: 9 }],
+    removedSegmentIds: [],
+    identityChanges: [],
+    performerSlots: [{ segmentId: -55, slotDefinitionId: "new", performerId: 3 }],
+    performerSlotRevisions: { "-55": "new" },
+  });
+
+  assert.deepEqual(next.performerSlots.map((slot) => slot.slotDefinitionId).sort(), ["kept", "new"]);
+  assert.deepEqual(next.performerSlotRevisions, { "-55": "new", 101: "kept" });
+  assert.equal(next.segments.find((segment) => segment.id === -55).tagId, 9);
+  // A delta without slots leaves the slots alone.
+  assert.equal(ui.applyFeedbackEditorDelta(detail, { upsertedSegments: [], removedSegmentIds: [] }).performerSlots.length, 2);
+});

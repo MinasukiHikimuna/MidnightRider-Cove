@@ -97,7 +97,7 @@ test("save flow: a busy editor refuses another segment save without sending it",
   });
 });
 
-test("save flow: a failed timing save rolls the projection back and restores the selection", { timeout: 5000 }, async () => {
+test("save flow: a failed timing save rolls the projection back and leaves a selection the user moved to", { timeout: 5000 }, async () => {
   const first = segment();
   const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
   const api = createFakeApi();
@@ -116,8 +116,9 @@ test("save flow: a failed timing save rolls the projection back and restores the
 
     assert.equal(editor.displayedSegments.find((item) => item.id === 101).startSec, 10);
     assert.deepEqual(editor.state.pendingChanges, []);
-    assert.deepEqual(editor.state.selectedSegmentIds, [101]);
-    assert.equal(editor.state.selectedSegmentId, 101);
+    // The user moved on while the save ran, so the failure does not pull them back.
+    assert.deepEqual(editor.state.selectedSegmentIds, [102]);
+    assert.equal(editor.state.selectedSegmentId, 102);
     assert.equal(editor.state.saveMessage, "Storage unavailable.");
     assert.equal(editor.savingSegmentId, null);
   });
@@ -1650,4 +1651,337 @@ test("save flow: a history restore replays the history current when it starts", 
     restore.release({ history: { ...editor.refs.historyRef.current, cursorSequence: 1 } });
     await restoring;
   });
+});
+
+function countingServer(editor) {
+  const server = { reloads: 0 };
+  server.serve = () => {
+    server.reloads += 1;
+    return editor.state.detail;
+  };
+  return server;
+}
+
+test("save flow: a timing save of another segment while one saves is shown at once and sent after it", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const api = createFakeApi()
+    .on("PUT", "/videos/7/segments/102", (request) => ({ ...second, ...request.body, updatedAt: "2026-01-03T00:00:00Z" }))
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const firstPut = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor({ segments: [first, second] });
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).mutateSegment(first, { startSec: 15, endSec: 20, tagId: 1 }, true, null, true);
+    await firstPut.arrived();
+    editor.select([102]);
+    editor.render();
+
+    const queued = actionsFor(editor).mutateSegment(second, { startSec: 45, endSec: 50, tagId: 1 }, true, null, true);
+    // Shown at once, and not refused, while the other segment is still saving.
+    assert.equal(editor.displayedSegments.find((item) => item.id === 102).startSec, 45);
+    assert.equal(api.sent("PUT", "/videos/7/segments/102").length, 0);
+    assert.deepEqual(editor.saveQueue.getSnapshot().queued.map((task) => task.kind), ["segment"]);
+
+    firstPut.release({ ...first, startSec: 15, updatedAt: "2026-01-02T00:00:00Z" });
+    await saving;
+    editor.render();
+    const saved = await queued;
+
+    assert.equal(saved.startSec, 45);
+    assert.deepEqual(api.sent("PUT", "/videos/7/segments/102")[0].body, {
+      startSec: 45,
+      endSec: 50,
+      tagId: 1,
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+      historyReceiptId: api.sent("PUT", "/videos/7/segments/102")[0].body.historyReceiptId,
+    });
+    assert.equal(editor.segments.find((item) => item.id === 102).startSec, 45);
+  });
+});
+
+test("save flow: a timing save queued behind a tag change keeps the new tag", { timeout: 5000 }, async () => {
+  let serverSegment = segment();
+  const api = createFakeApi()
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor({ server: () => ({ ...editor.state.detail, segments: [serverSegment] }) });
+  await withEditorGlobals(api, async () => {
+    const retagging = actionsFor(editor).mutateSegment(editor.segments[0], { startSec: 10, endSec: 20, tagId: 9 }, true, null, true, { tagId: 9 });
+    await put.arrived();
+    editor.render();
+    // The w shortcut, as the reviewer presses it while the tag change is still saving.
+    const timing = actionsFor(editor).applyShortcutTiming(12, 20);
+    assert.equal(editor.displayedSegments[0].tagId, 9);
+    assert.equal(editor.displayedSegments[0].startSec, 12);
+
+    serverSegment = segment({ tagId: 9, updatedAt: "2026-01-02T00:00:00Z" });
+    put.release(serverSegment);
+    await retagging;
+    editor.render();
+    const second = await put.arrived();
+    assert.equal(second.body.tagId, 9);
+    assert.equal(second.body.startSec, 12);
+    assert.equal(second.body.expectedUpdatedAt, "2026-01-02T00:00:00Z");
+    serverSegment = segment({ tagId: 9, startSec: 12, updatedAt: "2026-01-03T00:00:00Z" });
+    put.release(serverSegment);
+    await timing;
+  });
+});
+
+test("save flow: a queued approval shows at once while another segment saves", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const api = createFakeApi()
+    .on("PUT", "/videos/7/segments/review-state", { updatedCount: 1, items: [{ requestedNativeSegmentId: 102, nativeSegmentId: 102, itemId: null, updatedAt: "2026-01-02T00:00:00Z" }] })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const put = api.hold("PUT", "/videos/7/segments/101");
+  const editor = createFakeEditor({ segments: [first, second] });
+  await withEditorGlobals(api, async () => {
+    const saving = actionsFor(editor).mutateSegment(first, { startSec: 15, endSec: 20, tagId: 1 }, true, null, true);
+    await put.arrived();
+    editor.select([102]);
+    editor.render();
+
+    const reviewing = actionsFor(editor).saveSelectedReviewState("approved");
+    assert.equal(editor.displayedSegments.find((item) => item.id === 102).reviewState, "approved");
+    assert.equal(api.sent("PUT", "/videos/7/segments/review-state").length, 0);
+
+    put.release({ ...first, startSec: 15, updatedAt: "2026-01-02T00:00:00Z" });
+    await saving;
+    editor.render();
+    await reviewing;
+    assert.equal(editor.segments.find((item) => item.id === 102).reviewState, "approved");
+    assert.deepEqual(editor.state.pendingChanges, []);
+  });
+});
+
+test("save flow: a cancelled queued approval stops showing", { timeout: 5000 }, async () => {
+  const api = createFakeApi();
+  const editor = createFakeEditor();
+  const release = editor.saveQueue.acquire({ kind: "segment", lockId: 101 });
+  await withEditorGlobals(api, async () => {
+    const reviewing = actionsFor(editor).saveSelectedReviewState("approved");
+    assert.equal(editor.displayedSegments[0].reviewState, "approved");
+
+    editor.saveQueue.cancel((task) => task.kind === "review");
+    assert.equal((await reviewing).status, "cancelled");
+    assert.equal(editor.displayedSegments[0].reviewState, "unreviewed");
+    release();
+  });
+});
+
+function fullDraft(overrides = {}) {
+  return segment({ id: -55, itemId: 55, nativeSegmentId: null, published: false, revision: 3, key: "item:55", ...overrides });
+}
+
+test("save flow: a Full-mode split shows both halves at once and applies the server's description without reloading", { timeout: 5000 }, async () => {
+  const draft = fullDraft();
+  const api = createFakeApi();
+  const split = api.hold("POST", "/videos/7/drafts/55/split");
+  const editor = createFakeEditor({ segments: [draft], compatibilityMode: true, server: () => server.serve() });
+  const server = countingServer(editor);
+  await withEditorGlobals(api, async () => {
+    const splitting = actionsFor(editor, { currentTime: 15 }).splitSegment();
+    const request = await split.arrived();
+    assert.equal(request.body.expectedRevision, 3);
+    assert.deepEqual(editor.displayedSegments.map((item) => [item.startSec, item.endSec]), [[10, 15], [15, 20]]);
+
+    split.release({
+      draft: { itemId: 55, revision: 4 },
+      createdDraft: { itemId: 56 },
+      editorDelta: {
+        upsertedSegments: [
+          fullDraft({ endSec: 15, revision: 4 }),
+          fullDraft({ id: -56, itemId: 56, key: "item:56", startSec: 15, revision: 0 }),
+        ],
+        removedSegmentIds: [],
+        identityChanges: [],
+        approvedSetVersion: "after-split",
+        performerSlots: [{ segmentId: -56, slotDefinitionId: "slot", performerId: 3 }],
+        performerSlotRevisions: { "-56": "copied" },
+      },
+    });
+    await splitting;
+
+    assert.equal(server.reloads, 0);
+    assert.deepEqual(editor.segments.map((item) => [item.id, item.startSec, item.endSec]), [[-55, 10, 15], [-56, 15, 20]]);
+    assert.deepEqual(editor.state.pendingChanges, []);
+    assert.deepEqual(editor.state.detail.performerSlots, [{ segmentId: -56, slotDefinitionId: "slot", performerId: 3 }]);
+    assert.equal(editor.state.detail.approvedSetVersion, "after-split");
+    assert.equal(editor.state.selectedSegmentId, -55);
+  });
+});
+
+test("save flow: a split the server did not describe still reloads the projection", { timeout: 5000 }, async () => {
+  const api = createFakeApi().on("POST", "/videos/7/drafts/55/split", { draft: { itemId: 55 }, createdDraft: { itemId: 56 } });
+  const editor = createFakeEditor({ segments: [fullDraft()], compatibilityMode: true, server: () => server.serve() });
+  const server = countingServer(editor);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor, { currentTime: 15 }).splitSegment();
+
+    assert.equal(server.reloads, 1);
+  });
+});
+
+test("save flow: a Full-mode tag change applies the server's description and slots without reloading", { timeout: 5000 }, async () => {
+  const draft = fullDraft();
+  const retagged = fullDraft({ tagId: 9, tagName: "Retagged", revision: 4 });
+  const api = createFakeApi()
+    .on("PUT", "/videos/7/drafts/55", {
+      draft: { ...retagged },
+      editorDelta: {
+        upsertedSegments: [retagged],
+        removedSegmentIds: [],
+        identityChanges: [],
+        approvedSetVersion: null,
+        performerSlots: [],
+        performerSlotRevisions: {},
+      },
+    })
+    .on("POST", "/videos/7/history/actions", historyReply);
+  const editor = createFakeEditor({ segments: [draft], compatibilityMode: true, server: () => server.serve() });
+  editor.state.detail.performerSlots = [{ segmentId: -55, slotDefinitionId: "old", performerId: 1 }];
+  const server = countingServer(editor);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).mutateSegment(draft, { startSec: 10, endSec: 20, tagId: 9 }, true, null, true, { tagId: 9 });
+
+    assert.equal(server.reloads, 0);
+    assert.equal(editor.segments[0].tagId, 9);
+    assert.equal(editor.segments[0].tagName, "Retagged");
+    assert.deepEqual(editor.state.detail.performerSlots, []);
+    assert.deepEqual(editor.state.pendingChanges, []);
+  });
+});
+
+test("save flow: a Full-mode create selects the described segment without reloading", { timeout: 5000 }, async () => {
+  const existing = fullDraft();
+  const created = fullDraft({ id: -60, itemId: 60, key: "item:60", startSec: 0, endSec: 20, reviewState: "approved", revision: 0 });
+  const api = createFakeApi().on("POST", "/videos/7/drafts", {
+    draft: { itemId: 60 },
+    editorDelta: { upsertedSegments: [created], removedSegmentIds: [], identityChanges: [], approvedSetVersion: "created" },
+  });
+  const editor = createFakeEditor({ segments: [existing], compatibilityMode: true, server: () => server.serve() });
+  const server = countingServer(editor);
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor).createSegment();
+
+    assert.equal(server.reloads, 0);
+    assert.deepEqual(editor.segments.map((item) => item.id).sort((left, right) => left - right), [-60, -55]);
+    assert.equal(editor.state.selectedSegmentId, -60);
+    assert.deepEqual(editor.state.pendingChanges, []);
+  });
+});
+
+test("save flow: a duplicate queued behind a save of the same draft sends the saved revision", { timeout: 5000 }, async () => {
+  const draft = fullDraft();
+  const copy = fullDraft({ id: -70, itemId: 70, key: "item:70", reviewState: "approved", revision: 0 });
+  const api = createFakeApi()
+    .on("POST", "/videos/7/drafts/55/duplicate", {
+      draft: { itemId: 55 },
+      createdDraft: { itemId: 70 },
+      editorDelta: { upsertedSegments: [copy], removedSegmentIds: [], identityChanges: [], approvedSetVersion: "copied" },
+    });
+  const put = api.hold("PUT", "/videos/7/drafts/55");
+  const editor = createFakeEditor({ segments: [draft], compatibilityMode: true });
+  await withEditorGlobals(api, async () => {
+    const timing = actionsFor(editor).mutateSegment(draft, { startSec: 10, endSec: 18, tagId: 1 }, true, null, true);
+    await put.arrived();
+    editor.render();
+    // The duplicate shortcut does not wait for the toolbar, so it is pressed while the save runs.
+    const duplicating = actionsFor(editor).duplicateSegment(true);
+
+    put.release({ draft: { ...draft, endSec: 18, revision: 4 } });
+    await timing;
+    editor.render();
+    await duplicating;
+
+    assert.equal(api.sent("POST", "/videos/7/drafts/55/duplicate")[0].body.expectedRevision, 4);
+    assert.equal(editor.state.selectedSegmentId, -70);
+  });
+});
+
+test("save flow: a queued save that fails after the user moved on restores one consistent selection", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const third = segment({ id: 103, nativeSegmentId: 103, startSec: 60, endSec: 70 });
+  const api = createFakeApi().on("PUT", "/videos/7/segments/101", reply(500, { error: "Storage unavailable." }));
+  const blocking = api.hold("PUT", "/videos/7/segments/102");
+  const editor = createFakeEditor({ segments: [first, second, third] });
+  await withEditorGlobals(api, async () => {
+    editor.select([102]);
+    editor.render();
+    const saving = actionsFor(editor).mutateSegment(second, { startSec: 45, endSec: 50, tagId: 1 }, true, null, true);
+    await blocking.arrived();
+    editor.select([101]);
+    editor.render();
+    const queued = actionsFor(editor).mutateSegment(first, { startSec: 12, endSec: 20, tagId: 1 }, true, null, true);
+    // The user moves on before the queued save runs and fails.
+    editor.select([103]);
+    editor.render();
+    blocking.release({ ...second, startSec: 45, updatedAt: "2026-01-02T00:00:00Z" });
+    await saving;
+    editor.render();
+    assert.equal(await queued, null);
+
+    // The user is on another segment now, so the failure leaves them there.
+    assert.deepEqual(editor.state.selectedSegmentIds, [103]);
+    assert.equal(editor.state.selectedSegmentId, 103);
+    assert.equal(editor.displayedSegments.find((item) => item.id === 101).startSec, 10);
+  });
+});
+
+test("save flow: a failed tag change restores the selection when the user stayed on it", { timeout: 5000 }, async () => {
+  const first = segment();
+  const second = segment({ id: 102, nativeSegmentId: 102, startSec: 40, endSec: 50 });
+  const api = createFakeApi().on("PUT", "/videos/7/segments/101", reply(500, { error: "Storage unavailable." }));
+  const editor = createFakeEditor({ segments: [first, second] });
+  await withEditorGlobals(api, async () => {
+    const actions = actionsFor(editor);
+    // The optimistic tag can hide the segment and move the shown selection without the user moving.
+    editor.state.selectedSegmentIds = [102];
+    assert.equal(await actions.mutateSegment(first, { startSec: 10, endSec: 20, tagId: 9 }, true, null, true, { tagId: 9 }), null);
+
+    assert.deepEqual(editor.state.selectedSegmentIds, [101]);
+    assert.equal(editor.state.selectedSegmentId, 101);
+  });
+});
+
+test("save flow: a tag picked before lineage arrives still reconciles a segment with descendants", { timeout: 5000 }, async () => {
+  const draft = fullDraft();
+  const api = createFakeApi()
+    .on("GET", "/videos/7/items/55/metadata", { provenance: [], lineage: { children: [{ itemId: 60 }] } })
+    .on("POST", "/items/55/tag-change/preview", { deletedItemIds: [], removedEdgeIds: [], componentFingerprint: "component" })
+    .on("POST", "/items/55/tag-change/execute", {});
+  const editor = createFakeEditor({ segments: [draft], compatibilityMode: true });
+  await withEditorGlobals(api, async () => {
+    await actionsFor(editor, { lineage: { loading: true, data: null } }).saveTag(9, "Retagged");
+
+    assert.equal(api.sent("POST", "/items/55/tag-change/execute").length, 1);
+    assert.equal(api.sent("PUT", "/videos/7/drafts/55").length, 0);
+  });
+});
+
+test("editor reloads let the host replay changes applied after they began", { timeout: 5000 }, async () => {
+  let requestCounter = 0;
+  let updateSequence = 0;
+  const gates = [];
+  const shown = [];
+  const reload = ui.createEditorReloader({
+    beginRequest: () => ({ requestId: ++requestCounter, videoId: 7, updateSequence }),
+    fetchDetail: (request) => new Promise((resolve) => gates.push({ request, resolve })),
+    isCurrent: (request) => request.requestId === requestCounter,
+    isSameVideo: () => true,
+  });
+
+  const loading = reload({
+    // A change applied while the reload was in flight is replayed onto its older snapshot.
+    prepare: (loaded, request) => (updateSequence > request.updateSequence ? { ...loaded, created: true } : loaded),
+    onLoaded: (loaded) => shown.push(loaded),
+    onError: () => {},
+  });
+  updateSequence += 1;
+  gates[0].resolve({ version: 1 });
+
+  assert.deepEqual(await loading, { version: 1, created: true });
+  assert.deepEqual(shown, [{ version: 1, created: true }]);
 });

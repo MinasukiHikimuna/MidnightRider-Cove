@@ -238,8 +238,9 @@ test("timing and tag editing shortcuts match Stash Marker Studio", () => {
   assert.match(source, /tagSearchRef\.current\?\.querySelector\("input"\)/);
   assert.match(source, /writeTimingClipboard/);
   assert.match(source, /readTimingClipboard/);
-  assert.match(source, /applyShortcutTiming\(currentTime, selectedSegment\.endSec\)/);
-  assert.match(source, /lineage\.data\?\.tagReadOnly/);
+  // The other bound is the displayed one, so a timing save still waiting in the queue is kept.
+  assert.match(source, /applyShortcutTiming\(currentTime, shownSegment\.endSec\)/);
+  assert.match(source, /lineage\.data \? lineage\.data\.tagReadOnly : selectedSegment\?\.isDerived/);
   assert.match(source, /const mediaDuration = Number\(video\.videoFile\?\.duration\) > 0/);
 });
 

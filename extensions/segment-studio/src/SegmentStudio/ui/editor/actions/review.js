@@ -5,13 +5,13 @@ import { EMPTY_EDITOR_HISTORY } from "../../shared/constants.js";
 import { createQueuedReviewRequest, findSegmentByStableIdentity, resolveQueuedReviewRequest, shouldRestoreTransitionSelection, toggledSelectionReviewState } from "../model/shortcuts.js";
 import { segmentsHistoryState } from "../model/history.js";
 import { savingSegmentIdFrom, segmentIdentity, targetsOverlap } from "../model/save-queue.js";
-import { createPendingChangeId } from "../model/pending-changes.js";
+import { applyPendingChanges, createPendingChangeId } from "../model/pending-changes.js";
 import { mergeSegmentsProjection } from "../model/optimistic.js";
 // The editor-delta reducer is shared with the feedback flow; it is not feedback-specific.
 import { applyFeedbackEditorDelta } from "../model/feedback.js";
 
 function createReviewActions(context) {
-  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, stableSaveIdentity, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
+  const { acceptHistory, acquireSaveLock, compatibilityMode, detail, detailPanelRef, dispatchPendingChanges, enqueueSave, getSaveQueueSnapshot, pendingChanges, stableSaveIdentity, historyRef, onConflict, onDetailChange, onReload, recordHistoryAction, revealSegmentGroupForSelection, savingSegmentId, selectedGroups, selectedSegment, selectedSegmentIdRef, selectedSegments, selectionAnchorIdRef, selectionRangeBaseIdsRef, setMergeConfirmation, setSaveMessage, setSelectedSegmentId, setSelectedSegmentIds, video } = context;
 
   function closeMergeConfirmation() {
       setMergeConfirmation(null);
@@ -154,24 +154,44 @@ function createReviewActions(context) {
       const queueSnapshot = getSaveQueueSnapshot();
       const waiting = savingSegmentIdFrom(queueSnapshot) != null
         || queueSnapshot.queued.some((task) => targetsOverlap(task.targets, request.identities.map(stableSaveIdentity)));
+      // Show the decision at once, toggled against what the editor shows (which includes decisions
+      // still queued), until the task runs and shows the decision it actually sends.
+      const shownSegments = applyPendingChanges(requestedSegments, (pendingChanges || []).filter((entry) => entry.op !== "insert"));
+      const shownState = toggledSelectionReviewState(shownSegments, requestedState);
+      const shownTargets = shownSegments.filter((segment) => segment.reviewState !== shownState).map(segmentIdentity);
+      const queuedPendingId = shownTargets.length > 0 ? createPendingChangeId() : null;
+      if (queuedPendingId) dispatchPendingChanges({
+        type: "add",
+        entry: { id: queuedPendingId, op: "patch", targets: shownTargets, values: { reviewState: shownState } },
+      });
+      const discardQueuedDecision = () => {
+        if (queuedPendingId) dispatchPendingChanges({ type: "discard", key: queuedPendingId });
+      };
       const task = enqueueSave({
         kind: "review",
         lockId: request.activeIdentity.id,
         targets: request.identities,
         whenBusy: "enqueue",
         // The queue may retarget identities (a created segment receiving its saved id), so read them when the task runs.
-        run: (saveContext) => runReviewDecision(saveContext, {
-          ...request,
-          identities: saveContext.targets,
-          activeIdentity: saveContext.targets[activeIndex],
-        }),
+        run: (saveContext) => {
+          discardQueuedDecision();
+          return runReviewDecision(saveContext, {
+            ...request,
+            identities: saveContext.targets,
+            activeIdentity: saveContext.targets[activeIndex],
+          });
+        },
       });
       if (!task) {
+        discardQueuedDecision();
         setSaveMessage("Wait for the history restore to finish.");
         return Promise.resolve(null);
       }
       if (waiting) setSaveMessage(`${requestedState === "approved" ? "Approval" : "Rejection"} queued…`);
-      return task.done;
+      return task.done.then((outcome) => {
+        if (outcome.status !== "fulfilled") discardQueuedDecision();
+        return outcome;
+      });
     }
 
     async function runReviewDecision({ detail, segments, onConflict, onReload }, request) {

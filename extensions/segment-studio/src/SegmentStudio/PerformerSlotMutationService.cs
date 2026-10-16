@@ -334,17 +334,45 @@ public static class PerformerSlotMutationService
         });
     }
 
-    public static async Task<IReadOnlyDictionary<int, string>> LoadAssignmentRevisionsAsync(
-        DbContext db, IReadOnlyDictionary<int, int> segmentTagIds, IReadOnlyList<PerformerSlotEditorItem> slots, CancellationToken ct)
+    // The definition half of each tag's assignment revision, for many tags in a fixed number of queries.
+    // It hashes the same fields as AssignmentDefinitionRevision(LoadDefinitionsAsync(...)), without
+    // loading every assignment of each tag, so an editor with thousands of segments stays cheap.
+    internal static async Task<IReadOnlyDictionary<int, string>> LoadAssignmentDefinitionRevisionsAsync(
+        DbContext db, IEnumerable<int> tagIds, CancellationToken ct)
     {
-        var result = new Dictionary<int, string>();
-        foreach (var (segmentId, tagId) in segmentTagIds)
-        {
-            var definitions = await LoadDefinitionsAsync(db, tagId, ct);
-            if (definitions is not null)
-                result[segmentId] = AssignmentRevision(AssignmentDefinitionRevision(definitions), slots.Where(slot => slot.SegmentId == segmentId));
-        }
-        return result;
+        var requestedTagIds = tagIds.Distinct().ToArray();
+        if (requestedTagIds.Length == 0) return new Dictionary<int, string>();
+        var sets = await (from candidate in db.Set<SegmentStudioSlotDefinitionSet>().AsNoTracking()
+                          join tag in db.Set<Tag>().AsNoTracking() on candidate.TagId equals tag.Id
+                          where requestedTagIds.Contains(candidate.TagId)
+                          select new { candidate.Id, candidate.TagId, candidate.AllowSamePerformerInMultipleSlots })
+            .ToListAsync(ct);
+        if (sets.Count == 0) return new Dictionary<int, string>();
+        var setIds = sets.Select(set => set.Id).ToArray();
+        // Ordered by the database like LoadDefinitionsAsync, so each set's definitions hash in the same order.
+        var definitions = await db.Set<SegmentStudioSlotDefinition>().AsNoTracking()
+            .Where(definition => setIds.Contains(definition.SlotDefinitionSetId))
+            .OrderBy(definition => definition.SlotDefinitionSetId)
+            .ThenBy(definition => definition.SortOrder).ThenBy(definition => definition.Id)
+            .Select(definition => new { definition.Id, definition.SlotDefinitionSetId, definition.Label, definition.SortOrder })
+            .ToListAsync(ct);
+        var definitionIds = definitions.Select(definition => definition.Id).ToArray();
+        var hints = (await db.Set<SegmentStudioSlotDefinitionGenderHint>().AsNoTracking()
+                .Where(hint => definitionIds.Contains(hint.SlotDefinitionId))
+                .Select(hint => new { hint.SlotDefinitionId, hint.GenderHint })
+                .ToListAsync(ct))
+            .ToLookup(hint => hint.SlotDefinitionId, hint => hint.GenderHint);
+        var definitionsBySet = definitions.ToLookup(definition => definition.SlotDefinitionSetId);
+        return sets.ToDictionary(set => set.TagId, set => AssignmentDefinitionRevision(new SlotDefinitionSetView(
+            set.TagId,
+            "",
+            set.AllowSamePerformerInMultipleSlots,
+            definitionsBySet[set.Id].Select(definition => new SlotDefinitionView(
+                definition.Id,
+                definition.Label,
+                definition.SortOrder,
+                hints[definition.Id].Order(StringComparer.Ordinal).ToArray(),
+                0)).ToArray())));
     }
 
     public static async Task<IReadOnlyDictionary<long, string>> LoadUnifiedAssignmentRevisionsAsync(
@@ -354,20 +382,19 @@ public static class PerformerSlotMutationService
         IReadOnlyList<PerformerSlotEditorItem> slots,
         CancellationToken ct)
     {
+        var definitionRevisions = await LoadAssignmentDefinitionRevisionsAsync(
+            db, nativeSegmentTagIds.Values.Concat(ownedItemTagIds.Values), ct);
+        var slotsBySegment = slots.ToLookup(slot => slot.SegmentId);
         var result = new Dictionary<long, string>();
         foreach (var (segmentId, tagId) in nativeSegmentTagIds)
         {
-            var definitions = await LoadDefinitionsAsync(db, tagId, ct);
-            if (definitions is not null)
-                result[segmentId] = AssignmentRevision(
-                    AssignmentDefinitionRevision(definitions), slots.Where(slot => slot.SegmentId == segmentId));
+            if (definitionRevisions.TryGetValue(tagId, out var definitionRevision))
+                result[segmentId] = AssignmentRevision(definitionRevision, slotsBySegment[segmentId]);
         }
         foreach (var (itemId, tagId) in ownedItemTagIds)
         {
-            var definitions = await LoadDefinitionsAsync(db, tagId, ct);
-            if (definitions is not null)
-                result[-itemId] = AssignmentRevision(
-                    AssignmentDefinitionRevision(definitions), slots.Where(slot => slot.SegmentId == -itemId));
+            if (definitionRevisions.TryGetValue(tagId, out var definitionRevision))
+                result[-itemId] = AssignmentRevision(definitionRevision, slotsBySegment[-itemId]);
         }
         return result;
     }

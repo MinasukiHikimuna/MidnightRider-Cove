@@ -51,7 +51,7 @@ test("timing edits move segment boundaries optimistically and roll back failed s
   assert.match(mutate, /optimistic = false/);
   // Display and rollback behaviour is covered by the save-flow cases.
   assert.match(mutate, /setSelectedSegmentIds\(previousSelectionIds\)/);
-  assert.match(timing, /mutateSegment\(selectedSegment, \{ startSec, endSec, tagId: selectedSegment\.tagId \}, true, null, true\)/);
+  assert.match(timing, /mutateSegment\(selectedSegment, \{ startSec, endSec, tagId: shown\.tagId \}, true, null, true\)/);
 });
 
 test("tag edits move segments to their new swimlane before persistence completes", () => {
@@ -109,7 +109,11 @@ test("common segment actions are clickable between the player and swimlanes", ()
   assert.match(actionDefinitions, /disabled: !hasPreviousUnreviewed/);
   assert.match(actionDefinitions, /disabled: !hasNextUnreviewed/);
   assert.match(actionDefinitions, /!compatibilityMode[\s\S]*marker\.moveToBin/);
-  assert.match(actionDefinitions, /disabled: selectionBusy \|\| !canMoveSelectionToBin/);
+  // Moving to the bin holds the whole editor, so it waits for every save; segment edits only wait
+  // for saves of the selected segments.
+  assert.match(actionDefinitions, /disabled: savingSegmentId != null \|\| !canMoveSelectionToBin/);
+  assert.match(actionDefinitions, /id: "marker\.split", label: "Split", disabled: selectionBusy \|\| !hasSingleSelection/);
+  assert.match(sourceByModule["editor/SegmentEditor.js"], /const selectionBusy = areSegmentsBusy\(saveQueueSnapshot, selectedSegments\)/);
   assert.match(actions, /const trigger = event\.currentTarget;[\s\S]*runEditorAction\(action\.id, \{ target: trigger, preserveFocus: true \}\)/);
   assert.match(actions, /restoreDisabledToolbarActionFocus\(trigger, commonActionsRef\.current, action\.focusWhenDisabled\)/);
   assert.match(actions, /shortcutBindings\[action\.id\]\?\.\[0\]/);
@@ -498,7 +502,8 @@ test("bulk workflow actions share counts, disabled states, dialogs, and toolbar 
   const controller = sourceByModule["editor/SegmentEditor.js"];
   assert.match(controller, /const materializeInventoryFingerprint = useMemo/);
   assert.match(controller, /performerSlots: \(detail\.performerSlots/);
-  assert.match(controller, /itemMetadata: detail\.itemMetadata/);
+  // Item metadata is read per selected item, so it is not part of the inventory the preview follows.
+  assert.doesNotMatch(controller, /itemMetadata: detail\.itemMetadata/);
   assert.match(controller, /segment\.sourceKey/);
   assert.match(controller, /segment\.sourceRunId/);
   assert.match(controller, /segment\.confidence/);

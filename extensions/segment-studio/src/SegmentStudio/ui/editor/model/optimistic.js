@@ -63,6 +63,19 @@ export function patchPerformerSlotProjection(detail, segmentId, slots, revision)
   };
 }
 
+// Drops the performer slots shown on a temporary segment once its saved row replaces it.
+export function dropTemporarySegmentProjection(detail, segmentId) {
+  const slots = detail.performerSlots || [];
+  const revisions = detail.performerSlotRevisions || {};
+  if (!slots.some((slot) => slot.segmentId === segmentId) && !(segmentId in revisions)) return detail;
+  const { [segmentId]: _dropped, ...remainingRevisions } = revisions;
+  return {
+    ...detail,
+    performerSlots: slots.filter((slot) => slot.segmentId !== segmentId),
+    performerSlotRevisions: remainingRevisions,
+  };
+}
+
 export function mergeSegmentsProjection(detail, mergedSegments) {
   const ordered = [...(mergedSegments || [])]
     .sort((left, right) => left.startSec - right.startSec || left.id - right.id);

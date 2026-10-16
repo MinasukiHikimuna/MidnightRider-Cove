@@ -64,7 +64,9 @@ public sealed record DirectSegmentSnapshot(
     string SourceKey,
     string? SourceRunId,
     float? Confidence,
-    IReadOnlyList<FieldProvenanceDto>? FieldProvenance = null);
+    IReadOnlyList<FieldProvenanceDto>? FieldProvenance = null,
+    // What a Full-mode mutation changed in the editor projection, so the editor need not reload.
+    SegmentEditorDelta? EditorDelta = null);
 
 public sealed record DirectSegmentMutationResult(
     DirectSegmentMutationStatus Status,
@@ -72,7 +74,12 @@ public sealed record DirectSegmentMutationResult(
     string? Error = null,
     IReadOnlyDictionary<string, object?>? ChangedFields = null,
     string? Code = null,
-    bool Replayed = false);
+    bool Replayed = false)
+{
+    // Set when an update changed more than the segment row (a retag or a cascading rejection).
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ProjectionChanged { get; init; }
+}
 
 public static class DirectSegmentReviewService
 {
@@ -502,7 +509,10 @@ public static class DirectSegmentReviewService
         var saved = await LoadSnapshotAsync(db, videoId, segmentId, ct);
         return saved is null
             ? new(DirectSegmentMutationStatus.NotFound, Error: "Segment not found.")
-            : new(DirectSegmentMutationStatus.Updated, saved, ChangedFields: changedFields);
+            : new(DirectSegmentMutationStatus.Updated, saved, ChangedFields: changedFields)
+            {
+                ProjectionChanged = tagId != current.TagId || cascadeRejection,
+            };
     }
 
     public static string ReadReviewState(JsonDocument? payload)

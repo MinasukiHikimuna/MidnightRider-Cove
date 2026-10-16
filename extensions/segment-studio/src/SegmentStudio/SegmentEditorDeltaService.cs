@@ -14,7 +14,11 @@ public sealed record SegmentEditorDelta(
     IReadOnlyList<long> RemovedSegmentIds,
     IReadOnlyList<SegmentEditorIdentityChange> IdentityChanges,
     string? ApprovedSetVersion,
-    IReadOnlyList<SegmentEditorBasicSegment>? UpsertedBasicSegments = null);
+    IReadOnlyList<SegmentEditorBasicSegment>? UpsertedBasicSegments = null,
+    // Every performer slot of the upserted segments and their assignment revisions, when the
+    // delta carries them; the editor replaces those segments' slots with these.
+    IReadOnlyList<PerformerSlotEditorItem>? PerformerSlots = null,
+    IReadOnlyDictionary<long, string>? PerformerSlotRevisions = null);
 
 public sealed record SegmentEditorBasicFieldProvenance(
     int NativeSegmentId,
@@ -64,6 +68,56 @@ public sealed record SegmentEditorBasicSegment(
 
 public static class SegmentEditorDeltaService
 {
+    // The widest change an editor mutation describes itself; a wider one leaves the editor to reload.
+    public const int MutationDeltaRowLimit = 200;
+
+    /// <summary>
+    /// What an editor mutation of <paramref name="rootItemIds"/> changed, including the performer
+    /// slots of every changed row when <paramref name="includePerformerSlots"/> is set, so the editor
+    /// can show it without refetching its whole projection. Null when the change is too wide.
+    /// </summary>
+    public static async Task<SegmentEditorDelta?> LoadMutationDeltaAsync(
+        DbContext db,
+        int videoId,
+        IReadOnlyCollection<long> rootItemIds,
+        bool includePerformerSlots,
+        CancellationToken ct)
+    {
+        var delta = await LoadBoundedItemClosureAsync(
+            db, videoId, rootItemIds, [], [], MutationDeltaRowLimit, ct);
+        if (delta is null || !includePerformerSlots) return delta;
+        var nativeTagIds = delta.UpsertedSegments
+            .Where(segment => segment.NativeSegmentId is not null)
+            .ToDictionary(segment => segment.NativeSegmentId!.Value, segment => segment.TagId);
+        var ownedTagIds = delta.UpsertedSegments
+            .Where(segment => segment.NativeSegmentId is null && segment.ItemId is not null)
+            .ToDictionary(segment => segment.ItemId!.Value, segment => segment.TagId);
+        var slots = await PerformerSlotEditorService.LoadUnifiedAsync(db, nativeTagIds, ownedTagIds, ct);
+        var revisions = await PerformerSlotMutationService.LoadUnifiedAssignmentRevisionsAsync(
+            db, nativeTagIds, ownedTagIds, slots, ct);
+        return delta with { PerformerSlots = slots, PerformerSlotRevisions = revisions };
+    }
+
+    /// <summary>
+    /// <see cref="LoadMutationDeltaAsync"/> for native segments, starting from the Segment Studio
+    /// items that anchor them. A native segment without an anchor is not shown by the Full editor.
+    /// </summary>
+    public static async Task<SegmentEditorDelta?> LoadNativeMutationDeltaAsync(
+        DbContext db,
+        int videoId,
+        IReadOnlyCollection<int> nativeSegmentIds,
+        bool includePerformerSlots,
+        CancellationToken ct)
+    {
+        var anchorIds = await db.Set<SegmentStudioItem>().AsNoTracking()
+            .Where(item => item.NativeSegmentId != null && nativeSegmentIds.Contains(item.NativeSegmentId.Value))
+            .Select(item => item.Id)
+            .ToArrayAsync(ct);
+        // Nothing to describe means the editor cannot trust a delta, so it reloads instead.
+        if (anchorIds.Length == 0) return null;
+        return await LoadMutationDeltaAsync(db, videoId, anchorIds, includePerformerSlots, ct);
+    }
+
     /// <summary>
     /// The same closure as <see cref="LoadItemClosureAsync"/>, or null when it spans more
     /// than <paramref name="maxItems"/> rows. A caller that can fall back to a full editor
@@ -257,7 +311,9 @@ public static class SegmentEditorDeltaService
     {
         if (itemIds.Count == 0) return [];
         var items = await db.Set<SegmentStudioItem>().AsNoTracking()
-            .Where(item => itemIds.Contains(item.Id) && item.VideoId == videoId)
+            // Native anchors carry no video id; their segments are scoped to the video below.
+            .Where(item => itemIds.Contains(item.Id)
+                && (item.VideoId == videoId || item.NativeSegmentId != null))
             .ToListAsync(ct);
         var ownedIds = items
             .Where(item => item.NativeSegmentId is null && item.ReviewState is not null)
@@ -297,6 +353,9 @@ public static class SegmentEditorDeltaService
                 from segment in db.Set<Segment>().AsNoTracking()
                 join tag in db.Set<Tag>().AsNoTracking() on segment.TagId equals tag.Id
                 where nativeIds.Contains(segment.Id)
+                    && segment.HostType == SegmentHostType.Video
+                    && segment.HostId == videoId
+                    && segment.Kind == "tag"
                 select new
                 {
                     segment.Id,

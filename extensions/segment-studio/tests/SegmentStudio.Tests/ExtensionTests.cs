@@ -99,7 +99,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(91, endpoints.Length);
+        Assert.Equal(92, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -288,6 +288,8 @@ public sealed class ExtensionTests
                 new([Permissions.SegmentsRead]),
             ["GET /api/plugins/segment-studio/videos/{videoId:int}/editor"] =
                 new([Permissions.SegmentsRead], EntityKinds.Video, "videoId", Permissions.VideosRead),
+            ["GET /api/plugins/segment-studio/videos/{videoId:int}/items/{itemId:long}/metadata"] =
+                new([Permissions.SegmentsRead, SegmentStudioExtension.ProvenanceReadPermission], EntityKinds.Video, "videoId", Permissions.VideosRead),
             ["GET /api/plugins/segment-studio/videos/{videoId:int}/history"] =
                 new([Permissions.SegmentsRead], EntityKinds.Video, "videoId", Permissions.VideosRead),
             ["POST /api/plugins/segment-studio/videos/{videoId:int}/history/actions"] =
@@ -495,16 +497,18 @@ public sealed class ExtensionTests
     }
 
     [Fact]
-    public void EditorPreloadsItemMetadataInOneProjection()
+    public void EditorReadsItemMetadataPerItemInsteadOfPreloadingIt()
     {
         var source = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
             "..", "..", "..", "..", "..",
             "src", "SegmentStudio", "SegmentStudioExtension.cs"));
+        var editor = source[source.IndexOf("\"/api/plugins/segment-studio/videos/{videoId:int}/editor\"", StringComparison.Ordinal)..];
+        editor = editor[..editor.IndexOf("endpoints.Map", StringComparison.Ordinal)];
 
-        Assert.Contains("SegmentEditorMetadataService.LoadAsync", source);
-        Assert.Contains("provenanceAccess.Allowed", source);
-        Assert.Contains("IReadOnlyDictionary<long, SegmentEditorItemMetadata> ItemMetadata", source);
+        // Provenance for every item made each editor load several megabytes; the editor reads one item at a time.
+        Assert.DoesNotContain("SegmentEditorMetadataService.LoadAsync", editor);
+        Assert.Contains("\"/api/plugins/segment-studio/videos/{videoId:int}/items/{itemId:long}/metadata\"", source);
     }
 
     [Fact]

@@ -26,7 +26,7 @@ function restoreDisabledToolbarActionFocus(trigger, toolbar, fallbackActionId) {
 }
 
 function SegmentEditorView(props) {
-  const { acquireSaveLock, activeFilterCount, allSwimlanes, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, cancelQueuedReviewsForSegments, canMoveSelectionToBin, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closePublishApprovedDialog, closeTagEditing, collapsedSegmentGroups, commonActionsRef, compatibilityMode, configuringTag, createSegment, creatingSegmentId, currentTime, deleteRejectedSegments, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hasNextUnreviewed, hasPreviousUnreviewed, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSaving, mergeSelectedSwimlane, nativeImportState, onDetailChange, onNavigate, onReload, onSlotsChanged, openPublishApprovedDialog, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, publishApprovedCancelButtonRef, publishApprovedDrafts, publishApprovedError, publishApprovedOpen, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, rejectedDeletionPreview, removeIncorrectExample, removingExampleId, restoreHistoryTarget, runEditorAction, saveMessage, saveTag, saveTiming, savingSegmentId, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setRejectedDeletionPreview, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, stepVideoFrame, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
+  const { acquireSaveLock, activeFilterCount, allSwimlanes, approvalFacetCounts, autoAssignCandidates, autoAssignError, autoAssignOpen, autoAssignPerformers, autoAssigning, cancelQueuedReviewsForSegments, canMoveSelectionToBin, captureTrainingExport, centerTimelineRef, closeEditorFilters, closeFirstSegmentTagDialog, closeMaterializeDialog, closeMergeConfirmation, closePublishApprovedDialog, closeTagEditing, collapsedSegmentGroups, commonActionsRef, compatibilityMode, configuringTag, createSegment, creatingSegmentId, currentTime, deleteRejectedSegments, detail, detailPanelRef, detailWidth, duplicateSegment, editorFilters, editorLayout, editorRef, exportingExamples, filtersButtonRef, filtersOpen, firstSegmentTagOpen, focusRowRef, handleSeparatorKeyDown, handleSeparatorPointerDown, handleSeparatorPointerMove, hasNextUnreviewed, hasPreviousUnreviewed, hideDerivedSegments, history, historyOpen, historySaving, horizontalLayoutSize, importNativeSegments, incorrectExamples, incorrectExamplesOpen, lineage, markerRailWidth, materializeButtonRef, materializeCancelButtonRef, materializeDerivedSegments, materializeError, materializeLoading, materializeOpen, materializePreview, materializing, mediaStackRef, mergeCancelButtonRef, mergeConfirmation, mergeSaving, mergeSelectedSwimlane, nativeImportState, onDetailChange, onNavigate, onReload, onSlotsChanged, openPublishApprovedDialog, panelSeparatorProps, pendingInitialSeekRef, performerSlots, performerSlotsAvailable, playbackControlsRef, previewDerivedSegments, provenance, provenanceSources, publishApprovedCancelButtonRef, publishApprovedDrafts, publishApprovedError, publishApprovedOpen, quickSearchOpen, railScrollRef, railToggleRef, recordHistoryAction, rejectedDeletionPreview, removeIncorrectExample, removingExampleId, restoreHistoryTarget, runEditorAction, saveMessage, saveTag, saveTiming, savingSegmentId, editorHeldByOtherWork, segmentCreationPending, selectionBusy, seekRef, segmentGroups, segmentRailLayout, segments, selectAllVideoSegments, selectSegment, selectSegmentCollection, selectedGroups, selectedPerformerSlots, selectedSegment, selectedSegmentGroupKey, selectedSegmentIds, selectedSegments, selectedSlotStatus, setAutoAssignError, setAutoAssignOpen, setConfiguringTag, setCurrentTime, setEditorFilters, setEditorLayout, setFiltersOpen, setHideDerivedSegments, setHistoryOpen, setIncorrectExamplesOpen, setQuickSearchOpen, setRailViewport, setRejectedDeletionPreview, setSaveMessage, setSelectedSegmentGroupKey, setSelectedSegmentId, setShortcutsOpen, setTimelineZoom, shotBoundaries, shortcutsOpen, slotButtonRef, splitLayout, splitSegment, stepVideoFrame, tagEditing, tagSearchRef, timelineDuration, timelineRatioBounds, timelineZoom, toggleSegmentGroup, toggleSegmentRail, updateTimelineRatio, video, videoPerformers, visibleCounts, visibleSegmentRailRows, visibleSegments, wideLayout, workspaceRef } = props;
   useDocumentTitle(video ? video.title || `Video ${video.id}` : null);
   const approvedDrafts = useMemo(
     () => segments.filter((segment) => !segment.published && segment.reviewState === "approved"),
@@ -39,14 +39,17 @@ function SegmentEditorView(props) {
   const materializeChangeCount = materializePreview
     ? materializePreview.createCount + materializePreview.linkCount
     : null;
-  const selectionBusy = savingSegmentId != null;
   const hasSelection = selectedSegments.length > 0;
   const hasSingleSelection = selectedSegments.length === 1;
   const allSelectedApproved = hasSelection && selectedSegments.every((segment) => segment.reviewState === "approved");
   const allSelectedRejected = hasSelection && selectedSegments.every((segment) => segment.reviewState === "rejected");
   const commonActions = [
-    { id: "marker.create", label: "New segment", disabled: selectionBusy },
-    { id: "marker.editTag", label: "Edit tag", disabled: selectionBusy || !hasSelection },
+    // Segment edits queue behind saves of other segments; only saves of the selection, or work that
+    // holds the whole editor, disable them.
+    // A create already waiting would be repeated by a second press, so it waits for that one.
+    { id: "marker.create", label: "New segment", disabled: editorHeldByOtherWork || segmentCreationPending },
+    // Retagging several segments at once holds the whole editor, so it waits for every save.
+    { id: "marker.editTag", label: "Edit tag", disabled: selectionBusy || !hasSelection || (selectedSegments.length > 1 && savingSegmentId != null) },
     { id: "marker.setStart", label: "Set start", disabled: selectionBusy || !hasSingleSelection },
     { id: "marker.setEnd", label: "Set end", disabled: selectionBusy || !hasSingleSelection },
     { id: "marker.split", label: "Split", disabled: selectionBusy || !hasSingleSelection },
@@ -57,7 +60,7 @@ function SegmentEditorView(props) {
       { id: "navigation.nextUnreviewedGlobal", label: "Next unreviewed", disabled: !hasNextUnreviewed, focusWhenDisabled: "navigation.previousUnreviewedGlobal" },
     ] : []),
     ...(!compatibilityMode ? [
-      { id: "marker.moveToBin", label: "Move to bin", disabled: selectionBusy || !canMoveSelectionToBin, tone: "reject" },
+      { id: "marker.moveToBin", label: "Move to bin", disabled: savingSegmentId != null || !canMoveSelectionToBin, tone: "reject" },
     ] : []),
   ];
 
@@ -453,6 +456,7 @@ function SegmentEditorView(props) {
                 selectedGroups,
                 saveMessage,
                 savingSegmentId,
+                selectionBusy,
                 creatingSegmentId,
                 acquireSaveLock,
                 setSaveMessage,

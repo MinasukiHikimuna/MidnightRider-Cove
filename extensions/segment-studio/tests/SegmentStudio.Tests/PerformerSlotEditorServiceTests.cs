@@ -72,9 +72,11 @@ public sealed class PerformerSlotEditorServiceTests
             });
         Assert.DoesNotContain(result, slot => slot.SegmentId == 999);
         var candidates = await PerformerSlotEditorService.LoadCandidatesAsync(db, 77, CancellationToken.None);
-        Assert.Equal([202, 201, 203], candidates.Select(candidate => candidate.PerformerId));
-        Assert.True(candidates[0].IsVideoPerformer);
-        Assert.Equal("Female", candidates.Single(candidate => candidate.PerformerId == 203).Gender);
+        // Only the video's own performers can fill a slot, so the rest of the library is not sent.
+        var candidate = Assert.Single(candidates);
+        Assert.Equal(202, candidate.PerformerId);
+        Assert.True(candidate.IsVideoPerformer);
+        Assert.Equal("Male", candidate.Gender);
     }
 
     [Fact]

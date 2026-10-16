@@ -16,7 +16,7 @@ import { DerivedSegmentIcon, MultiSegmentSelectionDetails, SegmentProvenanceDisc
 import { tagEditorLockedBySave } from "./model/shortcuts.js";
 
 function SegmentActiveEditor({
-  compatibilityMode, selectedSegment, selectedSegments = [], selectedGroups = [], saveMessage, savingSegmentId, creatingSegmentId = null,
+  compatibilityMode, selectedSegment, selectedSegments = [], selectedGroups = [], saveMessage, savingSegmentId, selectionBusy = savingSegmentId != null, creatingSegmentId = null,
   saveTag,
   saveTiming,
   slotStatus, performerSlotsAvailable, selectedPerformerSlots, performerSlots, detail, video, slotButtonRef, tagSearchRef,
@@ -213,7 +213,9 @@ function SegmentActiveEditor({
             selectedDisplay: "input",
             selectedLabel: selectedSegment.tagName,
             onChange: (tagId, option) => tagId == null ? onCancelTagEditing() : saveTag(tagId, option?.label),
-            disabled: tagEditorLockedBySave(savingSegmentId, selectedSegment.id, creatingSegmentId) || lineage.data?.tagReadOnly === true,
+            // Until lineage loads, the projection's derived flag says whether a rule sets the tag.
+            disabled: tagEditorLockedBySave(selectionBusy ? savingSegmentId ?? -1 : null, selectedSegment.id, creatingSegmentId)
+              || (lineage.data ? lineage.data.tagReadOnly === true : selectedSegment.isDerived === true),
             placeholder: "Find a tag…",
             inputClassName: "w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground",
             creatable: false,
@@ -286,7 +288,7 @@ function SegmentActiveEditor({
               : h("p", { key: "empty", className: "mt-1 text-xs text-secondary" }, "No lineage recorded."),
       ]),
       h("div", { key: "actions", className: "flex flex-wrap items-center gap-2" }, [
-        h("button", { key: "apply", type: "button", disabled: savingSegmentId != null, onClick: saveTiming, className: "rounded-md border border-accent bg-accent/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent/25 disabled:opacity-50" }, "Save timing"),
+        h("button", { key: "apply", type: "button", disabled: selectionBusy, onClick: saveTiming, className: "rounded-md border border-accent bg-accent/15 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent/25 disabled:opacity-50" }, "Save timing"),
         compatibilityMode ? h("button", {
           key: "slots",
           ref: slotButtonRef,
@@ -301,21 +303,21 @@ function SegmentActiveEditor({
         h("button", {
           key: "split",
           type: "button",
-          disabled: savingSegmentId != null,
+          disabled: selectionBusy,
           onClick: splitSegment,
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50",
         }, "Split at playhead"),
         h("button", {
           key: "duplicate",
           type: "button",
-          disabled: savingSegmentId != null,
+          disabled: selectionBusy,
           onClick: () => duplicateSegment(false),
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50",
         }, "Duplicate in place"),
         h("button", {
           key: "duplicate-at-playhead",
           type: "button",
-          disabled: savingSegmentId != null,
+          disabled: selectionBusy,
           onClick: () => duplicateSegment(true),
           className: "rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-50",
         }, "Duplicate at playhead"),

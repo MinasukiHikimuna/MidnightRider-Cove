@@ -225,8 +225,11 @@ test("workflow settings explain the Basic and Full storage boundary", () => {
   assert.match(settings, /Materialized derivations remain Segment Studio-owned and appear only in Full/);
 });
 
-test("selected segments render preloaded provenance without per-selection requests", () => {
-  assert.match(source, /detail\.itemMetadata\?\.\[selectedSegment\.itemId\]/);
+test("selected segments read provenance for the selected item instead of preloading every item", () => {
+  // A merge returns its survivor's metadata with the projection; any other selection is read from its item.
+  assert.match(source, /detail\.itemMetadata\?\.\[metadataItemId\]/);
+  assert.match(sourceByModule["editor/SegmentEditor.js"], /requestJson\(`\/videos\/\$\{video\.id\}\/items\/\$\{metadataItemId\}\/metadata`/);
+  assert.match(sourceByModule["editor/SegmentEditor.js"], /loading: itemMetadataState\.loading/);
   assert.match(source, /selectedSegment\?\.fieldProvenance/);
   assert.doesNotMatch(sourceByModule["editor/SegmentEditor.js"], /`\/items\/\$\{itemId\}\/provenance`/);
   assert.doesNotMatch(sourceByModule["editor/SegmentEditor.js"], /`\/videos\/\$\{video\.id\}\/segments\/\$\{nativeSegmentId\}\/provenance`/);
@@ -247,7 +250,7 @@ test("selected segments render preloaded provenance without per-selection reques
   assert.doesNotMatch(source, /Source \$\{segment\.sourceKey \|\| "unknown"\}/);
 });
 
-test("selected segments use preloaded lineage and derived tags are read-only", () => {
+test("selected segments use their item lineage and derived tags are read-only", () => {
   assert.match(source, /selectedItemMetadata\?\.lineage \|\| null/);
   assert.doesNotMatch(sourceByModule["editor/SegmentEditor.js"], /requestJson\(`\/items\/\$\{itemId\}\/lineage`/);
   assert.match(source, /"aria-label": "Segment lineage"/);
@@ -256,7 +259,9 @@ test("selected segments use preloaded lineage and derived tags are read-only", (
   assert.match(source, /"aria-label": "Derived segment"/);
   assert.match(source, /segment\.isDerived \? h\(DerivedSegmentIcon/);
   assert.match(source, /selectedSegment\?\.isDerived \? h\(DerivedSegmentIcon/);
-  assert.match(source, /disabled: tagEditorLockedBySave\(savingSegmentId, selectedSegment\.id, creatingSegmentId\) \|\| lineage\.data\?\.tagReadOnly === true/);
+  // Until lineage loads, the derived flag decides whether the tag is read-only, so typing is never blocked.
+  assert.match(source, /disabled: tagEditorLockedBySave\(selectionBusy \? savingSegmentId \?\? -1 : null, selectedSegment\.id, creatingSegmentId\)\s*\|\| \(lineage\.data \? lineage\.data\.tagReadOnly === true : selectedSegment\.isDerived === true\)/);
+  assert.doesNotMatch(source, /lineage\.loading === true/);
   assert.match(source, /This tag is read-only because it is set by a derivation rule\./);
   assert.match(source, /onNavigateLineageItem\(parent\.itemId\)/);
 });
@@ -558,7 +563,7 @@ test("new segments open the tag editor while their creation is still saving", ()
   assert.match(creation, /setCreatingSegmentId\(optimisticSegment\.id\)/);
   assert.match(creation, /tagEditingRef\.current[\s\S]*pendingTagEditSegmentIdRef\.current = createdSegment\.id/);
   assert.ok(creation.indexOf("replaceSegmentSelection(createdSegment.id)") < creation.indexOf("await recordHistoryAction"));
-  assert.match(source, /tagEditorLockedBySave\(savingSegmentId, selectedSegment\.id, creatingSegmentId\)/);
+  assert.match(source, /tagEditorLockedBySave\(selectionBusy \? savingSegmentId \?\? -1 : null, selectedSegment\.id, creatingSegmentId\)/);
   assert.match(editor, /if \(document\.activeElement === input\) return;/);
 });
 

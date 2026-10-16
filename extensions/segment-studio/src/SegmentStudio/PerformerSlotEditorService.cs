@@ -134,14 +134,15 @@ public static class PerformerSlotEditorService
 
     public static async Task<IReadOnlyList<PerformerSlotCandidate>> LoadCandidatesAsync(DbContext db, int videoId, CancellationToken ct)
     {
+        // Slots are only ever assigned to the video's own performers, so the editor is not sent the whole
+        // performer library on every load.
         var videoPerformerIds = await db.Set<VideoPerformer>().AsNoTracking().Where(link => link.VideoId == videoId)
             .Select(link => link.PerformerId).ToListAsync(ct);
-        var rows = await db.Set<Performer>().AsNoTracking().OrderBy(performer => performer.Name).ThenBy(performer => performer.Id)
+        var rows = await db.Set<Performer>().AsNoTracking().Where(performer => videoPerformerIds.Contains(performer.Id))
             .Select(performer => new { performer.Id, performer.Name, performer.Gender }).ToListAsync(ct);
         return rows.Select(performer => new PerformerSlotCandidate(
-                performer.Id, performer.Name, performer.Gender?.ToString(), videoPerformerIds.Contains(performer.Id)))
-            .OrderByDescending(candidate => candidate.IsVideoPerformer)
-            .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+                performer.Id, performer.Name, performer.Gender?.ToString(), true))
+            .OrderBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(candidate => candidate.PerformerId).ToArray();
     }
 

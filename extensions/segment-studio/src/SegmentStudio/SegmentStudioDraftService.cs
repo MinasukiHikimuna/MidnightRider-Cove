@@ -84,7 +84,18 @@ public sealed record SegmentDraftMutationResult(
     // The draft's performer slots after the mutation, so the editor can show a fresh auto-assignment
     // without waiting for its reload. Null when slots were not touched or the caller cannot read them.
     IReadOnlyList<PerformerSlotEditorItem>? PerformerSlots = null,
-    string? PerformerSlotRevision = null);
+    string? PerformerSlotRevision = null,
+    // What the mutation changed in the editor's projection, added by the endpoint after it commits so
+    // the editor need not reload. Null when it was not computed (an update that changed only the
+    // draft's own fields, which the editor applies itself; a replayed update; or a change too wide to
+    // describe, which the editor reloads to show).
+    SegmentEditorDelta? EditorDelta = null)
+{
+    // Set when an update changed more than the draft's own fields (a retag or a cascading rejection),
+    // so the endpoint describes the change. Not stored in replay receipts.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ProjectionChanged { get; init; }
+}
 
 public static class SegmentStudioDraftService
 {
@@ -212,6 +223,7 @@ public static class SegmentStudioDraftService
         var contentChanged = tagChanged || item.StartSec != request.StartSec || item.EndSec != request.EndSec;
         var nextReviewState = request.ReviewState ?? item.ReviewState;
         var changed = contentChanged || item.ReviewState != nextReviewState;
+        var rejecting = nextReviewState == "rejected" && item.ReviewState != "rejected";
         var slotsRemapped = false;
         if (changed)
         {
@@ -255,6 +267,7 @@ public static class SegmentStudioDraftService
                 : null);
         db.Add(CreateReceipt(request.OperationId, UpdateKind, fingerprint, principal, item.Id, result));
         await db.SaveChangesAsync(ct);
+        result = result with { ProjectionChanged = tagChanged || rejecting };
         return slotsRemapped ? await WithPerformerSlotsAsync(db, item, result, ct) : result;
     }
 

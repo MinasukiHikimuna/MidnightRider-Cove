@@ -21,10 +21,14 @@ function SegmentStudioEditorPage({
   const loadRequestRef = useRef(0);
   const actionRequestRef = useRef(0);
   const currentVideoRef = useRef(videoId);
+  // Changes applied from save responses, numbered so a reload that began before one of them can
+  // replay it onto its older snapshot instead of undoing it when it lands.
+  const updateSequenceRef = useRef(0);
+  const appliedUpdatesRef = useRef([]);
   const splitLayout = useSplitEditorLayout();
   currentVideoRef.current = videoId;
   const [reloadEditor] = useState(() => createEditorReloader({
-    beginRequest: () => ({ requestId: ++actionRequestRef.current, videoId: currentVideoRef.current }),
+    beginRequest: () => ({ requestId: ++actionRequestRef.current, videoId: currentVideoRef.current, updateSequence: updateSequenceRef.current }),
     fetchDetail: (request) => requestJson(editorPath(request.videoId)),
     isCurrent: (request) => isCurrentEditorRequest(request.requestId, actionRequestRef.current, request.videoId, currentVideoRef.current),
     isSameVideo: (request) => request.videoId === currentVideoRef.current,
@@ -53,14 +57,28 @@ function SegmentStudioEditorPage({
   }, [videoId]);
 
   function updateDetail(nextDetail, expectedVideoId) {
+    if (typeof nextDetail === "function") {
+      const sequence = ++updateSequenceRef.current;
+      appliedUpdatesRef.current = [...appliedUpdatesRef.current.slice(-199), { sequence, videoId: expectedVideoId, update: nextDetail }];
+    } else {
+      updateSequenceRef.current += 1;
+      appliedUpdatesRef.current = [];
+    }
     setDetail((current) => {
       if (current?.video.id !== expectedVideoId) return current;
       return typeof nextDetail === "function" ? nextDetail(current) : nextDetail;
     });
   }
 
+  function withUpdatesSince(loaded, request) {
+    return appliedUpdatesRef.current
+      .filter((entry) => entry.sequence > request.updateSequence && entry.videoId === request.videoId)
+      .reduce((detail, entry) => entry.update(detail), loaded);
+  }
+
   function reloadAfterConflict() {
     return reloadEditor({
+      prepare: withUpdatesSince,
       onLoaded: (loaded) => {
         setDetail(loaded);
         setError("A newer canonical segment was loaded. Your stale change was not applied.");
@@ -71,6 +89,7 @@ function SegmentStudioEditorPage({
 
   function reloadAfterSlotChange() {
     return reloadEditor({
+      prepare: withUpdatesSince,
       onLoaded: (loaded) => {
         setDetail(loaded);
         setError("");
@@ -81,6 +100,7 @@ function SegmentStudioEditorPage({
 
   function reloadAfterAnalysis() {
     return reloadEditor({
+      prepare: withUpdatesSince,
       onLoaded: (loaded) => {
         setDetail(loaded);
         setError("");
