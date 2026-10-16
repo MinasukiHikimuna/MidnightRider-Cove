@@ -489,6 +489,16 @@ export function ReviewWorkspace({
     if (editing)
       editorField.current?.querySelector<HTMLInputElement>("input")?.focus();
   }, [editing]);
+  // The editor is disabled while it saves, which drops the focus of the button that saved; when
+  // the save fails and the editor stays open, that button gets it back once it is enabled again.
+  const refocusAfterSave = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (pending) return;
+    const target = refocusAfterSave.current;
+    refocusAfterSave.current = null;
+    const active = document.activeElement;
+    if (target?.isConnected && (!active || active === document.body)) target.focus();
+  }, [pending]);
   const [performerDialog, setPerformerDialog] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   // Touch has no Shift: in phone-sized windows the pad's Stay on this item switch makes a tapped
@@ -1025,6 +1035,10 @@ export function ReviewWorkspace({
       tags !== null &&
       waitsForGroups(saved) &&
       openGroups(groupStatus(saved.actions, tagsAfterAction(action, tags, trees))).length > 0;
+    const editorFocus =
+      adHoc && editorField.current?.contains(document.activeElement)
+        ? (document.activeElement as HTMLElement)
+        : null;
     lock.current = true;
     setPending(true);
     setError("");
@@ -1107,6 +1121,7 @@ export function ReviewWorkspace({
             : `Could not advance. ${errorText(error)}`,
       );
       if (mutating && !savedTags) {
+        refocusAfterSave.current = editorFocus;
         if (optimisticNext) {
           setItems(items);
           setAutostartMediaId(null);

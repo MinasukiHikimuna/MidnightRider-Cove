@@ -350,6 +350,29 @@ it("retains editor inputs on partial failure and refreshes actual tags", async (
   expect(screen.getByRole("group", { name: "Edit occurrence tags" })).toBe(field);
   expect(input).toHaveFocus();
 });
+it("gives focus back to the editor's button after a failed save", async () => {
+  api.editTags.mockImplementation(async () => {
+    state = { ids: [40], names: ["Saved part"], absent: [] };
+    throw new Error("Denied");
+  });
+  open();
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+  fireEvent.change(screen.getByPlaceholderText("Choose tags for this item..."), {
+    target: { value: "40,41" },
+  });
+  const save = screen.getByRole("button", { name: "Save & next" });
+  save.focus();
+  fireEvent.click(save);
+  // A browser drops the focus of the button the saving editor disables.
+  expect(save).toBeDisabled();
+  const elsewhere = document.body.appendChild(document.createElement("button"));
+  elsewhere.focus();
+  elsewhere.remove();
+  expect(document.activeElement).toBe(document.body);
+  await screen.findByRole("alert");
+  await waitFor(() => expect(save).toHaveFocus());
+});
 it("Skip only moves the stable cursor and reloading makes items available again", async () => {
   const view = open();
   await ready();
