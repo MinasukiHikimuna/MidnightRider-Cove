@@ -27,6 +27,11 @@ function writeMergeConfirmationPreference(value) {
   }
 }
 
+// Derived segments stay Segment Studio-owned even when approved, so publishing leaves them out.
+export function isPublishableApprovedDraft(segment) {
+  return !segment.published && segment.reviewState === "approved" && !segment.isDerived;
+}
+
 export function filterDerivedSegments(segments, hideDerivedSegments) {
   return hideDerivedSegments ? segments.filter((segment) => !segment.isDerived) : segments;
 }

@@ -15,6 +15,7 @@ import { LaneReviewCounts } from "../PerformerSlotEditors.js";
 import { provenanceSourceLabel } from "../SegmentDetails.js";
 
 import { groupIncorrectExamplesByTag } from "../model/feedback.js";
+import { isPublishableApprovedDraft } from "../model/selection.js";
 
 const EDITOR_HISTORY_POPOVER_ID = "segment-studio-editor-history";
 
@@ -367,7 +368,7 @@ function SegmentQuickSearchDialog({ segments, onSelect, onClose }) {
 function groupApprovedDraftsForPublishing(segments) {
   const groups = new Map();
   for (const draft of segments || []) {
-    if (draft.published || draft.reviewState !== "approved") continue;
+    if (!isPublishableApprovedDraft(draft)) continue;
     const key = String(draft.tagId ?? `name:${draft.tagName || ""}`);
     if (!groups.has(key)) groups.set(key, {
       key,

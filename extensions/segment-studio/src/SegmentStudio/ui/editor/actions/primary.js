@@ -3,7 +3,7 @@ import { completeOperation, operationIdFor, requestJson } from "../../shared/api
 import { segmentHistoryState, segmentsHistoryState } from "../model/history.js";
 import { duplicateIdentityFromResponse, duplicateOperationKey, findPublishedSelectionIdentity, findSegmentByStableIdentity, resolveSegmentCreationAction } from "../model/shortcuts.js";
 import { groupSegmentsIntoSwimlanes, segmentGroupKeyForSegment } from "../model/swimlanes.js";
-import { editorVisibilityIncludingSegment } from "../model/selection.js";
+import { editorVisibilityIncludingSegment, isPublishableApprovedDraft } from "../model/selection.js";
 import { validateSegmentTiming } from "../model/timeline.js";
 import { dropTemporarySegmentProjection, insertSegmentProjection, patchPerformerSlotProjection } from "../model/optimistic.js";
 import { applyPendingChanges, createPendingChangeId, heldTagChangeFor } from "../model/pending-changes.js";
@@ -261,7 +261,7 @@ function createPrimarySegmentActions(context) {
 
     async function completeReview() {
       if (!compatibilityMode) return false;
-      const approvedDraftCount = segments.filter((segment) => !segment.published && segment.reviewState === "approved").length;
+      const approvedDraftCount = segments.filter((segment) => isPublishableApprovedDraft(segment)).length;
       if (approvedDraftCount === 0 || savingSegmentId != null) return false;
       const operationKey = `complete-review:${video.id}:${detail.approvedSetVersion}`;
       const releaseSaveLock = acquireSaveLock("publish", -1);

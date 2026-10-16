@@ -31,6 +31,7 @@ public static class SegmentStudioReviewCompletionService
 {
     private const string OperationKind = "complete-review";
 
+    // The version covers only the drafts publishing would convert, so changes to derived drafts do not make it stale.
     public static async Task<string> GetApprovedSetVersionAsync(DbContext db, int videoId, CancellationToken ct)
     {
         var rows = await db.Set<SegmentStudioItem>().AsNoTracking()
@@ -40,7 +41,9 @@ public static class SegmentStudioReviewCompletionService
             .OrderBy(item => item.Id)
             .Select(item => new { item.Id, item.Revision })
             .ToListAsync(ct);
-        return Hash(JsonSerializer.Serialize(rows));
+        var derivedItemIds = await DerivedTagGuard.LoadDerivedItemIdsAsync(
+            db, rows.Select(row => row.Id).ToArray(), ct);
+        return Hash(JsonSerializer.Serialize(rows.Where(row => !derivedItemIds.Contains(row.Id))));
     }
 
     public static async Task<ReviewCompletionResult> CompleteAsync(
@@ -82,8 +85,16 @@ public static class SegmentStudioReviewCompletionService
                 && item.ReviewState == "approved")
             .OrderBy(item => item.Id)
             .ToListAsync(ct);
+        // Derived segments stay Segment Studio-owned even when approved, so publishing leaves them as drafts,
+        // as the database guard requires.
+        var derivedItemIds = await DerivedTagGuard.LoadDerivedItemIdsAsync(
+            db, approved.Select(item => item.Id).ToArray(), ct);
+        var approvedDerivedCount = approved.Count(item => derivedItemIds.Contains(item.Id));
+        approved = approved.Where(item => !derivedItemIds.Contains(item.Id)).ToList();
         if (approved.Count == 0)
-            return Empty(ReviewCompletionStatus.NothingToPublish, currentVersion, "There are no Approved drafts to publish.");
+            return Empty(ReviewCompletionStatus.NothingToPublish, currentVersion, approvedDerivedCount > 0
+                ? "Approved derived segments stay in Segment Studio and are not published."
+                : "There are no Approved drafts to publish.");
         var approvedItemIds = approved.Select(item => item.Id).ToArray();
         var approvedNodeIds = await db.Set<SegmentStudioLineageNode>().AsNoTracking()
             .Where(node => node.ItemId != null && approvedItemIds.Contains(node.ItemId.Value))

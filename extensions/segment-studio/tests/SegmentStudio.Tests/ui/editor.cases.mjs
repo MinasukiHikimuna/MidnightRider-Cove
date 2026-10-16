@@ -426,6 +426,7 @@ test("approved draft publishing is previewed by tag before conversion to native 
       { id: 2, tagId: 10, tagName: "Alpha", startSec: 2, reviewState: "approved", published: false },
       { id: 4, tagId: 30, tagName: "Excluded published", startSec: 1, reviewState: "approved", published: true },
       { id: 5, tagId: 40, tagName: "Excluded pending", startSec: 1, reviewState: "unreviewed", published: false },
+      { id: 6, tagId: 50, tagName: "Excluded derived", startSec: 1, reviewState: "approved", published: false, isDerived: true },
     ]).map((group) => ({ tagName: group.tagName, ids: group.drafts.map((draft) => draft.id) })),
     [
       { tagName: "Alpha", ids: [2, 1] },
@@ -1808,4 +1809,17 @@ test("the editor names its video in the browser title", () => {
   const view = sourceByModule["editor/SegmentEditorView.js"];
 
   assert.match(view, /useDocumentTitle\(video \? video\.title \|\| `Video \$\{video\.id\}` : null\);/);
+});
+
+test("approved derived segments are left out of publishing because they stay Segment Studio-owned", () => {
+  const segments = [
+    { id: 1, reviewState: "approved", published: false, isDerived: false },
+    { id: 2, reviewState: "approved", published: false, isDerived: true },
+    { id: 3, reviewState: "approved", published: true },
+    { id: 4, reviewState: "unreviewed", published: false },
+    { id: 5, reviewState: "approved", published: false },
+  ];
+  assert.deepEqual(segments.filter(ui.isPublishableApprovedDraft).map((segment) => segment.id), [1, 5]);
+  for (const module of ["editor/SegmentEditor.js", "editor/SegmentEditorView.js", "editor/actions/primary.js"])
+    assert.doesNotMatch(sourceByModule[module], /!segment\.published && segment\.reviewState === "approved"/);
 });

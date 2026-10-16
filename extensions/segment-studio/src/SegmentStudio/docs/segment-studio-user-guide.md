@@ -369,7 +369,9 @@ Full mode combines two kinds of items in one editor:
 
 An unpublished draft can be **Unreviewed**, **Approved**, or **Rejected**.
 Approval accepts the draft for publication but does not publish it immediately.
-Publishing happens when you complete the review.
+Publishing happens when you complete the review. **Publish approved** leaves
+out approved derived segments: they stay Segment Studio-owned, as described
+above, and are not counted on the button.
 
 You can filter the editor by review state, activity, video, performer-slot
 assignment, and the other filters available to the current Segment Studio
@@ -487,9 +489,10 @@ checks that:
 - none of the items included in the completion plan changed after the summary
   was prepared.
 
-Segment Studio then publishes every approved draft as a native Cove segment.
-Rejected items remain extension-owned. The review is recorded as complete only
-after every approved draft has been published.
+Segment Studio then publishes every approved draft as a native Cove segment,
+except approved derived segments, which stay Segment Studio-owned. Rejected
+items remain extension-owned. The review is recorded as complete only after
+every publishable approved draft has been published.
 
 If publication is interrupted, reopen the completion summary and resume it.
 Already published items stay published, and Segment Studio does not create them

@@ -2737,6 +2737,58 @@ public sealed class SegmentOwnershipTransitionServiceTests
     }
 
     [Fact]
+    public async Task CompleteReviewLeavesApprovedDerivedSegmentsAsSegmentStudioDrafts()
+    {
+        await using var fixture = await TransitionFixture.CreateAsync();
+        var now = fixture.UpdatedAt.AddMinutes(1);
+        fixture.Context.Add(new Tag { Id = 12, Name = "Derived activity" });
+        var source = new SegmentStudioItem
+        {
+            ReviewState = "approved", VideoId = fixture.VideoId, StartSec = 10, EndSec = 12,
+            TagId = 11, Kind = "tag", SourceKey = "user", Revision = 1, CreatedAt = now, UpdatedAt = now,
+        };
+        var derived = new SegmentStudioItem
+        {
+            ReviewState = "approved", VideoId = fixture.VideoId, StartSec = 10, EndSec = 12,
+            TagId = 12, Kind = "tag", SourceKey = "user", Revision = 1, CreatedAt = now, UpdatedAt = now,
+        };
+        fixture.Context.AddRange(source, derived);
+        await fixture.Context.SaveChangesAsync();
+        var sourceNode = new SegmentStudioLineageNode { Id = Guid.NewGuid(), ItemId = source.Id, State = "live", LastKnownVideoId = fixture.VideoId, CreatedAt = now, UpdatedAt = now };
+        var derivedNode = new SegmentStudioLineageNode { Id = Guid.NewGuid(), ItemId = derived.Id, State = "live", LastKnownVideoId = fixture.VideoId, CreatedAt = now, UpdatedAt = now };
+        var rule = new SegmentStudioDerivationRule { Id = Guid.NewGuid(), Key = "rule", Version = "1", SourceTagId = 11, DerivedTagId = 12, MetadataJson = "{}", CreatedAt = now, UpdatedAt = now };
+        fixture.Context.AddRange(
+            sourceNode, derivedNode, rule,
+            new SegmentStudioDerivationEdge { SourceNodeId = sourceNode.Id, DerivedNodeId = derivedNode.Id, RuleId = rule.Id, SourceTagIdAtCreation = 11, DerivedTagIdAtCreation = 12, MetadataJson = "{}", CreatedAt = now, UpdatedAt = now });
+        await fixture.Context.SaveChangesAsync();
+        var version = await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
+            fixture.Context, fixture.VideoId, CancellationToken.None);
+        // A change to a derived draft does not alter what publishing converts, so it keeps the version.
+        derived.Revision++;
+        await fixture.Context.SaveChangesAsync();
+        Assert.Equal(version, await SegmentStudioReviewCompletionService.GetApprovedSetVersionAsync(
+            fixture.Context, fixture.VideoId, CancellationToken.None));
+
+        var completed = await SegmentStudioReviewCompletionService.CompleteAsync(
+            fixture.Context, fixture.VideoId, new(Guid.NewGuid(), version), CovePrincipal.System(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        // Publishing the derived item would trip the database guard and fail the whole request.
+        Assert.Equal(ReviewCompletionStatus.Completed, completed.Status);
+        Assert.Equal(source.Id, Assert.Single(completed.Published).ItemId);
+        var savedDerived = await fixture.Context.Set<SegmentStudioItem>().AsNoTracking()
+            .SingleAsync(item => item.Id == derived.Id);
+        Assert.Equal(("approved", (int?)null), (savedDerived.ReviewState, savedDerived.NativeSegmentId));
+
+        var onlyDerived = await SegmentStudioReviewCompletionService.CompleteAsync(
+            fixture.Context, fixture.VideoId, new(Guid.NewGuid(), completed.ApprovedSetVersion), CovePrincipal.System(),
+            fixture.Authorization, fixture.Blobs, CancellationToken.None);
+
+        Assert.Equal(ReviewCompletionStatus.NothingToPublish, onlyDerived.Status);
+        Assert.Equal("Approved derived segments stay in Segment Studio and are not published.", onlyDerived.Error);
+    }
+
+    [Fact]
     public async Task CompleteReviewIsIdempotentAndConflictsWhenApprovedSetChanges()
     {
         await using var fixture = await TransitionFixture.CreateAsync();

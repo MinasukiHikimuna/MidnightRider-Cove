@@ -2,7 +2,7 @@ import { h, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useRegister
 
 import { EMPTY_EDITOR_HISTORY, REVIEW_STATES, SEGMENT_STUDIO_EXTENSION_ID } from "../shared/constants.js";
 
-import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, selectionReferenceForSegment, filterEditorSegments, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
+import { CLEARED_SEGMENT_SELECTION_ID, activeEditorFilterCount, selectionReferenceForSegment, filterEditorSegments, isPublishableApprovedDraft, normalizeEditorSegmentFilters, readHideDerivedSegmentsPreference, reconcileSelectedSegmentIds, resolveEditorSegmentSelection, resolveSelectedSegments, writeHideDerivedSegmentsPreference } from "./model/selection.js";
 
 import { SEGMENT_STUDIO_SHORTCUTS, readPlaybackShortcutConfig, shortcutAvailableInMode } from "./model/shortcuts.js";
 
@@ -769,7 +769,7 @@ function SegmentEditor({ detail, onDetailChange, onConflict: onConflictProjectio
   function openPublishApprovedDialog(trigger = null) {
     if (!compatibilityMode
         || savingSegmentId != null
-        || !segments.some((segment) => !segment.published && segment.reviewState === "approved")) return;
+        || !segments.some((segment) => isPublishableApprovedDraft(segment))) return;
     const ownerDocument = editorRef.current?.ownerDocument ?? document;
     const activeElement = ownerDocument.activeElement === ownerDocument.body
       ? null
