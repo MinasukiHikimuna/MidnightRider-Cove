@@ -7316,7 +7316,8 @@ async function fp(e, t, n, r) {
     ...e,
     view: {
       ...e.view,
-      filter: { ...c, perPage: Rs, sort: "id", direction: "asc" }
+      // Cove breaks ties in creation time by id, so pages neither overlap nor shift under a write.
+      filter: { ...c, perPage: Rs, sort: "created_at", direction: "asc" }
     }
   }, f = /* @__PURE__ */ new Map();
   for (let d = 1; ; d++) {
@@ -7365,7 +7366,7 @@ async function pp(e, t, n, r, o = {}) {
         var E;
         return (E = o.onProgress) == null ? void 0 : E.call(o, { ...l, ranked: N(y), limit: n, complete: !1, partial: !0 });
       }
-    );
+    ).catch(() => (r.throwIfAborted(), null));
     if (v)
       return { ...l, cursor: f.length, ranked: N(v), limit: n, complete: !0 };
   }

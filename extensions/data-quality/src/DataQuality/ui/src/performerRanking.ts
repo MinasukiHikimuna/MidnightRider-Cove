@@ -155,7 +155,8 @@ async function countAllInQueue(
     ...review,
     view: {
       ...review.view,
-      filter: { ...filter, perPage: LOCAL_RANKING_PAGE, sort: "id", direction: "asc" },
+      // Cove breaks ties in creation time by id, so pages neither overlap nor shift under a write.
+      filter: { ...filter, perPage: LOCAL_RANKING_PAGE, sort: "created_at", direction: "asc" },
     },
   };
   const counts = new Map<number, number>();
@@ -247,13 +248,17 @@ export async function extendRanking(
           return candidate && count > 0 ? [{ ...candidate, count }] : [];
         })
         .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    // Should reading the queue fail, the performers are counted one by one instead.
     const counts = await countAllInQueue(
       review,
       targetsAllPerformers(review.occurrence) ? null : candidates.map((candidate) => candidate.id),
       signal,
       (sofar) =>
         options.onProgress?.({ ...base, ranked: rankedFrom(sofar), limit, complete: false, partial: true }),
-    );
+    ).catch(() => {
+      signal.throwIfAborted();
+      return null;
+    });
     if (counts)
       return { ...base, cursor: candidates.length, ranked: rankedFrom(counts), limit, complete: true };
   }

@@ -414,9 +414,26 @@ it("counts every performer from the queue in one pass when the queue is small", 
   expect(aggregates).toHaveLength(0);
   expect(sceneCounts).toHaveLength(1);
   expect(sceneFinds).toHaveLength(1);
-  expect(sceneFinds[0].findFilter).toMatchObject({ page: 1, perPage: 250, sort: "id", direction: "asc" });
+  expect(sceneFinds[0].findFilter).toMatchObject({ page: 1, perPage: 250, sort: "created_at", direction: "asc" });
   // Asking for more places needs nothing more.
   const more = await extendRanking(rule, ranking, 10, signal());
   expect(more.complete).toBe(true);
   expect(sceneFinds).toHaveLength(1);
+});
+
+it("counts performers one by one when reading the small queue fails", async () => {
+  sceneTotal = 3;
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((path, init) =>
+    String(path).startsWith("/api/videos/find")
+      ? Promise.resolve(new Response(JSON.stringify({ message: "Unavailable" }), { status: 503 }))
+      : original(path, init),
+  );
+  const ranking = await extendRanking(review, null, 3, signal(), { concurrency: 1 });
+  expect(ranking.ranked.slice(0, 3).map((p) => [p.name, p.count])).toEqual([
+    ["B", 90],
+    ["C", 60],
+    ["D", 50],
+  ]);
+  expect(aggregates.length).toBeGreaterThan(0);
 });
