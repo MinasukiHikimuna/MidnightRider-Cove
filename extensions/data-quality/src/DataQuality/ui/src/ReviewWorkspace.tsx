@@ -931,10 +931,11 @@ export function ReviewWorkspace({
               ),
             ],
           }
-        : result;
+        // The next item is the first in traversal order, which in reverse is the page's last.
+        : { ...result, items: orderedResult };
       if (stay) {
         stayedCursor.current = cursor;
-        acceptPage(reconciledResult, nextPage, current, false, refresh);
+        acceptPage(reconciledResult, nextPage, current, false, true);
         return;
       }
       const candidate =
@@ -952,7 +953,7 @@ export function ReviewWorkspace({
           nextPage,
           candidate ?? null,
           resumePlayback,
-          refresh,
+          true,
         );
         if (!candidate)
           setNotice(

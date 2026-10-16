@@ -824,6 +824,34 @@ it("does not revisit already traversed scenes when a backward page refills", asy
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("link", { name: "First scene" });
 });
+it("skips onto the preceding page's first item in traversal order", async () => {
+  // Reverse traversal shows each page backwards: page 2 as D, C, then page 1 as B, A.
+  const pages = [["A", "B"], ["C", "D"]];
+  api.findMedia.mockImplementation(async (_rule, filter) => ({
+    items: pages[Number(filter.page) - 1].map((title) => ({
+      ...video,
+      id: title.charCodeAt(0),
+      title,
+    })),
+    totalCount: 4,
+  }));
+  open({
+    ...review,
+    entityType: "video",
+    view: { ...review.view, startFrom: "end", filter: { perPage: 2 } },
+  } as VideoReview);
+  await screen.findByRole("link", { name: "D" });
+  await ready();
+
+  fireEvent.click(screen.getByRole("button", { name: "Skip video" }));
+  await screen.findByRole("link", { name: "C" });
+  fireEvent.click(screen.getByRole("button", { name: "Skip video" }));
+
+  await screen.findByRole("link", { name: "B" });
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get("page")).toBe("1"));
+  fireEvent.click(screen.getByRole("button", { name: "Skip video" }));
+  await screen.findByRole("link", { name: "A" });
+});
 it("starts a changed queue from the end in a review that starts from the end", async () => {
   const titles = ["First scene", "Next scene", "Last scene"];
   api.findMedia.mockImplementation(async (_rule, filter) => ({
