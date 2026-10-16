@@ -2532,6 +2532,29 @@ it("selects every tag on load for tag reviews that ask for it", async () => {
   expect(screen.getByText("2 selected")).toBeInTheDocument();
 });
 
+it("lands on the new last page when staying empties the last page of a review that starts from the beginning", async () => {
+  window.history.replaceState(null, "", "/data-quality?review=review&q=&page=3&perPage=2&sort=date&direction=desc&filters=%7B%7D&searchMode=text&startFrom=beginning");
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, startFrom: "beginning", selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
+  let remaining = [video(1), video(2), video(3), video(4), video(5), video(6)];
+  api.findMedia.mockImplementation(async (_review, filter) => {
+    const perPage = Number(filter.perPage);
+    const page = Number(filter.page);
+    return { items: remaining.slice((page - 1) * perPage, page * perPage), totalCount: remaining.length };
+  });
+  api.runReviewAction.mockImplementation(async (_kind, _action, ids: number[]) => {
+    remaining = remaining.filter((item) => !ids.includes(item.id));
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 5, selected" });
+  // Both cards answered and kept in place; the queue now ends on page 2, which Cove's toolbar
+  // pulls the page back to.
+  fireEvent.keyDown(screen.getByRole("article", { name: "Video 5, selected" }), { key: "q", shiftKey: true });
+  await waitFor(() => expect(api.runReviewAction).toHaveBeenCalledTimes(1));
+  await screen.findByRole("article", { name: /^Video 3/ });
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get("page")).toBe("2"));
+  expect(screen.queryByRole("article", { name: /^Video 1/ })).not.toBeInTheDocument();
+});
+
 it("keeps walking towards the first page when an earlier page refills from the tail", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", filter: { page: 1, perPage: 2 }, startFrom: "end", selectAllOnLoad: true } }], storageKey: "reviews", canWrite: true });
   let remaining = [video(1), video(2), video(3), video(4), video(5), video(6)];

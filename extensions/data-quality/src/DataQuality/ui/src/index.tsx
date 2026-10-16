@@ -2332,8 +2332,13 @@ export function DataQualityPage({
     const target = keepsTemporaryQueue ? adjusted : savedReview;
     setTemporaryReview(keepsTemporaryQueue ? adjusted : null);
     setMessage(keepsTemporaryQueue ? "" : "Review queue defaults restored.");
-    // The changed queue starts where the review does, as Reset does.
-    void resumeQueue(target, targetFilter, target.view.startFrom !== "beginning");
+    // Only the page differs when Cove's toolbar pulls a page that no longer exists back within the
+    // queue (the grid's own pager does not come this way): that lands on the last page, as it did.
+    // A changed queue starts where the review does, as Reset does.
+    const { page: _page, ...rest } = boundedFilter(nextFilter);
+    const { page: _current, ...shown } = boundedFilter(filter);
+    const pageOnly = !toolbarObjectFilter && JSON.stringify(rest) === JSON.stringify(shown);
+    void resumeQueue(target, targetFilter, pageOnly || target.view.startFrom !== "beginning");
   }
 
   function resetQueueToReviewDefaults() {

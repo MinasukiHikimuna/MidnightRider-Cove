@@ -694,6 +694,13 @@ export function DetailListToolbar({
   const page = Number(filter.page) || 1;
   const start = totalCount ? (page - 1) * perPage + 1 : 0;
   const end = Math.min(page * perPage, totalCount);
+  // Like Cove's toolbar, a page past the last one is pulled back within the list.
+  const clampedPage = Math.min(Math.max(1, page), Math.max(1, Math.ceil(totalCount / perPage)));
+  const repairPage = React.useRef(onFilterChange);
+  repairPage.current = (next) => onFilterChange(next);
+  React.useEffect(() => {
+    if (totalCount > 0 && clampedPage !== page) repairPage.current({ ...filter, page: clampedPage });
+  }, [clampedPage, page, totalCount]);
   return (
     <>
       <div
