@@ -2979,9 +2979,27 @@ function ReviewTagCard({
   onOpen: () => void;
   onNavigate: (route: { page: string; id?: number }) => void;
 }) {
+  const root = useRef<HTMLElement | null>(null);
+  const attach = useCallback(
+    (node: HTMLElement | null) => {
+      root.current = node;
+      setRef(node);
+    },
+    [setRef],
+  );
+  // Cove's tile labels its checkmark "Select item"; name the tag, as the video cards do. The mark
+  // finds the button again after Cove sets its own label back.
+  useLayoutEffect(() => {
+    const selection = root.current?.querySelector<HTMLButtonElement>(
+      'button[data-dq-selection], button[aria-label="Select item"], button[aria-label="Deselect item"]',
+    );
+    if (!selection) return;
+    selection.dataset.dqSelection = "";
+    selection.setAttribute("aria-label", selected ? `Deselect ${tag.name}` : `Select ${tag.name}`);
+  });
   return (
     <article
-      ref={setRef}
+      ref={attach}
       tabIndex={0}
       aria-current={focused ? "true" : undefined}
       aria-label={`${tag.name}${selected ? ", selected" : ""}`}

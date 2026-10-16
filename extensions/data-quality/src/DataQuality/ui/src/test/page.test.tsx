@@ -478,6 +478,11 @@ describe("Data Quality extension page", () => {
 
     render(<DataQualityPage onNavigate={vi.fn()} />);
     const first = await screen.findByRole("article", { name: "Tag 11" });
+    // Each tile's checkmark names its tag.
+    const select = within(first).getByRole("button", { name: "Select Tag 11" });
+    fireEvent.click(select);
+    expect(within(screen.getByRole("article", { name: "Tag 11, selected" })).getByRole("button", { name: "Deselect Tag 11" })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("article", { name: "Tag 11, selected" })).getByRole("button", { name: "Deselect Tag 11" }));
     expect(api.findTags).toHaveBeenCalledWith(
       tagReview,
       expect.objectContaining({ page: 1, perPage: 40 }),
