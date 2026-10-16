@@ -1161,7 +1161,7 @@ it("keeps a refused import's reason until the next action, while a result goes a
   try {
     api.saveReviews.mockRejectedValueOnce(
       new StaleReviewsError(
-        "Reviews changed in another browser. Your draft is still open. Export it, then reload before saving.",
+        "Reviews changed in another browser. Reload the page to get them, then try again.",
       ),
     );
     render(<DataQualityPage onNavigate={vi.fn()} />);
@@ -1275,7 +1275,7 @@ it("says under the header why a deletion failed, and gives focus back to the men
 it("says in an open review why deleting it failed, in the list's words", async () => {
   api.saveReviews.mockRejectedValueOnce(
     new StaleReviewsError(
-      "Reviews changed in another browser. Your draft is still open. Export it, then reload before saving.",
+      "Reviews changed in another browser. Reload the page to get them, then try again.",
     ),
   );
   render(<DataQualityPage onNavigate={vi.fn()} />);
@@ -1344,7 +1344,7 @@ it("says why a duplicate was not saved, and holds the list's other changes while
   await act(async () =>
     fail(
       new StaleReviewsError(
-        "Reviews changed in another browser. Your draft is still open. Export it, then reload before saving.",
+        "Reviews changed in another browser. Reload the page to get them, then try again.",
       ),
     ),
   );
@@ -1600,7 +1600,7 @@ it("follows Back and Forward with one listener for the page's lifetime", async (
 it("keeps a new review's draft open, exportable, when it cannot be saved", async () => {
   window.history.replaceState(null, "", "/data-quality");
   api.saveReviews.mockRejectedValueOnce(
-    new Error("Reviews changed in another browser. Your draft is still open. Export it, then reload before saving."),
+    new Error("Reviews changed in another browser. Reload the page to get them, then try again."),
   );
   const downloads = captureDownloads();
   render(<DataQualityPage onNavigate={vi.fn()} />);

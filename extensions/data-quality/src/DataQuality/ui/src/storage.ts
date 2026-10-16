@@ -25,10 +25,17 @@ interface Session {
   durable: boolean;
 }
 /**
- * The account configuration changed since this browser read it. The message speaks to an editor
- * whose draft stays open; the reviews list words it for its own actions.
+ * The account configuration changed since this browser read it, in a way this save cannot merge:
+ * another browser changed one of the reviews this save changes. Callers add what they keep.
  */
-export class StaleReviewsError extends Error {}
+export class StaleReviewsError extends Error {
+  /** The configuration as the other browser left it, when it was read. */
+  readonly remote?: Configuration;
+  constructor(message: string, remote?: Configuration) {
+    super(message);
+    this.remote = remote;
+  }
+}
 
 const sessions = new Map<string, Session>();
 const writes = new Map<string, Promise<unknown>>();
@@ -306,9 +313,11 @@ async function persist(key: string, next: Configuration) {
       const remote = await request<RecordRow>(
         `/api/savedfilters/${session.recordId}`,
       );
-      if (decode(remote.uiOptions).revision !== session.config.revision)
+      const theirs = decode(remote.uiOptions);
+      if (theirs.revision !== session.config.revision)
         throw new StaleReviewsError(
-          "Reviews changed in another browser. Your draft is still open. Export it, then reload before saving.",
+          "Reviews changed in another browser. Reload the page to get them, then try again.",
+          theirs,
         );
     }
     const row = await request<RecordRow>(
@@ -342,6 +351,15 @@ async function persist(key: string, next: Configuration) {
   }
 }
 
+// A review as saved, or "" when the list has none with that id.
+const reviewText = (reviews: Review[], id: string) =>
+  JSON.stringify(reviews.find((review) => review.id === id) ?? "");
+// The reviews a save adds, removes or changes.
+const changedIds = (before: Review[], after: Review[]) =>
+  [...new Set([...before, ...after].map((review) => review.id))].filter(
+    (id) => reviewText(before, id) !== reviewText(after, id),
+  );
+
 /**
  * Saves a change to the reviews: `change` gets the list as last saved and returns the list to
  * save, or the list it was given to save nothing. Saves run one at a time, and each change is
@@ -355,21 +373,42 @@ export function saveReviews(
   return serial(key, async () => {
     const session = sessions.get(key);
     if (!session) throw new Error("Reload reviews before saving.");
-    const current = session.config.reviews;
-    const reviews = change(current);
-    if (reviews === current) return current;
-    parseReviews(JSON.stringify(reviews));
-    const removed = current
-      .filter((review) => !reviews.some((next) => next.id === review.id))
-      .map((review) => review.id);
-    await persist(key, {
-      ...session.config,
-      reviews,
-      deletedIds: [
-        ...new Set([...session.config.deletedIds, ...removed]),
-      ].filter((id) => !reviews.some((review) => review.id === id)),
-    });
-    return reviews;
+    for (let attempt = 1; ; attempt++) {
+      const current = session.config.reviews;
+      const reviews = change(current);
+      if (reviews === current) return current;
+      parseReviews(JSON.stringify(reviews));
+      const removed = current
+        .filter((review) => !reviews.some((next) => next.id === review.id))
+        .map((review) => review.id);
+      try {
+        await persist(key, {
+          ...session.config,
+          reviews,
+          deletedIds: [
+            ...new Set([...session.config.deletedIds, ...removed]),
+          ].filter((id) => !reviews.some((review) => review.id === id)),
+        });
+        return reviews;
+      } catch (error) {
+        const theirs = error instanceof StaleReviewsError ? error.remote : undefined;
+        if (!theirs || attempt >= 3) throw error;
+        // Another browser saved meanwhile. When it left every review this save changes as this
+        // browser last saw it, the change applies to its list instead, keeping both; when it
+        // changed one of them too, this save stops rather than overwrite that.
+        const clash = changedIds(current, reviews).find(
+          (id) => reviewText(current, id) !== reviewText(theirs.reviews, id),
+        );
+        if (clash !== undefined) {
+          const name = (reviews.find((review) => review.id === clash) ??
+            current.find((review) => review.id === clash))?.name;
+          throw new StaleReviewsError(
+            `“${name ?? "This review"}” was also changed in another browser. Reload the page to get that version.`,
+          );
+        }
+        session.config = theirs;
+      }
+    }
   });
 }
 

@@ -130,7 +130,7 @@ it("treats the newest empty browser snapshot as an intentional deletion", async 
   expect((await loadReviews()).reviews).toEqual([]);
 });
 
-it("does not overwrite a newer remote edit from another browser", async () => {
+it("does not overwrite another browser's newer edit of the same review", async () => {
   localStorage.setItem(
     "cove-data-quality-reviews-v1:u",
     JSON.stringify([review]),
@@ -139,11 +139,41 @@ it("does not overwrite a newer remote edit from another browser", async () => {
   const record = records.find((r) => r.mode.includes("configuration"))!;
   const config = JSON.parse(record.uiOptions);
   config.revision = "other-browser";
+  config.reviews = [{ ...review, name: "Theirs" }];
   record.uiOptions = JSON.stringify(config);
-  await expect(saveReviews(loaded.storageKey, () => [])).rejects.toThrow(
-    /another browser/i,
+  await expect(
+    saveReviews(loaded.storageKey, (current) =>
+      current.map((item) => ({ ...item, name: "Mine" })),
+    ),
+  ).rejects.toThrow("“Mine” was also changed in another browser. Reload the page to get that version.");
+  expect(JSON.parse(record.uiOptions).reviews).toEqual([{ ...review, name: "Theirs" }]);
+});
+
+it("keeps another browser's newer edit of other reviews and saves this one beside it", async () => {
+  localStorage.setItem(
+    "cove-data-quality-reviews-v1:u",
+    JSON.stringify([review]),
   );
-  expect(JSON.parse(record.uiOptions).reviews).toEqual([review]);
+  const loaded = await loadReviews();
+  const record = records.find((r) => r.mode.includes("configuration"))!;
+  const config = JSON.parse(record.uiOptions);
+  const theirs = { ...review, id: "theirs", name: "Theirs" };
+  config.revision = "other-browser";
+  config.reviews = [review, theirs];
+  record.uiOptions = JSON.stringify(config);
+
+  const saved = await saveReviews(loaded.storageKey, (current) =>
+    current.map((item) => (item.id === review.id ? { ...item, name: "Mine" } : item)),
+  );
+
+  const both = [{ ...review, name: "Mine" }, theirs];
+  expect(saved).toEqual(both);
+  const stored = () =>
+    JSON.parse(records.find((r) => r.mode.includes("configuration"))!.uiOptions).reviews;
+  expect(stored()).toEqual(both);
+  // The next save starts from what was saved, without another conflict.
+  await saveReviews(loaded.storageKey, (current) => current.filter((item) => item.id !== "theirs"));
+  expect(stored()).toEqual([{ ...review, name: "Mine" }]);
 });
 
 it("retains local-only operation without saved-filter permissions", async () => {

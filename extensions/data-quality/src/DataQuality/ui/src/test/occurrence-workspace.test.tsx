@@ -507,6 +507,8 @@ it("keeps changed queue criteria available when a compact save fails", async () 
   fireEvent.click(await screen.findByRole("button", { name: "Save to review" }));
 
   expect(await screen.findByText("Could not save queue. Temporary failure")).toBeInTheDocument();
+  // Nothing about the item failed, so its tags are not offered for reloading.
+  expect(screen.queryByRole("button", { name: "Reload tags" })).not.toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "Search list" })).toHaveValue("temporary");
   expect(screen.getByRole("button", { name: "Save to review" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();

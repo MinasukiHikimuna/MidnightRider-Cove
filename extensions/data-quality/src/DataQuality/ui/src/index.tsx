@@ -53,7 +53,6 @@ import {
   runReviewAction,
   runTagReviewAction,
   saveReviews,
-  StaleReviewsError,
   videoPreviewStatusUrl,
   videoPreviewUrl,
   videoScreenshotUrl,
@@ -1812,13 +1811,8 @@ export function DataQualityPage({
     }
   }
 
-  /**
-   * Why an import, a duplicate or a deletion failed, in the list's words: the list keeps no draft
-   * to export.
-   */
+  /** Why an import, a duplicate or a deletion failed. */
   function listSaveFailure(error: unknown) {
-    if (error instanceof StaleReviewsError)
-      return "Reviews changed in another browser. Reload the page to get them, then try again.";
     return error instanceof Error ? error.message : "Try again.";
   }
 

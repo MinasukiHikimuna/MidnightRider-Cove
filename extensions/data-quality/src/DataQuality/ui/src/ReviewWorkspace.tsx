@@ -480,6 +480,9 @@ export function ReviewWorkspace({
     };
   }, []);
   const [error, setError] = useState(initialError.current);
+  // Why saving the queue to the review failed: nothing about the item, so it offers no reload of
+  // its tags; it goes with the next save or queue change.
+  const [saveError, setSaveError] = useState("");
   const [notice, setNotice] = useState("");
   const [tags, setTags] = useState<TagState | null>(null);
   const [editing, setEditing] = useState(false);
@@ -683,6 +686,7 @@ export function ReviewWorkspace({
   function replaceQuery(next: ReviewQuery, end = false) {
     if (lock.current) return;
     refreshToken.current++;
+    setSaveError("");
     initialError.current = "";
     startAtEnd.current = end;
     queryRef.current = next;
@@ -1289,12 +1293,13 @@ export function ReviewWorkspace({
     lock.current = true;
     setPending(true);
     setError("");
+    setSaveError("");
     try {
       const result = await onSaveDefaults(updated);
       if (result === false) throw new Error("Could not save review.");
       setNotice("Queue saved to this review.");
     } catch (error) {
-      setError("Could not save queue. " + errorText(error));
+      setSaveError("Could not save queue. " + errorText(error));
     } finally {
       endOperation();
     }
@@ -2070,6 +2075,7 @@ export function ReviewWorkspace({
                 <div className="dq-review-feedback" aria-live="polite">
                   {/* While the editor drawer covers this column, it shows the error instead. */}
                   {!ruleDraft && errorMessage}
+                  {!ruleDraft && saveError && <p role="alert">{saveError}</p>}
                   {notice && <p role="status">{notice}</p>}
                 </div>
                 {!canWrite && (
