@@ -2014,9 +2014,9 @@ function Ru({
             " ",
             /* @__PURE__ */ a("span", { className: "dq-pad-label", children: A.label }),
             Ba(A) && " ",
-            Ba(A) && /* @__PURE__ */ u("span", { className: "dq-pad-marker", children: [
+            Ba(A) && /* @__PURE__ */ u("span", { className: "dq-pad-marker", title: "Marks absent", children: [
               /* @__PURE__ */ a(Qa, { "aria-hidden": "true" }),
-              "absent"
+              /* @__PURE__ */ a("span", { className: "dq-pad-marker-text", children: "absent" })
             ] }),
             _(ce)
           ]

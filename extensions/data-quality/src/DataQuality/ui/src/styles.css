@@ -1667,6 +1667,16 @@
   .dq-pad-free {
     padding: 5px 6px;
   }
+  /* Beside the key cap there is room for the absent marker's icon only; the word stays in the
+     tile's accessible name. */
+  .dq-pad-marker-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .dq-pad-label {
     font-size: 0.75rem;
     line-height: 14px;

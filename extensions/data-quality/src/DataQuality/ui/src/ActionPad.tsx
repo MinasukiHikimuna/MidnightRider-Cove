@@ -479,9 +479,9 @@ export function ActionPad({
           <span className="dq-pad-label">{action.label}</span>
           {hasAbsence(action) && " "}
           {hasAbsence(action) && (
-            <span className="dq-pad-marker">
+            <span className="dq-pad-marker" title="Marks absent">
               <Ban aria-hidden="true" />
-              absent
+              <span className="dq-pad-marker-text">absent</span>
             </span>
           )}
           {flagMark(index!)}
