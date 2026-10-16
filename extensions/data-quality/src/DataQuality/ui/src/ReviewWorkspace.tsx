@@ -457,6 +457,8 @@ export function ReviewWorkspace({
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
+  // Moves on whenever the user does something a background queue refresh must not undo.
+  const refreshToken = useRef(0);
   const alive = useRef(true);
   const deferredRestore = useRef<{
     query: ReviewQuery;
@@ -661,6 +663,7 @@ export function ReviewWorkspace({
 
   function replaceQuery(next: ReviewQuery, end = false) {
     if (lock.current) return;
+    refreshToken.current++;
     initialError.current = "";
     startAtEnd.current = end;
     queryRef.current = next;
@@ -760,6 +763,7 @@ export function ReviewWorkspace({
     writeQuery(saved.id, nextQuery);
   }
   function showItem(next: ReviewItem | null, resumePlayback = false) {
+    refreshToken.current++;
     if (next?.key !== current?.key) stayedCursor.current = null;
     if (next?.media.id !== current?.media.id) {
       setAutostartMediaId(resumePlayback && next ? next.media.id : null);
@@ -832,8 +836,12 @@ export function ReviewWorkspace({
     };
   }, [revision, saved.id]);
 
+  // A queue refresh hands over a new copy of the item on screen: its tags are read again, but the
+  // ones shown stay until then, so its actions do not blink off while the refresh lands.
+  const tagsFor = useRef<string | null>(null);
   useEffect(() => {
-    setTags(null);
+    if (current?.key !== tagsFor.current) setTags(null);
+    tagsFor.current = current?.key ?? null;
     if (!current) return;
     let active = true;
     void readTags(mediaKind, current)
@@ -878,7 +886,13 @@ export function ReviewWorkspace({
     };
   }, [saved]);
 
-  async function advance(refresh = false, stay = false, resumePlayback = false) {
+  async function advance(
+    refresh = false,
+    stay = false,
+    resumePlayback = false,
+    /** A background refresh applies its page only while this holds. */
+    wanted: () => boolean = () => true,
+  ) {
     if (!current) return;
     const index = items.findIndex((item) => item.key === current.key);
     const direction = query.startFrom === "end" ? -1 : 1;
@@ -933,6 +947,7 @@ export function ReviewWorkspace({
           }
         // The next item is the first in traversal order, which in reverse is the page's last.
         : { ...result, items: orderedResult };
+      if (!wanted()) return;
       if (stay) {
         stayedCursor.current = cursor;
         acceptPage(reconciledResult, nextPage, current, false, true);
@@ -1005,6 +1020,7 @@ export function ReviewWorkspace({
       );
       showItem(optimisticNext, true);
     }
+    let released = false;
     let savedTags = false;
     // The groups the saved tags leave open, while the item waits for them.
     let openAfter: GroupStatus[] = [];
@@ -1043,7 +1059,19 @@ export function ReviewWorkspace({
       // one preloaded: the action that answers the last group then moves on at once, and its
       // refresh reconciles the queue, an item that has left it meanwhile included.
       if (mutating) {
-        if (!openAfter.length) await advance(true, stay, !stay);
+        if (optimisticNext) {
+          // The next item already shows: free its actions now and reconcile the queue behind
+          // them. Anything done meanwhile (another action, navigation, editing) supersedes the
+          // refresh, and that action's own refresh reconciles the queue instead.
+          const token = refreshToken.current;
+          released = true;
+          endOperation();
+          void advance(true, false, true, () => refreshToken.current === token && !lock.current)
+            .catch((error) => {
+              if (refreshToken.current === token)
+                setError(`Tags saved, but the queue could not refresh. Retry navigation with Skip. ${errorText(error)}`);
+            });
+        } else if (!openAfter.length) await advance(true, stay, !stay);
       } else if (!stay) await advance();
       if (stay && adHoc) requestAnimationFrame(() => editButton.current?.focus());
     } catch (error) {
@@ -1072,7 +1100,7 @@ export function ReviewWorkspace({
         }
       }
     } finally {
-      endOperation();
+      if (!released) endOperation();
     }
   }
   // Action keys belong to the workspace while an item is shown, or is about to be, and no tag
@@ -1120,6 +1148,7 @@ export function ReviewWorkspace({
     };
     // The draft is the saved review; the queue's criteria join it as they are while it is edited,
     // so criteria changed before editing began are unsaved changes too.
+    refreshToken.current++;
     setRuleDraft(structuredClone(saved));
     setRuleError("");
     setNotice("");
@@ -1995,6 +2024,7 @@ export function ReviewWorkspace({
                       className="dq-button"
                       disabled={blocked || !!ruleDraft || !canWrite || !tags}
                       onClick={() => {
+                        refreshToken.current++;
                         editorBase.current = [...tags!.ids];
                         setDraft([...tags!.ids]);
                         setEditing(true);

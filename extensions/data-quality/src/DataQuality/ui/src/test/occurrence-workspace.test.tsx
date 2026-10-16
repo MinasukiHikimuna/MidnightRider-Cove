@@ -675,6 +675,52 @@ it("refreshes the queue and frees the actions as soon as the write ends", async 
   await ready();
   expect(screen.getByRole("button", { name: "q Observation" })).toBeEnabled();
 });
+it("frees the next item's actions while the queue refresh is still loading", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  const refreshes: Array<() => void> = [];
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    .mockImplementation(
+      (_rule, filter) =>
+        new Promise((resolve) => {
+          refreshes.push(() =>
+            resolve({
+              items: (Number(filter.page) === 1 ? [video, third.media, later] : []).filter(
+                (item) => !api.applyTags.mock.calls.some((call) => call[1].media.id === item.id),
+              ),
+              totalCount: 3 - api.applyTags.mock.calls.length,
+            }),
+          );
+        }),
+    );
+  open(rule);
+  await ready();
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByRole("link", { name: "Next scene" });
+  await waitFor(() => expect(refreshes).toHaveLength(1));
+  // The first refresh has not answered, yet the next item can be answered.
+  await waitFor(() => expect(screen.getByRole("button", { name: "q Observation" })).toBeEnabled());
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByRole("link", { name: "Later scene" });
+  expect(api.applyTags).toHaveBeenLastCalledWith(
+    expect.anything(),
+    expect.objectContaining({ media: third.media }),
+    rule.actions[0],
+  );
+  // The superseded refresh answers late and must not bring the review back.
+  await act(async () => refreshes.forEach((answer) => answer()));
+  await waitFor(() => expect(refreshes.length).toBeGreaterThanOrEqual(2));
+  await act(async () => refreshes.forEach((answer) => answer()));
+  await ready();
+  expect(screen.getByRole("link", { name: "Later scene" })).toBeInTheDocument();
+});
 it("remounts the prepared successor paused when a write fails", async () => {
   const rule: VideoReview = {
     ...review,
