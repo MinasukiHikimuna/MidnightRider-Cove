@@ -3366,6 +3366,18 @@ it("switches between Cards and Wall and keeps the host's view buttons out of the
   expect(screen.getByRole("slider", { name: /Card size/ })).toBeInTheDocument();
 });
 
+it("hands focus back to the focused card once the card size slider is let go", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  const first = await screen.findByRole("article", { name: "Video 1" });
+  const slider = screen.getByRole("slider", { name: /Card size/ });
+  slider.focus();
+  fireEvent.change(slider, { target: { value: "2" } });
+  // Cove's keys skip a focused input, so the action keys would do nothing while it kept focus.
+  fireEvent.pointerUp(slider);
+  await waitFor(() => expect(first).toHaveFocus());
+});
+
 it("says in the bar why an action key cannot run", async () => {
   api.getConfirmedAbsentTagsFieldStatus.mockResolvedValue({ kind: "missing", definition: {}, message: "Not set up" });
   const assessing = { ...review, view: { ...review.view, reviewMode: "multiple" }, actions: [{ id: "absent", label: "Mark absent", steps: [{ mode: "MARK_ABSENT" as const, tagIds: [3] }] }] };

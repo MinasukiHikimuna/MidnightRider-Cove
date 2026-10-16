@@ -1559,6 +1559,28 @@ export function DataQualityPage({
     return () => document.removeEventListener("keydown", listener);
   }, []);
 
+  // Cove's keys skip a focused input, a slider included, so after the toolbar's card size is
+  // dragged the action keys would do nothing. Letting go of a slider in the page hands focus back
+  // to the focused card; a slider moved with the arrow keys keeps it. Sliders in the preview, its
+  // player or the drawer are left alone.
+  useEffect(() => {
+    const release = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        !(target instanceof HTMLInputElement) ||
+        target.type !== "range" ||
+        !pageRef.current?.contains(target) ||
+        usesWorkspaceRef.current ||
+        target.closest('[role="dialog"], .dq-preview, .dq-drawer, [data-review-player-controls]')
+      )
+        return;
+      target.blur();
+      focusCard(focusedRef.current, false);
+    };
+    document.addEventListener("pointerup", release);
+    return () => document.removeEventListener("pointerup", release);
+  }, [focusCard]);
+
   // The queue toolbar (with its pager) waits out an action and the review's
   // first load. It stays live while its own changes reload the queue: a search
   // being typed keeps its focus (disabled, it would drop focus to the page,
