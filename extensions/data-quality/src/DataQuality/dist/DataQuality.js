@@ -11472,10 +11472,7 @@ function Vp({
         /* @__PURE__ */ a("button", { type: "button", className: "dq-tag-list-name", onClick: c, children: e.name }),
         /* @__PURE__ */ a("span", { children: e.tagGroupName || "Ungrouped" }),
         /* @__PURE__ */ a("span", { children: e.description || "" }),
-        /* @__PURE__ */ u("span", { children: [
-          e.videoCount ?? 0,
-          " videos"
-        ] })
+        /* @__PURE__ */ a("span", { children: `${e.videoCount ?? 0} ${e.videoCount === 1 ? "video" : "videos"}` })
       ] })
     }
   );

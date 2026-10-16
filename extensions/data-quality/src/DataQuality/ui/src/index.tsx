@@ -3036,7 +3036,7 @@ function ReviewTagCard({
           </button>
           <span>{tag.tagGroupName || "Ungrouped"}</span>
           <span>{tag.description || ""}</span>
-          <span>{tag.videoCount ?? 0} videos</span>
+          <span>{`${tag.videoCount ?? 0} ${tag.videoCount === 1 ? "video" : "videos"}`}</span>
         </div>
       )}
     </article>

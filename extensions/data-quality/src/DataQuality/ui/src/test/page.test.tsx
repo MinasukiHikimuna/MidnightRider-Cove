@@ -516,6 +516,28 @@ describe("Data Quality extension page", () => {
     );
   });
 
+  it("counts a tag's videos in words that agree with the number in the list", async () => {
+    const listReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "",
+      view: {
+        filter: { page: 1, perPage: 40 },
+        objectFilter: {},
+        displayMode: "list" as const,
+        searchMode: "text",
+      },
+      actions: [{ id: "skip", label: "Skip", effect: { mode: "SKIP" as const } }],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({ reviews: [listReview], storageKey: "reviews", canWrite: true, canWriteTags: true, canReadTagGroups: true });
+    api.findTags.mockResolvedValue({ items: [tag(1), tag(12)], totalCount: 2 });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    expect(within(await screen.findByRole("article", { name: "Tag 1" })).getByText("1 video")).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "Tag 12" })).getByText("12 videos")).toBeInTheDocument();
+  });
+
   it("shows a tag's new group after applying and staying, though it left the queue", async () => {
     const tagReview = {
       id: "tags",
