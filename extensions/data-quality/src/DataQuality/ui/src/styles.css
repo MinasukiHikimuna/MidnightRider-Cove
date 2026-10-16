@@ -74,6 +74,15 @@
   outline-color: var(--color-accent);
   outline-offset: 2px;
 }
+/* A card that lists its tag bins under the video takes them into its ring. */
+.data-quality-page .dq-review-card.focused:has(> .dq-card-tag-bins) {
+  border-radius: 0.5rem;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.data-quality-page .dq-review-card.focused:has(> .dq-card-tag-bins) > .video-card {
+  outline: none;
+}
 .data-quality-page .dq-review-card.dq-tag-card.focused > :first-child {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
