@@ -802,6 +802,40 @@ it("moves on at once after apply and stay let the item leave the queue", async (
   await ready();
   expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
 });
+it("lets an action that stays on the item supersede the refresh still running for the one before", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  let answerFirst!: () => void;
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    // The first action's refresh answers last, after the next item has left the queue too.
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerFirst = () => resolve({ items: [later], totalCount: 1 });
+        }),
+    )
+    .mockResolvedValue({ items: [later], totalCount: 1 });
+  open(rule);
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByRole("link", { name: "Next scene" });
+  await waitFor(() => expect(answerFirst).toBeDefined());
+  await waitFor(() => expect(screen.getByRole("button", { name: "q Observation" })).toBeEnabled());
+
+  // A failed apply and stay on the next item shows no other item, yet it is the latest thing done.
+  api.applyTags.mockRejectedValueOnce(new Error("write failed"));
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }), { shiftKey: true });
+  await screen.findByRole("alert");
+  await ready();
+  await act(async () => answerFirst());
+  await ready();
+  expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
+});
 it("remounts the prepared successor paused when a write fails", async () => {
   const rule: VideoReview = {
     ...review,

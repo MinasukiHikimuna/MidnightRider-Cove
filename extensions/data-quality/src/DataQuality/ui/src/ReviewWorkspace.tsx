@@ -863,14 +863,17 @@ export function ReviewWorkspace({
   // A queue refresh hands over a new copy of the item on screen: its tags are read again, but the
   // ones shown stay until then, so its actions do not blink off while the refresh lands.
   const tagsFor = useRef<string | null>(null);
+  // Moves on with every action, so a read of the tags begun before one never replaces its result.
+  const tagWrites = useRef(0);
   useEffect(() => {
     if (current?.key !== tagsFor.current) setTags(null);
     tagsFor.current = current?.key ?? null;
     if (!current) return;
     let active = true;
+    const writes = tagWrites.current;
     void readTags(mediaKind, current)
       .then((state) => {
-        if (!active) return;
+        if (!active || writes !== tagWrites.current) return;
         setTags(state);
         setLegacySelected(
           isOccurrenceReview(saved)
@@ -1052,6 +1055,11 @@ export function ReviewWorkspace({
     setError("");
     setNotice("");
     actionRunning.current = true;
+    // Every action supersedes a refresh still running for the one before, also one that shows no
+    // other item (an item waiting for its answer groups, a failed apply and stay), and any read
+    // of the item's tags started before it.
+    refreshToken.current++;
+    tagWrites.current++;
     // The next loaded item, also when apply and stay has let this one leave the queue. Showing it
     // drops the stayed cursor, which the refresh and a failed write still need.
     const kept = stayedCursor.current;
