@@ -172,7 +172,7 @@ it("stops ordered occurrence actions at the first failed step", async () => {
         { mode: "ADD", tagIds: [22] },
       ],
     }),
-  ).rejects.toThrow("Saving stopped");
+  ).rejects.toThrow("Some tag changes may have been saved.");
   expect(
     fetchMock.mock.calls.some(([, options]) => options?.method === "POST"),
   ).toBe(false);
@@ -298,7 +298,7 @@ it("leaves an unassessed occurrence when the second write of an assessment fails
         ? response(video)
         : response([]);
   });
-  await expect(assess("MARK_PRESENT")).rejects.toThrow("Saving stopped");
+  await expect(assess("MARK_PRESENT")).rejects.toThrow("Some tag changes may have been saved.");
   expect(writes().map((call) => call.path)).toEqual(["/api/videos/bulk", "/api/tagapplications"]);
 });
 
@@ -690,7 +690,7 @@ it("explains partial failure and can safely retry to finish the desired state", 
   );
   await expect(
     saveOccurrenceTags(occurrenceReview, occurrence, [22]),
-  ).rejects.toThrow("some tag changes may have been applied");
+  ).rejects.toThrow("Some tag changes may have been saved.");
 });
 
 it('treats empty performer criteria as all without enumerating the library', async () => {

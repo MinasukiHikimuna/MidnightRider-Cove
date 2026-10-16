@@ -140,6 +140,8 @@ import {
 } from "./CustomFieldPresentation";
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
+// Ends a message taken from elsewhere as a sentence, so more can follow it.
+const sentence = (text: string) => (/[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`);
 const RANKING_PAGE = 50;
 /** Only tag reviews assign tag groups; media reviews edit their actions without any. */
 const NO_TAG_GROUPS: readonly TagGroup[] = [];
@@ -1117,7 +1119,7 @@ export function ReviewWorkspace({
         savedTags
           ? `Tags saved, but the queue could not advance. Retry navigation with Skip. ${errorText(error)}`
           : mutating
-            ? `Saving stopped; some changes may have applied. Your inputs are kept. Inspect current tags and retry to finish. ${errorText(error)}`
+            ? `Saving stopped. ${sentence(errorText(error))}${adHoc || legacy ? " Your choices are kept." : ""} Check the current tags before retrying.`
             : `Could not advance. ${errorText(error)}`,
       );
       if (mutating && !savedTags) {

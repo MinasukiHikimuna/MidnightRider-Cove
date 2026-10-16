@@ -685,7 +685,8 @@ export async function runReviewAction(
       });
     } catch (error) {
       throw new Error(
-        `Step ${index + 1} failed; ${index} earlier step(s) completed. Refresh and check the selected ${mediaLabel(kind).many} before retrying. ${error instanceof Error ? error.message : "Request failed."}`,
+        // Cove applies a bulk step whole or not at all, so only earlier steps can have been saved.
+        `${index ? `${index} of ${requests.length} steps were saved before step ${index + 1} failed.` : "Nothing was saved."} ${error instanceof Error ? error.message : "Request failed."}`,
       );
     }
   }

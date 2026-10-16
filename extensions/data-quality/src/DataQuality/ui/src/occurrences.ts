@@ -391,7 +391,7 @@ export async function saveOccurrenceTags(
     return await request<OccurrenceApplication[]>(path);
   } catch (error) {
     throw new Error(
-      `Saving stopped; some tag changes may have been applied. Your choices are kept. Retry to finish saving. ${error instanceof Error ? error.message : "Request failed."}`,
+      `Some tag changes may have been saved. ${error instanceof Error ? error.message : "Request failed."}`,
     );
   }
 }

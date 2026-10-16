@@ -335,7 +335,10 @@ it("retains editor inputs on partial failure and refreshes actual tags", async (
   const input = screen.getByPlaceholderText("Choose tags for this item...");
   fireEvent.change(input, { target: { value: "40,41" } });
   fireEvent.click(screen.getByRole("button", { name: "Save & next" }));
-  await screen.findByRole("alert");
+  // Said once: what stopped, what is kept and what to do.
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /^Saving stopped\. Denied\. Your choices are kept\. Check the current tags before retrying\./,
+  );
   expect(
     screen.getByPlaceholderText("Choose tags for this item..."),
   ).toHaveValue("40,41");
@@ -808,6 +811,9 @@ it("remounts the prepared successor paused when a write fails", async () => {
 
   await screen.findByRole("link", { name: "First scene" });
   const restoredPreload = screen.getByTestId("video-player-preload");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    /^Saving stopped\. write failed\. Check the current tags before retrying\./,
+  );
   expect(restoredPreload).not.toBe(preparedSuccessor);
   expect(restoredPreload).toHaveAttribute("data-autostart", "false");
 });

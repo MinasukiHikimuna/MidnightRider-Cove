@@ -155,7 +155,7 @@ describe("Data Quality API adapter", () => {
         },
         [4],
       ),
-    ).rejects.toThrow("1 earlier step(s) completed");
+    ).rejects.toThrow("1 of 2 steps were saved before step 2 failed. Denied");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -334,7 +334,7 @@ describe("Data Quality API adapter", () => {
         },
         [4, 5, 6],
       ),
-    ).rejects.toThrow(/step 2 failed; 1 earlier step\(s\) completed/i);
+    ).rejects.toThrow("1 of 3 steps were saved before step 2 failed.");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
