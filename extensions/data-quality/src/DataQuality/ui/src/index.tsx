@@ -1298,7 +1298,7 @@ export function DataQualityPage({
         setFocusedId(previousFocus);
         if (!previewOpenRef.current) focusCard(previousFocus);
         setActionError(
-          error instanceof Error ? error.message : "Action failed.",
+          `${action.label}: ${error instanceof Error ? error.message : "Action failed."}`,
         );
       }
       try {

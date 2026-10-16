@@ -686,8 +686,9 @@ export async function runReviewAction(
       });
     } catch (error) {
       throw new Error(
-        // Cove applies a bulk step whole or not at all, so only earlier steps can have been saved.
-        `${index ? `${index} of ${requests.length} steps were saved before step ${index + 1} failed.` : "Nothing was saved."} ${error instanceof Error ? error.message : "Request failed."}`,
+        // A failed first step says only why: Cove applies a step whole or not at all, but an answer
+        // lost on its way back may follow a step that was saved.
+        `${index ? `${index} of ${requests.length} steps were saved before step ${index + 1} failed. ` : ""}${error instanceof Error ? error.message : "Request failed."}`,
       );
     }
   }

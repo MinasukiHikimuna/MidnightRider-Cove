@@ -138,6 +138,13 @@ describe("Data Quality API adapter", () => {
     );
   });
 
+  it("says only why when the first step fails, claiming nothing about what was saved", async () => {
+    fetchMock.mockReset().mockImplementationOnce(() => response({ message: "Denied" }, false));
+    await expect(
+      runReviewAction("video", { id: "a", label: "Apply", steps: [{ mode: "ADD", tagIds: [1] }] }, [4]),
+    ).rejects.toThrow(/^Denied$/);
+  });
+
   it("reports partial failure after a completed action step", async () => {
     fetchMock
       .mockImplementationOnce(() => response({ ids: [4] }))
