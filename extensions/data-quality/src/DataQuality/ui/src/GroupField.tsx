@@ -451,7 +451,7 @@ export function GroupField({
       </div>
       <p className="dq-actions-hint dq-action-field-help" id={helpId}>
         {occurrence
-          ? "A group is one question with one answer per item; when a chosen performer's items hold two different answers of a group, Existing answers marks it Mixed."
+          ? "A group is one question with one answer per item. When a chosen performer's items answer a group in two different ways, their Existing answers mark the group Mixed."
           : "A group is one question with one answer per item."}
       </p>
       {open &&
