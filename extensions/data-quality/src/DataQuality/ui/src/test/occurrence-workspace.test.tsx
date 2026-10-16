@@ -836,6 +836,37 @@ it("lets an action that stays on the item supersede the refresh still running fo
   await ready();
   expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
 });
+it("still reads the next item's tags when an action that writes nothing comes before them", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    actions: [...review.actions, { id: "pass", label: "Pass", steps: [] }],
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    .mockResolvedValue({ items: [third.media, later], totalCount: 2 });
+  open(rule);
+  await ready();
+  // The next item's tags arrive only when let through.
+  let letThrough!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    letThrough = resolve;
+  });
+  api.readTags.mockImplementation(async (_kind: unknown, item: ReviewItem) => {
+    if (item.media.id === third.media.id) await gate;
+    return structuredClone(state);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByRole("link", { name: "Next scene" });
+  await waitFor(() => expect(api.applyTags).toHaveBeenCalledTimes(1));
+  // Shift and an action without steps stays and writes nothing, while the tags are on their way.
+  fireEvent.keyDown(document.body, { key: "W", shiftKey: true });
+  await act(async () => letThrough());
+  await ready();
+  expect(screen.getByRole("button", { name: "q Observation" })).toBeEnabled();
+});
 it("remounts the prepared successor paused when a write fails", async () => {
   const rule: VideoReview = {
     ...review,

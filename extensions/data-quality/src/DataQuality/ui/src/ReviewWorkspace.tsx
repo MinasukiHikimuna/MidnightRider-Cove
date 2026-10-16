@@ -1055,11 +1055,14 @@ export function ReviewWorkspace({
     setError("");
     setNotice("");
     actionRunning.current = true;
-    // Every action supersedes a refresh still running for the one before, also one that shows no
-    // other item (an item waiting for its answer groups, a failed apply and stay), and any read
-    // of the item's tags started before it.
-    refreshToken.current++;
-    tagWrites.current++;
+    // Every action that writes supersedes a refresh still running for the one before, also one
+    // that shows no other item (an item waiting for its answer groups, a failed apply and stay),
+    // and any read of the item's tags started before it, which its own read replaces. One that
+    // writes nothing leaves both alone: a read it dropped would never be made again.
+    if (mutating) {
+      refreshToken.current++;
+      tagWrites.current++;
+    }
     // The next loaded item, also when apply and stay has let this one leave the queue. Showing it
     // drops the stayed cursor, which the refresh and a failed write still need.
     const kept = stayedCursor.current;

@@ -6311,7 +6311,7 @@ function Zf({
   }, [It]), fe = qe(
     () => ((d == null ? void 0 : d.entries) ?? []).filter((I) => I.item.media.date).sort((I, G) => I.item.media.date.localeCompare(G.item.media.date)),
     [d]
-  ), U = Ae ? $s(he) : null, xe = (I) => Je.keys[Ne.actions.findIndex((G) => G.id === I)] ?? "", Nt = (I) => Mr(I, dr, [], r), Sn = Sa(pe.condition) && pe.includeSubtags !== !1 && pe.conditionTagIds.length > 0, se = fe[0], Pt = fe.length > 1 ? fe[fe.length - 1] : void 0, Gt = (I) => `/${ot}/${I.item.media.id}`, zn = rt ? _[0] : void 0, kn = qe(
+  ), U = Ae ? $s(he) : null, xe = (I) => Je.keys[Ne.actions.findIndex((G) => G.id === I)] ?? "", Nt = (I) => Mr(I, dr, [], r), Sn = Sa(pe.condition) && pe.includeSubtags !== !1 && pe.conditionTagIds.length > 0, ce = fe[0], Pt = fe.length > 1 ? fe[fe.length - 1] : void 0, Gt = (I) => `/${ot}/${I.item.media.id}`, zn = rt ? _[0] : void 0, kn = qe(
     () => n ? Rc(
       n,
       Be.summary ? Ei(
@@ -6437,12 +6437,12 @@ function Zf({
             Ai(Ie).join("; ")
           ] }, Ie.key)) })
         ] }),
-        G && se && /* @__PURE__ */ u("p", { className: "dq-batch-flag-links", children: [
-          /* @__PURE__ */ u("a", { href: Gt(se), target: "_blank", rel: "noreferrer", children: [
+        G && ce && /* @__PURE__ */ u("p", { className: "dq-batch-flag-links", children: [
+          /* @__PURE__ */ u("a", { href: Gt(ce), target: "_blank", rel: "noreferrer", children: [
             "Earliest · ",
-            wa(se, ot),
+            wa(ce, ot),
             " · ",
-            se.item.media.date
+            ce.item.media.date
           ] }),
           Pt && /* @__PURE__ */ u("a", { href: Gt(Pt), target: "_blank", rel: "noreferrer", children: [
             "Latest · ",
@@ -6583,15 +6583,15 @@ function Zf({
           }
         ) : he.length > 0 && /* @__PURE__ */ a("p", { className: "dq-batch-hint", children: "Select a count to list its occurrences." }),
         he.length > 0 && /* @__PURE__ */ u("p", { className: "dq-batch-dates", children: [
-          /* @__PURE__ */ a("span", { children: se ? `Dates ${se.item.media.date}${Pt ? ` to ${Pt.item.media.date}` : ""}` : "No dates" }),
-          se && /* @__PURE__ */ a(
+          /* @__PURE__ */ a("span", { children: ce ? `Dates ${ce.item.media.date}${Pt ? ` to ${Pt.item.media.date}` : ""}` : "No dates" }),
+          ce && /* @__PURE__ */ a(
             "a",
             {
-              href: Gt(se),
+              href: Gt(ce),
               target: "_blank",
               rel: "noreferrer",
-              "aria-label": `Open earliest ${Ze.one}, ${se.item.media.date}`,
-              title: wa(se, ot),
+              "aria-label": `Open earliest ${Ze.one}, ${ce.item.media.date}`,
+              title: wa(ce, ot),
               children: "Open earliest"
             }
           ),
@@ -8235,8 +8235,8 @@ function Mp({
   const [L, Y] = T(0), Q = $(q.current.startAtEnd), [oe, H] = T([]), [k, le] = T(null), A = $(null), [X, ue] = T(null), [me, K] = T(0), ye = qe(() => {
     var ee;
     if (!k) return null;
-    const m = oe.findIndex((ce) => ce.key === k.key), S = ((ee = A.current) == null ? void 0 : ee.key) === k.key ? A.current : null;
-    return (m >= 0 ? oe.slice(m + 1) : S ? oe.filter((ce) => !S.before.includes(ce.key)) : []).find((ce) => ce.media.id !== k.media.id) ?? null;
+    const m = oe.findIndex((se) => se.key === k.key), S = ((ee = A.current) == null ? void 0 : ee.key) === k.key ? A.current : null;
+    return (m >= 0 ? oe.slice(m + 1) : S ? oe.filter((se) => !S.before.includes(se.key)) : []).find((se) => se.media.id !== k.media.id) ?? null;
   }, [k, oe]), [Ae, ke] = T(0), [Ne, Je] = T(!1), [pe, ot] = T(!1), Ze = $(!1), Mt = $(0), Jt = $(!1), Ht = $(null), rt = $(!0), Be = $(null);
   Z(() => (rt.current = !0, () => {
     rt.current = !1;
@@ -8266,7 +8266,7 @@ function Mp({
     });
     return () => cancelAnimationFrame(m);
   }, [Ne, It, L]);
-  const [Nt, Sn] = T([]), [se, Pt] = T({}), Gt = $(null), [zn, kn] = T({});
+  const [Nt, Sn] = T([]), [ce, Pt] = T({}), Gt = $(null), [zn, kn] = T({});
   Z(() => {
     let m = !0;
     return Promise.all(
@@ -8373,19 +8373,19 @@ function Mp({
   }, [e.id]), Z(() => (r(pe || Ne || ze || !!y), () => r(!1)), [pe, Ne, ze, !!y, r]);
   async function Hn(m, S, x) {
     if (Ce(m)) {
-      const ce = await ji(
+      const se = await ji(
         m,
         Gt.current,
         S,
         x
       );
       return {
-        items: ce.items.map((we) => ({
+        items: se.items.map((we) => ({
           key: we.key,
           media: we.media,
           occurrence: we
         })),
-        totalCount: ce.totalCount
+        totalCount: se.totalCount
       };
     }
     const ee = await Yr(
@@ -8394,14 +8394,14 @@ function Mp({
       x
     );
     return {
-      items: ee.items.map((ce) => ({ key: String(ce.id), media: ce })),
+      items: ee.items.map((se) => ({ key: String(se.id), media: se })),
       totalCount: ee.totalCount
     };
   }
-  function Mn(m, S, x, ee = !1, ce = !1) {
+  function Mn(m, S, x, ee = !1, se = !1) {
     if (!rt.current || Be.current) return;
     J(!0), H(
-      ce ? m.items : Lo(m.items, _.current.startFrom === "end")
+      se ? m.items : Lo(m.items, _.current.startFrom === "end")
     ), ke(m.totalCount), zt(x, ee);
     const we = {
       ..._.current,
@@ -8423,18 +8423,18 @@ function Mp({
         _.current.performerFocus
       );
       Gt.current = Ce(x) ? await Di(x, m.signal) : null;
-      let ee = Number(x.view.filter.page), ce = await Hn(x, ee, m.signal);
+      let ee = Number(x.view.filter.page), se = await Hn(x, ee, m.signal);
       const we = Math.max(
         1,
-        Math.ceil(ce.totalCount / Number(x.view.filter.perPage))
+        Math.ceil(se.totalCount / Number(x.view.filter.perPage))
       );
-      (Q.current || ee > we) && (ee = we, ce = await Hn(x, ee, m.signal)), Q.current = !1;
+      (Q.current || ee > we) && (ee = we, se = await Hn(x, ee, m.signal)), Q.current = !1;
       const Ye = x.view.startFrom === "end" ? -1 : 1;
-      for (; Ce(x) && !ce.items.length && ee + Ye >= 1 && ee + Ye <= we && !m.signal.aborted; )
-        ee += Ye, ce = await Hn(x, ee, m.signal);
+      for (; Ce(x) && !se.items.length && ee + Ye >= 1 && ee + Ye <= we && !m.signal.aborted; )
+        ee += Ye, se = await Hn(x, ee, m.signal);
       if (S !== dn.current || m.signal.aborted) return;
-      const _t = Lo(ce.items, x.view.startFrom === "end");
-      Mn(ce, ee, _t[0] ?? null);
+      const _t = Lo(se.items, x.view.startFrom === "end");
+      Mn(se, ee, _t[0] ?? null);
     })().catch((x) => {
       !m.signal.aborted && S === dn.current && et(on(x));
     }).finally(() => {
@@ -8477,12 +8477,12 @@ function Mp({
     };
   }, [e]);
   function gr(m, S = A.current) {
-    const x = oe.findIndex((bt) => bt.key === m.key), ee = z.startFrom === "end" ? -1 : 1, ce = (S == null ? void 0 : S.key) === m.key, we = ce ? S : { key: m.key, page: it, before: oe.slice(0, x + 1).map((bt) => bt.key), after: oe.slice(x + 1).map((bt) => bt.key) }, Ye = new Set(we.after), _t = new Set(we.before), st = oe.find((bt) => Ye.has(bt.key) || (ee === 1 || it < we.page) && ce && !_t.has(bt.key));
+    const x = oe.findIndex((bt) => bt.key === m.key), ee = z.startFrom === "end" ? -1 : 1, se = (S == null ? void 0 : S.key) === m.key, we = se ? S : { key: m.key, page: it, before: oe.slice(0, x + 1).map((bt) => bt.key), after: oe.slice(x + 1).map((bt) => bt.key) }, Ye = new Set(we.after), _t = new Set(we.before), st = oe.find((bt) => Ye.has(bt.key) || (ee === 1 || it < we.page) && se && !_t.has(bt.key));
     return { direction: ee, cursor: we, remainingKeys: Ye, visitedKeys: _t, nextLoaded: st };
   }
-  async function xr(m = !1, S = !1, x = !1, ee = () => !0, ce = A.current) {
+  async function xr(m = !1, S = !1, x = !1, ee = () => !0, se = A.current) {
     if (!k) return;
-    const { direction: we, cursor: Ye, remainingKeys: _t, visitedKeys: st, nextLoaded: bt } = gr(k, ce);
+    const { direction: we, cursor: Ye, remainingKeys: _t, visitedKeys: st, nextLoaded: bt } = gr(k, se);
     if (!m && bt) {
       zt(bt, x);
       return;
@@ -8541,17 +8541,17 @@ function Mp({
     }
     if (y || !k || Ze.current || Ne || ze && !x)
       return;
-    const ce = x || ee || !!(m != null && m.steps.length);
-    if (ce && (!t || !Te) || m && or(m) && !n) return;
-    const we = !S && !x && !ee && ce && m !== void 0 && Te !== null && us(e) && Ho(Jo(e.actions, fu(m, Te, pn))).length > 0, Ye = x && ((jt = Nn.current) != null && jt.contains(document.activeElement)) ? document.activeElement : null;
-    Ze.current = !0, ot(!0), et(""), tt(""), Jt.current = !0, Mt.current++, mr.current++;
-    const _t = A.current, st = ce && !S && !we ? gr(k).nextLoaded ?? null : null;
+    const se = x || ee || !!(m != null && m.steps.length);
+    if (se && (!t || !Te) || m && or(m) && !n) return;
+    const we = !S && !x && !ee && se && m !== void 0 && Te !== null && us(e) && Ho(Jo(e.actions, fu(m, Te, pn))).length > 0, Ye = x && ((jt = Nn.current) != null && jt.contains(document.activeElement)) ? document.activeElement : null;
+    Ze.current = !0, ot(!0), et(""), tt(""), Jt.current = !0, se && (Mt.current++, mr.current++);
+    const _t = A.current, st = se && !S && !we ? gr(k).nextLoaded ?? null : null;
     st && (H(
       (ct) => ct.filter((kt) => kt.key !== k.key)
     ), zt(st, !0));
     let bt = !1, Nr = !1, yt = [];
     try {
-      if (ce) {
+      if (se) {
         const ct = await vn(d, k);
         if (m)
           await Df(Rt, k, m);
@@ -8565,7 +8565,7 @@ function Mp({
         ), k.occurrence && (_r(k.occurrence.performer.id), On((bn) => bn + 1));
       }
       if (!rt.current || Be.current) return;
-      if (ce)
+      if (se)
         if (st) {
           const ct = Mt.current;
           bt = !0, Jt.current = !1, St(), xr(!0, !1, !0, () => Mt.current === ct && !Ze.current, _t).catch((kt) => {
@@ -8579,8 +8579,8 @@ function Mp({
       });
     } catch (ct) {
       if (et(
-        Nr ? `Tags saved, but the queue could not advance. Retry navigation with Skip. ${on(ct)}` : ce ? `Saving stopped. ${Cp(on(ct))}${x || ee ? " Your choices are kept." : ""} Check the current tags before retrying.` : `Could not advance. ${on(ct)}`
-      ), ce && !Nr) {
+        Nr ? `Tags saved, but the queue could not advance. Retry navigation with Skip. ${on(ct)}` : se ? `Saving stopped. ${Cp(on(ct))}${x || ee ? " Your choices are kept." : ""} Check the current tags before retrying.` : `Could not advance. ${on(ct)}`
+      ), se && !Nr) {
         he.current = Ye, st && (H(oe), ue(null), K((kt) => kt + 1), le(k), A.current = _t);
         try {
           Ke(await vn(d, k));
@@ -8695,10 +8695,10 @@ function Mp({
     );
   };
   async function fn(m, S) {
-    var ce;
+    var se;
     const x = Rn.current;
     if (!Ce(x)) return;
-    (ce = be.current) == null || ce.controller.abort();
+    (se = be.current) == null || se.controller.abort();
     const ee = {
       signature: Xa(x),
       controller: new AbortController()
@@ -8732,17 +8732,17 @@ function Mp({
     const x = Xa(S);
     if (!(((ee = ie.current) == null ? void 0 : ee.signature) !== x || ie.current.partial))
       try {
-        const ce = await yl(S, m);
+        const se = await yl(S, m);
         if (be.current) {
           Pe();
           return;
         }
         de(
-          (we) => (we == null ? void 0 : we.signature) === x ? hp(we, m, ce) : we
+          (we) => (we == null ? void 0 : we.signature) === x ? hp(we, m, se) : we
         );
       } catch {
         de(
-          (ce) => (ce == null ? void 0 : ce.signature) === x ? { ...ce, partial: !0, complete: !1 } : ce
+          (se) => (se == null ? void 0 : se.signature) === x ? { ...se, partial: !0, complete: !1 } : se
         );
       }
   }
@@ -8783,7 +8783,7 @@ function Mp({
     var Ye;
     const m = vr.current, S = m == null ? void 0 : m.querySelector('[aria-current="true"]');
     if (!m || !S) return;
-    const x = m.getBoundingClientRect(), ee = S.getBoundingClientRect(), ce = (Ye = S.nextElementSibling) == null ? void 0 : Ye.getBoundingClientRect(), we = ce && ce.bottom - ee.top <= x.height ? Math.max(ce.bottom, ee.bottom) : ee.bottom;
+    const x = m.getBoundingClientRect(), ee = S.getBoundingClientRect(), se = (Ye = S.nextElementSibling) == null ? void 0 : Ye.getBoundingClientRect(), we = se && se.bottom - ee.top <= x.height ? Math.max(se.bottom, ee.bottom) : ee.bottom;
     ee.top < x.top ? m.scrollTop -= x.top - ee.top : we > x.bottom && (m.scrollTop += we - x.bottom);
   }, [k == null ? void 0 : k.key, nn]);
   const mn = $(null), Pn = $(null);
@@ -8793,7 +8793,7 @@ function Mp({
     if (!m) return;
     Pn.current = null;
     const S = [...((x = mn.current) == null ? void 0 : x.querySelectorAll(".dq-partner")) ?? []];
-    (ee = S.find((ce) => ce.dataset.partnerKey === m) ?? S[0]) == null || ee.focus();
+    (ee = S.find((se) => se.dataset.partnerKey === m) ?? S[0]) == null || ee.focus();
   }, [k == null ? void 0 : k.key]);
   const Ln = pe || Ne || ze || !!y, Zn = qe(
     () => y ? In(y, Ha(e, z)) : null,
@@ -9042,7 +9042,7 @@ function Mp({
                 ] }),
                 /* @__PURE__ */ u("div", { className: "dq-review-media", children: [
                   /* @__PURE__ */ a("div", { className: "dq-player-frame", children: [k, ye].filter(Boolean).map((m) => {
-                    var ee, ce, we, Ye, _t;
+                    var ee, se, we, Ye, _t;
                     const S = m, x = S.key === k.key;
                     return /* @__PURE__ */ a(
                       "div",
@@ -9057,7 +9057,7 @@ function Mp({
                             format: ((ee = S.media.files[0]) == null ? void 0 : ee.format) ?? "",
                             title: b(S.media),
                             coverUrl: x ? Ko("audio", S.media) : void 0,
-                            duration: ((ce = S.media.files[0]) == null ? void 0 : ce.duration) ?? 0,
+                            duration: ((se = S.media.files[0]) == null ? void 0 : se.duration) ?? 0,
                             autostart: x && X === S.media.id
                           }
                         ) : /* @__PURE__ */ a(
@@ -9131,7 +9131,7 @@ function Mp({
                           )
                         }
                       ),
-                      se[m] ?? "Loading tag…"
+                      ce[m] ?? "Loading tag…"
                     ] }, m)),
                     /* @__PURE__ */ u("div", { className: "dq-row", children: [
                       /* @__PURE__ */ a(
@@ -9950,7 +9950,7 @@ function Jp({
       startFrom: Ve.view.startFrom
     } } : fe,
     [Ve, k, fe]
-  ), xe = U ? De(U) : "video", Nt = mi(xe), Sn = U ? Ce(U) : !1, se = xe === "video" ? U : null, Pt = !!(U != null && U.actions.some(or)), Gt = Sn && Pt, zn = (!!se || xe === "audio" || Sn) && Pt, [kn, En] = T(null), dn = (kn == null ? void 0 : kn.id) === (U == null ? void 0 : U.id) ? kn == null ? void 0 : kn.mode : (U == null ? void 0 : U.view.reviewMode) ?? "single", je = Sn || xe === "audio" || xe === "video" && dn === "single", [He, ut] = T(0), Rt = $(-1), Vn = $(!1), Rn = $(je);
+  ), xe = U ? De(U) : "video", Nt = mi(xe), Sn = U ? Ce(U) : !1, ce = xe === "video" ? U : null, Pt = !!(U != null && U.actions.some(or)), Gt = Sn && Pt, zn = (!!ce || xe === "audio" || Sn) && Pt, [kn, En] = T(null), dn = (kn == null ? void 0 : kn.id) === (U == null ? void 0 : U.id) ? kn == null ? void 0 : kn.mode : (U == null ? void 0 : U.view.reviewMode) ?? "single", je = Sn || xe === "audio" || xe === "video" && dn === "single", [He, ut] = T(0), Rt = $(-1), Vn = $(!1), Rn = $(je);
   Rn.current = je, Z(() => {
     const g = () => {
       const N = Rn.current;
@@ -9964,7 +9964,7 @@ function Jp({
   }, []);
   const nn = Nt === "audio" ? h : d, Jn = xe === "tag" ? "Tag" : Nt === "audio" ? "Audio" : "Video", I = xe === "tag" ? w : nn, G = $(
     null
-  ), ie = yp(se), [re, de] = T({
+  ), ie = yp(ce), [re, de] = T({
     page: 1,
     perPage: 40,
     sort: "date",
@@ -10034,7 +10034,7 @@ function Jp({
     const g = window.setTimeout(() => Ge(null), 6e3);
     return () => window.clearTimeout(g);
   }, [Be]), Z(() => {
-    const g = se ? Pi(se.view.objectFilter) : [];
+    const g = ce ? Pi(ce.view.objectFilter) : [];
     if (la({}), !g.length) return;
     const N = new AbortController();
     let R = !0;
@@ -10057,13 +10057,13 @@ function Jp({
     }), () => {
       R = !1, N.abort();
     };
-  }, [se == null ? void 0 : se.id, se == null ? void 0 : se.view.objectFilter]);
+  }, [ce == null ? void 0 : ce.id, ce == null ? void 0 : ce.view.objectFilter]);
   const So = qe(
-    () => se ? Li(
-      se.view.objectFilter,
+    () => ce ? Li(
+      ce.view.objectFilter,
       Br
     ) : (U == null ? void 0 : U.view.objectFilter) ?? {},
-    [Br, U, se]
+    [Br, U, ce]
   ), Gr = wn(async () => {
     c(!0), f("");
     try {
@@ -10256,13 +10256,13 @@ function Jp({
     He,
     Wt
   ]), Z(() => {
-    !se || je || !Y || Se || Oe || Ee || Vn.current || Rt.current !== He || Na(se.id, {
+    !ce || je || !Y || Se || Oe || Ee || Vn.current || Rt.current !== He || Na(ce.id, {
       filter: re,
-      objectFilter: se.view.objectFilter,
-      searchMode: se.view.searchMode,
-      startFrom: se.view.startFrom ?? "end"
+      objectFilter: ce.view.objectFilter,
+      searchMode: ce.view.searchMode,
+      startFrom: ce.view.startFrom ?? "end"
     });
-  }, [se, je, Y, Se, Oe, re, Ee, He]);
+  }, [ce, je, Y, Se, Oe, re, Ee, He]);
   const Me = qe(
     () => $e.items.map((g) => g.id),
     [$e.items]
@@ -10356,7 +10356,7 @@ function Jp({
       qt(R), St.current || S(R);
     },
     [S, Me]
-  ), ce = wn(
+  ), se = wn(
     async (g, N = !1) => {
       const R = "steps" in g ? g.steps.length > 0 : g.effect.mode !== "SKIP", V = "effect" in g && g.effect.mode === "SET_TAG_GROUP" ? g.effect.tagGroupId : null, te = V != null && (!v || !E.some((nt) => nt.id === V)), ae = "effect" in g && R && !v, W = os(
         pr.current,
@@ -10562,7 +10562,7 @@ function Jp({
     actions: (U == null ? void 0 : U.actions) ?? Ks,
     onAction: (g, N) => {
       const R = U == null ? void 0 : U.actions[g];
-      R && ce(R, N);
+      R && se(R, N);
     },
     onFind: () => zt(!0),
     onSelectAll: () => x((g) => Rd(g, Me))
@@ -10895,7 +10895,7 @@ function Jp({
             pageControls: {
               onBack: bn,
               moreItems: (g) => zi(fe ?? U, g),
-              onGrid: se ? () => En({ id: se.id, mode: "multiple" }) : void 0,
+              onGrid: ce ? () => En({ id: ce.id, mode: "multiple" }) : void 0,
               notices: Ao,
               busy: wt
             },
@@ -10932,12 +10932,12 @@ function Jp({
             ]
           }
         ),
-        it && gn && se && /* @__PURE__ */ a(
+        it && gn && ce && /* @__PURE__ */ a(
           eh,
           {
             video: gn,
-            review: se,
-            details: wp(gn, se, ie.ids),
+            review: ce,
+            details: wp(gn, ce, ie.ids),
             selectedCount: Dt.size,
             pending: Ee,
             refreshing: Se || !!Oe,
@@ -10954,7 +10954,7 @@ function Jp({
             onClose: () => {
               pt(!1), S(Qe.current);
             },
-            onAction: ce,
+            onAction: se,
             findOpen: Mn,
             onFindOpenChange: zt
           }
@@ -10967,7 +10967,7 @@ function Jp({
             trees: vr,
             isDisabled: yt,
             onApply: (g, N) => {
-              zt(!1), ce(g, N);
+              zt(!1), se(g, N);
             },
             onClose: () => zt(!1)
           }
@@ -11137,8 +11137,8 @@ function Jp({
     );
   }
   function Hi(g) {
-    if (!se || !fe || Ee || Se || st) return;
-    const N = kl(se, g, fe.view.objectFilter), R = !js(N, fe);
+    if (!ce || !fe || Ee || Se || st) return;
+    const N = kl(ce, g, fe.view.objectFilter), R = !js(N, fe);
     $t(R ? N : null), R ? Ba(N, { ...re, page: 1 }) : Ba(
       fe,
       { ...re, page: 1 },
@@ -11203,12 +11203,12 @@ function Jp({
                 )
               ] }),
               trailing: /* @__PURE__ */ u(ge, { children: [
-                se && /* @__PURE__ */ a(
+                ce && /* @__PURE__ */ a(
                   il,
                   {
                     mode: "multiple",
                     disabled: Ee || Se || Ft || !!he || Cn || wt,
-                    onChange: () => En({ id: se.id, mode: "single" })
+                    onChange: () => En({ id: ce.id, mode: "single" })
                   }
                 ),
                 /* @__PURE__ */ a(
@@ -11238,13 +11238,13 @@ function Jp({
                 onReset: xl,
                 resetDisabled: Ee || Se || st
               } : void 0,
-              chipsAfter: (Xe = (Fe = se == null ? void 0 : se.presentation) == null ? void 0 : Fe.binParents) != null && Xe.length || (dt = (lt = se == null ? void 0 : se.presentation) == null ? void 0 : lt.filterBins) != null && dt.length ? /* @__PURE__ */ u(ge, { children: [
-                !!((Ot = se.presentation.binParents) != null && Ot.length) && /* @__PURE__ */ a(
+              chipsAfter: (Xe = (Fe = ce == null ? void 0 : ce.presentation) == null ? void 0 : Fe.binParents) != null && Xe.length || (dt = (lt = ce == null ? void 0 : ce.presentation) == null ? void 0 : lt.filterBins) != null && dt.length ? /* @__PURE__ */ u(ge, { children: [
+                !!((Ot = ce.presentation.binParents) != null && Ot.length) && /* @__PURE__ */ a(
                   vp,
                   {
                     videos: $e.items,
-                    review: se,
-                    savedObjectFilter: (fe ?? se).view.objectFilter,
+                    review: ce,
+                    savedObjectFilter: (fe ?? ce).view.objectFilter,
                     trees: ie.ids,
                     disabled: Ee || Se || st,
                     onToggle: Hi
@@ -11253,8 +11253,8 @@ function Jp({
                 /* @__PURE__ */ a(
                   Np,
                   {
-                    review: se,
-                    savedObjectFilter: (fe ?? se).view.objectFilter,
+                    review: ce,
+                    savedObjectFilter: (fe ?? ce).view.objectFilter,
                     queueFilter: re,
                     queueCount: Se || Oe ? null : $e.totalCount,
                     disabled: Ee || Se || st,
@@ -11267,7 +11267,7 @@ function Jp({
             }
           ),
           Ao,
-          se && ie.error && /* @__PURE__ */ a("p", { role: "alert", className: "dq-alert", children: ie.error }),
+          ce && ie.error && /* @__PURE__ */ a("p", { role: "alert", className: "dq-alert", children: ie.error }),
           /* @__PURE__ */ u("div", { className: "dq-review-area", children: [
             he && mn && /* @__PURE__ */ a(
               rl,
@@ -11354,7 +11354,7 @@ function Jp({
                       isDisabled: yt,
                       paused: !!he,
                       busy: Ee || Se,
-                      onApply: (Le) => void ce(Le),
+                      onApply: (Le) => void se(Le),
                       onFind: () => zt(!0),
                       status: Ee ? `Applying action to ${wo}…` : "",
                       summary: /* @__PURE__ */ u(ge, { children: [
@@ -11436,8 +11436,8 @@ function Jp({
     return /* @__PURE__ */ a(
       Xp,
       {
-        video: ql(N, se, ie.ids),
-        showTagBins: ((V = (R = se == null ? void 0 : se.presentation) == null ? void 0 : R.annotations) == null ? void 0 : V.includes("tags")) && !!((te = se.presentation.annotationParents) != null && te.length),
+        video: ql(N, ce, ie.ids),
+        showTagBins: ((V = (R = ce == null ? void 0 : ce.presentation) == null ? void 0 : R.annotations) == null ? void 0 : V.includes("tags")) && !!((te = ce.presentation.annotationParents) != null && te.length),
         displayMode: un,
         cardsScroll: xa,
         focused: N.id === gt,
