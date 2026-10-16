@@ -1219,12 +1219,15 @@ export function ReviewWorkspace({
     const keepFocus =
       performerFocus &&
       !("targetMode" in change || "performerIds" in change || "performerFilter" in change);
-    replaceQuery({
-      ...rest,
-      ...(keepFocus ? { performerFocus } : {}),
-      filter: { ...rest.filter, page: 1 },
-      performerScope: { ...scope!, ...change },
-    });
+    replaceQuery(
+      {
+        ...rest,
+        ...(keepFocus ? { performerFocus } : {}),
+        filter: { ...rest.filter, page: 1 },
+        performerScope: { ...scope!, ...change },
+      },
+      rest.startFrom === "end",
+    );
   };
   async function runRanking(base: PerformerRanking | null, limit: number) {
     const rule = scopedRef.current;
@@ -1518,21 +1521,28 @@ export function ReviewWorkspace({
                   filter.direction !== queryRef.current.filter.direction
                 )
                   filter = { ...filter, sorts: undefined };
-                replaceQuery({
-                  ...queryRef.current,
-                  filter: boundedFilter(filter, mediaKind),
-                });
+                // A changed queue starts where the review does, as a new performer focus does.
+                replaceQuery(
+                  {
+                    ...queryRef.current,
+                    filter: boundedFilter(filter, mediaKind),
+                  },
+                  queryRef.current.startFrom === "end",
+                );
               }}
               onObjectFilterChange={(objectFilter) => {
-                replaceQuery({
-                  ...queryRef.current,
-                  objectFilter: stripCustomFieldPresentation(
-                    objectFilter,
-                    customFieldNames,
-                    queryRef.current.objectFilter,
-                  ),
-                  filter: { ...queryRef.current.filter, page: 1 },
-                });
+                replaceQuery(
+                  {
+                    ...queryRef.current,
+                    objectFilter: stripCustomFieldPresentation(
+                      objectFilter,
+                      customFieldNames,
+                      queryRef.current.objectFilter,
+                    ),
+                    filter: { ...queryRef.current.filter, page: 1 },
+                  },
+                  queryRef.current.startFrom === "end",
+                );
               }}
             />
           </fieldset>

@@ -824,6 +824,48 @@ it("does not revisit already traversed scenes when a backward page refills", asy
   fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
   await screen.findByRole("link", { name: "First scene" });
 });
+it("starts a changed queue from the end in a review that starts from the end", async () => {
+  const titles = ["First scene", "Next scene", "Last scene"];
+  api.findMedia.mockImplementation(async (_rule, filter) => ({
+    items: [{ ...video, id: Number(filter.page), title: titles[Number(filter.page) - 1] }],
+    totalCount: 3,
+  }));
+  open({
+    ...review,
+    entityType: "video",
+    view: { ...review.view, startFrom: "end", filter: { perPage: 1 } },
+  } as VideoReview);
+  await screen.findByRole("link", { name: "Last scene" });
+  await ready();
+
+  fireEvent.click(screen.getByRole("button", { name: "Descending" }));
+
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get("page")).toBe("3"));
+  await screen.findByRole("link", { name: "Last scene" });
+  expect(new URLSearchParams(window.location.search).get("direction")).toBe("asc");
+});
+it("starts from the end again when the scope changes in a review that starts from the end", async () => {
+  api.loadOccurrencePage.mockImplementation(async (_rule, _targets, page) => ({
+    items: [
+      page === 2
+        ? { ...third, key: "3:11", media: { ...video, id: 3, title: "Last scene" } }
+        : first,
+    ],
+    totalCount: 2,
+  }));
+  open({
+    ...review,
+    occurrence: { ...review.occurrence, condition: "includes", conditionTagIds: [21] },
+    view: { ...review.view, startFrom: "end", filter: { perPage: 1 } },
+  });
+  await screen.findByRole("link", { name: "Last scene" });
+  await ready();
+
+  fireEvent.click(openScope().getByRole("checkbox", { name: "Include subtags" }));
+
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get("page")).toBe("2"));
+  await screen.findByRole("link", { name: "Last scene" });
+});
 it("disables duplicate saves while the first write is pending", async () => {
   let finish!: () => void;
   api.applyTags.mockImplementation(

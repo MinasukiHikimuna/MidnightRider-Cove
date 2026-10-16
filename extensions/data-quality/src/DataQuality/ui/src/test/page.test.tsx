@@ -2230,6 +2230,25 @@ it("resets an invalid URL to the last page when the saved review starts at the e
   );
 });
 
+it("keeps a grid that starts from the beginning on page 1 after a toolbar change", async () => {
+  api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple", startFrom: "beginning" } }], storageKey: "reviews", canWrite: true });
+  api.findMedia.mockResolvedValue({ items: [video(1)], totalCount: 48 });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(api.findMedia.mock.calls.at(-1)?.[1].page).toBe(1);
+  const calls = api.findMedia.mock.calls.length;
+
+  fireEvent.click(screen.getByRole("button", { name: "Descending" }));
+
+  await waitFor(() => expect(api.findMedia.mock.calls.length).toBeGreaterThan(calls));
+  await screen.findByRole("article", { name: "Video 1" });
+  expect(api.findMedia.mock.calls.at(-1)?.[1]).toMatchObject({ page: 1, direction: "asc" });
+  await waitFor(() =>
+    expect(new URLSearchParams(window.location.search).get("direction")).toBe("asc"),
+  );
+  expect(new URLSearchParams(window.location.search).get("page")).toBe("1");
+});
+
 it("selects and clears every shown video from the action bar", async () => {
   api.loadReviews.mockResolvedValueOnce({ reviews: [{ ...review, view: { ...review.view, reviewMode: "multiple" } }], storageKey: "reviews", canWrite: true });
   render(<DataQualityPage onNavigate={vi.fn()} />);
