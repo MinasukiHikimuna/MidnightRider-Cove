@@ -1472,8 +1472,13 @@ export function ReviewWorkspace({
     if (!list || !row) return;
     const bounds = list.getBoundingClientRect();
     const place = row.getBoundingClientRect();
+    // The row after it stays in view too, so the queue shows what comes next; a list too short
+    // for both keeps the item on screen.
+    const ahead = (row.nextElementSibling as HTMLElement | null)?.getBoundingClientRect();
+    const bottom =
+      ahead && ahead.bottom - place.top <= bounds.height ? Math.max(ahead.bottom, place.bottom) : place.bottom;
     if (place.top < bounds.top) list.scrollTop -= bounds.top - place.top;
-    else if (place.bottom > bounds.bottom) list.scrollTop += place.bottom - bounds.bottom;
+    else if (bottom > bounds.bottom) list.scrollTop += bottom - bounds.bottom;
   }, [current?.key, queueView]);
   // After a partner switch the clicked partner leaves the list; focus the one just left.
   const panelBody = useRef<HTMLDivElement>(null);

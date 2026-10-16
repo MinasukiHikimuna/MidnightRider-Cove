@@ -3231,6 +3231,27 @@ it("scrolls only the queue list to keep the item on screen in view", async () =>
   expect(scrollIntoView).not.toHaveBeenCalled();
 });
 
+it("keeps the next queue row in view below the item on screen", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second, third], totalCount: 3 });
+  const rect = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} }) as DOMRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains("dq-queue-list")) return rect(0, 150);
+    if (this.getAttribute("aria-current") === "true") return rect(150, 206);
+    // The row after the item on screen.
+    if (this.previousElementSibling?.getAttribute("aria-current") === "true") return rect(206, 262);
+    return rect(0, 0);
+  });
+  open();
+  await ready();
+  const list = document.querySelector<HTMLElement>(".dq-review-queue .dq-queue-list")!;
+  let scrollTop = 0;
+  Object.defineProperty(list, "scrollTop", { configurable: true, get: () => scrollTop, set: (value: number) => { scrollTop = value; } });
+  fireEvent.click(screen.getByRole("button", { name: "Skip performer" }));
+  await screen.findByRole("heading", { name: "Reviewing Second performer" });
+  // Down to the next row's bottom, not just the item's own.
+  await waitFor(() => expect(scrollTop).toBe(112));
+});
+
 it("names occurrence tags from their applications", async () => {
   state = {
     ids: [1, 2],
