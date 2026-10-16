@@ -245,8 +245,7 @@ it.each([
     await ready();
   }
   expect(document.querySelector("[role='dialog'], [aria-modal='true']")).toBeNull();
-  // Each write waits out Cove's one-second read cache before the queue moves on.
-}, 20_000);
+});
 
 it("shows an audio's tags as Cove's badges in Cove's display order", async () => {
   state = {

@@ -2,7 +2,6 @@ import { extensionFetch } from "@cove/runtime/api";
 import type {
   MediaKind,
   MediaReview,
-  ReviewAction,
   ReviewStep,
   TagReview,
   TagReviewAction,
@@ -374,15 +373,6 @@ export function videoPreviewUrl(videoId: number): string {
 
 export function videoPreviewStatusUrl(videoId: number): string {
   return `/api/stream/video/${videoId}/preview/status`;
-}
-
-// Cove's public filtered-query endpoint caches an identical request for one second.
-// No public invalidation/conditional-read API exists. Keep the action pending until
-// that cache expires, including after partial failure, before refreshing membership.
-export function settleReviewWrites(action: ReviewAction): Promise<void> {
-  return "steps" in action && action.steps.length
-    ? new Promise((resolve) => window.setTimeout(resolve, 1100))
-    : Promise.resolve();
 }
 
 export async function resolveTagTree(parentIds: number[], signal?: AbortSignal): Promise<number[]> {

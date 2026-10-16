@@ -70,23 +70,6 @@ function loadPerformerNames(ids: number[], signal: AbortSignal) {
   );
 }
 
-// Cove caches an identical filtered query for about a second after a write.
-function settle(since: number, signal: AbortSignal) {
-  const wait = 1100 - (Date.now() - since);
-  if (wait <= 0) return Promise.resolve();
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(resolve, wait);
-    signal.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timer);
-        reject(signal.reason);
-      },
-      { once: true },
-    );
-  });
-}
-
 type Step = "answers" | "preview" | "run";
 type RunKind = "apply" | "retry" | "undo";
 /**
@@ -331,7 +314,6 @@ export function BatchOccurrenceDialog({
   trees,
   onOpen,
   onClose,
-  onWrite,
 }: {
   review: OccurrenceReview;
   disabled: boolean;
@@ -349,7 +331,6 @@ export function BatchOccurrenceDialog({
   trees?: TagTrees;
   onOpen(): void;
   onClose(wrote: boolean): void;
-  onWrite(): void;
 }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("answers");
@@ -375,10 +356,9 @@ export function BatchOccurrenceDialog({
   const cancel = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const wrote = useRef(false);
-  const lastWrite = useRef(0);
   const running = useRef(false);
-  const latest = useRef({ onClose, onWrite });
-  latest.current = { onClose, onWrite };
+  const latest = useRef({ onClose });
+  latest.current = { onClose };
   const ids = useId();
   // A run moves to the Run step, which stays until New batch or Close drops its results.
   const started = step === "run";
@@ -557,7 +537,6 @@ export function BatchOccurrenceDialog({
     const abort = new AbortController();
     controller.current = abort;
     try {
-      await settle(lastWrite.current, abort.signal);
       const result = await previewOccurrenceBatch(review, chosen, abort.signal, (count) =>
         setNotice(`Loaded ${count.toLocaleString()} matching occurrences…`),
       );
@@ -593,7 +572,6 @@ export function BatchOccurrenceDialog({
     running.current = true;
     cancel.current = false;
     wrote.current = true;
-    latest.current.onWrite();
     setBusy(true);
     setStep("run");
     setError("");
@@ -623,7 +601,6 @@ export function BatchOccurrenceDialog({
       setNotice("");
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
-      lastWrite.current = Date.now();
       running.current = false;
       // An unexpected error ends the run early too; what it completed stays, with its undo.
       const stopped = cancel.current || failed;

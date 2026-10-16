@@ -19,7 +19,6 @@ const { api } = vi.hoisted(() => ({
     listTagGroups: vi.fn(),
     runReviewAction: vi.fn(),
     runTagReviewAction: vi.fn(),
-    settleReviewWrites: vi.fn(),
     getConfirmedAbsentTagsFieldStatus: vi.fn(),
     createConfirmedAbsentTagsField: vi.fn(),
     resolveTagTree: vi.fn(),
@@ -133,7 +132,6 @@ beforeEach(() => {
   api.runTagReviewAction.mockReset().mockResolvedValue(undefined);
   api.loadProgress.mockReset().mockResolvedValue(null);
   api.saveProgress.mockReset().mockResolvedValue(undefined);
-  api.settleReviewWrites.mockReset().mockResolvedValue(undefined);
   api.resolveTagTree.mockReset().mockResolvedValue([]);
   api.getConfirmedAbsentTagsFieldStatus
     .mockReset()

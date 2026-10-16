@@ -576,30 +576,6 @@ describe("Data Quality API adapter", () => {
   });
 });
 
-it("waits out the public filtered-query cache after mutations but not skips", async () => {
-  const { settleReviewWrites } = await import("../api");
-  vi.useFakeTimers();
-  try {
-    let settled = false;
-    const pending = settleReviewWrites({
-      id: "a",
-      label: "Apply",
-      steps: [{ mode: "ADD", tagIds: [1] }],
-    }).then(() => {
-      settled = true;
-    });
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(100);
-    await pending;
-    expect(settled).toBe(true);
-    await settleReviewWrites({ id: "s", label: "Skip", steps: [] });
-    expect(vi.getTimerCount()).toBe(0);
-  } finally {
-    vi.useRealTimers();
-  }
-});
-
 describe("audio reviews", () => {
   const audioReview = {
     id: "a",

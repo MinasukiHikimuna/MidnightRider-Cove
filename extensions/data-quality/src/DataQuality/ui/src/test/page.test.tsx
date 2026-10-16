@@ -42,7 +42,6 @@ const { account, api, review } = vi.hoisted(() => ({
     listTagGroups: vi.fn(),
     runReviewAction: vi.fn(),
     runTagReviewAction: vi.fn(),
-    settleReviewWrites: vi.fn().mockResolvedValue(undefined),
     getConfirmedAbsentTagsFieldStatus: vi.fn(),
     createConfirmedAbsentTagsField: vi.fn(),
     saveReviews: vi.fn(),

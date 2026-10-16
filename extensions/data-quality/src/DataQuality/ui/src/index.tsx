@@ -52,7 +52,6 @@ import {
   request,
   runReviewAction,
   runTagReviewAction,
-  settleReviewWrites,
   saveReviews,
   StaleReviewsError,
   videoPreviewStatusUrl,
@@ -1299,7 +1298,6 @@ export function DataQualityPage({
         );
       }
       try {
-        await settleReviewWrites(action);
         if (!isCurrent()) return;
         if (stay) {
           // The page stays as it is: each card shows what the page now reads for it, and a target

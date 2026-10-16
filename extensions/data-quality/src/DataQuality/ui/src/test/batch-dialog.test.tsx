@@ -146,8 +146,7 @@ function mount(
   trees?: TagTrees,
 ) {
   const onOpen = vi.fn(),
-    onClose = vi.fn(),
-    onWrite = vi.fn();
+    onClose = vi.fn();
   const rendered = render(
     <BatchOccurrenceDialog
       review={rule}
@@ -156,10 +155,9 @@ function mount(
       trees={trees}
       onOpen={onOpen}
       onClose={onClose}
-      onWrite={onWrite}
     />,
   );
-  return { ...rendered, onOpen, onClose, onWrite };
+  return { ...rendered, onOpen, onClose };
 }
 const openButton = () => screen.getByRole("button", { name: "Batch…" });
 const button = (name: string | RegExp) => screen.getByRole("button", { name });
@@ -178,7 +176,7 @@ async function preview(answers = ["Answer"], timeout?: number) {
 }
 
 it("walks from the answers to a preview without writes, keeps different answers by default, and applies replacements when chosen", async () => {
-  const callbacks = mount();
+  mount();
   fireEvent.click(openButton());
   expect(
     screen.getByRole("dialog", { name: "Apply to all matching occurrences" }),
@@ -227,7 +225,6 @@ it("walks from the answers to a preview without writes, keeps different answers 
       false,
     ),
   );
-  expect(callbacks.onWrite).toHaveBeenCalledOnce();
   expect(step("Run")).toHaveAttribute("aria-current", "step");
   expect(await screen.findByText(/Batch finished/)).toBeInTheDocument();
 });
@@ -325,7 +322,6 @@ it("keeps the batch control disabled for legacy choice-only reviews and reviews 
       disabled={false}
       onOpen={() => {}}
       onClose={() => {}}
-      onWrite={() => {}}
     />,
   );
   expect(openButton()).toBeDisabled();
@@ -497,7 +493,7 @@ it("reports a run that stops on an unexpected error as stopped, keeping the rest
 });
 
 it("invalidates an unapplied preview after closing and changing scope", async () => {
-  const { rerender, onOpen, onClose, onWrite } = mount();
+  const { rerender, onOpen, onClose } = mount();
   await preview();
   fireEvent.click(button("Close"));
   expect(onClose).toHaveBeenCalledWith(false);
@@ -510,7 +506,6 @@ it("invalidates an unapplied preview after closing and changing scope", async ()
       disabled={false}
       onOpen={onOpen}
       onClose={onClose}
-      onWrite={onWrite}
     />,
   );
   fireEvent.click(openButton());
@@ -520,7 +515,7 @@ it("invalidates an unapplied preview after closing and changing scope", async ()
 });
 
 it("starts a new batch at once, dropping the results without a confirmation", async () => {
-  const { rerender, onOpen, onClose, onWrite } = mount();
+  const { rerender, onOpen, onClose } = mount();
   await preview();
   fireEvent.click(button("Replace it"));
   fireEvent.click(button("Apply to 1 occurrence"));
@@ -537,7 +532,6 @@ it("starts a new batch at once, dropping the results without a confirmation", as
       disabled={false}
       onOpen={onOpen}
       onClose={onClose}
-      onWrite={onWrite}
     />,
   );
   // Completed results keep describing the batch that ran until they are dropped.
@@ -553,8 +547,7 @@ it("starts a new batch at once, dropping the results without a confirmation", as
   expect(checkbox("New answer")).not.toBeChecked();
   fireEvent.click(checkbox("New answer"));
   fireEvent.click(button("Preview all matches"));
-  // A fresh preview waits out Cove's one-second query cache after the writes.
-  await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
+  await screen.findByText("Preview ready. No tags have been changed.");
   expect(mocks.preview).toHaveBeenLastCalledWith(
     next,
     next.actions,
@@ -983,7 +976,7 @@ describe("category attention", () => {
   });
 });
 
-it("waits out Cove's query cache before previewing again after a run, and refreshes existing answers", async () => {
+it("previews again right after a run, and refreshes existing answers", async () => {
   let ranAt = 0;
   mocks.run.mockImplementation(async () => {
     ranAt = Date.now();
@@ -1003,9 +996,9 @@ it("waits out Cove's query cache before previewing again after a run, and refres
     return batch;
   });
   fireEvent.click(button("Preview all matches"));
-  await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
-  // Measured from when the run itself ended, so a slow machine cannot make it pass or fail.
-  expect(previewedAt - ranAt).toBeGreaterThanOrEqual(1090);
+  await screen.findByText("Preview ready. No tags have been changed.");
+  // Cove expires its cached filtered queries on every write, so nothing waits out the cache's second.
+  expect(previewedAt - ranAt).toBeLessThan(1000);
 });
 
 it("keeps answers that a category already holds, and replaces them when chosen", async () => {
@@ -1449,7 +1442,7 @@ it("keeps a running batch in view when the browser closes the dialog, and otherw
 });
 
 it("hands focus back to Batch… once the workspace enables it again, unless focus moved on", async () => {
-  const callbacks = { onOpen: vi.fn(), onClose: vi.fn(), onWrite: vi.fn() };
+  const callbacks = { onOpen: vi.fn(), onClose: vi.fn() };
   const view = (disabled: boolean) => (
     <BatchOccurrenceDialog review={review} disabled={disabled} {...callbacks} />
   );

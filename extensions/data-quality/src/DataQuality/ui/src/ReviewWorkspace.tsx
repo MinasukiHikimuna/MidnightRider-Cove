@@ -506,7 +506,6 @@ export function ReviewWorkspace({
   const [legacySelected, setLegacySelected] = useState<number[]>([]);
   const [legacyNames, setLegacyNames] = useState<Record<number, string>>({});
   const targets = useRef<number[] | null>(null);
-  const lastWriteAt = useRef(0);
   const [customFieldNames, setCustomFieldNames] = useState<
     Record<string, string>
   >({});
@@ -899,9 +898,6 @@ export function ReviewWorkspace({
     // Only loaded-page keys are excluded during boundary reconciliation. Manual
     // page navigation starts a fresh cursor and makes every matching item available.
     const loadedKeys = refresh ? visitedKeys : new Set(items.map(item => item.key));
-    const cacheWait = 1100 - (Date.now() - lastWriteAt.current);
-    if (cacheWait > 0)
-      await new Promise((resolve) => window.setTimeout(resolve, cacheWait));
     // In reverse traversal, refills on the current page come from the side
     // already traversed. Move to the preceding page instead.
     let nextPage = direction === -1 && !refresh ? Math.max(1, page - 1) : page;
@@ -1025,7 +1021,6 @@ export function ReviewWorkspace({
           const change = difference(base, selected);
           await editTags(review, current, change);
         }
-        lastWriteAt.current = Date.now();
         const after = await readTags(mediaKind, current);
         if (!optimisticNext) setTags(after);
         savedTags = true;
@@ -1065,7 +1060,6 @@ export function ReviewWorkspace({
           setPlayerRevision((revision) => revision + 1);
           setCurrent(current);
         }
-        lastWriteAt.current = Date.now();
         try {
           setTags(await readTags(mediaKind, current));
         } catch {
@@ -1281,8 +1275,6 @@ export function ReviewWorkspace({
     const key = rankingSignature(rule);
     // A stale ranking is counted again anyway when shown.
     if (rankingNow.current?.signature !== key || rankingNow.current.partial) return;
-    const wait = 1100 - (Date.now() - lastWriteAt.current);
-    if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
     try {
       const count = await countPerformer(rule, performerId);
       // A run started meanwhile would overwrite this count with the one from before the write.
@@ -1574,23 +1566,18 @@ export function ReviewWorkspace({
                 performerAttention={query.performerFocus ? focusAttention : undefined}
                 trees={trees}
                 onOpen={() => { lock.current = true; setPending(true); }}
-                onWrite={() => { lastWriteAt.current = Date.now(); }}
                 onClose={(wrote) => {
                   if (wrote) {
-                    lastWriteAt.current = Date.now();
                     const focused = queryRef.current.performerFocus;
                     if (focused) void recountAfterWrite(focused);
                     else invalidateRanking();
                     setAnswersRevision((value) => value + 1);
-                    void new Promise(resolve => window.setTimeout(resolve, 1100)).then(() => {
-                      endOperation();
-                      if (!alive.current) return;
-                      // Busy straight into the reload, as replaceQuery does, so the review never
-                      // looks ready for a frame in between (Batch… hands focus back only then).
-                      // A queue whose URL could not be read does not load, so it is not marked.
-                      if (!initialError.current) setLoading(true);
-                      setRevision(value => value + 1);
-                    });
+                    endOperation();
+                    // Busy straight into the reload, as replaceQuery does, so the review never
+                    // looks ready for a frame in between (Batch… hands focus back only then).
+                    // A queue whose URL could not be read does not load, so it is not marked.
+                    if (!initialError.current) setLoading(true);
+                    setRevision(value => value + 1);
                   } else endOperation();
                 }}
               />

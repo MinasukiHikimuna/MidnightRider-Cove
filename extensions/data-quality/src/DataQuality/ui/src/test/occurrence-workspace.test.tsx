@@ -645,6 +645,36 @@ it("removes the active video and autoplays its successor before the write settle
   await ready();
   expect(screen.getByRole("link", { name: "Next scene" })).toBeInTheDocument();
 });
+it("refreshes the queue and frees the actions as soon as the write ends", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  let wroteAt = 0;
+  let refreshedAt = 0;
+  api.applyTags.mockImplementationOnce(async () => {
+    wroteAt = performance.now();
+  });
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    .mockImplementation(async () => {
+      refreshedAt ||= performance.now();
+      return { items: [third.media, later], totalCount: 2 };
+    });
+  open(rule);
+  await ready();
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+
+  await waitFor(() => expect(refreshedAt).toBeGreaterThan(0));
+  // Cove expires its cached filtered queries on every write, so the refresh does not wait out
+  // the cache's second while the next video already plays.
+  expect(refreshedAt - wroteAt).toBeLessThan(500);
+  await ready();
+  expect(screen.getByRole("button", { name: "q Observation" })).toBeEnabled();
+});
 it("remounts the prepared successor paused when a write fails", async () => {
   const rule: VideoReview = {
     ...review,
@@ -1117,7 +1147,7 @@ it("drops batch results when the dialog closes and refreshes the queue", async (
   expect(screen.getByRole("button", { name: "Undo batch" })).toBeEnabled();
   const loads = api.loadOccurrencePage.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads), { timeout: 3000 });
+  await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(loads));
   await ready();
   // Focus comes back to Batch… once the refreshed queue lets it be used.
   await waitFor(() => expect(screen.getByRole("button", { name: "Batch…" })).toHaveFocus());
@@ -1243,7 +1273,7 @@ it("shows the focused performer's existing answers and flags, and batches only t
   expect(screen.getByRole("complementary", { name: "Current item" })).toHaveTextContent("Flagged: Changed");
   const answerLoads = panels.loadPerformerAnswers.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  await waitFor(() => expect(panels.loadPerformerAnswers.mock.calls.length).toBeGreaterThan(answerLoads), { timeout: 3000 });
+  await waitFor(() => expect(panels.loadPerformerAnswers.mock.calls.length).toBeGreaterThan(answerLoads));
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
   const dialog = within(screen.getByRole("dialog", { name: "Apply to all matching occurrences" }));
@@ -1252,7 +1282,7 @@ it("shows the focused performer's existing answers and flags, and batches only t
   );
   fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
   fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
-  await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
+  await screen.findByText("Preview ready. No tags have been changed.", {});
   expect(api.resolvePerformers).toHaveBeenLastCalledWith(focusedOn(11), expect.any(AbortSignal));
 });
 
@@ -1579,7 +1609,7 @@ describe("category attention", () => {
     await waitFor(() => expect(flaggedKeys()).toEqual(["Small", "Medium", "Red"]));
     fireEvent.click(screen.getByRole("button", { name: "e Red" }));
     await screen.findByRole("heading", { name: "Reviewing First performer" });
-    await waitFor(() => expect(panels.loadPerformerAnswers).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await waitFor(() => expect(panels.loadPerformerAnswers).toHaveBeenCalledTimes(2));
     await ready();
     expect(screen.getByRole("link", { name: /Next scene/ })).toBeInTheDocument();
     expect(attention()).toEqual([
@@ -1675,7 +1705,7 @@ it("recounts the saved performer in the ranking instead of ranking again", async
   await queue.findByRole("button", { name: "First performer, 12 matching videos" });
   fireEvent.click(queue.getByRole("button", { name: "Scenes" }));
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalledWith(expect.anything(), 11), { timeout: 3000 });
+  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalledWith(expect.anything(), 11));
   fireEvent.click(queue.getByRole("button", { name: "Performers" }));
   expect(await queue.findByRole("button", { name: "First performer, 11 matching videos" })).toBeInTheDocument();
   expect(panels.extendRanking).toHaveBeenCalledTimes(1);
@@ -1692,7 +1722,7 @@ it("restarts the performer ranking when a save interrupts its first run", async 
   fireEvent.click(queue.getByRole("button", { name: "Performers" }));
   await queue.findByRole("status");
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  expect(await queue.findByRole("button", { name: "First performer, 12 matching videos" }, { timeout: 3000 })).toBeInTheDocument();
+  expect(await queue.findByRole("button", { name: "First performer, 12 matching videos" })).toBeInTheDocument();
   expect(panels.extendRanking).toHaveBeenCalledTimes(2);
 });
 
@@ -1704,7 +1734,7 @@ it("counts again after an unfocused batch and recounts only the focused performe
     fireEvent.click(screen.getByRole("button", { name: "Batch…" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Observation" }));
     fireEvent.click(screen.getByRole("button", { name: "Preview all matches" }));
-    await screen.findByText("Preview ready. No tags have been changed.", {}, { timeout: 3000 });
+    await screen.findByText("Preview ready. No tags have been changed.", {});
     fireEvent.click(screen.getByRole("button", { name: /^Apply to \d+ occurrences?$/ }));
     await screen.findByText(/Batch finished/);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -1727,7 +1757,7 @@ it("counts again after an unfocused batch and recounts only the focused performe
   await queue().findByRole("button", { name: "First performer, 12 matching videos" });
   fireEvent.click(queue().getByRole("button", { name: "Scenes" }));
   await batch();
-  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalledWith(expect.anything(), 11), { timeout: 3000 });
+  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalledWith(expect.anything(), 11));
   fireEvent.click(queue().getByRole("button", { name: "Performers" }));
   expect(await queue().findByRole("button", { name: "First performer, 2 matching videos" })).toBeInTheDocument();
   expect(panels.extendRanking).toHaveBeenCalledTimes(1);
@@ -1854,7 +1884,7 @@ it("discards a recount when a count started meanwhile, then counts again", async
   fireEvent.click(queue.getByRole("button", { name: "Performers" }));
   await queue.findByRole("button", { name: "First performer, 12 matching videos" });
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalled(), { timeout: 3000 });
+  await waitFor(() => expect(panels.countPerformer).toHaveBeenCalled());
   fireEvent.click(await queue.findByRole("button", { name: "Show more performers" }));
   await waitFor(() => expect(showMoreSignal).toBeDefined());
   await act(async () => finishCount(5));
@@ -1907,12 +1937,12 @@ it("refreshes the queue after each save and removes a scene only after its last 
   const queue = within(screen.getByRole("complementary", { name: "Review queue" }));
   const player = screen.getByTestId("video-player");
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  await waitFor(() => expect(queue.queryByRole("button", { name: "First performer — First scene" })).not.toBeInTheDocument(), { timeout: 3000 });
+  await waitFor(() => expect(queue.queryByRole("button", { name: "First performer — First scene" })).not.toBeInTheDocument());
   expect(queue.getByRole("button", { name: "Second performer — First scene" })).toBeInTheDocument();
   expect(screen.getByTestId("video-player")).toBe(player);
   await ready();
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  await screen.findByRole("link", { name: "Next scene" }, { timeout: 3000 });
+  await screen.findByRole("link", { name: "Next scene" });
   expect(queue.queryByRole("button", { name: /First scene/ })).not.toBeInTheDocument();
 });
 
@@ -1924,7 +1954,7 @@ it.each([true, false])("autoplays the next video after applying regardless of pr
   fireEvent.click(screen.getByRole("button", { name: "Play review video" }));
   if (!playing) fireEvent.click(screen.getByRole("button", { name: "Pause review video" }));
   fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
-  await screen.findByRole("link", { name: "Next scene" }, { timeout: 3000 });
+  await screen.findByRole("link", { name: "Next scene" });
   expect(screen.getByTestId("video-player")).toHaveAttribute("data-autostart", "true");
 });
 
