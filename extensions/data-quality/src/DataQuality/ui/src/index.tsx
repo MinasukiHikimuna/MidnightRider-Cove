@@ -419,9 +419,12 @@ export function DataQualityPage({
   const mediaKind = mediaKindOf(entityType);
   const occurrenceReview = review ? isOccurrenceReview(review) : false;
   const videoReview = entityType === "video" ? (review as VideoReview | null) : null;
-  // Occurrence absences use their own field; only reviews that assess need it set up.
-  const occurrenceAssessments = occurrenceReview && !!review?.actions.some(hasAssessmentSteps);
-  const showsAbsenceSetup = !!videoReview || entityType === "audio" || occurrenceAssessments;
+  const assessments = !!(review as MediaReview | null)?.actions.some(hasAssessmentSteps);
+  // Occurrence absences use their own field. Only reviews that assess (mark tags present or
+  // absent) need a field set up.
+  const occurrenceAssessments = occurrenceReview && assessments;
+  const showsAbsenceSetup =
+    (!!videoReview || entityType === "audio" || occurrenceReview) && assessments;
   const [layoutOverride, setLayoutOverride] = useState<{ id: string; mode: "single" | "multiple" } | null>(null);
   const reviewMode = layoutOverride?.id === review?.id ? layoutOverride?.mode : review?.view.reviewMode ?? "single";
   const usesWorkspace =

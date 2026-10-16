@@ -782,7 +782,31 @@ describe("Data Quality extension page", () => {
     });
   });
 
+  const assessing = () =>
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [
+        {
+          ...review,
+          actions: [{ id: "absent", label: "Absent", steps: [{ mode: "MARK_ABSENT", tagIds: [1] }] }],
+        },
+      ],
+      storageKey: "reviews",
+      canWrite: true,
+    });
+
+  it("asks no setup of a review that never marks tags present or absent", async () => {
+    api.getConfirmedAbsentTagsFieldStatus.mockResolvedValue({
+      kind: "missing",
+      message: "Create the Confirmed absent tags custom field.",
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    await screen.findByRole("heading", { name: "Reviewing this video" });
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Set up tag assessments" })).not.toBeInTheDocument();
+  });
+
   it("offers explicit setup when the absence field is missing", async () => {
+    assessing();
     api.getConfirmedAbsentTagsFieldStatus
       .mockResolvedValueOnce({
         kind: "missing",
@@ -801,6 +825,7 @@ describe("Data Quality extension page", () => {
   });
 
   it("rechecks tag assessment setup after a transient failure", async () => {
+    assessing();
     api.getConfirmedAbsentTagsFieldStatus
       .mockRejectedValueOnce(new Error("Temporarily unavailable"))
       .mockResolvedValueOnce({ kind: "ready", definition: {}, message: "" });
