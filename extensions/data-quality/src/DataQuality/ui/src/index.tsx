@@ -1844,7 +1844,13 @@ export function DataQualityPage({
           for (const review of imported) {
             const listed = next.find((item) => item.id === review.id);
             if (!listed) next.push(review);
-            else if (JSON.stringify(listed) !== JSON.stringify(review)) {
+            else if (
+              reviewContent(listed, true) !== reviewContent(review, true) &&
+              // Imported before, its copy is listed already under its own id and name.
+              !next.some(
+                (item) => item.id !== review.id && reviewContent(item) === reviewContent(review),
+              )
+            ) {
               next.push(duplicateReview(review, next, crypto.randomUUID()));
               copies++;
             } else continue;
@@ -2969,6 +2975,19 @@ function withoutPreferredCardSize(review: Review): Review {
   const presentation = { ...review.presentation };
   delete presentation.cardSize;
   return { ...review, presentation };
+}
+
+/**
+ * A review as text in which the order of its keys does not count, to tell whether two reviews say
+ * the same; its id and name are left out unless asked for, as a copy has its own.
+ */
+function reviewContent(review: Review, withIdentity = false): string {
+  const { id, name, ...content } = review;
+  return JSON.stringify(withIdentity ? { ...content, id, name } : content, (_key, value) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : value,
+  );
 }
 
 function ReviewTagCard({

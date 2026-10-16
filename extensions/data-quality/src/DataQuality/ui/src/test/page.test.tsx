@@ -1221,8 +1221,13 @@ it("imports the reviews a file adds, keeps the ones already listed, and says so"
     "review",
   ]);
   expect(await screen.findAllByRole("cell", { name: "2 matching videos" })).toHaveLength(3);
-  // The same file again adds nothing and saves nothing (its change keeps the saved list).
-  chooseImportFile(JSON.stringify([added]));
+  // The same file again adds nothing and saves nothing (its change keeps the saved list): the
+  // differing version came in as a copy before, and its keys in another order change nothing.
+  chooseImportFile(
+    JSON.stringify([{ ...review }, { ...added }].map((item, index) =>
+      index === 0 ? { ...item, name: "Changed elsewhere" } : Object.fromEntries(Object.entries(item).reverse()),
+    )),
+  );
   await waitFor(() =>
     expect(announced()).toBe("Nothing imported: the reviews in this file are already in the list."),
   );
