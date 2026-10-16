@@ -443,11 +443,9 @@ export function reviewValidation(review: Review): string {
     )
   )
     return "An action cannot contain contradictory assessments for the same tag.";
-  if (
-    !review.name.trim() ||
-    !review.actions.every((action) => validAction(action, reviewEntityType(review)))
-  )
-    return "Name the review and complete every action step before saving.";
+  if (!review.name.trim()) return "Name the review before saving.";
+  if (!review.actions.every((action) => validAction(action, reviewEntityType(review))))
+    return "Give every action a label and say what it does before saving.";
   if (new Set(review.actions.map((a) => a.id)).size !== review.actions.length)
     return "Action IDs must be unique within a review.";
   const filterBins = (review as VideoReview).presentation?.filterBins ?? [];

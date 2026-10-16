@@ -442,7 +442,7 @@ it("refuses an incomplete draft and shows where it is incomplete", () => {
   fireEvent.click(within(drawer).getByRole("button", { name: "Save review" }));
   expect(onSave).not.toHaveBeenCalled();
   expect(within(drawer).getByRole("alert")).toHaveTextContent(
-    "Name the review and complete every action step before saving.",
+    "Name the review before saving.",
   );
   expect(within(drawer).getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
   expect(name).toHaveFocus();

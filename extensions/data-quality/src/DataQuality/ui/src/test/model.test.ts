@@ -153,7 +153,7 @@ describe("Data Quality review model", () => {
           },
         ],
       } as typeof tagReview),
-    ).toMatch(/complete every action/i);
+    ).toBe("Give every action a label and say what it does before saving.");
   });
 
   it("accepts assessment modes and rejects contradictory tag assessments", () => {

@@ -2,9 +2,9 @@ var Ul = Object.defineProperty;
 var Bl = (e, t, n) => t in e ? Ul(e, t, { enumerable: !0, configurable: !0, writable: !0, value: n }) : e[t] = n;
 var Jo = (e, t, n) => Bl(e, typeof t != "symbol" ? t + "" : t, n);
 import { jsxs as u, Fragment as me, jsx as a } from "react/jsx-runtime";
-import { useState as T, useRef as $, useEffect as ee, useLayoutEffect as Tt, useMemo as Ne, useCallback as Rn, useSyncExternalStore as ro, useId as at, createContext as Kl, useContext as Gl, Fragment as ao } from "react";
-import { useKeySequence as zl, EntityReferenceMultiSelector as cr, SortableList as _s, TagBadge as Vl, EntityReferenceSelector as Ho, EntityDetailTabs as Jl, FilterDialog as js, VIDEO_CRITERIA as ii, DetailListToolbar as ya, PERFORMER_CRITERIA as io, AUDIO_CRITERIA as Us, NarrativeText as Hl, AUDIO_SORT_OPTIONS as Ql, VIDEO_SORT_OPTIONS as Bs, AudioPlayer as Wl, VideoPlayer as Ks, formatDuration as Gs, getResolutionLabel as Yl, ConfirmDialog as Xl, TAG_CRITERIA as Zl, TAG_SORT_OPTIONS as ed, TagTile as td, VideoCard as nd } from "@cove/runtime/components";
-import { Search as Sa, Flag as Kn, Check as Xr, Pencil as Wr, Ban as Qa, ChevronDown as oo, Plus as ka, Pin as zs, GripVertical as Vs, AlertTriangle as Un, Copy as Js, Trash2 as oi, X as Ea, Mic as rd, Users as Hs, Tag as Qs, Headphones as Ws, Film as si, ChevronLeft as Aa, MoreHorizontal as ad, RectangleHorizontal as id, LayoutGrid as so, ChevronRight as Ys, Save as od, RotateCcw as sd, Layers as Qo, Undo2 as cd, RefreshCw as ld, ExternalLink as Xs, SkipForward as dd, Upload as ud, Download as Zs, ArrowUp as fd, ArrowDown as pd, Loader2 as hd, List as md, Grid3X3 as gd } from "@cove/runtime/lucide-react";
+import { useState as T, useRef as $, useEffect as ee, useLayoutEffect as Tt, useMemo as Ne, useCallback as Rn, useSyncExternalStore as ro, useId as at, createContext as Gl, useContext as Kl, Fragment as ao } from "react";
+import { useKeySequence as zl, EntityReferenceMultiSelector as cr, SortableList as _s, TagBadge as Vl, EntityReferenceSelector as Ho, EntityDetailTabs as Jl, FilterDialog as js, VIDEO_CRITERIA as ii, DetailListToolbar as ya, PERFORMER_CRITERIA as io, AUDIO_CRITERIA as Us, NarrativeText as Hl, AUDIO_SORT_OPTIONS as Ql, VIDEO_SORT_OPTIONS as Bs, AudioPlayer as Wl, VideoPlayer as Gs, formatDuration as Ks, getResolutionLabel as Yl, ConfirmDialog as Xl, TAG_CRITERIA as Zl, TAG_SORT_OPTIONS as ed, TagTile as td, VideoCard as nd } from "@cove/runtime/components";
+import { Search as Sa, Flag as Gn, Check as Xr, Pencil as Wr, Ban as Qa, ChevronDown as oo, Plus as ka, Pin as zs, GripVertical as Vs, AlertTriangle as Un, Copy as Js, Trash2 as oi, X as Ea, Mic as rd, Users as Hs, Tag as Qs, Headphones as Ws, Film as si, ChevronLeft as Aa, MoreHorizontal as ad, RectangleHorizontal as id, LayoutGrid as so, ChevronRight as Ys, Save as od, RotateCcw as sd, Layers as Qo, Undo2 as cd, RefreshCw as ld, ExternalLink as Xs, SkipForward as dd, Upload as ud, Download as Zs, ArrowUp as fd, ArrowDown as pd, Loader2 as hd, List as md, Grid3X3 as gd } from "@cove/runtime/lucide-react";
 import { extensionFetch as bd } from "@cove/runtime/api";
 import { createPortal as yd } from "react-dom";
 const co = {
@@ -151,7 +151,7 @@ function Na(e) {
   var n;
   return Ae(e) && !ac(e.occurrence) ? "Complete the optional occurrence condition before saving." : !Nd(e) && e.view.reviewMode === "multiple" ? "Only video reviews support the multiple-item layout." : Le(e) !== "tag" && e.actions.some(
     (r) => ho(r)
-  ) ? "An action cannot contain contradictory assessments for the same tag." : !e.name.trim() || !e.actions.every((r) => Gn(r, Le(e))) ? "Name the review and complete every action step before saving." : new Set(e.actions.map((r) => r.id)).size !== e.actions.length ? "Action IDs must be unique within a review." : (((n = e.presentation) == null ? void 0 : n.filterBins) ?? []).some((r) => !r.label.trim() || !Object.keys(r.filter).length) ? "Name every filter bin and give it a filter before saving." : "";
+  ) ? "An action cannot contain contradictory assessments for the same tag." : e.name.trim() ? e.actions.every((r) => Kn(r, Le(e))) ? new Set(e.actions.map((r) => r.id)).size !== e.actions.length ? "Action IDs must be unique within a review." : (((n = e.presentation) == null ? void 0 : n.filterBins) ?? []).some((r) => !r.label.trim() || !Object.keys(r.filter).length) ? "Name every filter bin and give it a filter before saving." : "" : "Give every action a label and say what it does before saving." : "Name the review before saving.";
 }
 const Sd = {
   video: 1e3,
@@ -181,7 +181,7 @@ function ar(e) {
     Ae(e) ? [e.entityType, ...r, e.occurrence] : Le(e) === "video" ? r : [Le(e), ...r]
   );
 }
-function Gn(e, t) {
+function Kn(e, t) {
   const n = t ?? ("effect" in e ? "tag" : "video");
   return e.label.trim() ? n === "tag" ? !("effect" in e) || "steps" in e || !e.effect || typeof e.effect != "object" ? !1 : ["SET_TAG_GROUP", "CLEAR_TAG_GROUP", "SKIP"].includes(
     e.effect.mode
@@ -237,9 +237,9 @@ function Ca(e) {
       (r) => typeof r == "string"
     )) && // Answer groups belong to actions that write tags; tag reviews have neither.
     (n.stayUntilGroupsAnswered === void 0 || typeof n.stayUntilGroupsAnswered == "boolean" && n.entityType !== "tag") && Array.isArray(n.actions) && n.actions.every(
-      (r) => typeof (r == null ? void 0 : r.id) == "string" && typeof r.label == "string" && (r.shortcut === void 0 || typeof r.shortcut == "string") && (n.entityType === "tag" ? "effect" in r && !("steps" in r) && !("group" in r) && Gn(r, "tag") : "steps" in r && !("effect" in r) && Array.isArray(r.steps) && r.steps.every(
+      (r) => typeof (r == null ? void 0 : r.id) == "string" && typeof r.label == "string" && (r.shortcut === void 0 || typeof r.shortcut == "string") && (n.entityType === "tag" ? "effect" in r && !("steps" in r) && !("group" in r) && Kn(r, "tag") : "steps" in r && !("effect" in r) && Array.isArray(r.steps) && r.steps.every(
         (i) => i && Array.isArray(i.tagIds)
-      ) && (r.group === void 0 || typeof r.group == "string") && Gn(r, "video"))
+      ) && (r.group === void 0 || typeof r.group == "string") && Kn(r, "video"))
     )
   ))
     throw new Error(
@@ -390,7 +390,7 @@ function Di(e) {
     );
   return e;
 }
-function Gr(e) {
+function Kr(e) {
   const t = JSON.parse(e);
   if ((t == null ? void 0 : t.version) !== 2)
     throw new Error(
@@ -461,7 +461,7 @@ async function _d(e, t) {
   const n = String(e.user.id), r = Ir(e.permissions, "savedfilters.read"), i = r && Ir(e.permissions, "savedfilters.write"), o = r ? (await Xa(ic)).filter((g) => g.name === "Data Quality configuration").sort((g, y) => g.id - y.id) : [];
   if (o.length > 1) {
     const g = (y) => {
-      const { revision: N, ...v } = Gr(y.uiOptions);
+      const { revision: N, ...v } = Kr(y.uiOptions);
       return JSON.stringify(v);
     };
     if (o.some((y) => g(y) !== g(o[0])))
@@ -476,12 +476,12 @@ async function _d(e, t) {
         });
     o.splice(1);
   }
-  let s = o.length ? Gr(o[0].uiOptions) : xd();
+  let s = o.length ? Kr(o[0].uiOptions) : xd();
   const c = localStorage.getItem(`${t}:migrated`) === "true", l = localStorage.getItem(t), f = localStorage.getItem(`${t}:local-only`) === "true";
-  !o.length && l && (s = Gr(l));
+  !o.length && l && (s = Kr(l));
   let d = !o.length;
   if (o.length && f && l) {
-    const g = Gr(l);
+    const g = Kr(l);
     if (g.reviews.some((N) => {
       const v = s.reviews.find((w) => w.id === N.id);
       return v && JSON.stringify(v) !== JSON.stringify(N);
@@ -546,7 +546,7 @@ async function _d(e, t) {
   };
   if (Ta.set(t, p), d && i) {
     const g = s;
-    o.length && (p.config = Gr(o[0].uiOptions)), await cc(t, g), s = p.config;
+    o.length && (p.config = Kr(o[0].uiOptions)), await cc(t, g), s = p.config;
   } else o.length || (localStorage.setItem(t, JSON.stringify(s)), !r && (!c || f) && localStorage.setItem(`${t}:local-only`, "true"));
   if (!r) localStorage.setItem(`${t}:migrated`, "true");
   else if (i)
@@ -580,7 +580,7 @@ async function cc(e, t) {
     if (await sc(n), n.recordId != null) {
       const o = await we(
         `/api/savedfilters/${n.recordId}`
-      ), s = Gr(o.uiOptions);
+      ), s = Kr(o.uiOptions);
       if (s.revision !== n.config.revision)
         throw new Ya(
           "Reviews changed in another browser. Reload the page to get them, then try again.",
@@ -663,7 +663,7 @@ async function Bd(e, t) {
   ), s = o ? ts(o.uiOptions) : null;
   return i && (!s || i.updatedAt > s.updatedAt) ? i : s;
 }
-function Kd(e, t, n) {
+function Gd(e, t, n) {
   const r = `${e}:progress:${t}`;
   try {
     localStorage.setItem(r, JSON.stringify(n));
@@ -692,12 +692,12 @@ function Kd(e, t, n) {
 function ur(e) {
   return e === "audio" ? "audios" : "videos";
 }
-const Gd = {
+const Kd = {
   video: { one: "video", many: "videos", queue: "scene" },
   audio: { one: "audio", many: "audios", queue: "audio" }
 };
 function Vn(e) {
-  return Gd[e];
+  return Kd[e];
 }
 const ei = "confirmed_absent_tags", go = "Confirmed absent tags", li = "confirmed_absent_occurrence_tags", lc = {
   key: ei,
@@ -994,7 +994,7 @@ function ru(e, t, n) {
   }
 }
 async function bc(e, t, n) {
-  if (!Gn(t) || n.length === 0 || n.some((l) => !Number.isSafeInteger(l) || l <= 0))
+  if (!Kn(t) || n.length === 0 || n.some((l) => !Number.isSafeInteger(l) || l <= 0))
     throw new Error(
       `Choose ${Vn(e).many} and configure a valid action first.`
     );
@@ -1034,7 +1034,7 @@ async function bc(e, t, n) {
     }
 }
 async function au(e, t) {
-  if (!Gn(e, "tag") || t.length === 0 || t.some((n) => !Number.isSafeInteger(n) || n <= 0))
+  if (!Kn(e, "tag") || t.length === 0 || t.some((n) => !Number.isSafeInteger(n) || n <= 0))
     throw new Error("Choose tags and configure a valid action first.");
   e.effect.mode !== "SKIP" && await we("/api/tags/bulk", {
     method: "POST",
@@ -1210,7 +1210,7 @@ function Bi(e, t) {
     return { ...i, answers: o.length ? o : s };
   });
 }
-function Ki(e) {
+function Gi(e) {
   return e.filter((t) => t.answers.length === 0);
 }
 function cu(e, t, n) {
@@ -1266,12 +1266,12 @@ function os(e, t, n) {
     ...o.filter((s) => s.key !== Jr)
   ];
 }
-function Gi(e, t, n) {
+function Ki(e, t, n) {
   return e !== n.key && e.startsWith("tag:") && n.members.every((r) => t.includes(r));
 }
 function No(e) {
   const t = e.flatMap((i) => i.mixed), n = (i, o) => t.some(
-    (s, c) => Gi(s.key, s.members, i) && !(c > o && Gi(i.key, i.members, s))
+    (s, c) => Ki(s.key, s.members, i) && !(c > o && Ki(i.key, i.members, s))
   ), r = /* @__PURE__ */ new Map();
   return t.forEach((i, o) => {
     !r.has(i.key) && !n(i, o) && r.set(i.key, {
@@ -1285,7 +1285,7 @@ function No(e) {
 }
 function uu(e, t) {
   return t.filter(
-    (n) => n.key === e.key || Gi(n.key, n.tagIds ?? [], e)
+    (n) => n.key === e.key || Ki(n.key, n.tagIds ?? [], e)
   );
 }
 function kc(...e) {
@@ -1873,7 +1873,7 @@ function Iu({
             children: [
               /* @__PURE__ */ a("span", { className: "dq-group-name", children: i.name }),
               l && /* @__PURE__ */ u("span", { className: "dq-group-flag", children: [
-                /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+                /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
                 /* @__PURE__ */ u("span", { className: "dq-sr-only", children: [
                   ", needs attention: ",
                   l
@@ -1940,7 +1940,7 @@ function Ru({
     () => C.length && r ? Bi(e, r) : null,
     [C, e, r]
   ), P = new Map(
-    Ki(D ?? []).flatMap(
+    Gi(D ?? []).flatMap(
       (S) => S.actions.filter((ce) => Sc(e[ce])).map((ce) => [ce, S.name])
     )
   ), ne = Ne(
@@ -1973,7 +1973,7 @@ function Ru({
         className: "dq-pad-flag",
         "aria-hidden": "true",
         title: `Needs attention: ${j[S]}`,
-        children: /* @__PURE__ */ a(Kn, {})
+        children: /* @__PURE__ */ a(Gn, {})
       }
     )
   ) : null, L = (S) => ({
@@ -2537,7 +2537,7 @@ function Uu(e, t) {
   return ((r = xr(t).find((i) => i.key === n)) == null ? void 0 : r.name) ?? e.trim();
 }
 const Bu = (e) => e instanceof Error ? e.message : "Request failed.";
-function Ku({
+function Gu({
   id: e,
   review: t,
   disabled: n,
@@ -2767,7 +2767,7 @@ function Ku({
     ] })
   ] });
 }
-function Gu(e, t, n, r) {
+function Ku(e, t, n, r) {
   const i = qt(n), o = [{ kind: "none", name: "", selected: !i }];
   if (r === null) {
     for (const c of e)
@@ -2802,7 +2802,7 @@ const Ju = /* @__PURE__ */ new Set([
   "CapsLock",
   "NumLock",
   "ScrollLock"
-]), Hu = /* @__PURE__ */ new Set(["Escape", "Enter", "Tab", "ArrowUp", "ArrowDown"]), Ka = 4, ps = 240;
+]), Hu = /* @__PURE__ */ new Set(["Escape", "Enter", "Tab", "ArrowUp", "ArrowDown"]), Ga = 4, ps = 240;
 function Qu(e) {
   const t = [];
   for (let n = e.parentElement; n && n !== document.body; n = n.parentElement) {
@@ -2829,7 +2829,7 @@ function Yu({
   onChange: i
 }) {
   const o = at(), s = at(), c = at(), l = $(null), f = $(null), d = $(null), p = $(null), h = $(null), g = $([]), y = $(!1), N = $(!1), [v, w] = T(!1), [k, M] = T(null), [x, B] = T(null), [C, D] = T(!1), P = e.group ?? "", ne = Ne(
-    () => Gu(t, n, P, k),
+    () => Ku(t, n, P, k),
     [t, n, P, k]
   ), J = ne.map(zu), j = x === null ? -1 : J.indexOf(x), z = (A) => `${s}-option-${A}`, F = (A) => i(A ? { ...e, group: A } : Vu(e)), _ = () => {
     var Y;
@@ -2853,8 +2853,8 @@ function Yu({
   function H() {
     const A = f.current, Y = p.current;
     if (!A || !Y) return;
-    const de = A.getBoundingClientRect(), pe = window.visualViewport, G = (pe == null ? void 0 : pe.offsetTop) ?? 0, Ee = (pe ? pe.offsetTop + pe.height : window.innerHeight) - de.bottom - Ka, ke = de.top - G - Ka, ve = Math.min(Y.scrollHeight, ps), He = Ee < ve && ke > Ee;
-    Y.style.left = `${de.left}px`, Y.style.width = `${de.width}px`, Y.style.top = `${He ? de.top - Ka : de.bottom + Ka}px`, Y.style.transform = He ? "translateY(-100%)" : "", Y.style.maxHeight = `${Math.max(0, Math.min(ps, He ? ke : Ee))}px`, Wu(A, Y, de, g.current) || Q();
+    const de = A.getBoundingClientRect(), pe = window.visualViewport, K = (pe == null ? void 0 : pe.offsetTop) ?? 0, Ee = (pe ? pe.offsetTop + pe.height : window.innerHeight) - de.bottom - Ga, ke = de.top - K - Ga, ve = Math.min(Y.scrollHeight, ps), He = Ee < ve && ke > Ee;
+    Y.style.left = `${de.left}px`, Y.style.width = `${de.width}px`, Y.style.top = `${He ? de.top - Ga : de.bottom + Ga}px`, Y.style.transform = He ? "translateY(-100%)" : "", Y.style.maxHeight = `${Math.max(0, Math.min(ps, He ? ke : Ee))}px`, Wu(A, Y, de, g.current) || Q();
   }
   Tt(() => {
     var A;
@@ -2863,12 +2863,12 @@ function Yu({
     v && H();
   }), ee(() => {
     if (!v) return;
-    const A = () => H(), Y = (G) => {
-      W(G.target) || Q();
+    const A = () => H(), Y = (K) => {
+      W(K.target) || Q();
     }, de = [...g.current, window], pe = window.visualViewport;
-    for (const G of de) G.addEventListener("scroll", A);
+    for (const K of de) K.addEventListener("scroll", A);
     return window.addEventListener("resize", A), pe == null || pe.addEventListener("resize", A), pe == null || pe.addEventListener("scroll", A), document.addEventListener("pointerdown", Y), () => {
-      for (const G of de) G.removeEventListener("scroll", A);
+      for (const K of de) K.removeEventListener("scroll", A);
       window.removeEventListener("resize", A), pe == null || pe.removeEventListener("resize", A), pe == null || pe.removeEventListener("scroll", A), document.removeEventListener("pointerdown", Y);
     };
   }, [v]), ee(() => {
@@ -2889,8 +2889,8 @@ function Yu({
           A.key === "ArrowUp" && Q();
           return;
         }
-        const de = A.key === "ArrowDown" ? 1 : -1, pe = k !== null && qt(k) && J.length > 1 ? 1 : 0, G = j < 0 ? de > 0 ? pe : J.length - 1 : (j + de + J.length) % J.length;
-        B(J[G]);
+        const de = A.key === "ArrowDown" ? 1 : -1, pe = k !== null && qt(k) && J.length > 1 ? 1 : 0, K = j < 0 ? de > 0 ? pe : J.length - 1 : (j + de + J.length) % J.length;
+        B(J[K]);
       } else A.key === "Enter" && (A.preventDefault(), j >= 0 ? ae(ne[j]) : (_(), Q()));
   }
   function ce(A) {
@@ -3232,7 +3232,7 @@ function tf(e) {
   return e === "ADD" || e === "MARK_PRESENT" ? "add" : e === "CLEAR_ABSENCE" ? "neutral" : "remove";
 }
 function nf(e, t) {
-  if (Gn(e, t)) return "";
+  if (Kn(e, t)) return "";
   if (!e.label.trim()) return "Needs a label";
   if ("steps" in e) {
     if (e.steps.some((n) => !n.tagIds.length)) return "A step has no tags";
@@ -3257,64 +3257,64 @@ function af({
   reveal: c
 }) {
   const l = Le(e), f = l !== "tag", d = e.actions, p = Zr(d), h = ea(Ne(() => ui(d), [d])), g = Ne(
-    () => f ? xr(d).map((G) => G.name) : [],
+    () => f ? xr(d).map((K) => K.name) : [],
     [f, d]
-  ), y = d.findIndex((G) => G.id === o), N = Ne(
+  ), y = d.findIndex((K) => K.id === o), N = Ne(
     () => f && y >= 0 ? xr(
-      d.filter((G, be) => be !== y)
-    ).map((G) => G.name) : [],
+      d.filter((K, be) => be !== y)
+    ).map((K) => K.name) : [],
     [f, d, y]
   ), v = f && e.stayUntilGroupsAnswered === !0, w = Ne(
     () => new Set(
-      v ? su(d).map((G) => G.key) : []
+      v ? su(d).map((K) => K.key) : []
     ),
     [v, d]
   ), [k, M] = T(""), [x, B] = T(!1), [C, D] = T(
     null
-  ), P = at(), ne = `${P}-from-tags`, J = $(null), j = $(null), z = $(null), F = $(null), _ = $(/* @__PURE__ */ new WeakMap()), L = (G) => {
-    let be = _.current.get(G);
-    return be || (be = crypto.randomUUID(), _.current.set(G, be)), be;
-  }, W = k.trim().toLocaleLowerCase(), Q = W ? d.filter((G) => G.label.toLocaleLowerCase().includes(W)) : d, ae = (G) => t({ ...e, actions: G }), H = (G, be) => ae(d.map((Ee, ke) => ke === G ? be : Ee));
-  function S(G) {
+  ), P = at(), ne = `${P}-from-tags`, J = $(null), j = $(null), z = $(null), F = $(null), _ = $(/* @__PURE__ */ new WeakMap()), L = (K) => {
+    let be = _.current.get(K);
+    return be || (be = crypto.randomUUID(), _.current.set(K, be)), be;
+  }, W = k.trim().toLocaleLowerCase(), Q = W ? d.filter((K) => K.label.toLocaleLowerCase().includes(W)) : d, ae = (K) => t({ ...e, actions: K }), H = (K, be) => ae(d.map((Ee, ke) => ke === K ? be : Ee));
+  function S(K) {
     var be;
     return [...((be = z.current) == null ? void 0 : be.querySelectorAll("[data-action-id]")) ?? []].find(
-      (Ee) => Ee.dataset.actionId === G
+      (Ee) => Ee.dataset.actionId === K
     );
   }
-  function ce(G, be) {
-    const Ee = S(G), ke = Ee == null ? void 0 : Ee.querySelector(
+  function ce(K, be) {
+    const Ee = S(K), ke = Ee == null ? void 0 : Ee.querySelector(
       be === "label" ? ".dq-action-label-input" : ".dq-action-toggle"
     );
     return ke == null || ke.focus(), !!ke;
   }
   Tt(() => {
     var be;
-    const G = F.current;
-    G && (F.current = null, (G === "add" || !ce(G.id, G.part)) && ((be = j.current) == null || be.focus()));
+    const K = F.current;
+    K && (F.current = null, (K === "add" || !ce(K.id, K.part)) && ((be = j.current) == null || be.focus()));
   }), ee(() => {
-    !c || !o || (Q.some((G) => G.id === o) ? ce(o, "label") : (M(""), F.current = { id: o, part: "label" }));
+    !c || !o || (Q.some((K) => K.id === o) ? ce(o, "label") : (M(""), F.current = { id: o, part: "label" }));
   }, [c]);
   function A() {
-    const G = rf(l);
-    M(""), ae([...d, G]), s(G.id), F.current = { id: G.id, part: "label" };
+    const K = rf(l);
+    M(""), ae([...d, K]), s(K.id), F.current = { id: K.id, part: "label" };
   }
-  function Y(G) {
-    const be = d[G], { shortcut: Ee, ...ke } = structuredClone(be), ve = {
+  function Y(K) {
+    const be = d[K], { shortcut: Ee, ...ke } = structuredClone(be), ve = {
       ...ke,
       ...Ee === or ? { shortcut: Ee } : {},
       id: crypto.randomUUID(),
       label: `${be.label} copy`
     };
-    ae([...d.slice(0, G + 1), ve, ...d.slice(G + 1)]), s(ve.id), F.current = { id: ve.id, part: "label" };
+    ae([...d.slice(0, K + 1), ve, ...d.slice(K + 1)]), s(ve.id), F.current = { id: ve.id, part: "label" };
   }
-  function de(G) {
-    const be = d[G], Ee = Q.indexOf(be), ke = Q[Ee + 1] ?? Q[Ee - 1];
-    ae(d.filter((ve, He) => He !== G)), o === be.id && s(null), F.current = ke ? { id: ke.id, part: "toggle" } : "add";
+  function de(K) {
+    const be = d[K], Ee = Q.indexOf(be), ke = Q[Ee + 1] ?? Q[Ee - 1];
+    ae(d.filter((ve, He) => He !== K)), o === be.id && s(null), F.current = ke ? { id: ke.id, part: "toggle" } : "add";
   }
   function pe() {
     B(!1), requestAnimationFrame(() => {
-      var G;
-      return (G = J.current) == null ? void 0 : G.focus();
+      var K;
+      return (K = J.current) == null ? void 0 : K.focus();
     });
   }
   return /* @__PURE__ */ u("div", { className: "dq-actions-editor", children: [
@@ -3358,9 +3358,9 @@ function af({
               autoComplete: "off",
               spellCheck: !1,
               value: k,
-              onChange: (G) => M(G.target.value),
-              onKeyDown: (G) => {
-                G.key === "Escape" && k && !un(G) && (G.preventDefault(), G.stopPropagation(), M(""));
+              onChange: (K) => M(K.target.value),
+              onKeyDown: (K) => {
+                K.key === "Escape" && k && !un(K) && (K.preventDefault(), K.stopPropagation(), M(""));
               }
             }
           )
@@ -3375,9 +3375,9 @@ function af({
               type: "checkbox",
               checked: v,
               "aria-describedby": `${P}-groups-note`,
-              onChange: (G) => t({
+              onChange: (K) => t({
                 ...e,
-                stayUntilGroupsAnswered: G.target.checked ? !0 : void 0
+                stayUntilGroupsAnswered: K.target.checked ? !0 : void 0
               })
             }
           ),
@@ -3392,18 +3392,18 @@ function af({
     /* @__PURE__ */ a(
       "div",
       {
-        onKeyDown: (G) => {
-          G.key !== "Escape" || G.defaultPrevented || un(G) || (G.preventDefault(), G.stopPropagation(), pe());
+        onKeyDown: (K) => {
+          K.key !== "Escape" || K.defaultPrevented || un(K) || (K.preventDefault(), K.stopPropagation(), pe());
         },
         children: /* @__PURE__ */ a(
-          Ku,
+          Gu,
           {
             id: ne,
             review: e,
             disabled: i,
-            onAdd: (G) => {
-              const be = [...d, ...G];
-              ae(be), D({ actions: be, count: G.length }), pe();
+            onAdd: (K) => {
+              const be = [...d, ...K];
+              ae(be), D({ actions: be, count: K.length }), pe();
             },
             onCancel: pe
           }
@@ -3414,16 +3414,16 @@ function af({
       _s,
       {
         items: Q,
-        getKey: (G) => G.id,
+        getKey: (K) => K.id,
         disabled: i || !!W,
         className: "dq-action-list",
-        onReorder: (G) => ae(G),
-        renderItem: (G, { dragHandleProps: be, isOver: Ee }) => {
-          const ke = d.indexOf(G), ve = o === G.id;
+        onReorder: (K) => ae(K),
+        renderItem: (K, { dragHandleProps: be, isOver: Ee }) => {
+          const ke = d.indexOf(K), ve = o === K.id;
           return /* @__PURE__ */ a(
             of,
             {
-              action: G,
+              action: K,
               entityType: l,
               keyButton: /* @__PURE__ */ a(
                 Xu,
@@ -3431,25 +3431,25 @@ function af({
                   actions: d,
                   index: ke,
                   keyMap: p,
-                  name: G.label.trim() || "New action",
+                  name: K.label.trim() || "New action",
                   onChoose: (He) => ae(qd(d, ke, He))
                 }
               ),
-              takenPin: p.duplicatePins.has(ke) ? G.shortcut : void 0,
-              groupUnanswerable: "steps" in G && w.has(qt(G.group)),
-              effect: Lr(G, h, n, r),
+              takenPin: p.duplicatePins.has(ke) ? K.shortcut : void 0,
+              groupUnanswerable: "steps" in K && w.has(qt(K.group)),
+              effect: Lr(K, h, n, r),
               open: ve,
-              detailId: `${P}-detail-${G.id}`,
+              detailId: `${P}-detail-${K.id}`,
               dragHandleProps: be,
               isOver: Ee,
               reorderDisabled: i || !!W,
-              onToggle: () => s(ve ? null : G.id),
+              onToggle: () => s(ve ? null : K.id),
               onDuplicate: () => Y(ke),
               onDelete: () => de(ke),
-              children: "steps" in G ? /* @__PURE__ */ a(
+              children: "steps" in K ? /* @__PURE__ */ a(
                 sf,
                 {
-                  action: G,
+                  action: K,
                   groupNames: g,
                   otherGroupNames: N,
                   occurrence: Ae(e),
@@ -3461,7 +3461,7 @@ function af({
               ) : /* @__PURE__ */ a(
                 lf,
                 {
-                  action: G,
+                  action: K,
                   tagGroups: n,
                   onChange: (He) => H(ke, He)
                 }
@@ -3598,7 +3598,7 @@ function of({
     }
   );
 }
-function Kc({
+function Gc({
   action: e,
   onChange: t
 }) {
@@ -3632,7 +3632,7 @@ function sf({
   });
   const p = (h) => c({ ...e, steps: h });
   return /* @__PURE__ */ u(me, { children: [
-    /* @__PURE__ */ a(Kc, { action: e, onChange: (h) => c({ ...e, label: h }) }),
+    /* @__PURE__ */ a(Gc, { action: e, onChange: (h) => c({ ...e, label: h }) }),
     /* @__PURE__ */ a(
       Yu,
       {
@@ -3768,7 +3768,7 @@ function lf({
 }) {
   const r = e.effect, i = r.mode === "SET_TAG_GROUP" ? `group:${r.tagGroupId}` : r.mode, o = r.mode === "SET_TAG_GROUP" && !t.some((s) => s.id === r.tagGroupId);
   return /* @__PURE__ */ u(me, { children: [
-    /* @__PURE__ */ a(Kc, { action: e, onChange: (s) => n({ ...e, label: s }) }),
+    /* @__PURE__ */ a(Gc, { action: e, onChange: (s) => n({ ...e, label: s }) }),
     /* @__PURE__ */ u("label", { className: "dq-action-field", children: [
       /* @__PURE__ */ a("span", { className: "dq-action-field-name", children: "Effect" }),
       /* @__PURE__ */ u(
@@ -3795,12 +3795,12 @@ function lf({
     ] })
   ] });
 }
-const Gc = Kl(!1);
+const Kc = Gl(!1);
 function df({ children: e }) {
-  return /* @__PURE__ */ a(Gc.Provider, { value: !0, children: e });
+  return /* @__PURE__ */ a(Kc.Provider, { value: !0, children: e });
 }
 function Zt({ tag: e, name: t }) {
-  const n = Gl(Gc), r = e && n ? { color: e.color, tagGroupColor: e.tagGroupColor } : e;
+  const n = Kl(Kc), r = e && n ? { color: e.color, tagGroupColor: e.tagGroupColor } : e;
   return /* @__PURE__ */ a(Vl, { name: (e == null ? void 0 : e.name) ?? t ?? "", tag: r ?? void 0 });
 }
 function uf({
@@ -3870,7 +3870,7 @@ function ff({
       ), y = (v) => g.some((w) => w.categoryTagId === v), N = `${d.tagId}#${i.slice(0, p).filter((v) => v.tagId === d.tagId).length}`;
       return /* @__PURE__ */ u("li", { className: "dq-flag-pair", children: [
         /* @__PURE__ */ u("span", { className: "dq-flag-pair-tag", children: [
-          /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+          /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
           /* @__PURE__ */ a(Zt, { tag: s[d.tagId], name: h })
         ] }),
         /* @__PURE__ */ u("div", { className: "dq-flag-pair-affects", children: [
@@ -4150,7 +4150,7 @@ function Wc({
       return;
     }
     const ce = e.actions.find(
-      (A) => !Gn(A, _)
+      (A) => !Kn(A, _)
     );
     ce && (v("Actions"), B(ce.id), D((A) => A + 1));
   }
@@ -5123,7 +5123,7 @@ function el(e, t, n) {
   return s ? { ...e, customFieldCriteria: c } : e;
 }
 async function $f(e, t, n) {
-  if (!Gn(n))
+  if (!Kn(n))
     throw new Error("Configure an occurrence tag action first.");
   if (!n.steps.length) return t.applications;
   const r = _e(e), i = n.steps.some((c) => Bn(c.mode)) ? await tu(r) : "", o = await yo(n);
@@ -5485,7 +5485,7 @@ async function Lf(e, t, n, r) {
 async function Df(e, t, n, r = () => {
 }) {
   if (!t.length || t.some(
-    (h) => !Gn(h, e.entityType) || !h.steps.length || h.steps.some(
+    (h) => !Kn(h, e.entityType) || !h.steps.length || h.steps.some(
       (g) => !["ADD", "REMOVE", "REMOVE_TREE"].includes(g.mode)
     )
   ))
@@ -5750,7 +5750,7 @@ async function Bf(e, t, n) {
     groups: h
   };
 }
-function Kf(e, t, n, r) {
+function Gf(e, t, n, r) {
   const i = /* @__PURE__ */ new Set([e, ...t]), o = (s) => {
     if (s === e) return !0;
     const c = r.get(s);
@@ -5780,7 +5780,7 @@ function Do(e, t, n) {
       name: g.name,
       members: N,
       tags: g.tags,
-      mixed: Kf(g.id, N, t, n) ? c({ key: y, name: g.name, members: N, tags: g.tags }) : (
+      mixed: Gf(g.id, N, t, n) ? c({ key: y, name: g.name, members: N, tags: g.tags }) : (
         // A category that holds several answers is mixed where a group inside it is.
         s.filter((w) => w.answers.every((k) => v.has(k))).flatMap(
           (w) => c({
@@ -5847,7 +5847,7 @@ function dl(e, t, n = 0) {
     }), () => c.abort();
   }, [i, n]), o.key === i ? o.value : Ii;
 }
-function Gf(e, t) {
+function Kf(e, t) {
   const n = (f) => {
     var d;
     return ((d = f.tagIds) == null ? void 0 : d.every((p) => e.members.includes(p))) ?? !1;
@@ -5894,7 +5894,7 @@ function Xi({
           "Could not load existing answers. ",
           t
         ] }) : e ? f.map((h) => {
-          const g = h.kind === "other" ? [] : p(h.members), y = Gf(h, d), N = y.note ? /* @__PURE__ */ a("span", { className: "dq-sr-only", children: y.note }) : null;
+          const g = h.kind === "other" ? [] : p(h.members), y = Kf(h, d), N = y.note ? /* @__PURE__ */ a("span", { className: "dq-sr-only", children: y.note }) : null;
           return /* @__PURE__ */ u("div", { className: "dq-answer-group", children: [
             /* @__PURE__ */ u("div", { className: "dq-answer-category", children: [
               /* @__PURE__ */ a("span", { children: h.name }),
@@ -5904,7 +5904,7 @@ function Xi({
                   className: "dq-badge dq-badge-warning dq-answer-mixed",
                   title: zf(h, y),
                   children: [
-                    /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+                    /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
                     "Mixed",
                     y.names.length > 0 ? /* @__PURE__ */ u("span", { className: "dq-answer-mixed-names", children: [
                       y.here && " here",
@@ -5920,7 +5920,7 @@ function Xi({
                   className: "dq-badge dq-badge-warning dq-answer-flag",
                   title: `Flagged: ${g.join(", ")}`,
                   children: [
-                    /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+                    /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
                     /* @__PURE__ */ u("span", { className: "dq-answer-flag-names", children: [
                       /* @__PURE__ */ a("span", { className: "dq-sr-only", children: "Flagged: " }),
                       g.join(", ")
@@ -6133,8 +6133,8 @@ function Wf({
   onOpen: i,
   onClose: o
 }) {
-  const [s, c] = T(!1), [l, f] = T("answers"), [d, p] = T(null), [h, g] = T({}), [y, N] = T([]), [v, w] = T(!1), [k, M] = T(!1), [x, B] = T(""), [C, D] = T(!1), [P, ne] = T(""), [J, j] = T(null), [z, F] = T(null), [_, L] = T([]), [W, Q] = T(0), ae = $(null), H = $(null), S = $(null), ce = $(!1), A = $(!1), Y = $(null), de = $(!1), pe = $(!1), G = $({ onClose: o });
-  G.current = { onClose: o };
+  const [s, c] = T(!1), [l, f] = T("answers"), [d, p] = T(null), [h, g] = T({}), [y, N] = T([]), [v, w] = T(!1), [k, M] = T(!1), [x, B] = T(""), [C, D] = T(!1), [P, ne] = T(""), [J, j] = T(null), [z, F] = T(null), [_, L] = T([]), [W, Q] = T(0), ae = $(null), H = $(null), S = $(null), ce = $(!1), A = $(!1), Y = $(null), de = $(!1), pe = $(!1), K = $({ onClose: o });
+  K.current = { onClose: o };
   const be = at(), Ee = l === "run", ke = (J == null ? void 0 : J.kind) === "undo", ve = Ee && d ? d.review : e, He = Zr(ve.actions), fe = ve.occurrence, it = _e(ve), Ye = Vn(it), Pt = Ye.queue, zt = Ee && d ? d.actions : (
     // Batches change tags only; assessments are answered one occurrence at a time.
     e.actions.filter((I) => I.steps.length && !sr(I))
@@ -6142,14 +6142,14 @@ function Wf({
     ve,
     s && tt ? fe.performerIds[0] : null,
     W
-  ), Ke = Oo(ve.view.objectFilter), Xe = Ia(
-    s ? [...ui(zt), ...fe.conditionTagIds, ...Ke] : []
+  ), Ge = Oo(ve.view.objectFilter), Xe = Ia(
+    s ? [...ui(zt), ...fe.conditionTagIds, ...Ge] : []
   ), fr = Ne(() => Oc(Xe), [Xe]), ht = (I) => h[I] ?? Xe[I] ?? { id: I, name: `Tag ${I}` }, Jn = JSON.stringify(
     Object.fromEntries(
-      Ke.flatMap((I) => {
+      Ge.flatMap((I) => {
         var ie;
-        const K = (ie = Xe[I]) == null ? void 0 : ie.name;
-        return K ? [[String(I), K]] : [];
+        const G = (ie = Xe[I]) == null ? void 0 : ie.name;
+        return G ? [[String(I), G]] : [];
       })
     )
   ), nt = Ne(
@@ -6157,32 +6157,32 @@ function Wf({
     [ve.view.objectFilter, Jn]
   );
   ee(() => {
-    var I, K, ie;
-    s && ((I = ae.current) == null || I.showModal(), (ie = (K = ae.current) == null ? void 0 : K.querySelector(".dq-batch-answer input")) == null || ie.focus());
+    var I, G, ie;
+    s && ((I = ae.current) == null || I.showModal(), (ie = (G = ae.current) == null ? void 0 : G.querySelector(".dq-batch-answer input")) == null || ie.focus());
   }, [s]), ee(() => {
     if (!s) return;
     const I = requestAnimationFrame(() => {
       var qe;
-      const K = ae.current, ie = document.activeElement;
-      if (!K || ie && ie !== document.body && K.contains(ie)) return;
-      (qe = (l === "answers" ? K.querySelector(".dq-batch-answer input:checked") ?? K.querySelector(".dq-batch-answer input") : K.querySelector("[data-batch-focus]")) ?? H.current) == null || qe.focus();
+      const G = ae.current, ie = document.activeElement;
+      if (!G || ie && ie !== document.body && G.contains(ie)) return;
+      (qe = (l === "answers" ? G.querySelector(".dq-batch-answer input:checked") ?? G.querySelector(".dq-batch-answer input") : G.querySelector("[data-batch-focus]")) ?? H.current) == null || qe.focus();
     });
     return () => cancelAnimationFrame(I);
   }, [s, l, k, d]), ee(() => {
     if (s || t || !ce.current) return;
     const I = requestAnimationFrame(() => {
-      const K = S.current;
-      if (!ce.current || !K || K.disabled) return;
+      const G = S.current;
+      if (!ce.current || !G || G.disabled) return;
       ce.current = !1;
       const ie = document.activeElement;
-      (!ie || ie === document.body) && K.focus();
+      (!ie || ie === document.body) && G.focus();
     });
     return () => cancelAnimationFrame(I);
   }, [s, t]), ee(() => {
     if (!s || fe.targetMode !== "selected") return;
     const I = new AbortController();
-    return L([]), Vf(fe.performerIds.slice(0, ys), I.signal).then((K) => {
-      I.signal.aborted || L(K);
+    return L([]), Vf(fe.performerIds.slice(0, ys), I.signal).then((G) => {
+      I.signal.aborted || L(G);
     }).catch(() => {
     }), () => I.abort();
   }, [s, fe.targetMode, JSON.stringify(fe.performerIds)]), ee(
@@ -6193,20 +6193,20 @@ function Wf({
     []
   ), ee(() => {
     if (!k) return;
-    const I = (K) => {
-      K.preventDefault(), K.returnValue = "";
+    const I = (G) => {
+      G.preventDefault(), G.returnValue = "";
     };
     return window.addEventListener("beforeunload", I), () => window.removeEventListener("beforeunload", I);
   }, [k]);
   function Ce() {
     f("answers"), p(null), g({}), j(null), w(!1), N([]), ne(""), B(""), D(!1), F(null);
   }
-  function Ge() {
-    pe.current || (c(!1), G.current.onClose(de.current), de.current = !1, Ce(), ce.current = !0);
+  function Ke() {
+    pe.current || (c(!1), K.current.onClose(de.current), de.current = !1, Ce(), ce.current = !0);
   }
-  function ze(I, K) {
+  function ze(I, G) {
     N(
-      (ie) => K ? [...ie, I] : ie.filter((oe) => oe !== I)
+      (ie) => G ? [...ie, I] : ie.filter((oe) => oe !== I)
     ), p(null), g({}), ne(""), B(""), D(!1), F(null);
   }
   function It() {
@@ -6221,17 +6221,17 @@ function Wf({
   }
   function $t(I) {
     F(
-      (K) => (K == null ? void 0 : K.group) === I.group && K.reason === I.reason ? null : I
+      (G) => (G == null ? void 0 : G.group) === I.group && G.reason === I.reason ? null : I
     );
   }
-  const mt = (I, K) => (z == null ? void 0 : z.group) === I && z.reason === K;
+  const mt = (I, G) => (z == null ? void 0 : z.group) === I && z.reason === G;
   async function Mn() {
     if (!Vt.length || pe.current) return;
     pe.current = !0, M(!0), B(""), D(!1), ne("Loading all matching occurrences…"), p(null), g({}), F(null);
     const I = new AbortController();
     Y.current = I;
     try {
-      const K = await Df(
+      const G = await Df(
         e,
         Vt,
         I.signal,
@@ -6239,22 +6239,22 @@ function Wf({
       );
       I.signal.throwIfAborted();
       const ie = {};
-      for (const oe of K.entries)
+      for (const oe of G.entries)
         for (const qe of oe.before.applications ?? [])
           ie[qe.tag.id] = qe.tag;
-      g(ie), p(K), ne("Preview ready. No tags have been changed.");
-    } catch (K) {
+      g(ie), p(G), ne("Preview ready. No tags have been changed.");
+    } catch (G) {
       B(
-        I.signal.aborted ? "Preview cancelled. No tags were changed." : K instanceof Error ? K.message : String(K)
-      ), D(!I.signal.aborted && K instanceof il), ne("");
+        I.signal.aborted ? "Preview cancelled. No tags were changed." : G instanceof Error ? G.message : String(G)
+      ), D(!I.signal.aborted && G instanceof il), ne("");
     } finally {
       pe.current = !1, M(!1), Y.current = null;
     }
   }
   async function Nn(I) {
     if (!d || pe.current) return;
-    const K = (I === "undo" ? cl(d) : sl(d, I === "retry")).length;
-    pe.current = !0, A.current = !1, de.current = !0, M(!0), f("run"), B(""), j({ kind: I, total: K, done: 0, stopped: !1 }), ne(
+    const G = (I === "undo" ? cl(d) : sl(d, I === "retry")).length;
+    pe.current = !0, A.current = !1, de.current = !0, M(!0), f("run"), B(""), j({ kind: I, total: G, done: 0, stopped: !1 }), ne(
       I === "undo" ? "Undoing the batch. Keep this page open until it finishes." : "Applying the answers. Keep this page open until it finishes."
     );
     const ie = () => j((qe) => qe && { ...qe, done: qe.done + 1 });
@@ -6280,22 +6280,22 @@ function Wf({
     ),
     [d, v]
   ), Jt = (I) => kt.get(I.item.key), pn = (I) => Yr(I.before.ids, Jt(I).desired), qn = (I) => {
-    const K = pn(I);
-    return I.status === "pending" && (K.added.length > 0 || K.removed.length > 0);
+    const G = pn(I);
+    return I.status === "pending" && (G.added.length > 0 || G.removed.length > 0);
   }, Ve = (I) => I.conflict || Jt(I).kept.length > 0 || Jt(I).replaced.length > 0, Et = Ne(() => {
     const I = (d == null ? void 0 : d.entries) ?? [];
     return {
       willChange: I.filter(qn).length,
-      correct: I.filter((K) => K.status === "unchanged").length,
+      correct: I.filter((G) => G.status === "unchanged").length,
       different: I.filter(Ve).length,
-      hosts: new Set(I.map((K) => K.item.media.id)).size,
-      added: [...new Set(I.flatMap((K) => pn(K).added))],
-      removed: [...new Set(I.flatMap((K) => pn(K).removed))]
+      hosts: new Set(I.map((G) => G.item.media.id)).size,
+      added: [...new Set(I.flatMap((G) => pn(G).added))],
+      removed: [...new Set(I.flatMap((G) => pn(G).removed))]
     };
   }, [kt]), ue = Ne(
-    () => ((d == null ? void 0 : d.entries) ?? []).filter((I) => I.item.media.date).sort((I, K) => I.item.media.date.localeCompare(K.item.media.date)),
+    () => ((d == null ? void 0 : d.entries) ?? []).filter((I) => I.item.media.date).sort((I, G) => I.item.media.date.localeCompare(G.item.media.date)),
     [d]
-  ), U = Ee ? Qf(he) : null, Fe = (I) => He.keys[ve.actions.findIndex((K) => K.id === I)] ?? "", gt = (I) => Lr(I, fr, [], r), Sn = wa(fe.condition) && fe.includeSubtags !== !1 && fe.conditionTagIds.length > 0, se = ue[0], Rt = ue.length > 1 ? ue[ue.length - 1] : void 0, Lt = (I) => `/${it}/${I.item.media.id}`, Hn = tt ? _[0] : void 0, kn = Ne(
+  ), U = Ee ? Qf(he) : null, Fe = (I) => He.keys[ve.actions.findIndex((G) => G.id === I)] ?? "", gt = (I) => Lr(I, fr, [], r), Sn = wa(fe.condition) && fe.includeSubtags !== !1 && fe.conditionTagIds.length > 0, se = ue[0], Rt = ue.length > 1 ? ue[ue.length - 1] : void 0, Lt = (I) => `/${it}/${I.item.media.id}`, Hn = tt ? _[0] : void 0, kn = Ne(
     () => n ? kc(
       n,
       Be.summary ? No(
@@ -6310,7 +6310,7 @@ function Wf({
     different: { title: "Occurrences with a different answer", test: Ve }
   };
   function Qe() {
-    const I = Jf[fe.condition], K = !!I && fe.conditionTagIds.length > 0, ie = fe.performerIds.slice(0, ys), oe = String(ve.view.filter.q ?? "").trim(), qe = fe.condition === "excludes" ? "Occurrences confirmed absent for every condition tag are hidden and left unchanged." : "Occurrences confirmed absent for every condition tag they miss are hidden and left unchanged.";
+    const I = Jf[fe.condition], G = !!I && fe.conditionTagIds.length > 0, ie = fe.performerIds.slice(0, ys), oe = String(ve.view.filter.q ?? "").trim(), qe = fe.condition === "excludes" ? "Occurrences confirmed absent for every condition tag are hidden and left unchanged." : "Occurrences confirmed absent for every condition tag they miss are hidden and left unchanged.";
     return /* @__PURE__ */ u("div", { className: "dq-batch-scope", role: "group", "aria-label": "Batch scope", children: [
       /* @__PURE__ */ a("span", { className: "dq-batch-scope-label", children: "Uses this queue" }),
       uo(fe) ? /* @__PURE__ */ a("span", { className: "dq-batch-chip", children: "All performers" }) : fe.targetMode === "selected" ? /* @__PURE__ */ u(me, { children: [
@@ -6351,10 +6351,10 @@ function Wf({
         )
       ] }),
       /* @__PURE__ */ u("span", { className: "dq-batch-chip", children: [
-        K ? I : co[fe.condition],
-        K && /* @__PURE__ */ a("span", { className: "dq-batch-chip-tags", children: Mr(fe.conditionTagIds.map(ht)).map((Pe) => /* @__PURE__ */ a(Zt, { tag: Pe }, Pe.id)) })
+        G ? I : co[fe.condition],
+        G && /* @__PURE__ */ a("span", { className: "dq-batch-chip-tags", children: Mr(fe.conditionTagIds.map(ht)).map((Pe) => /* @__PURE__ */ a(Zt, { tag: Pe }, Pe.id)) })
       ] }),
-      K && /* @__PURE__ */ a("span", { className: "dq-batch-chip", children: fe.includeSubtags === !1 ? "Exact tags only" : "Include subtags" }),
+      G && /* @__PURE__ */ a("span", { className: "dq-batch-chip", children: fe.includeSubtags === !1 ? "Exact tags only" : "Include subtags" }),
       wa(fe.condition) && fe.hideConfirmedAbsent !== !1 && /* @__PURE__ */ u("span", { className: "dq-batch-chip", title: qe, children: [
         "Hides confirmed absent",
         /* @__PURE__ */ u("span", { className: "dq-sr-only", children: [
@@ -6395,11 +6395,11 @@ function Wf({
       )
     ] });
   }
-  function st(I, K, ie = !0) {
+  function st(I, G, ie = !0) {
     if (!I.length) return null;
     const oe = /* @__PURE__ */ a("strong", { children: Hn || "This performer" }), qe = ie ? `Check the earliest and latest ${Ye.many} before applying, or narrow the batch with a date filter.` : "", Pe = I.every((Te) => Te.tagIds === null && !Te.mixed.length);
     return /* @__PURE__ */ u("div", { className: "dq-batch-flag", role: "note", children: [
-      /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+      /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
       /* @__PURE__ */ u("div", { children: [
         Pe ? /* @__PURE__ */ u("p", { children: [
           oe,
@@ -6421,7 +6421,7 @@ function Wf({
             qo(Te).join("; ")
           ] }, Te.key)) })
         ] }),
-        K && se && /* @__PURE__ */ u("p", { className: "dq-batch-flag-links", children: [
+        G && se && /* @__PURE__ */ u("p", { className: "dq-batch-flag-links", children: [
           /* @__PURE__ */ u("a", { href: Lt(se), target: "_blank", rel: "noreferrer", children: [
             "Earliest · ",
             ma(se, it),
@@ -6439,7 +6439,7 @@ function Wf({
     ] });
   }
   function At() {
-    const I = En.filter((ie) => ie.tagIds === null), K = En.filter((ie) => ie.tagIds !== null);
+    const I = En.filter((ie) => ie.tagIds === null), G = En.filter((ie) => ie.tagIds !== null);
     return /* @__PURE__ */ u(me, { children: [
       Qe(),
       st(I, !1),
@@ -6477,7 +6477,7 @@ function Wf({
           }) })
         ] }),
         tt && /* @__PURE__ */ u("div", { className: "dq-batch-side", children: [
-          /* @__PURE__ */ a("div", { className: "dq-batch-attention-live", "aria-live": "polite", children: st(K, !1, I.length === 0) }),
+          /* @__PURE__ */ a("div", { className: "dq-batch-attention-live", "aria-live": "polite", children: st(G, !1, I.length === 0) }),
           /* @__PURE__ */ a(
             Xi,
             {
@@ -6494,7 +6494,7 @@ function Wf({
     ] });
   }
   function Qn(I) {
-    const K = Et, ie = z && ws.has(z.group) ? z.group : null, oe = ie ? he.filter(je[ie].test) : [], qe = (Pe) => {
+    const G = Et, ie = z && ws.has(z.group) ? z.group : null, oe = ie ? he.filter(je[ie].test) : [], qe = (Pe) => {
       const Te = Jt(Pe), Ie = Te.skipped ? Yr(
         Pe.before.ids,
         ai(Pe.before.ids, I.action, I.categories, !0).desired
@@ -6521,7 +6521,7 @@ function Wf({
             {
               value: he.length,
               label: he.length === 1 ? "matching occurrence" : "matching occurrences",
-              detail: `in ${K.hosts.toLocaleString()} ${K.hosts === 1 ? Pt : `${Pt}s`}`,
+              detail: `in ${G.hosts.toLocaleString()} ${G.hosts === 1 ? Pt : `${Pt}s`}`,
               pressed: mt("matching"),
               onToggle: () => $t({ group: "matching" })
             }
@@ -6529,7 +6529,7 @@ function Wf({
           /* @__PURE__ */ a(
             ha,
             {
-              value: K.willChange,
+              value: G.willChange,
               label: "will change",
               tone: "add",
               pressed: mt("change"),
@@ -6539,7 +6539,7 @@ function Wf({
           /* @__PURE__ */ a(
             ha,
             {
-              value: K.correct,
+              value: G.correct,
               label: "already correct, no write",
               pressed: mt("correct"),
               onToggle: () => $t({ group: "correct" })
@@ -6548,7 +6548,7 @@ function Wf({
           /* @__PURE__ */ a(
             ha,
             {
-              value: K.different,
+              value: G.different,
               label: v ? "replace a different answer" : "keep a different answer",
               tone: "warn",
               pressed: mt("different"),
@@ -6595,20 +6595,20 @@ function Wf({
             " without a date"
           ] })
         ] }),
-        (K.added.length > 0 || K.removed.length > 0) && /* @__PURE__ */ u("div", { className: "dq-batch-planned", children: [
+        (G.added.length > 0 || G.removed.length > 0) && /* @__PURE__ */ u("div", { className: "dq-batch-planned", children: [
           /* @__PURE__ */ a("span", { className: "dq-batch-planned-label", children: "Tag changes" }),
           /* @__PURE__ */ a(
             qs,
             {
-              added: K.added,
-              removed: K.removed,
+              added: G.added,
+              removed: G.removed,
               tag: ht,
               label: "Tag changes"
             }
           )
         ] })
       ] }),
-      K.different > 0 && /* @__PURE__ */ u("div", { className: "dq-batch-choice", children: [
+      G.different > 0 && /* @__PURE__ */ u("div", { className: "dq-batch-choice", children: [
         /* @__PURE__ */ a("span", { id: `${be}-choice`, className: "dq-batch-choice-label", children: "Occurrences with a different answer" }),
         /* @__PURE__ */ u(
           "div",
@@ -6641,10 +6641,10 @@ function Wf({
             /* @__PURE__ */ a("button", { type: "button", className: "dq-link-button", disabled: k, onClick: It, children: "Change" })
           ] }),
           /* @__PURE__ */ a("ul", { className: "dq-batch-chosen", children: Vt.map((I) => {
-            const K = Fe(I.id);
+            const G = Fe(I.id);
             return /* @__PURE__ */ u("li", { children: [
               /* @__PURE__ */ u("span", { className: "dq-batch-chosen-chip", children: [
-                K && /* @__PURE__ */ a(St, { binding: K, hidden: !0 }),
+                G && /* @__PURE__ */ a(St, { binding: G, hidden: !0 }),
                 I.label
               ] }),
               /* @__PURE__ */ a(Ns, { parts: gt(I) })
@@ -6667,7 +6667,7 @@ function Wf({
     ] });
   }
   function en(I) {
-    const K = J ?? { kind: "apply", total: 0, done: 0, stopped: !1 }, ie = K.kind === "apply" ? he.length - I.counts.pending : K.done, oe = K.kind === "apply" ? he.length : K.total, qe = k ? K.kind === "undo" ? "Undoing batch…" : K.kind === "retry" ? "Retrying failed occurrences…" : "Applying answers…" : K.kind === "undo" ? K.stopped ? "Undo stopped" : "Undo finished" : K.stopped ? "Stopped" : "Finished", Pe = oe ? Math.round(ie / oe * 100) : 100, Te = z && !ws.has(z.group) ? z.group : null, Ie = (ge) => vs.find((ct) => ct.status === ge).label, Ot = Te ? he.filter(
+    const G = J ?? { kind: "apply", total: 0, done: 0, stopped: !1 }, ie = G.kind === "apply" ? he.length - I.counts.pending : G.done, oe = G.kind === "apply" ? he.length : G.total, qe = k ? G.kind === "undo" ? "Undoing batch…" : G.kind === "retry" ? "Retrying failed occurrences…" : "Applying answers…" : G.kind === "undo" ? G.stopped ? "Undo stopped" : "Undo finished" : G.stopped ? "Stopped" : "Finished", Pe = oe ? Math.round(ie / oe * 100) : 100, Te = z && !ws.has(z.group) ? z.group : null, Ie = (ge) => vs.find((ct) => ct.status === ge).label, Ot = Te ? he.filter(
       (ge) => ge.status === Te && (!z.reason || ge.error === z.reason)
     ) : [];
     return /* @__PURE__ */ u(me, { children: [
@@ -6693,14 +6693,14 @@ function Wf({
             children: /* @__PURE__ */ a("span", { style: { width: `${Pe}%` } })
           }
         ),
-        !k && K.kind === "undo" && /* @__PURE__ */ u("p", { className: "dq-batch-undone", children: [
+        !k && G.kind === "undo" && /* @__PURE__ */ u("p", { className: "dq-batch-undone", children: [
           "Restored ",
-          (K.total - I.recorded).toLocaleString(),
+          (G.total - I.recorded).toLocaleString(),
           " of",
           " ",
-          K.total.toLocaleString(),
+          G.total.toLocaleString(),
           " ",
-          K.total === 1 ? "change" : "changes",
+          G.total === 1 ? "change" : "changes",
           "."
         ] })
       ] }),
@@ -6764,7 +6764,7 @@ function Wf({
           }
         ),
         /* @__PURE__ */ u("p", { children: [
-          ke ? K.stopped || k ? `${I.recorded.toLocaleString()} ${I.recorded === 1 ? "change is" : "changes are"} still recorded.` : `${I.recorded.toLocaleString()} ${I.recorded === 1 ? "change" : "changes"} could not be undone; undo again once their conflicts are resolved.` : `Undo reverses ${I.recorded === 1 ? "this change" : `these ${I.recorded.toLocaleString()} changes`} and keeps later edits.`,
+          ke ? G.stopped || k ? `${I.recorded.toLocaleString()} ${I.recorded === 1 ? "change is" : "changes are"} still recorded.` : `${I.recorded.toLocaleString()} ${I.recorded === 1 ? "change" : "changes"} could not be undone; undo again once their conflicts are resolved.` : `Undo reverses ${I.recorded === 1 ? "this change" : `these ${I.recorded.toLocaleString()} changes`} and keeps later edits.`,
           " ",
           "It lasts until you close this dialog or start a new batch."
         ] })
@@ -6845,11 +6845,11 @@ function Wf({
         "aria-labelledby": `${be}-title`,
         "aria-modal": "true",
         onCancel: (I) => {
-          I.preventDefault(), Ge();
+          I.preventDefault(), Ke();
         },
         onClose: () => {
           var I;
-          pe.current ? (I = ae.current) == null || I.showModal() : Ge();
+          pe.current ? (I = ae.current) == null || I.showModal() : Ke();
         },
         children: [
           /* @__PURE__ */ u("div", { className: "dq-batch-header", children: [
@@ -6862,7 +6862,7 @@ function Wf({
                 className: "dq-batch-close",
                 "aria-label": "Close dialog",
                 disabled: k,
-                onClick: Ge,
+                onClick: Ke,
                 children: /* @__PURE__ */ a(Ea, { "aria-hidden": "true" })
               }
             )
@@ -6893,7 +6893,7 @@ function Wf({
             ] }),
             l === "run" && /* @__PURE__ */ a("button", { type: "button", className: "dq-button", disabled: k, onClick: Ce, children: "New batch" }),
             /* @__PURE__ */ a("span", { className: "dq-batch-footer-space" }),
-            /* @__PURE__ */ a("button", { type: "button", className: "dq-button", disabled: k, onClick: Ge, children: "Close" }),
+            /* @__PURE__ */ a("button", { type: "button", className: "dq-button", disabled: k, onClick: Ke, children: "Close" }),
             Wn()
           ] })
         ]
@@ -6990,7 +6990,7 @@ function ep({
           children: [
             /* @__PURE__ */ a(Hr, { performer: g }),
             /* @__PURE__ */ a("span", { className: "dq-queue-row-title", children: g.name }),
-            N && /* @__PURE__ */ a(Kn, { className: "dq-flag-icon", "aria-hidden": "true" }),
+            N && /* @__PURE__ */ a(Gn, { className: "dq-flag-icon", "aria-hidden": "true" }),
             /* @__PURE__ */ a("span", { className: "dq-ranked-count", "aria-hidden": "true", children: g.count.toLocaleString() })
           ]
         },
@@ -7018,7 +7018,7 @@ function rp(e) {
   const t = e.getBoundingClientRect(), n = Math.min(600, window.innerWidth - 32), r = Math.min(Math.max(16, t.right - n), window.innerWidth - n - 16), i = t.bottom + 8;
   return { top: i, left: r, width: n, maxHeight: Math.max(160, window.innerHeight - i - 16) };
 }
-function Ga(e, t) {
+function Ka(e, t) {
   return e.length ? e.length <= 2 ? e.join(` ${t} `) : `${e.slice(0, 2).join(", ")} ${t} ${e.length - 2} more` : "the chosen tags";
 }
 function ap(e, t) {
@@ -7027,10 +7027,10 @@ function ap(e, t) {
   ), i = {
     any: "any occurrence tags",
     isNull: "no occurrence tags",
-    includes: `has ${Ga(r, "or")}`,
-    includesAll: `has ${Ga(r, "and")}`,
-    excludes: `has none of ${Ga(r, "or")}`,
-    excludesAll: `missing ${Ga(r, "or")}`
+    includes: `has ${Ka(r, "or")}`,
+    includesAll: `has ${Ka(r, "and")}`,
+    excludes: `has none of ${Ka(r, "or")}`,
+    excludesAll: `missing ${Ka(r, "or")}`
   };
   return `${n} · ${i[e.condition]}`;
 }
@@ -8066,7 +8066,7 @@ function kp(e, t) {
     e.studioName,
     e.date,
     t === "video" ? Yl(n == null ? void 0 : n.width, n == null ? void 0 : n.height) : "",
-    n != null && n.duration ? Gs(n.duration) : ""
+    n != null && n.duration ? Ks(n.duration) : ""
   ].filter(Boolean).join(" · ");
 }
 function Ep({ media: e, kind: t }) {
@@ -8146,7 +8146,7 @@ function Cp({ entries: e }) {
   return /* @__PURE__ */ a("ul", { className: "dq-attention", "aria-label": "Needs attention", children: e.map((t) => /* @__PURE__ */ u("li", { className: "dq-attention-item", children: [
     t.tagIds !== null && /* @__PURE__ */ a("span", { className: "dq-attention-category", children: t.name }),
     qo(t).map((n) => /* @__PURE__ */ u("span", { className: "dq-badge dq-badge-warning dq-flag-badge", children: [
-      /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+      /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
       n
     ] }, n))
   ] }, t.key)) });
@@ -8179,7 +8179,7 @@ function Tp({
     }
   const [w, k] = T(null), [M, x] = T(""), B = $(null), C = $(null), D = $(null), P = $(null), [ne, J] = T(!!v.current), j = $(0), [z, F] = T(N.current.query), _ = $(z);
   _.current = z;
-  const [L, W] = T(0), Q = $(N.current.startAtEnd), [ae, H] = T([]), [S, ce] = T(null), A = $(null), [Y, de] = T(null), [pe, G] = T(0), be = Ne(() => {
+  const [L, W] = T(0), Q = $(N.current.startAtEnd), [ae, H] = T([]), [S, ce] = T(null), A = $(null), [Y, de] = T(null), [pe, K] = T(0), be = Ne(() => {
     var X;
     if (!S) return null;
     const m = ae.findIndex((le) => le.key === S.key), E = ((X = A.current) == null ? void 0 : X.key) === S.key ? A.current : null;
@@ -8188,7 +8188,7 @@ function Tp({
   ee(() => (tt.current = !0, () => {
     tt.current = !1;
   }), []);
-  const [Ke, Xe] = T(v.current), [fr, ht] = T(""), [Jn, nt] = T(""), [Ce, Ge] = T(null), [ze, It] = T(!1), [pr, fn] = T([]), $t = $([]), mt = $(null), Mn = $(null), Nn = $(null);
+  const [Ge, Xe] = T(v.current), [fr, ht] = T(""), [Jn, nt] = T(""), [Ce, Ke] = T(null), [ze, It] = T(!1), [pr, fn] = T([]), $t = $([]), mt = $(null), Mn = $(null), Nn = $(null);
   ee(() => {
     var m, E;
     ze && ((E = (m = Nn.current) == null ? void 0 : m.querySelector("input")) == null || E.focus());
@@ -8245,10 +8245,10 @@ function Tp({
   Qn.current = At;
   const Fn = $(st);
   Fn.current = st;
-  const [en, Wn] = T("items"), [I, K] = T(null), ie = $(null), oe = $("");
+  const [en, Wn] = T("items"), [I, G] = T(null), ie = $(null), oe = $("");
   function qe(m) {
     const E = typeof m == "function" ? m(ie.current) : m;
-    ie.current = E, K(E);
+    ie.current = E, G(E);
   }
   const [Pe, Te] = T(!1), [Ie, Ot] = T(null), ge = $(null), ct = Ae(st) ? Ha(st) : "", [Se, xn] = T(0), [Re, hr] = T(null);
   ee(() => () => {
@@ -8392,10 +8392,10 @@ function Tp({
   }, [L, e.id]);
   const mn = $(null);
   ee(() => {
-    if ((S == null ? void 0 : S.key) !== mn.current && Ge(null), mn.current = (S == null ? void 0 : S.key) ?? null, !S) return;
+    if ((S == null ? void 0 : S.key) !== mn.current && Ke(null), mn.current = (S == null ? void 0 : S.key) ?? null, !S) return;
     let m = !0;
     return vn(d, S).then((E) => {
-      m && (Ge(E), Sn(
+      m && (Ke(E), Sn(
         Ae(e) ? E.ids.filter((O) => e.occurrence.tagIds.includes(O)) : []
       ));
     }).catch((E) => {
@@ -8442,15 +8442,15 @@ function Tp({
         Math.ceil(Bt.totalCount / Number(z.filter.perPage))
       );
       vt > rt && (vt = rt, Bt = await Yn(At, vt));
-      const Nt = Oi(Bt.items, ye === -1), $n = new Map(Nt.map((Kt) => [Kt.key, Kt])), Er = m ? ut.after.flatMap((Kt) => {
-        const xa = $n.get(Kt);
+      const Nt = Oi(Bt.items, ye === -1), $n = new Map(Nt.map((Gt) => [Gt.key, Gt])), Er = m ? ut.after.flatMap((Gt) => {
+        const xa = $n.get(Gt);
         return xa ? [xa] : [];
-      }) : [], Ar = new Set(Er.map((Kt) => Kt.key)), Cr = m ? {
+      }) : [], Ar = new Set(Er.map((Gt) => Gt.key)), Cr = m ? {
         ...Bt,
         items: [
           ...Er,
           ...Nt.filter(
-            (Kt) => Kt.key !== S.key && !Ar.has(Kt.key)
+            (Gt) => Gt.key !== S.key && !Ar.has(Gt.key)
           )
         ]
       } : { ...Bt, items: Nt };
@@ -8460,9 +8460,9 @@ function Tp({
         return;
       }
       const da = ye === -1 && ot === 1 && !m ? void 0 : Cr.items.find(
-        (Kt) => !_n.has(Kt.key) && // A reverse-page refill comes from scenes already traversed.
+        (Gt) => !_n.has(Gt.key) && // A reverse-page refill comes from scenes already traversed.
         // Keep remaining partners, then continue on the preceding page.
-        (!(m && ye === -1 && vt === ut.page) || Ft.has(Kt.key))
+        (!(m && ye === -1 && vt === ut.page) || Ft.has(Gt.key))
       );
       if (da || (ye === -1 ? vt <= 1 : vt >= rt)) {
         Pn(
@@ -8489,7 +8489,7 @@ function Tp({
       return;
     const le = O || X || !!(m != null && m.steps.length);
     if (le && (!t || !Ce) || m && sr(m) && !n) return;
-    const ye = !E && !O && !X && le && m !== void 0 && Ce !== null && is(e) && Ki(Bi(e.actions, cu(m, Ce, jt))).length > 0, ut = O && ((Bt = Nn.current) != null && Bt.contains(document.activeElement)) ? document.activeElement : null;
+    const ye = !E && !O && !X && le && m !== void 0 && Ce !== null && is(e) && Gi(Bi(e.actions, cu(m, Ce, jt))).length > 0, ut = O && ((Bt = Nn.current) != null && Bt.contains(document.activeElement)) ? document.activeElement : null;
     Ye.current = !0, it(!0), Xe(""), nt(""), zt.current = !0;
     const Ft = A.current, sn = le && !E && !ye ? _r(S).nextLoaded ?? null : null;
     sn && (H(
@@ -8506,7 +8506,7 @@ function Tp({
           await Lo(At, S, Ar);
         }
         const Nt = await vn(d, S);
-        sn || Ge(Nt), _n = !0, It(!1), ye && (vt = Ki(Bi(e.actions, Nt))), nt(
+        sn || Ke(Nt), _n = !0, It(!1), ye && (vt = Gi(Bi(e.actions, Nt))), nt(
           vt.length ? `Tags saved. Staying until answered: ${vt.map(($n) => $n.name).join(", ")}.` : "Tags saved."
         ), S.occurrence && (De(S.occurrence.performer.id), xn(($n) => $n + 1));
       }
@@ -8527,11 +8527,11 @@ function Tp({
       if (Xe(
         _n ? `Tags saved, but the queue could not advance. Retry navigation with Skip. ${dn(rt)}` : le ? `Saving stopped. ${qp(dn(rt))}${O || X ? " Your choices are kept." : ""} Check the current tags before retrying.` : `Could not advance. ${dn(rt)}`
       ), le && !_n) {
-        he.current = ut, sn && (H(ae), de(null), G((Nt) => Nt + 1), ce(S), A.current = Ft);
+        he.current = ut, sn && (H(ae), de(null), K((Nt) => Nt + 1), ce(S), A.current = Ft);
         try {
-          Ge(await vn(d, S));
+          Ke(await vn(d, S));
         } catch {
-          Ge(null), Xe(
+          Ke(null), Xe(
             (Nt) => `${Nt} Current tags could not be refreshed; reload tags before retrying.`
           );
         }
@@ -8543,13 +8543,13 @@ function Tp({
   ee(() => {
     const m = Vt.current;
     if (!(!m || fe || Ye.current)) {
-      if ((S == null ? void 0 : S.key) !== m.key || Ke) {
+      if ((S == null ? void 0 : S.key) !== m.key || Ge) {
         Vt.current = null;
         return;
       }
       Ce && (Vt.current = null, nn(m.action, m.stay));
     }
-  }, [fe, Ce, S, Ke]);
+  }, [fe, Ce, S, Ge]);
   const $e = !ze && !w && !kt && !pn && (S != null || ve || fe);
   So({
     surface: "local",
@@ -8564,7 +8564,7 @@ function Tp({
   const br = (m) => fe || ve || !Ce || !!w || !t && m.steps.length > 0 || !n && sr(m);
   function gn() {
     !i || w || Ye.current || ze || (D.current = document.activeElement, C.current = {
-      error: Ke,
+      error: Ge,
       url: window.location.pathname + window.location.search + window.location.hash,
       query: structuredClone(_.current),
       items: ae,
@@ -8748,10 +8748,10 @@ function Tp({
     [Tn, e]
   );
   function bi() {
-    S ? vn(d, S).then(Ge).catch((m) => Xe(dn(m))) : lt(_.current);
+    S ? vn(d, S).then(Ke).catch((m) => Xe(dn(m))) : lt(_.current);
   }
-  const sa = Ke ? /* @__PURE__ */ u("p", { role: "alert", children: [
-    Ke,
+  const sa = Ge ? /* @__PURE__ */ u("p", { role: "alert", children: [
+    Ge,
     " ",
     /* @__PURE__ */ a("button", { type: "button", disabled: fe, onClick: bi, children: S ? "Reload tags" : "Retry queue" })
   ] }) : null, ca = fe || ve || S != null && !Ce, la = Math.max(1, Number(z.filter.perPage) || 1), kr = $(1);
@@ -8761,7 +8761,7 @@ function Tp({
   ) : [], yi = (m) => {
     var E;
     return m.title || ((E = m.files[0]) == null ? void 0 : E.basename) || `${d === "audio" ? "Audio" : "Video"} ${m.id}`;
-  }, Kr = S ? kp(S.media, d) : "";
+  }, Gr = S ? kp(S.media, d) : "";
   return /* @__PURE__ */ u(
     "section",
     {
@@ -8916,7 +8916,7 @@ function Tp({
                 /* @__PURE__ */ a("strong", { children: (wt == null ? void 0 : wt.name) ?? `performer ${z.performerFocus}` })
               ] }),
               wt != null && wt.flags.length ? /* @__PURE__ */ u("span", { className: "dq-focus-flag", title: ia(wt.flags), children: [
-                /* @__PURE__ */ a(Kn, { "aria-hidden": "true" }),
+                /* @__PURE__ */ a(Gn, { "aria-hidden": "true" }),
                 /* @__PURE__ */ a("span", { className: "dq-sr-only", children: ia(wt.flags) })
               ] }) : null,
               /* @__PURE__ */ a(
@@ -8983,7 +8983,7 @@ function Tp({
                       ]
                     }
                   ) }),
-                  Kr && /* @__PURE__ */ a("span", { className: "dq-stage-meta", children: Kr })
+                  Gr && /* @__PURE__ */ a("span", { className: "dq-stage-meta", children: Gr })
                 ] }),
                 /* @__PURE__ */ u("div", { className: "dq-review-media", children: [
                   /* @__PURE__ */ a("div", { className: "dq-player-frame", children: [S, be].filter(Boolean).map((m) => {
@@ -9006,7 +9006,7 @@ function Tp({
                             autostart: O && Y === E.media.id
                           }
                         ) : /* @__PURE__ */ a(
-                          Ks,
+                          Gs,
                           {
                             videoId: E.media.id,
                             streamUrl: ji("video", E.media.id),
@@ -9363,7 +9363,7 @@ function Tp({
                           ] }),
                           /* @__PURE__ */ a("span", { className: "dq-queue-row-detail", children: [
                             m.media.date,
-                            m.occurrence ? "" : (O = m.media.files[0]) != null && O.duration ? Gs(m.media.files[0].duration) : ""
+                            m.occurrence ? "" : (O = m.media.files[0]) != null && O.duration ? Ks(m.media.files[0].duration) : ""
                           ].filter(Boolean).join(" · ") })
                         ] })
                       ] })
@@ -9869,8 +9869,8 @@ function Bp({
   A.current = S;
   const [Y, de] = T({}), pe = $(Y);
   pe.current = Y;
-  const G = $(t);
-  G.current = t;
+  const K = $(t);
+  K.current = t;
   const be = $(s);
   be.current = s;
   const Ee = $(!1), ke = $(!0);
@@ -9882,9 +9882,9 @@ function Bp({
   const [fe, it] = T($p), { sort: Ye, direction: Pt } = fe, zt = (b) => {
     const q = { ...fe, ...b };
     it(q), Rp(q);
-  }, Vt = $(null), tt = $(null), [Be, Ke] = T(null), [Xe, fr] = T(!1), [ht, Jn] = T(!1), [nt, Ce] = T(null), [Ge, ze] = T(null), It = !!nt || !!Ge, pr = $(It);
+  }, Vt = $(null), tt = $(null), [Be, Ge] = T(null), [Xe, fr] = T(!1), [ht, Jn] = T(!1), [nt, Ce] = T(null), [Ke, ze] = T(null), It = !!nt || !!Ke, pr = $(It);
   pr.current = It;
-  const fn = Xe || !!Ge || ht, [$t, mt] = T(0), [Mn, Nn] = T(!1), [he, kt] = T(null), Jt = $(null), pn = $(null), qn = $(null), [Ve, Et] = T(
+  const fn = Xe || !!Ke || ht, [$t, mt] = T(0), [Mn, Nn] = T(!1), [he, kt] = T(null), Jt = $(null), pn = $(null), qn = $(null), [Ve, Et] = T(
     null
   ), ue = t.find((b) => b.id === S) ?? null, U = Ne(
     () => (Ve == null ? void 0 : Ve.id) === S && ue ? { ...ue, view: {
@@ -9907,7 +9907,7 @@ function Bp({
     };
     return window.addEventListener("popstate", b), () => window.removeEventListener("popstate", b);
   }, []);
-  const en = gt === "audio" ? h : d, Wn = Fe === "tag" ? "Tag" : gt === "audio" ? "Audio" : "Video", I = Fe === "tag" ? y : en, K = $(
+  const en = gt === "audio" ? h : d, Wn = Fe === "tag" ? "Tag" : gt === "audio" ? "Audio" : "Video", I = Fe === "tag" ? y : en, G = $(
     null
   ), ie = pp(se), [oe, qe] = T({
     page: 1,
@@ -9976,7 +9976,7 @@ function Bp({
     return () => window.clearTimeout(b);
   }, [dt]), ee(() => {
     if (!Be || Be.alert) return;
-    const b = window.setTimeout(() => Ke(null), 6e3);
+    const b = window.setTimeout(() => Ge(null), 6e3);
     return () => window.clearTimeout(b);
   }, [Be]), ee(() => {
     const b = se ? Oo(se.view.objectFilter) : [];
@@ -10065,7 +10065,7 @@ function Bp({
     tt.current = null, (V = (b === "heading" ? null : [...((R = Ln.current) == null ? void 0 : R.querySelectorAll("[data-review-id]")) ?? []].find(
       (te) => te.dataset.reviewId === b.reviewId
     )) ?? Vt.current) == null || V.focus();
-  }, [S, s, Ge, t]);
+  }, [S, s, Ke, t]);
   const la = $(0), kr = Rn(async () => {
     const b = ++la.current;
     wr(null), jr("");
@@ -10235,7 +10235,7 @@ function Bp({
     if (z) return;
     let q = !0;
     const R = window.setTimeout(() => {
-      Kd(i, U.id, b).catch((V) => {
+      Gd(i, U.id, b).catch((V) => {
         q && F(
           "Progress is kept in this browser, but account sync failed. " + (V instanceof Error ? V.message : "Retry.")
         );
@@ -10261,9 +10261,9 @@ function Bp({
     _,
     Qe
   ]);
-  const yi = Ie.items.find((b) => b.id === pt) ?? null, Kr = Fe === "video" ? yi : null;
-  ot && Kr && (Yn.current = Kr);
-  const yn = Kr ?? (ot ? Yn.current : null), m = Zo(Mt, pt), E = Oe.length > 0 && Oe.every((b) => Mt.has(b)), O = Rn((b, q = !0) => {
+  const yi = Ie.items.find((b) => b.id === pt) ?? null, Gr = Fe === "video" ? yi : null;
+  ot && Gr && (Yn.current = Gr);
+  const yn = Gr ?? (ot ? Yn.current : null), m = Zo(Mt, pt), E = Oe.length > 0 && Oe.every((b) => Mt.has(b)), O = Rn((b, q = !0) => {
     b != null && window.requestAnimationFrame(() => {
       var V;
       if (pr.current || Rd(document.activeElement) || // The drawer's Group list hangs on the page, outside the drawer.
@@ -10360,8 +10360,8 @@ function Bp({
       try {
         if (!Tr()) return;
         if (q) {
-          const Gt = Fe === "tag" ? await Ei(U, oe) : await Vr(U, oe), tr = new Map(
-            Gt.items.map((xt) => [xt.id, xt])
+          const Kt = Fe === "tag" ? await Ei(U, oe) : await Vr(U, oe), tr = new Map(
+            Kt.items.map((xt) => [xt.id, xt])
           );
           if (Fe !== "tag" && await Promise.all(
             Z.filter((xt) => !tr.has(xt)).map(async (xt) => {
@@ -10377,16 +10377,16 @@ function Bp({
           } : xt;
           Ot((xt) => ({
             items: xt.items.map((fa) => tr.get(fa.id) ?? ki(fa)),
-            totalCount: Gt.totalCount
+            totalCount: Kt.totalCount
           }));
           return;
         }
-        const et = new Set(Z), Wt = gr && ft.length > 0 && ft.every((Gt) => et.has(Gt)), wn = await In(U, oe, !1, Wt);
+        const et = new Set(Z), Wt = gr && ft.length > 0 && ft.every((Kt) => et.has(Kt)), wn = await In(U, oe, !1, Wt);
         if (!Tr()) return;
-        let ln = wn.items.map((Gt) => Gt.id);
-        const Da = Dn.current, _l = (Da == null ? void 0 : Da.page) === Number(oe.page) && ln.some((Gt) => Da.ids.has(Gt)), jl = (U.view.startFrom ?? "end") !== "beginning";
+        let ln = wn.items.map((Kt) => Kt.id);
+        const Da = Dn.current, _l = (Da == null ? void 0 : Da.page) === Number(oe.page) && ln.some((Kt) => Da.ids.has(Kt)), jl = (U.view.startFrom ?? "end") !== "beginning";
         if (wn.totalCount > 0 && Number(oe.page) > 1 && (!ln.length || jl && !_l)) {
-          const Gt = Math.max(1, Number(oe.page) - 1), tr = { ...oe, page: Gt };
+          const Kt = Math.max(1, Number(oe.page) - 1), tr = { ...oe, page: Kt };
           qe(tr), ln = (await In(
             U,
             tr,
@@ -10401,13 +10401,13 @@ function Bp({
           tn(
             (tr) => new Set([...tr].filter((_a) => ln.includes(_a)))
           );
-          const Gt = es(
+          const Kt = es(
             ft,
             ln,
             Ct,
             Si && Z.includes(Ct ?? -1)
           );
-          bt(Gt), yt.current && Gt == null && lt(!1), yt.current || O(Gt);
+          bt(Kt), yt.current && Kt == null && lt(!1), yt.current || O(Kt);
         }
       } catch (et) {
         Tr() && bn(
@@ -10515,7 +10515,7 @@ function Bp({
     return $e || Se || !!Re || q && !I || "effect" in b && q && (!v || V) || sr(b) && (De == null ? void 0 : De.kind) !== "ready" || !m.length;
   }
   function rt(b) {
-    En(null), mt(0), Ke(null), ce(b), Pi(b, !!b && !U);
+    En(null), mt(0), Ge(null), ce(b), Pi(b, !!b && !U);
   }
   function Nt() {
     Ee.current || (wl() ? (Ee.current = !0, window.history.back()) : rt(""));
@@ -10524,18 +10524,18 @@ function Bp({
     const b = Ee.current;
     Ee.current = !1;
     let q = xs();
-    q && !be.current && !G.current.some((V) => V.id === q) && (q = "", Pi(""));
+    q && !be.current && !K.current.some((V) => V.id === q) && (q = "", Pi(""));
     const R = A.current;
-    q !== R && (mt(0), b || Ke(null), !q && R && (tt.current ?? (tt.current = { reviewId: R }))), ce(q);
+    q !== R && (mt(0), b || Ge(null), !q && R && (tt.current ?? (tt.current = { reviewId: R }))), ce(q);
   }
   function Er() {
-    tt.current = "heading", Ke(null), Nt();
+    tt.current = "heading", Ge(null), Nt();
   }
   function Ar(b) {
     b !== S && rt(b), mt((q) => q + 1);
   }
   function Cr() {
-    Ke(null), Ce({
+    Ge(null), Ce({
       review: kl("video", { id: crypto.randomUUID(), name: "", description: "" }),
       saving: !1,
       error: ""
@@ -10543,7 +10543,7 @@ function Bp({
   }
   async function da(b) {
     if (fn || !C) return;
-    Ke(null);
+    Ge(null);
     const q = crypto.randomUUID();
     let R;
     const V = S;
@@ -10555,9 +10555,9 @@ function Bp({
         q
       ), [...re, R]))) throw new Error("Could not save reviews.");
       if (!ke.current) return;
-      A.current !== V ? Ke({ text: `Saved the copy “${R.name}”.`, alert: !1 }) : Ar(R.id);
+      A.current !== V ? Ge({ text: `Saved the copy “${R.name}”.`, alert: !1 }) : Ar(R.id);
     } catch (te) {
-      Ke({
+      Ge({
         text: `“${b.name}” was not duplicated. ${Pa(te)}`,
         alert: !0
       });
@@ -10565,7 +10565,7 @@ function Bp({
       Jn(!1);
     }
   }
-  async function Kt() {
+  async function Gt() {
     if (!nt || nt.saving) return;
     const b = { ...nt.review, name: nt.review.name.trim() }, q = Na(b);
     if (q) {
@@ -10589,22 +10589,22 @@ function Bp({
     }
   }
   async function xa() {
-    if (!Ge || Ge.pending) return;
-    const b = Ge.review, q = Sl(t, Y, Ye, Pt).map((te) => te.id), R = q.filter((te) => te !== b.id), V = R[Math.min(q.indexOf(b.id), R.length - 1)];
+    if (!Ke || Ke.pending) return;
+    const b = Ke.review, q = Sl(t, Y, Ye, Pt).map((te) => te.id), R = q.filter((te) => te !== b.id), V = R[Math.min(q.indexOf(b.id), R.length - 1)];
     ze({ review: b, pending: !0 });
     try {
       if (!await ua((te) => te.filter((re) => re.id !== b.id)))
         throw new Error("Could not save reviews.");
-      tt.current = b.id !== S && V ? { reviewId: V } : "heading", Ke({ text: `Deleted “${b.name}”.`, alert: !1 });
+      tt.current = b.id !== S && V ? { reviewId: V } : "heading", Ge({ text: `Deleted “${b.name}”.`, alert: !1 });
     } catch (te) {
-      Ke({ text: `“${b.name}” was not deleted. ${Pa(te)}`, alert: !0 });
+      Ge({ text: `“${b.name}” was not deleted. ${Pa(te)}`, alert: !0 });
     } finally {
       ze(null);
     }
   }
   async function Cl(b) {
     if (!(fn || !C)) {
-      Ke(null), fr(!0);
+      Ge(null), fr(!0);
       try {
         const q = await gf(b);
         let R = 0, V = 0;
@@ -10623,12 +10623,12 @@ function Bp({
         }))
           throw new Error("Could not save reviews.");
         const te = q.length - R;
-        Ke({
+        Ge({
           alert: !1,
           text: q.length ? R ? `Imported ${R === 1 ? "1 review" : `${R} reviews`}` + (V ? ` (${V === 1 ? "1 as a copy" : `${V} as copies`} beside a listed version that differs)` : "") + "." + (te === 1 ? " 1 review already in the list stays as it is." : te ? ` ${te} reviews already in the list stay as they are.` : "") : "Nothing imported: the reviews in this file are already in the list." : "Nothing to import: the file holds no reviews."
         });
       } catch (q) {
-        Ke({ alert: !0, text: `Could not import “${b.name}”. ${Pa(q)}` });
+        Ge({ alert: !0, text: `Could not import “${b.name}”. ${Pa(q)}` });
       } finally {
         fr(!1);
       }
@@ -10658,7 +10658,7 @@ function Bp({
         separated: !0,
         disabled: q,
         onSelect: () => {
-          Ke(null), ze({ review: b, pending: !1 });
+          Ge(null), ze({ review: b, pending: !1 });
         }
       }
     ];
@@ -10696,7 +10696,7 @@ function Bp({
     return re && te && ((re.view.reviewMode ?? "single") !== (te.view.reviewMode ?? "single") && En(null), re.view.displayMode !== te.view.displayMode && _r(Ms(re))), !0;
   }
   function wi(b) {
-    return ua((q) => Gp(q, b));
+    return ua((q) => Kp(q, b));
   }
   function Tl(b) {
     return wi(b).catch((q) => {
@@ -10706,8 +10706,8 @@ function Bp({
   function vi(b, q) {
     var V;
     if (!ke.current) return;
-    const R = ((V = G.current.find((te) => te.id === b.id)) == null ? void 0 : V.name) ?? b.name;
-    Ke({ text: `“${R}” was not saved. ${Pa(q)}`, alert: !0 });
+    const R = ((V = K.current.find((te) => te.id === b.id)) == null ? void 0 : V.name) ?? b.name;
+    Ge({ text: `“${R}” was not saved. ${Pa(q)}`, alert: !0 });
   }
   if (s)
     return /* @__PURE__ */ a(Ls, { label: "Loading reviews…" });
@@ -10917,18 +10917,18 @@ function Bp({
           {
             draft: nt,
             onChange: (b) => Ce((q) => q && { ...q, review: b, error: "" }),
-            onCreate: () => void Kt(),
+            onCreate: () => void Gt(),
             onCancel: () => Ce(null)
           }
         ),
         /* @__PURE__ */ a(
           Xl,
           {
-            open: !!Ge,
+            open: !!Ke,
             title: "Delete review?",
-            message: Ge ? `“${Ge.review.name}” will be deleted. Export it first to keep a copy you can import again.` : "",
+            message: Ke ? `“${Ke.review.name}” will be deleted. Export it first to keep a copy you can import again.` : "",
             confirmLabel: "Delete review",
-            isPending: (Ge == null ? void 0 : Ge.pending) ?? !1,
+            isPending: (Ke == null ? void 0 : Ke.pending) ?? !1,
             onConfirm: () => void xa(),
             onCancel: () => ze((b) => b != null && b.pending ? b : null)
           }
@@ -10956,8 +10956,8 @@ function Bp({
     }
   }
   function Il(b) {
-    const q = K.current;
-    if (K.current = null, _n || !U || !ue) return;
+    const q = G.current;
+    if (G.current = null, _n || !U || !ue) return;
     const R = q ?? U.view.objectFilter, V = lr(
       R,
       ue.view.objectFilter
@@ -10973,7 +10973,7 @@ function Bp({
   }
   function $l() {
     if ($e || Se || Ue || !ue) return;
-    K.current = null;
+    G.current = null;
     const b = Xt({
       ...ue.view.filter,
       page: 1
@@ -11026,7 +11026,7 @@ function Bp({
     var q;
     if (!he || he.saving) return;
     const b = Jt.current;
-    b && (Ut.current += 1, (q = qr.current) == null || q.abort(), K.current = null, xn(!1), Et(b.temporaryReview), qe(b.filter), Te(b.loadedFilter), Ot(b.queue), hr(b.queueError), na(b.retryFromEnd), X(() => b.selectedIds), bt(b.focusedId), Dn.current = b.pageCursor, window.history.replaceState(window.history.state, "", b.url)), Bo();
+    b && (Ut.current += 1, (q = qr.current) == null || q.abort(), G.current = null, xn(!1), Et(b.temporaryReview), qe(b.filter), Te(b.loadedFilter), Ot(b.queue), hr(b.queueError), na(b.retryFromEnd), X(() => b.selectedIds), bt(b.focusedId), Dn.current = b.pageCursor, window.history.replaceState(window.history.state, "", b.url)), Bo();
   }
   async function Ml() {
     if (!he || he.saving || !on || !U) return;
@@ -11059,7 +11059,7 @@ function Bp({
       );
     }
   }
-  function Ko() {
+  function Go() {
     U && In(U, oe, Dt, gr).catch(() => {
     });
   }
@@ -11067,14 +11067,14 @@ function Bp({
     tn(/* @__PURE__ */ new Set()), An.current.clear(), bt(null);
   }
   function xl(b) {
-    !U || $e || Ue || b === Number(oe.page) || Kp(
+    !U || $e || Ue || b === Number(oe.page) || Gp(
       { ...oe, page: b },
       U,
       (q, R) => In(q, R, !1, gr),
       Fl
     );
   }
-  function Go(b) {
+  function Ko(b) {
     if (!se || !ue || $e || Se || Ue) return;
     const q = yl(se, b, ue.view.objectFilter), R = !Os(q, ue);
     Et(R ? q : null), R ? La(q, { ...oe, page: 1 }) : La(
@@ -11129,7 +11129,7 @@ function Bp({
                     supportsFilterExpressions: !q,
                     objectFilter: sa,
                     onObjectFilterChange: (Me) => {
-                      _n || (K.current = Fe === "video" ? el(
+                      _n || (G.current = Fe === "video" ? el(
                         Me,
                         Ur,
                         b.view.objectFilter
@@ -11185,7 +11185,7 @@ function Bp({
                     savedObjectFilter: (ue ?? se).view.objectFilter,
                     trees: ie.ids,
                     disabled: $e || Se || Ue,
-                    onToggle: Go
+                    onToggle: Ko
                   }
                 ),
                 /* @__PURE__ */ a(
@@ -11197,7 +11197,7 @@ function Bp({
                     queueCount: Se || Re ? null : Ie.totalCount,
                     disabled: $e || Se || Ue,
                     countsPaused: $e || Se || Ue || !W,
-                    onToggle: Go
+                    onToggle: Ko
                   }
                 )
               ] }) : void 0,
@@ -11235,7 +11235,7 @@ function Bp({
                       "The queue could not load: ",
                       Re,
                       " ",
-                      /* @__PURE__ */ a("button", { type: "button", className: "dq-link-button", onClick: Ko, children: "Retry" })
+                      /* @__PURE__ */ a("button", { type: "button", className: "dq-link-button", onClick: Go, children: "Retry" })
                     ] })
                   ] }) : void 0
                 ),
@@ -11262,7 +11262,7 @@ function Bp({
                             ba(ue.id, { ...Me, filter: { ...Me.filter, page: void 0 } }), st((cn) => cn + 1);
                             return;
                           }
-                          Ko();
+                          Go();
                         }
                       }
                     ),
@@ -11394,7 +11394,7 @@ function Bp({
     );
   }
 }
-function Kp(e, t, n, r) {
+function Gp(e, t, n, r) {
   r(), n(t, e).catch(() => {
   });
 }
@@ -11402,7 +11402,7 @@ function Va(e, t) {
   const n = new Set(e);
   return n.has(t) ? n.delete(t) : n.add(t), n;
 }
-function Gp(e, t) {
+function Kp(e, t) {
   if (!e.some((n) => n.id === t.id)) throw new Error("This review was deleted.");
   return e.map((n) => n.id === t.id ? t : n);
 }
@@ -11800,7 +11800,7 @@ function Qp({
             )
           ] }),
           /* @__PURE__ */ a("div", { className: "dq-player", "data-review-player-controls": !0, tabIndex: 0, children: /* @__PURE__ */ a("div", { className: "dq-preview-video", children: P ? /* @__PURE__ */ a(
-            Ks,
+            Gs,
             {
               autostart: !0,
               streamUrl: ji("video", e.id),

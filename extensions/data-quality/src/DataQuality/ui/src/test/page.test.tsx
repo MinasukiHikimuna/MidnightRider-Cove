@@ -1686,7 +1686,7 @@ it("keeps a new review's draft open, exportable, when it cannot be saved", async
   create.focus();
   fireEvent.click(create);
   expect(within(dialog).getByRole("alert")).toHaveTextContent(
-    "Name the review and complete every action step before saving.",
+    "Name the review before saving.",
   );
   expect(within(dialog).getByLabelText("Review name")).toHaveFocus();
   fireEvent.change(within(dialog).getByLabelText("Review name"), {
