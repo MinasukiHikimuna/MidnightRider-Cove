@@ -384,43 +384,64 @@ export function saveReviews(
   return serial(key, async () => {
     const session = sessions.get(key);
     if (!session) throw new Error("Reload reviews before saving.");
-    for (let attempt = 1; ; attempt++) {
-      const current = session.config.reviews;
-      const reviews = change(current);
-      if (reviews === current) return current;
-      parseReviews(JSON.stringify(reviews));
-      const removed = current
-        .filter((review) => !reviews.some((next) => next.id === review.id))
-        .map((review) => review.id);
-      try {
-        await persist(key, {
-          ...session.config,
-          reviews,
-          deletedIds: [
-            ...new Set([...session.config.deletedIds, ...removed]),
-          ].filter((id) => !reviews.some((review) => review.id === id)),
-        });
-        return reviews;
-      } catch (error) {
-        const theirs = error instanceof StaleReviewsError ? error.remote : undefined;
-        if (!theirs || attempt >= 3) throw error;
-        // Another browser saved meanwhile. When it left every review this save changes as this
-        // browser last saw it, the change applies to its list instead, keeping both; when it
-        // changed one of them too, this save stops rather than overwrite that.
-        const clash = changedIds(current, reviews).find(
-          (id) => reviewText(current, id) !== reviewText(theirs.reviews, id),
-        );
-        if (clash !== undefined) {
-          const name = (reviews.find((review) => review.id === clash) ??
-            current.find((review) => review.id === clash))?.name;
-          throw new StaleReviewsError(
-            `“${name ?? "This review"}” was also changed in another browser. Reload the page to get that version.`,
-          );
-        }
-        session.config = theirs;
-      }
+    // A save that took another browser's list and still failed leaves the list as it found it,
+    // the one the page shows; the next save meets that browser's again and merges.
+    const before = session.config;
+    try {
+      return await mergingSave(session, key, change);
+    } catch (error) {
+      session.config = before;
+      throw error;
     }
   });
+}
+
+async function mergingSave(
+  session: Session,
+  key: string,
+  change: (current: Review[]) => Review[],
+): Promise<Review[]> {
+  for (let attempt = 1; ; attempt++) {
+    const current = session.config.reviews;
+    const reviews = change(current);
+    if (reviews === current) return current;
+    parseReviews(JSON.stringify(reviews));
+    const removed = current
+      .filter((review) => !reviews.some((next) => next.id === review.id))
+      .map((review) => review.id);
+    try {
+      await persist(key, {
+        ...session.config,
+        reviews,
+        deletedIds: [
+          ...new Set([...session.config.deletedIds, ...removed]),
+        ].filter((id) => !reviews.some((review) => review.id === id)),
+      });
+      return reviews;
+    } catch (error) {
+      const theirs = error instanceof StaleReviewsError ? error.remote : undefined;
+      if (!theirs || attempt >= 3) throw error;
+      // Another browser saved meanwhile. When it left every review this save changes as this
+      // browser last saw it, the change applies to its list instead, keeping both; when it
+      // changed one of them too, this save stops rather than overwrite that.
+      // A review it left as this save makes it, such as one both deleted, is no clash.
+      const clash = changedIds(current, reviews).find(
+        (id) =>
+          reviewText(current, id) !== reviewText(theirs.reviews, id) &&
+          reviewText(theirs.reviews, id) !== reviewText(reviews, id),
+      );
+      if (clash !== undefined) {
+        const name = (reviews.find((review) => review.id === clash) ??
+          current.find((review) => review.id === clash))?.name;
+        throw new StaleReviewsError(
+          theirs.reviews.some((review) => review.id === clash)
+            ? `“${name ?? "This review"}” was also changed in another browser. Reload the page to get that version.`
+            : `“${name ?? "This review"}” was deleted in another browser. Reload the page to see the reviews as they are now.`,
+        );
+      }
+      session.config = theirs;
+    }
+  }
 }
 
 export interface ReviewProgress {

@@ -149,6 +149,34 @@ it("does not overwrite another browser's newer edit of the same review", async (
   expect(JSON.parse(record.uiOptions).reviews).toEqual([{ ...review, name: "Theirs" }]);
 });
 
+it("lets a deletion through when another browser deleted the same review", async () => {
+  localStorage.setItem("cove-data-quality-reviews-v1:u", JSON.stringify([review]));
+  const loaded = await loadReviews();
+  const record = records.find((r) => r.mode.includes("configuration"))!;
+  const config = JSON.parse(record.uiOptions);
+  config.revision = "other-browser";
+  config.reviews = [];
+  config.deletedIds = [review.id];
+  record.uiOptions = JSON.stringify(config);
+  await expect(
+    saveReviews(loaded.storageKey, (current) => current.filter((item) => item.id !== review.id)),
+  ).resolves.toEqual([]);
+});
+
+it("says when another browser deleted the review this save changes", async () => {
+  localStorage.setItem("cove-data-quality-reviews-v1:u", JSON.stringify([review]));
+  const loaded = await loadReviews();
+  const record = records.find((r) => r.mode.includes("configuration"))!;
+  const config = JSON.parse(record.uiOptions);
+  config.revision = "other-browser";
+  config.reviews = [];
+  config.deletedIds = [review.id];
+  record.uiOptions = JSON.stringify(config);
+  await expect(
+    saveReviews(loaded.storageKey, (current) => current.map((item) => ({ ...item, name: "Mine" }))),
+  ).rejects.toThrow("“Mine” was deleted in another browser. Reload the page to see the reviews as they are now.");
+});
+
 it("keeps another browser's newer edit of other reviews and saves this one beside it", async () => {
   localStorage.setItem(
     "cove-data-quality-reviews-v1:u",
