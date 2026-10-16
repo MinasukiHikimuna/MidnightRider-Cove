@@ -515,7 +515,10 @@ function ActionRow({
             </span>
           )}
           {!open && (
-            <span className="dq-action-row-effect">
+            <span
+              className="dq-action-row-effect"
+              title={effect.map((part) => part.text).join(" ")}
+            >
               {effect.map((part, position) => (
                 <span key={position} data-effect-tone={part.tone}>
                   {part.text}
@@ -524,9 +527,9 @@ function ActionRow({
             </span>
           )}
           {problem && (
-            <span className="dq-action-problem">
+            <span className="dq-action-problem" title={problem}>
               <AlertTriangle aria-hidden="true" />
-              {problem}
+              <span className="dq-action-problem-text">{problem}</span>
             </span>
           )}
           {takenPin && (
@@ -535,7 +538,7 @@ function ActionRow({
               title={`An earlier action is pinned to ${actionKeyName(takenPin)} too, so this one takes a free key as Auto does. Choose its key to settle it.`}
             >
               <AlertTriangle aria-hidden="true" />
-              {`${actionKeyName(takenPin)} is pinned twice`}
+              <span className="dq-action-problem-text">{`${actionKeyName(takenPin)} is pinned twice`}</span>
             </span>
           )}
           {groupUnanswerable && (
@@ -544,7 +547,7 @@ function ActionRow({
               title="No action in this group adds a tag or marks one absent, so the group is never answered and items wait there until skipped."
             >
               <AlertTriangle aria-hidden="true" />
-              {`${group} can't be answered`}
+              <span className="dq-action-problem-text">{`${group} can't be answered`}</span>
             </span>
           )}
         </div>

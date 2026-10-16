@@ -4954,11 +4954,25 @@ textarea.dq-input {
   align-items: center;
   align-self: stretch;
   gap: 12px;
+  /* Whatever does not fit is cut here, never drawn over the row's buttons. */
+  overflow: hidden;
   cursor: pointer;
 }
+/* In phone-sized windows a warning takes a line of its own under the action's name. */
+@media (max-width: 760px) {
+  .dq-action-row-summary {
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 2px 12px;
+    padding-block: 4px;
+  }
+  .dq-action-row-summary > .dq-action-problem {
+    flex-basis: 100%;
+  }
+}
 .dq-action-row-label {
-  width: 150px;
-  flex: none;
+  min-width: 4rem;
+  flex: 0 1 150px;
   overflow: hidden;
   font-size: 0.84375rem;
   text-overflow: ellipsis;
@@ -4991,15 +5005,22 @@ textarea.dq-input {
 }
 .dq-action-problem {
   display: inline-flex;
-  flex: none;
+  min-width: 0;
+  flex: 0 1 auto;
   align-items: center;
   gap: 4px;
   color: var(--dq-warn);
   font-size: 0.75rem;
 }
+.dq-action-problem-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dq-action-problem svg {
   width: 13px;
   height: 13px;
+  flex: none;
 }
 /* An action's answer group, as a small outlined chip after its label. */
 .dq-action-row-group {
