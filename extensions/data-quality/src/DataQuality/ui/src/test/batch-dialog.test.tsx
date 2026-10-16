@@ -215,6 +215,12 @@ it("walks from the answers to a preview without writes, keeps different answers 
   expect(button("1 will change")).toBeEnabled();
   expect(button("1 replace a different answer")).toBeInTheDocument();
   expect(list.queryByText("Keeps its answer unless replaced:")).not.toBeInTheDocument();
+  mocks.run.mockImplementationOnce(
+    async (run: OccurrenceBatch, _replace: boolean, _cancelled: () => boolean, update: () => void) => {
+      run.entries[0].status = "changed";
+      update();
+    },
+  );
   fireEvent.click(button("Apply to 1 occurrence"));
   await waitFor(() =>
     expect(mocks.run).toHaveBeenCalledWith(
@@ -226,7 +232,8 @@ it("walks from the answers to a preview without writes, keeps different answers 
     ),
   );
   expect(step("Run")).toHaveAttribute("aria-current", "step");
-  expect(await screen.findByText(/Batch finished/)).toBeInTheDocument();
+  // Nothing was skipped or failed, so there is nothing to inspect.
+  expect(await screen.findByText("Batch finished: 1 changed.")).toBeInTheDocument();
 });
 
 it("shows each answer's key as the review places it, pinned, Auto or none", () => {
@@ -463,11 +470,14 @@ it("shows progress, continues remaining occurrences, retries only failures with 
     },
   );
   fireEvent.click(button("Undo batch"));
-  await screen.findByText("Batch undo finished. Inspect any failures below.");
+  await screen.findByText("Batch undo finished. Inspect the failures below.");
   expect(screen.getByRole("heading", { name: "Undo finished" })).toBeInTheDocument();
   expect(screen.getByText("2 of 2 processed")).toBeInTheDocument();
   expect(screen.getByText(`1 failed: ${conflict}`)).toBeInTheDocument();
   expect(screen.getByText("Restored 1 of 2 changes.")).toBeInTheDocument();
+  // Restored occurrences are counted as they were before the batch, not as unchanged by it.
+  expect(screen.getByRole("button", { name: /As before/ })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Unchanged/ })).not.toBeInTheDocument();
   expect(button("Undo batch")).toBeEnabled();
   expect(
     screen.getByText(/1 change could not be undone; undo again once their conflicts are resolved/),

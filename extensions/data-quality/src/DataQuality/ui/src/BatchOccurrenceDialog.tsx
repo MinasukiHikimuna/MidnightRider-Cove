@@ -589,12 +589,21 @@ export function BatchOccurrenceDialog({
       if (kind === "undo") await undoOccurrenceBatch(batch, () => cancel.current, update);
       else
         await runOccurrenceBatch(batch, replace, () => cancel.current, update, kind === "retry");
+      const { counts } = tally(batch.entries);
+      const problems = counts.skipped + counts.failed;
       setNotice(
         cancel.current
           ? "Stopped after in-flight operations settled. Completed changes are retained."
           : kind === "undo"
-            ? "Batch undo finished. Inspect any failures below."
-            : "Batch finished. Inspect skipped or failed occurrences below.",
+            ? `Batch undo finished.${counts.failed ? " Inspect the failures below." : ""}`
+            : `Batch finished: ${[
+                `${counts.changed.toLocaleString()} changed`,
+                counts.unchanged && `${counts.unchanged.toLocaleString()} unchanged`,
+                counts.skipped && `${counts.skipped.toLocaleString()} skipped`,
+                counts.failed && `${counts.failed.toLocaleString()} failed`,
+              ]
+                .filter(Boolean)
+                .join(", ")}.${problems ? " Inspect them below." : ""}`,
       );
     } catch (failure) {
       failed = true;
@@ -1188,7 +1197,8 @@ export function BatchOccurrenceDialog({
               <StatTile
                 key={result.status}
                 value={stats.counts[result.status]}
-                label={result.label}
+                // After an undo, restored occurrences are as they were before the batch.
+                label={shown.kind === "undo" && result.status === "unchanged" ? "As before" : result.label}
                 tone={result.tone}
                 pressed={isListed(result.status)}
                 onToggle={() => toggleList({ group: result.status })}
