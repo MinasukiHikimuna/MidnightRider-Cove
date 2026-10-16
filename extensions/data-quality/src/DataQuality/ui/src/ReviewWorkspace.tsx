@@ -2092,6 +2092,8 @@ export function ReviewWorkspace({
                         editorBase.current = [...tags!.ids];
                         setDraft([...tags!.ids]);
                         setEditing(true);
+                        // A notice from the last save no longer describes what is on screen.
+                        setNotice("");
                       }}
                     >
                       <Tag aria-hidden="true" />

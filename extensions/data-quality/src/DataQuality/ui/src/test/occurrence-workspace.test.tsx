@@ -354,6 +354,15 @@ it("retains editor inputs on partial failure and refreshes actual tags", async (
   expect(screen.getByRole("group", { name: "Edit occurrence tags" })).toBe(field);
   expect(input).toHaveFocus();
 });
+it("drops the last save's notice when the tag editor opens", async () => {
+  open();
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByText("Tags saved.");
+  await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Edit tags" }));
+  expect(screen.queryByText("Tags saved.")).not.toBeInTheDocument();
+});
 it("gives focus back to the editor's button after a failed save", async () => {
   api.editTags.mockImplementation(async () => {
     state = { ids: [40], names: ["Saved part"], absent: [] };
