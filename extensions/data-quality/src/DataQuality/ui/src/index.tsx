@@ -1321,8 +1321,25 @@ export function DataQualityPage({
                 }),
             );
           if (!isCurrent()) return;
+          // A tag that has left the queue cannot be read by id through the tag list; its action's
+          // effect, a group set or cleared, is all that changed, so the row shows that.
+          const targets = new Set(actionTargets);
+          const effect = "effect" in action ? action.effect : null;
+          const group =
+            effect?.mode === "SET_TAG_GROUP"
+              ? tagGroups.find((item) => item.id === effect.tagGroupId)
+              : undefined;
+          const regrouped = (item: ReviewPage["items"][number]) =>
+            effect && effect.mode !== "SKIP" && targets.has(item.id)
+              ? {
+                  ...item,
+                  tagGroupId: group?.id ?? null,
+                  tagGroupName: group?.name ?? null,
+                  tagGroupColor: group?.color ?? null,
+                }
+              : item;
           setQueue((current) => ({
-            items: current.items.map((item) => byId.get(item.id) ?? item),
+            items: current.items.map((item) => byId.get(item.id) ?? regrouped(item)),
             totalCount: fresh.totalCount,
           }));
           return;

@@ -511,6 +511,47 @@ describe("Data Quality extension page", () => {
     );
   });
 
+  it("shows a tag's new group after applying and staying, though it left the queue", async () => {
+    const tagReview = {
+      id: "tags",
+      entityType: "tag" as const,
+      name: "Group tags",
+      description: "",
+      view: {
+        filter: { page: 1, perPage: 40, sort: "name", direction: "asc" },
+        objectFilter: { tagGroupsCriterion: { value: [], modifier: "IS_NULL" } },
+        displayMode: "list" as const,
+        searchMode: "text",
+        startFrom: "beginning" as const,
+      },
+      actions: [
+        { id: "assign", label: "Classify", effect: { mode: "SET_TAG_GROUP" as const, tagGroupId: 8 } },
+      ],
+    };
+    window.history.replaceState(null, "", "/data-quality?review=tags");
+    api.loadReviews.mockResolvedValueOnce({
+      reviews: [tagReview],
+      storageKey: "reviews",
+      canWrite: true,
+      canWriteVideos: true,
+      canWriteTags: true,
+      canReadTagGroups: true,
+    });
+    render(<DataQualityPage onNavigate={vi.fn()} />);
+    const first = await screen.findByRole("article", { name: "Tag 11" });
+    expect(within(first).getByText("Ungrouped")).toBeInTheDocument();
+    await waitFor(() => expect(api.listTagGroups).toHaveBeenCalled());
+    // Grouped now, the tag no longer matches the ungrouped queue.
+    api.findTags.mockResolvedValue({ items: [tag(12)], totalCount: 1 });
+
+    fireEvent.keyDown(first, { key: "q", shiftKey: true });
+
+    await screen.findByText(/Classify: 1 tag updated, kept in place\./);
+    const kept = screen.getByRole("article", { name: "Tag 11" });
+    expect(within(kept).getByText("Classification")).toBeInTheDocument();
+    expect(within(kept).queryByText("Ungrouped")).not.toBeInTheDocument();
+  });
+
   it("creates tag reviews with an ungrouped queue, then configures them in the grid's drawer", async () => {
     window.history.replaceState(null, "", "/data-quality");
     api.loadReviews.mockResolvedValueOnce({
