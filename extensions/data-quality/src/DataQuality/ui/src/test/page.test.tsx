@@ -3443,8 +3443,9 @@ it("hands focus back to the focused card once the card size slider is let go", a
   const slider = screen.getByRole("slider", { name: /Card size/ });
   slider.focus();
   fireEvent.change(slider, { target: { value: "2" } });
-  // Cove's keys skip a focused input, so the action keys would do nothing while it kept focus.
-  fireEvent.pointerUp(slider);
+  // Cove's keys skip a focused input, so the action keys would do nothing while it kept focus. The
+  // drag ends off the slider, where the pointer was let go.
+  fireEvent.pointerUp(document.body);
   await waitFor(() => expect(first).toHaveFocus());
 });
 

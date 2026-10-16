@@ -1574,8 +1574,9 @@ export function DataQualityPage({
   // to the focused card; a slider moved with the arrow keys keeps it. Sliders in the preview, its
   // player or the drawer are left alone.
   useEffect(() => {
-    const release = (event: PointerEvent) => {
-      const target = event.target;
+    // The slider keeps focus wherever the pointer is let go, also off the slider itself.
+    const release = () => {
+      const target = document.activeElement;
       if (
         !(target instanceof HTMLInputElement) ||
         target.type !== "range" ||
