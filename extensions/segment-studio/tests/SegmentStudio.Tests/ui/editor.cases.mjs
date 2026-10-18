@@ -835,6 +835,67 @@ test("a selection a filter hid resumes inside the lanes that are still visible",
   assert.equal(ui.resolveEditorSegmentSelection(filtered, null, 3, { reference, visibleLanes })?.id, 3);
 });
 
+test("a selection lost with its emptied lanes lands beside them, not on any lane at the same time", () => {
+  const segment = (id, startSec, endSec) => ({ segment: { id, startSec, endSec, reviewState: "unreviewed" } });
+  const before = [
+    { key: "grabbing-ass", markers: [segment(1, 242, 244), segment(2, 406, 420), segment(3, 1180, 1194)] },
+    { key: "grabbing-boobs", markers: [segment(4, 406, 410), segment(5, 550, 552), segment(6, 2028, 2030)] },
+    { key: "kissing", markers: [segment(7, 218, 238), segment(8, 348, 350), segment(9, 690, 692)] },
+    { key: "pussy-licking", markers: [segment(10, 400, 412)] },
+    { key: "tongue", markers: [segment(11, 410, 412), segment(12, 720, 736)] },
+  ];
+  const reference = ui.selectionReferenceForSegment(before, 4);
+  // A deletion the editor did not select after (a deferred batch, a reload) removed both lanes.
+  const after = before.slice(2);
+  // Without the previous lanes the only clue is time, so a far lane touching 6:50 wins.
+  assert.equal(ui.resolveEditorSegmentSelection(after, 4, null, { reference })?.id, 11);
+  // With them, the lane next to the emptied ones answers inside the removed span.
+  assert.equal(ui.resolveEditorSegmentSelection(after, 4, null, { reference, referenceLanes: before })?.id, 9);
+  // A segment that moved to another lane is still a candidate, not part of the removed lane.
+  const retagged = [{ key: "other", markers: [segment(5, 550, 552)] }];
+  assert.equal(ui.resolveEditorSegmentSelection(retagged, 4, null, { reference, referenceLanes: before })?.id, 5);
+  // A reference lane that is still present keeps the ordinary rule.
+  const kept = [before[1], ...after].map((lane) => lane.key !== "grabbing-boobs" ? lane : {
+    ...lane, markers: lane.markers.filter(({ segment }) => segment.id !== 4),
+  });
+  assert.equal(ui.resolveEditorSegmentSelection(kept, 4, null, { reference, referenceLanes: before })?.id, 5);
+
+  // The editor remembers the expanded lanes with the reference and hands them back.
+  const controller = sourceByModule["editor/SegmentEditor.js"];
+  assert.match(controller, /referenceLanes: lastSelection\?\.lanes/);
+  assert.match(controller, /lastSelectionReferenceRef\.current = \{ videoId: video\.id, reference, lanes: swimlanes \}/);
+});
+
+test("a vanished lane returns between the lanes that surrounded it", () => {
+  const segment = (id, startSec) => ({ segment: { id, startSec, endSec: startSec + 5, reviewState: "unreviewed" } });
+  const before = [
+    { key: "a", markers: [segment(1, 408)] },
+    { key: "b", markers: [segment(2, 1500)] },
+    { key: "removed", markers: [segment(3, 400)] },
+    { key: "c", markers: [segment(4, 1500)] },
+    { key: "d", markers: [segment(5, 408)] },
+  ];
+  const reference = ui.selectionReferenceForSegment(before, 3);
+  const after = before.filter((lane) => lane.key !== "removed");
+  // Placed first, lane a would win on time; placed last, lane d would. Between b and c, the
+  // tied neighbours fall to the lane below, as for an explicit removal.
+  assert.equal(ui.resolveEditorSegmentSelection(after, 3, null, { reference, referenceLanes: before })?.id, 4);
+  assert.equal(ui.findNextUnprocessed(before, reference, { removedIds: [3] })?.id, 4);
+});
+
+test("a vanished lane from a collapsed group still selects by time", () => {
+  const lanes = [
+    { key: "a", markers: [{ segment: { id: 1, startSec: 2100, endSec: 2105, reviewState: "unreviewed" } }] },
+    { key: "x", markers: [{ segment: { id: 2, startSec: 50, endSec: 55, reviewState: "unreviewed" } }] },
+    { key: "collapsed", markers: [{ segment: { id: 3, startSec: 2100, endSec: 2105, reviewState: "unreviewed" } }] },
+  ];
+  const reference = ui.selectionReferenceForSegment(lanes, 3);
+  // The remembered lanes are the expanded ones, so a collapsed lane has no position to return to.
+  const expanded = lanes.slice(0, 2);
+  assert.equal(ui.resolveEditorSegmentSelection(expanded, 3, null, { reference, referenceLanes: expanded })?.id, 1);
+  assert.equal(ui.findNextUnprocessed(expanded, reference, { removedIds: [3] })?.id, 1);
+});
+
 test("a selection that comes back is reselected, not stepped past", () => {
   const lanes = unprocessedLanes();
   const reference = ui.selectionReferenceForSegment(lanes, 6);

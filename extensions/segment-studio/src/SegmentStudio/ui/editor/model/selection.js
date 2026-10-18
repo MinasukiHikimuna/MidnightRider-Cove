@@ -214,14 +214,42 @@ export function resolveEditorSegmentSelection(
     // The reviewer's own segment comes back when lanes repopulate, so prefer it over its
     // neighbour; findNextUnprocessed treats the reference as a position to move away from.
     const visibleLanes = options.visibleLanes ?? lanes;
-    const reselected = visibleLanes
-      .flatMap((lane) => (lane.markers || []).map((marker) => marker.segment))
-      .find((segment) => segment.id === options.reference.id);
+    const visibleSegments = visibleLanes
+      .flatMap((lane) => (lane.markers || []).map((marker) => marker.segment));
+    const reselected = visibleSegments.find((segment) => segment.id === options.reference.id);
     // Otherwise the selection is gone: deleted elsewhere, filtered out, or dropped by a
     // reload. Resume from where the reviewer was instead of restarting at the video top.
-    return reselected ?? findNextUnprocessed(visibleLanes, options.reference);
+    if (reselected) return reselected;
+    const recovered = lanesWithVanishedReferenceLane(
+      lanes, visibleLanes, visibleSegments, options.reference, options.referenceLanes);
+    return findNextUnprocessed(recovered.lanes, options.reference, { removedIds: recovered.removedIds });
   }
   return findInitialSegmentSelection(lanes);
+}
+
+// A visible lane that vanished with the selection, emptied by a deletion or hidden by a filter,
+// returns at its previous position holding only its vanished segments, all marked removed. The
+// lost selection then lands beside it, near the stretch it covered, instead of on any lane that
+// happens to share its time. Other lanes that vanished stay gone, as they are on screen.
+function lanesWithVanishedReferenceLane(lanes, visibleLanes, visibleSegments, reference, previousVisibleLanes) {
+  const unchanged = { lanes: visibleLanes, removedIds: [] };
+  if (!previousVisibleLanes || (lanes || []).some((lane) => lane.key === reference.laneKey)) return unchanged;
+  const previousOrder = new Map(previousVisibleLanes.map((lane, index) => [lane.key, index]));
+  const previousIndex = previousOrder.get(reference.laneKey);
+  if (previousIndex == null) return unchanged;
+  const presentIds = new Set(visibleSegments.map((segment) => segment.id));
+  const markers = (previousVisibleLanes[previousIndex].markers || [])
+    .filter(({ segment }) => segment && !presentIds.has(segment.id));
+  const insertAt = visibleLanes.reduce((position, lane, index) =>
+    (previousOrder.get(lane.key) ?? Infinity) < previousIndex ? index + 1 : position, 0);
+  return {
+    lanes: [
+      ...visibleLanes.slice(0, insertAt),
+      { key: reference.laneKey, markers },
+      ...visibleLanes.slice(insertAt),
+    ],
+    removedIds: markers.map(({ segment }) => segment.id),
+  };
 }
 
 export function updateSegmentSelection(selectedSegmentIds, activeSegmentId, targetSegmentId, additive = false) {

@@ -487,23 +487,26 @@ function SegmentEditor({ detail, onDetailChange, onConflict: onConflictProjectio
     () => expandedSwimlanes(allSwimlanes, collapsedSegmentGroups),
     [allSwimlanes, collapsedSegmentGroups],
   );
+  const lastSelection = lastSelectionReferenceRef.current?.videoId === video.id
+    ? lastSelectionReferenceRef.current
+    : null;
   const displayedSelectedSegment = resolveEditorSegmentSelection(
     allSwimlanes,
     selectedSegmentId,
     initialSegmentId,
     {
       visibleLanes: swimlanes,
-      reference: lastSelectionReferenceRef.current?.videoId === video.id
-        ? lastSelectionReferenceRef.current.reference
-        : null,
+      reference: lastSelection?.reference ?? null,
+      referenceLanes: lastSelection?.lanes ?? null,
     },
   );
   // Where the reviewer last was, so a selection that disappears resumes from there. Recorded
   // after the commit, because a render React discards must not move the remembered position.
+  // The expanded lanes come with it, so a lane that vanishes is placed back where it was.
   useEffect(() => {
     const reference = selectionReferenceForSegment(allSwimlanes, displayedSelectedSegment?.id);
-    if (reference) lastSelectionReferenceRef.current = { videoId: video.id, reference };
-  }, [video.id, displayedSelectedSegment?.id, allSwimlanes]);
+    if (reference) lastSelectionReferenceRef.current = { videoId: video.id, reference, lanes: swimlanes };
+  }, [video.id, displayedSelectedSegment?.id, allSwimlanes, swimlanes]);
   // Visibility follows the displayed tag, but actions read and write the server projection.
   // Temporary segments are only pending inserts, so actions see them alongside the server segments.
   const actionSegments = useMemo(() => {
