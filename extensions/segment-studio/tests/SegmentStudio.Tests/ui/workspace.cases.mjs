@@ -636,8 +636,9 @@ test("settings manage derived segment rule lifecycles with tag autocomplete and 
   assert.doesNotMatch(settings, /slotMappings:\s*draft\.slotMappings\.filter/);
   assert.match(settings, /onChange: \(tagId, option\) => updateTag\("source", tagId, option\?\.label\)/);
   assert.match(settings, /onChange: \(tagId, option\) => updateTag\("derived", tagId, option\?\.label\)/);
-  assert.match(settings, /draft\.ruleId == null && draft\.sourceTagId && !sourceSlotsLoading && sourceSlots\.length === 0/);
-  assert.match(settings, /draft\.ruleId == null && draft\.derivedTagId && !derivedSlotsLoading && derivedSlots\.length === 0/);
+  assert.match(settings, /draft\.sourceTagId && !sourceSlotsLoading && sourceSlots\.length === 0/);
+  assert.match(settings, /draft\.derivedTagId && !derivedSlotsLoading && derivedSlots\.length === 0/);
+  assert.doesNotMatch(settings, /draft\.ruleId == null && draft\.(source|derived)TagId && !/);
   assert.match(settings, /No performer slots configured\./);
   assert.match(settings, /Configure source tag/);
   assert.match(settings, /Configure derived tag/);
@@ -691,11 +692,14 @@ test("new derivation rules suggest matching performer slot mappings", () => {
     sourceSlotDefinitionId: "chosen-source",
     derivedSlotDefinitionId: "chosen-derived",
   };
-  const editedDraft = { ruleId: "existing-rule", slotMappings: [] };
+  const retaggedDraft = { ruleId: "existing-rule", slotMappings: [] };
   const customizedDraft = { ruleId: null, slotMappings: [existingMapping] };
-  assert.equal(
-    ui.applyDerivationRuleSlotSuggestions(editedDraft, sourceSlots, derivedSlots),
-    editedDraft,
+  assert.deepEqual(
+    ui.applyDerivationRuleSlotSuggestions(retaggedDraft, sourceSlots, derivedSlots),
+    {
+      ruleId: "existing-rule",
+      slotMappings: ui.suggestDerivationRuleSlotMappings(sourceSlots, derivedSlots),
+    },
   );
   assert.equal(
     ui.applyDerivationRuleSlotSuggestions(customizedDraft, sourceSlots, derivedSlots),
@@ -707,8 +711,103 @@ test("new derivation rules suggest matching performer slot mappings", () => {
     source.indexOf("function PlaybackShortcutSettings"),
   );
   assert.match(settings, /applyDerivationRuleSlotSuggestions\(current, sourceSlots, derivedSlots\)/);
-  assert.match(settings, /draft\.ruleId != null/);
-  assert.match(settings, /Matching performer slots were suggested automatically\./);
+  assert.match(settings, /isSavedDerivationRulePair\(draft\)\s+\|\| sourceSlotsLoading/);
+  assert.match(settings, /saved: \{ sourceTagId: rule\.sourceTagId, derivedTagId: rule\.derivedTagId, slotMappings \}/);
+  assert.match(settings, /setDraft\(\(current\) => retagDerivationRuleDraft\(current, kind, tagId, tagName\)\)/);
+  assert.doesNotMatch(settings, /draft\.ruleId != null\s+\|\| sourceSlotsLoading/);
+  assert.doesNotMatch(settings, /slotMappingsSuggested|suggested automatically/);
+});
+
+test("retagging an edited derivation rule restores its saved mappings only for its saved tags", () => {
+  const savedMappings = [{ sourceSlotDefinitionId: "a", derivedSlotDefinitionId: "x" }];
+  const edited = {
+    ruleId: "rule",
+    sourceTagId: 1,
+    sourceTagName: "Specific",
+    derivedTagId: 2,
+    derivedTagName: "General",
+    slotMappings: savedMappings,
+    saved: { sourceTagId: 1, derivedTagId: 2, slotMappings: savedMappings },
+  };
+  assert.equal(ui.isSavedDerivationRulePair(edited), true);
+
+  const retagged = ui.retagDerivationRuleDraft(edited, "source", "3", "Other");
+  assert.deepEqual(
+    { sourceTagId: retagged.sourceTagId, sourceTagName: retagged.sourceTagName, slotMappings: retagged.slotMappings },
+    { sourceTagId: 3, sourceTagName: "Other", slotMappings: [] },
+  );
+  assert.equal(ui.isSavedDerivationRulePair(retagged), false);
+
+  const restored = ui.retagDerivationRuleDraft(retagged, "source", 1, "Specific");
+  assert.equal(restored.slotMappings, savedMappings);
+  assert.equal(ui.isSavedDerivationRulePair(restored), true);
+
+  const added = { ruleId: null, sourceTagId: 1, derivedTagId: null, slotMappings: [] };
+  assert.equal(ui.isSavedDerivationRulePair(ui.retagDerivationRuleDraft(added, "derived", 2)), false);
+  assert.deepEqual(ui.retagDerivationRuleDraft(added, "derived", null).slotMappings, []);
+});
+
+test("derivation rule mapping rows offer only slots no other row has taken", () => {
+  const sourceSlots = [
+    { id: "vaginal-giver", label: "Giver (Vaginal)", sortOrder: 0 },
+    { id: "anal-giver", label: "Giver (Anal)", sortOrder: 1 },
+    { id: "source-receiver", label: "Receiver", sortOrder: 2 },
+  ];
+  const derivedSlots = [
+    { id: "derived-giver", label: "Giver", sortOrder: 0 },
+    { id: "derived-receiver", label: "Receiver", sortOrder: 1 },
+  ];
+  const suggested = ui.suggestDerivationRuleSlotMappings(sourceSlots, derivedSlots);
+  assert.deepEqual(suggested, [
+    { sourceSlotDefinitionId: "source-receiver", derivedSlotDefinitionId: "derived-receiver" },
+  ]);
+  const ids = (slots) => slots.map((slot) => slot.id);
+  const mappings = [...suggested, { sourceSlotDefinitionId: "", derivedSlotDefinitionId: "" }];
+
+  assert.deepEqual(
+    ids(ui.availableDerivationRuleSlots(sourceSlots, mappings, 1, "sourceSlotDefinitionId")),
+    ["vaginal-giver", "anal-giver"],
+  );
+  assert.deepEqual(
+    ids(ui.availableDerivationRuleSlots(derivedSlots, mappings, 1, "derivedSlotDefinitionId")),
+    ["derived-giver"],
+  );
+  assert.deepEqual(
+    ids(ui.availableDerivationRuleSlots(sourceSlots, mappings, 0, "sourceSlotDefinitionId")),
+    ["vaginal-giver", "anal-giver", "source-receiver"],
+  );
+
+  const complete = [
+    suggested[0],
+    { sourceSlotDefinitionId: "vaginal-giver", derivedSlotDefinitionId: "derived-giver" },
+  ];
+  assert.deepEqual(
+    ids(ui.availableDerivationRuleSlots(derivedSlots, complete, -1, "derivedSlotDefinitionId")),
+    [],
+  );
+
+  const sharedSource = [
+    { sourceSlotDefinitionId: "source-receiver", derivedSlotDefinitionId: "derived-giver" },
+    { sourceSlotDefinitionId: "source-receiver", derivedSlotDefinitionId: "derived-receiver" },
+  ];
+  assert.ok(ids(ui.availableDerivationRuleSlots(sourceSlots, sharedSource, 1, "sourceSlotDefinitionId"))
+    .includes("source-receiver"));
+
+  const view = sourceByModule["settings/derivation/DerivedSegmentRuleSettingsView.js"];
+  assert.match(view, /availableDerivationRuleSlots\(sourceSlots, draft\.slotMappings, index, "sourceSlotDefinitionId"\)/);
+  assert.match(view, /availableDerivationRuleSlots\(derivedSlots, draft\.slotMappings, index, "derivedSlotDefinitionId"\)/);
+  assert.match(view, /disabled: busy\s+\|\| draft\.slotMappings\.some\(\(mapping\) => !mapping\.sourceSlotDefinitionId \|\| !mapping\.derivedSlotDefinitionId\)\s+\|\| availableDerivationRuleSlots\(sourceSlots, draft\.slotMappings, -1, "sourceSlotDefinitionId"\)\.length === 0\s+\|\| availableDerivationRuleSlots\(derivedSlots, draft\.slotMappings, -1, "derivedSlotDefinitionId"\)\.length === 0/);
+});
+
+test("inline tag configuration edits performer slots unless a Basic editor opts out", () => {
+  const dialog = sourceByModule["editor/dialogs/InlineTagConfigurationDialog.js"];
+  assert.match(dialog, /performerSlotsEnabled = true,/);
+  assert.match(sourceByModule["editor/SegmentEditorView.js"], /performerSlotsEnabled: compatibilityMode/);
+  for (const module of [
+    "settings/derivation/DerivedSegmentRuleSettingsView.js",
+    "settings/PerformerSlotOverviewSettings.js",
+  ])
+    assert.doesNotMatch(sourceByModule[module], /performerSlotsEnabled: false/);
 });
 
 test("derivation rule graphs preserve fan-in, branching, and components", () => {

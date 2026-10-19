@@ -11,7 +11,7 @@ import { formatGenderHint, performerSlotLabel } from "../model/history.js";
 function InlineTagConfigurationDialog({
   tagId,
   tagName,
-  performerSlotsEnabled = false,
+  performerSlotsEnabled = true,
   onSaved,
   onClose,
 }) {

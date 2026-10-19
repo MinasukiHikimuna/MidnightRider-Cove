@@ -4,7 +4,7 @@ import { completeOperation, operationIdFor, requestJson } from "../../shared/api
 
 import { applyDerivationRuleSlotSuggestions } from "../../editor/model/history.js";
 
-import { buildDerivationRuleGraph, derivationRuleNameCompare, layoutDerivationRuleComponents, resolveSelectedDerivationRule, validateDerivationRuleDraft } from "./model.js";
+import { buildDerivationRuleGraph, derivationRuleNameCompare, isSavedDerivationRulePair, layoutDerivationRuleComponents, resolveSelectedDerivationRule, retagDerivationRuleDraft, validateDerivationRuleDraft } from "./model.js";
 
 import { DerivedSegmentRuleSettingsView } from "./DerivedSegmentRuleSettingsView.js";
 
@@ -16,7 +16,6 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
     derivedTagId: null,
     derivedTagName: "",
     slotMappings: [],
-    slotMappingsSuggested: false,
   });
   const [rules, setRules] = useState([]);
   const [draft, setDraft] = useState(null);
@@ -79,7 +78,7 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
   }, [draft?.sourceTagId, draft?.derivedTagId]);
 
   useEffect(() => {
-    if (!draft?.sourceTagId || !draft?.derivedTagId || draft.ruleId != null
+    if (!draft?.sourceTagId || !draft?.derivedTagId || isSavedDerivationRulePair(draft)
         || sourceSlotsLoading || derivedSlotsLoading)
       return;
     const pairKey = `${draft.sourceTagId}:${draft.derivedTagId}`;
@@ -93,7 +92,7 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
       return applyDerivationRuleSlotSuggestions(current, sourceSlots, derivedSlots);
     });
   }, [
-    draft?.ruleId,
+    draft?.saved,
     draft?.sourceTagId,
     draft?.derivedTagId,
     sourceSlots,
@@ -105,17 +104,23 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
   function editRule(rule, preserveSelection = false) {
     if (!preserveSelection) setSelection({ type: "rule", id: rule.id });
     suggestedSlotPairRef.current = null;
+    setSourceSlots([]);
+    setDerivedSlots([]);
+    setSourceSlotsLoading(true);
+    setDerivedSlotsLoading(true);
+    const slotMappings = rule.slotMappings.map((mapping) => ({
+      sourceSlotDefinitionId: mapping.sourceSlotDefinitionId,
+      derivedSlotDefinitionId: mapping.derivedSlotDefinitionId,
+    }));
+    // A saved rule keeps its mappings; suggestions return only once its tags differ from these.
     setDraft({
       ruleId: rule.id,
       sourceTagId: rule.sourceTagId,
       sourceTagName: rule.sourceTagName,
       derivedTagId: rule.derivedTagId,
       derivedTagName: rule.derivedTagName,
-      slotMappings: rule.slotMappings.map((mapping) => ({
-        sourceSlotDefinitionId: mapping.sourceSlotDefinitionId,
-        derivedSlotDefinitionId: mapping.derivedSlotDefinitionId,
-      })),
-      slotMappingsSuggested: false,
+      slotMappings,
+      saved: { sourceTagId: rule.sourceTagId, derivedTagId: rule.derivedTagId, slotMappings },
     });
     setMessage("");
     revealEditor();
@@ -130,17 +135,11 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
       setDerivedSlots([]);
       setDerivedSlotsLoading(tagId != null);
     }
-    setDraft((current) => ({
-      ...current,
-      [`${kind}TagId`]: tagId == null ? null : Number(tagId),
-      [`${kind}TagName`]: tagName || "",
-      slotMappings: [],
-      slotMappingsSuggested: false,
-    }));
+    setDraft((current) => retagDerivationRuleDraft(current, kind, tagId, tagName));
   }
 
   async function refreshConfiguredTag(configuredTag) {
-    if (draft?.ruleId == null) suggestedSlotPairRef.current = null;
+    suggestedSlotPairRef.current = null;
     const tasks = [loadRules(), onSegmentGroupsChanged?.()];
     if (configuredTag.draftKind === "source") {
       setSourceSlotsLoading(true);

@@ -1,5 +1,5 @@
 import { EntityReferenceSelector, h } from "../../shared/runtime.js";
-import { performerSlotLabel } from "../../editor/model/history.js";
+import { availableDerivationRuleSlots, performerSlotLabel } from "../../editor/model/history.js";
 import { InlineTagConfigurationDialog } from "../../editor/dialogs/InlineTagConfigurationDialog.js";
 
 function DerivedSegmentRuleSettingsView(props) {
@@ -49,7 +49,7 @@ function DerivedSegmentRuleSettingsView(props) {
               allowCreate: false,
             }),
             ]),
-            draft.ruleId == null && draft.sourceTagId && !sourceSlotsLoading && sourceSlots.length === 0
+            draft.sourceTagId && !sourceSlotsLoading && sourceSlots.length === 0
               ? h("div", {
                   key: "missing-slots",
                   className: "flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2",
@@ -87,7 +87,7 @@ function DerivedSegmentRuleSettingsView(props) {
               allowCreate: false,
             }),
             ]),
-            draft.ruleId == null && draft.derivedTagId && !derivedSlotsLoading && derivedSlots.length === 0
+            draft.derivedTagId && !derivedSlotsLoading && derivedSlots.length === 0
               ? h("div", {
                   key: "missing-slots",
                   className: "flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2",
@@ -122,7 +122,10 @@ function DerivedSegmentRuleSettingsView(props) {
             h("button", {
               key: "add",
               type: "button",
-              disabled: busy || sourceSlots.length === 0 || derivedSlots.length === 0,
+              disabled: busy
+                || draft.slotMappings.some((mapping) => !mapping.sourceSlotDefinitionId || !mapping.derivedSlotDefinitionId)
+                || availableDerivationRuleSlots(sourceSlots, draft.slotMappings, -1, "sourceSlotDefinitionId").length === 0
+                || availableDerivationRuleSlots(derivedSlots, draft.slotMappings, -1, "derivedSlotDefinitionId").length === 0,
               onClick: () => setDraft((current) => ({
                 ...current,
                 slotMappings: [...current.slotMappings, { sourceSlotDefinitionId: "", derivedSlotDefinitionId: "" }],
@@ -133,10 +136,6 @@ function DerivedSegmentRuleSettingsView(props) {
           draft.slotMappings.length === 0
             ? h("p", { key: "empty", className: "text-xs text-secondary" }, "No performer slots will be copied.")
             : h("div", { key: "configured", className: "space-y-2" }, [
-              draft.slotMappingsSuggested
-                ? h("p", { key: "suggested", className: "text-xs text-secondary" },
-                    "Matching performer slots were suggested automatically.")
-                : null,
               ...draft.slotMappings.map((mapping, index) => h("div", { key: index, className: "flex items-center gap-2" }, [
                 h("select", {
                   key: "source",
@@ -145,7 +144,7 @@ function DerivedSegmentRuleSettingsView(props) {
                   onChange: (event) => updateMapping(index, "sourceSlotDefinitionId", event.target.value),
                   className: "min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm",
                   "aria-label": `Source slot mapping ${index + 1}`,
-                }, [h("option", { key: "none", value: "" }, "Source slot…"), ...sourceSlots.map((slot) =>
+                }, [h("option", { key: "none", value: "" }, "Source slot…"), ...availableDerivationRuleSlots(sourceSlots, draft.slotMappings, index, "sourceSlotDefinitionId").map((slot) =>
                   h("option", { key: slot.id, value: slot.id }, performerSlotLabel(slot)))]),
                 h("span", { key: "arrow", className: "self-center text-secondary" }, "→"),
                 h("select", {
@@ -155,7 +154,7 @@ function DerivedSegmentRuleSettingsView(props) {
                   onChange: (event) => updateMapping(index, "derivedSlotDefinitionId", event.target.value),
                   className: "min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm",
                   "aria-label": `Derived slot mapping ${index + 1}`,
-                }, [h("option", { key: "none", value: "" }, "Derived slot…"), ...derivedSlots.map((slot) =>
+                }, [h("option", { key: "none", value: "" }, "Derived slot…"), ...availableDerivationRuleSlots(derivedSlots, draft.slotMappings, index, "derivedSlotDefinitionId").map((slot) =>
                   h("option", { key: slot.id, value: slot.id }, performerSlotLabel(slot)))]),
                 h("button", {
                   key: "remove",

@@ -400,3 +400,24 @@ export function resolveSelectedDerivationRule(selection, visibleRules, hasQuery)
 }
 
 export { derivationRuleNameCompare };
+
+export function isSavedDerivationRulePair(draft) {
+  const saved = draft?.saved;
+  return saved != null
+    && Number(draft.sourceTagId) === Number(saved.sourceTagId)
+    && Number(draft.derivedTagId) === Number(saved.derivedTagId);
+}
+
+// Changing a tag drops the mappings, which no longer fit; returning an edited rule to its saved
+// tags brings its saved mappings back rather than new suggestions.
+export function retagDerivationRuleDraft(draft, kind, tagId, tagName = "") {
+  const next = {
+    ...draft,
+    [`${kind}TagId`]: tagId == null ? null : Number(tagId),
+    [`${kind}TagName`]: tagName || "",
+    slotMappings: [],
+  };
+  return isSavedDerivationRulePair(next)
+    ? { ...next, slotMappings: next.saved.slotMappings }
+    : next;
+}

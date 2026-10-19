@@ -229,12 +229,21 @@ export function suggestDerivationRuleSlotMappings(sourceSlots, derivedSlots) {
 }
 
 export function applyDerivationRuleSlotSuggestions(draft, sourceSlots, derivedSlots) {
-  if (!draft || draft.ruleId != null || (draft.slotMappings || []).length > 0)
+  if (!draft || (draft.slotMappings || []).length > 0)
     return draft;
   const slotMappings = suggestDerivationRuleSlotMappings(sourceSlots, derivedSlots);
-  return slotMappings.length === 0
-    ? draft
-    : { ...draft, slotMappings, slotMappingsSuggested: true };
+  return slotMappings.length === 0 ? draft : { ...draft, slotMappings };
+}
+
+// A slot chosen in another mapping row is left out, so each slot is mapped at most once; a row
+// keeps its own choice even when a saved rule already shares it with another row.
+export function availableDerivationRuleSlots(slots, slotMappings, mappingIndex, key) {
+  const own = slotMappings?.[mappingIndex]?.[key];
+  const taken = new Set((slotMappings || [])
+    .filter((_, index) => index !== mappingIndex)
+    .map((mapping) => mapping[key])
+    .filter(Boolean));
+  return (slots || []).filter((slot) => slot.id === own || !taken.has(slot.id));
 }
 
 export function performerSlotPresentation(slot) {
