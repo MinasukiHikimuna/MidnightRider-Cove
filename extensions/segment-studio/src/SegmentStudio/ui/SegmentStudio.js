@@ -20,7 +20,7 @@ export { groupApprovedDraftsForPublishing } from "./editor/dialogs/EditorDialogs
 export { buildDiscoveryFindRequest, discoveryCriteria, migrateLegacyDiscoveryFilter, migrateLegacyDiscoverySort, normalizeDiscoveryIds, setBackLinkNavigation, toDiscoveryItem, updateDiscoverySelection } from "./discovery/components.js";
 export { ANALYSIS_RUN_CHECK_INTERVAL_MS, createSegmentAnalysisRequestScope, shouldLoadSegmentAnalysis, startCompletedRunWatch } from "./editor/hooks/useSegmentAnalysis.js";
 export { buildPerformerSlotOverview, filterPerformerSlotOverview } from "./settings/organization.js";
-export { buildDerivationRuleGraph, layoutDerivationRuleComponent, layoutDerivationRuleComponents, validateDerivationRuleDraft, resolveSelectedDerivationRule, isSavedDerivationRulePair, retagDerivationRuleDraft } from "./settings/derivation/model.js";
+export { buildDerivationRuleGraph, layoutDerivationRuleComponent, layoutDerivationRuleComponents, validateDerivationRuleDraft, resolveSelectedDerivationRule, isSavedDerivationRulePair, retagDerivationRuleDraft, isMissingSlotMapping, derivationRulesWithMissingSlots } from "./settings/derivation/model.js";
 export { recyclingBinActionText } from "./shared/navigation.js";
 export { isSegmentStudioSettingsRoute, isSegmentStudioSegmentsRoute, isSegmentStudioBinRoute, segmentStudioActionTarget } from "./routing/SegmentStudioExtension.js";
 export { default } from "./routing/SegmentStudioExtension.js";

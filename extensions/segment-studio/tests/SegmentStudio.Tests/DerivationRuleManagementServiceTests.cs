@@ -148,6 +148,73 @@ public sealed class DerivationRuleManagementServiceTests
         Assert.Single(await fixture.Context.Set<SegmentStudioDerivationRule>().ToListAsync());
     }
 
+    [Fact]
+    public async Task FlagsAndRemovesMappingsWhoseSlotsAreGoneWithoutChangingTheVersion()
+    {
+        await using var fixture = await RuleFixture.CreateAsync();
+        var createdId = (await DerivationRuleManagementService.SaveAsync(
+            fixture.Context,
+            new DerivationRuleSaveRequest(null, 10, 20,
+                [new(fixture.SourceSlotId, fixture.DerivedSlotId)]),
+            CancellationToken.None)).Id;
+        var broadSet = new SegmentStudioSlotDefinitionSet { Id = Guid.NewGuid(), TagId = 30, CreatedAt = DateTime.UtcNow };
+        var broadSlot = new SegmentStudioSlotDefinition
+        {
+            Id = Guid.NewGuid(), SlotDefinitionSetId = broadSet.Id, Label = "Giver", CreatedAt = DateTime.UtcNow,
+        };
+        fixture.Context.AddRange(broadSet, broadSlot);
+        await fixture.Context.SaveChangesAsync();
+        var healthyId = (await DerivationRuleManagementService.SaveAsync(
+            fixture.Context,
+            new DerivationRuleSaveRequest(null, 30, 20, [new(broadSlot.Id, fixture.DerivedSlotId)]),
+            CancellationToken.None)).Id;
+        var created = await fixture.Context.Set<SegmentStudioDerivationRule>().SingleAsync(rule => rule.Id == createdId);
+        var healthy = await fixture.Context.Set<SegmentStudioDerivationRule>().SingleAsync(rule => rule.Id == healthyId);
+        var healthyMetadata = healthy.MetadataJson;
+        var deletedSlotId = Guid.NewGuid();
+        // m3's derived slot belongs to the source tag, and m4 is malformed, so loading skips it and repair keeps it.
+        created.MetadataJson = $$"""
+            {"relationshipType":"implies","slotMappings":[
+              {"id":"m2","sortOrder":0,"sourceSlotDefinitionId":"{{deletedSlotId}}","derivedSlotDefinitionId":"{{fixture.DerivedSlotId}}"},
+              {"id":"m3","sortOrder":1,"sourceSlotDefinitionId":"{{fixture.SourceSlotId}}","derivedSlotDefinitionId":"{{fixture.SourceSlotId}}"},
+              {"id":"m4","sortOrder":2,"sourceSlotDefinitionId":null,"derivedSlotDefinitionId":"{{deletedSlotId}}"},
+              {"id":"m1","sortOrder":3,"sourceSlotDefinitionId":"{{fixture.SourceSlotId}}","derivedSlotDefinitionId":"{{fixture.DerivedSlotId}}"}]}
+            """;
+        var updatedAt = created.UpdatedAt = DateTime.UtcNow.AddDays(-1);
+        healthy.UpdatedAt = updatedAt;
+        await fixture.Context.SaveChangesAsync();
+        var version = created.Version;
+
+        var loaded = (await DerivationRuleManagementService.LoadAsync(fixture.Context, CancellationToken.None))
+            .Single(rule => rule.Id == created.Id);
+        Assert.Equal(
+            [(true, false), (false, true), (false, false)],
+            loaded.SlotMappings.Select(mapping => (mapping.SourceSlotMissing, mapping.DerivedSlotMissing)));
+        Assert.Equal("Giver", loaded.SlotMappings[0].DerivedSlotLabel);
+        Assert.Null(loaded.SlotMappings[0].SourceSlotLabel);
+
+        Assert.Equal(1, await DerivationRuleManagementService.RemoveMissingSlotMappingsAsync(
+            fixture.Context, CancellationToken.None));
+        fixture.Context.ChangeTracker.Clear();
+        var repaired = await fixture.Context.Set<SegmentStudioDerivationRule>().SingleAsync(rule => rule.Id == created.Id);
+        Assert.Equal(version, repaired.Version);
+        Assert.True(repaired.UpdatedAt > updatedAt);
+        Assert.Contains("\"relationshipType\":\"implies\"", repaired.MetadataJson);
+        var retained = System.Text.Json.Nodes.JsonNode.Parse(repaired.MetadataJson)!["slotMappings"]!.AsArray();
+        Assert.Equal(
+            ["m4:0", "m1:1"],
+            retained.Select(mapping => $"{mapping!["id"]}:{mapping["sortOrder"]}"));
+        var untouched = await fixture.Context.Set<SegmentStudioDerivationRule>().SingleAsync(rule => rule.Id == healthy.Id);
+        Assert.Equal(updatedAt, untouched.UpdatedAt);
+        Assert.Equal(healthyMetadata, untouched.MetadataJson);
+        Assert.All(
+            (await DerivationRuleManagementService.LoadAsync(fixture.Context, CancellationToken.None))
+                .SelectMany(rule => rule.SlotMappings),
+            mapping => Assert.False(mapping.SourceSlotMissing || mapping.DerivedSlotMissing));
+        Assert.Equal(0, await DerivationRuleManagementService.RemoveMissingSlotMappingsAsync(
+            fixture.Context, CancellationToken.None));
+    }
+
     private sealed class RuleFixture(
         SqliteConnection connection,
         RuleDbContext context,

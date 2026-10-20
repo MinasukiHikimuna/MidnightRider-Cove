@@ -20,7 +20,9 @@ public sealed record DerivationRuleSlotMappingView(
     Guid SourceSlotDefinitionId,
     string? SourceSlotLabel,
     Guid DerivedSlotDefinitionId,
-    string? DerivedSlotLabel);
+    string? DerivedSlotLabel,
+    bool SourceSlotMissing,
+    bool DerivedSlotMissing);
 
 public sealed record DerivationRuleView(
     Guid Id,
@@ -65,11 +67,7 @@ public static class DerivationRuleManagementService
             .SelectMany(mapping => new[] { mapping.SourceSlotDefinitionId, mapping.DerivedSlotDefinitionId })
             .Distinct()
             .ToArray();
-        var definitionLabels = definitionIds.Length == 0
-            ? new Dictionary<Guid, string?>()
-            : await db.Set<SegmentStudioSlotDefinition>().AsNoTracking()
-                .Where(definition => definitionIds.Contains(definition.Id))
-                .ToDictionaryAsync(definition => definition.Id, definition => definition.Label, ct);
+        var definitions = await LoadDefinitionTagsAsync(db, definitionIds, ct);
 
         return rules.Select(rule => new DerivationRuleView(
             rule.Id,
@@ -82,9 +80,11 @@ public static class DerivationRuleManagementService
             edgeCounts.GetValueOrDefault(rule.Id),
             parsedMappings[rule.Id].Select(mapping => new DerivationRuleSlotMappingView(
                 mapping.SourceSlotDefinitionId,
-                definitionLabels.GetValueOrDefault(mapping.SourceSlotDefinitionId),
+                definitions.GetValueOrDefault(mapping.SourceSlotDefinitionId)?.Label,
                 mapping.DerivedSlotDefinitionId,
-                definitionLabels.GetValueOrDefault(mapping.DerivedSlotDefinitionId))).ToArray(),
+                definitions.GetValueOrDefault(mapping.DerivedSlotDefinitionId)?.Label,
+                !BelongsTo(definitions, mapping.SourceSlotDefinitionId, rule.SourceTagId),
+                !BelongsTo(definitions, mapping.DerivedSlotDefinitionId, rule.DerivedTagId))).ToArray(),
             rule.CreatedAt,
             rule.UpdatedAt)).ToArray();
     }
@@ -314,32 +314,107 @@ public static class DerivationRuleManagementService
             .Where(rule => rule.SourceTagId == tagId || rule.DerivedTagId == tagId)
             .ToListAsync(ct);
         foreach (var rule in rules)
-        {
-            if (!ParseMappings(rule.MetadataJson).Any(mapping =>
-                    slotDefinitionIds.Contains(mapping.SourceSlotDefinitionId)
-                    || slotDefinitionIds.Contains(mapping.DerivedSlotDefinitionId)))
-                continue;
-            var metadata = JsonNode.Parse(rule.MetadataJson)!.AsObject();
-            var retained = metadata["slotMappings"]!.AsArray()
-                .Where(mapping => !(mapping is JsonObject candidate
-                    && (References(candidate, "sourceSlotDefinitionId")
-                        || References(candidate, "derivedSlotDefinitionId"))))
-                .Select(mapping => mapping?.DeepClone())
-                .ToArray();
-            for (var sortOrder = 0; sortOrder < retained.Length; sortOrder++)
-                if (retained[sortOrder] is JsonObject mapping && mapping.ContainsKey("sortOrder"))
-                    mapping["sortOrder"] = sortOrder;
-            metadata["slotMappings"] = new JsonArray(retained);
-            rule.MetadataJson = metadata.ToJsonString();
-            rule.UpdatedAt = now;
-        }
+            RemoveMappings(rule, (id, _) => slotDefinitionIds.Contains(id), now);
+    }
 
-        bool References(JsonObject mapping, string property) =>
+    // Repairs rules whose mappings outlived their slots, from before slot deletion removed them.
+    // Like slot deletion, it keeps each rule's version.
+    public static async Task<int> RemoveMissingSlotMappingsAsync(DbContext db, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is not null)
+            return await RemoveMissingSlotMappingsCoreAsync(db, ct);
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();
+            return await RemoveMissingSlotMappingsCoreAsync(db, ct);
+        });
+    }
+
+    private static async Task<int> RemoveMissingSlotMappingsCoreAsync(DbContext db, CancellationToken ct)
+    {
+        await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        await SegmentStudioRolloutService.EnsureWritesEnabledAsync(db, ct);
+        // Slot saves take this lock before deleting slots, so none can disappear mid-repair.
+        await DerivationRuleIntegrityService.AcquireMutationLockAsync(db, ct);
+
+        var rules = await db.Set<SegmentStudioDerivationRule>().ToListAsync(ct);
+        var definitionIds = rules.SelectMany(rule => ParseMappings(rule.MetadataJson))
+            .SelectMany(mapping => new[] { mapping.SourceSlotDefinitionId, mapping.DerivedSlotDefinitionId })
+            .Distinct()
+            .ToArray();
+        var definitions = await LoadDefinitionTagsAsync(db, definitionIds, ct);
+        var now = DateTime.UtcNow;
+        var repaired = 0;
+        foreach (var rule in rules)
+            if (RemoveMappings(
+                    rule,
+                    (id, isSource) => !BelongsTo(definitions, id, isSource ? rule.SourceTagId : rule.DerivedTagId),
+                    now))
+                repaired++;
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
+        return repaired;
+    }
+
+    // Rewrites only the slotMappings array, keeping every other metadata field and each mapping's id.
+    private static bool RemoveMappings(
+        SegmentStudioDerivationRule rule,
+        Func<Guid, bool, bool> removesSlot,
+        DateTime now)
+    {
+        if (ParseMappings(rule.MetadataJson).Count == 0) return false;
+        var metadata = JsonNode.Parse(rule.MetadataJson)!.AsObject();
+        var mappings = metadata["slotMappings"]!.AsArray();
+        // Judge exactly the entries ParseMappings reads; entries it skips are kept untouched.
+        var retained = mappings
+            .Where(mapping => !(mapping is JsonObject candidate
+                && SlotId(candidate, "sourceSlotDefinitionId") is Guid sourceId
+                && SlotId(candidate, "derivedSlotDefinitionId") is Guid derivedId
+                && (removesSlot(sourceId, true) || removesSlot(derivedId, false))))
+            .Select(mapping => mapping?.DeepClone())
+            .ToArray();
+        if (retained.Length == mappings.Count) return false;
+        for (var sortOrder = 0; sortOrder < retained.Length; sortOrder++)
+            if (retained[sortOrder] is JsonObject mapping && mapping.ContainsKey("sortOrder"))
+                mapping["sortOrder"] = sortOrder;
+        metadata["slotMappings"] = new JsonArray(retained);
+        rule.MetadataJson = metadata.ToJsonString();
+        rule.UpdatedAt = now;
+        return true;
+
+        static Guid? SlotId(JsonObject mapping, string property) =>
             mapping[property] is JsonValue value
             && value.TryGetValue<string>(out var text)
             && Guid.TryParse(text, out var id)
-            && slotDefinitionIds.Contains(id);
+                ? id
+                : null;
     }
+
+    private sealed record DefinitionTag(int TagId, string? Label);
+
+    private static async Task<IReadOnlyDictionary<Guid, DefinitionTag>> LoadDefinitionTagsAsync(
+        DbContext db,
+        IReadOnlyCollection<Guid> definitionIds,
+        CancellationToken ct) =>
+        definitionIds.Count == 0
+            ? new Dictionary<Guid, DefinitionTag>()
+            : await (
+                    from definition in db.Set<SegmentStudioSlotDefinition>().AsNoTracking()
+                    join set in db.Set<SegmentStudioSlotDefinitionSet>().AsNoTracking()
+                        on definition.SlotDefinitionSetId equals set.Id
+                    where definitionIds.Contains(definition.Id)
+                    select new { definition.Id, set.TagId, definition.Label })
+                .ToDictionaryAsync(
+                    definition => definition.Id,
+                    definition => new DefinitionTag(definition.TagId, definition.Label),
+                    ct);
+
+    // A slot that is gone, or belongs to another tag, can no longer be copied by the rule.
+    private static bool BelongsTo(IReadOnlyDictionary<Guid, DefinitionTag> definitions, Guid id, int tagId) =>
+        definitions.TryGetValue(id, out var definition) && definition.TagId == tagId;
 
     private static string SerializeMetadata(
         IReadOnlyList<DerivationRuleSlotMappingRequest> mappings,

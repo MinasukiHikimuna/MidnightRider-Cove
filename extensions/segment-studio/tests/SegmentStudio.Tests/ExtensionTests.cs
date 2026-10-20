@@ -99,7 +99,7 @@ public sealed class ExtensionTests
                     "/api/plugins/segment-studio/", StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(92, endpoints.Length);
+        Assert.Equal(93, endpoints.Length);
         var capabilityRequirements = endpoints.ToDictionary(
             EndpointKey,
             endpoint => endpoint.Metadata
@@ -215,6 +215,12 @@ public sealed class ExtensionTests
             ["GET /api/plugins/segment-studio/derivation-rules"] =
                 new([Permissions.SegmentsRead, Permissions.TagsRead, SegmentStudioExtension.ProvenanceReadPermission]),
             ["PUT /api/plugins/segment-studio/derivation-rules"] =
+                new([
+                    Permissions.SegmentsWrite,
+                    Permissions.TagsRead,
+                    SegmentStudioExtension.LineageManagePermission,
+                ]),
+            ["POST /api/plugins/segment-studio/derivation-rules/missing-slot-mappings/remove"] =
                 new([
                     Permissions.SegmentsWrite,
                     Permissions.TagsRead,

@@ -421,3 +421,16 @@ export function retagDerivationRuleDraft(draft, kind, tagId, tagName = "") {
     ? { ...next, slotMappings: next.saved.slotMappings }
     : next;
 }
+
+export function isMissingSlotMapping(mapping) {
+  return Boolean(mapping?.sourceSlotMissing || mapping?.derivedSlotMissing);
+}
+
+export function derivationRulesWithMissingSlots(rules = []) {
+  return rules
+    .filter((rule) => (rule.slotMappings || []).some(isMissingSlotMapping))
+    .sort((left, right) => derivationRuleNameCompare(
+      `${left.sourceTagName} ${left.derivedTagName}`,
+      `${right.sourceTagName} ${right.derivedTagName}`,
+    ));
+}

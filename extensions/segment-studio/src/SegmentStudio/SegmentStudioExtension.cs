@@ -1195,6 +1195,29 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 SegmentStudioCapabilities.SettingsDerivation);
 
         endpoints.MapPost(
+                "/api/plugins/segment-studio/derivation-rules/missing-slot-mappings/remove",
+                async (DbContext db, CancellationToken ct) =>
+                {
+                    try
+                    {
+                        var repaired = await DerivationRuleManagementService.RemoveMissingSlotMappingsAsync(db, ct);
+                        return Results.Ok(new { repairedRuleCount = repaired });
+                    }
+                    catch (LineageConflictException exception)
+                    {
+                        return Results.Conflict(new { code = exception.Code, error = exception.Message });
+                    }
+                })
+            .RequireAuthorization()
+            .RequireCovePermission(
+                PermissionMode.All,
+                Permissions.SegmentsWrite,
+                Permissions.TagsRead,
+                LineageManagePermission)
+            .RequireSegmentStudioCapability(
+                SegmentStudioCapabilities.SettingsDerivation);
+
+        endpoints.MapPost(
                 "/api/plugins/segment-studio/derivation-rules/{ruleId:guid}/deletion/preview",
                 async (Guid ruleId, DbContext db, ICurrentPrincipalAccessor principalAccessor,
                     Cove.Core.Auth.IAuthorizationService authorization, CancellationToken ct) =>

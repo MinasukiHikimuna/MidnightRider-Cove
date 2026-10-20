@@ -812,6 +812,29 @@ test("inline tag configuration names derivation rules that lose a deleted slot's
   );
 });
 
+test("derivation settings list rules that map deleted slots and offer to remove those mappings", () => {
+  const rules = [
+    { id: "z", sourceTagName: "Zeta", derivedTagName: "General", slotMappings: [{ sourceSlotMissing: true }] },
+    { id: "ok", sourceTagName: "Alpha", derivedTagName: "General", slotMappings: [{}] },
+    { id: "a", sourceTagName: "Alpha", derivedTagName: "Broad", slotMappings: [{}, { derivedSlotMissing: true }] },
+    { id: "none", sourceTagName: "Beta", derivedTagName: "General", slotMappings: [] },
+  ];
+  assert.deepEqual(ui.derivationRulesWithMissingSlots(rules).map((rule) => rule.id), ["a", "z"]);
+  assert.equal(ui.isMissingSlotMapping({ sourceSlotMissing: false, derivedSlotMissing: false }), false);
+
+  const controller = sourceByModule["settings/derivation/DerivedSegmentRuleSettings.js"];
+  assert.match(controller, /requestJson\("\/derivation-rules\/missing-slot-mappings\/remove", \{ method: "POST" \}\)/);
+  assert.match(controller, /rule\.slotMappings\.filter\(\(mapping\) => !isMissingSlotMapping\(mapping\)\)/);
+  assert.match(controller, /missingSlotMappingCount: rule\.slotMappings\.length - slotMappings\.length,/);
+  const view = sourceByModule["settings/derivation/DerivedSegmentRuleSettingsView.js"];
+  assert.match(view, /renderMissingSlotNotice\(\),/);
+  assert.match(view, /onClick: removeMissingSlotMappings,/);
+  assert.match(view, /"Remove missing mappings"/);
+  assert.match(view, /const text = missing \? "Deleted slot" : label \|\| "Unnamed slot";/);
+  assert.match(view, /Saving removes them along with this rule's materializations/);
+  assert.match(view, /disabled: busy \|\| draft != null,\n\s+onClick: removeMissingSlotMappings,/);
+});
+
 test("inline tag configuration edits performer slots unless a Basic editor opts out", () => {
   const dialog = sourceByModule["editor/dialogs/InlineTagConfigurationDialog.js"];
   assert.match(dialog, /performerSlotsEnabled = true,/);

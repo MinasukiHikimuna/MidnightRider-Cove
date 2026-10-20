@@ -1,9 +1,10 @@
 import { EntityReferenceSelector, h } from "../../shared/runtime.js";
 import { availableDerivationRuleSlots, performerSlotLabel } from "../../editor/model/history.js";
 import { InlineTagConfigurationDialog } from "../../editor/dialogs/InlineTagConfigurationDialog.js";
+import { isMissingSlotMapping } from "./model.js";
 
 function DerivedSegmentRuleSettingsView(props) {
-  const { arrowMarkerId, busy, buttonClass, configuringTag, deleteRule, derivedSlots, derivedSlotsLoading, draft, draftIssue, editRule, editorRef, emptyDraft, graph, layout, listSort, materializationOffer, materializeOutgoingRules, materializeRule, message, normalizedQuery, query, refreshConfiguredTag, revealEditor, rules, save, segmentGroupKey, selectedNode, selectedRule, selection, setConfiguringTag, setDraft, setListSort, setMaterializationOffer, setQuery, setSegmentGroupKey, setSelection, setView, sortedVisibleRules, sourceSlots, sourceSlotsLoading, updateMapping, updateTag, view, visibleComponents, visibleRules } = props;
+  const { arrowMarkerId, busy, buttonClass, configuringTag, deleteRule, derivedSlots, derivedSlotsLoading, draft, draftIssue, editRule, editorRef, emptyDraft, graph, layout, listSort, materializationOffer, materializeOutgoingRules, materializeRule, message, normalizedQuery, query, refreshConfiguredTag, removeMissingSlotMappings, revealEditor, rules, rulesWithMissingSlots, save, segmentGroupKey, selectedNode, selectedRule, selection, setConfiguringTag, setDraft, setListSort, setMaterializationOffer, setQuery, setSegmentGroupKey, setSelection, setView, sortedVisibleRules, sourceSlots, sourceSlotsLoading, updateMapping, updateTag, view, visibleComponents, visibleRules } = props;
 
   function ruleGroupKey(rule) {
       const source = graph.nodes.find((node) => node.tagId === Number(rule.sourceTagId));
@@ -133,6 +134,10 @@ function DerivedSegmentRuleSettingsView(props) {
               className: buttonClass,
             }, "Add mapping"),
           ]),
+          draft.missingSlotMappingCount > 0
+            ? h("p", { key: "missing", className: "text-xs text-amber-300" },
+              `${draft.missingSlotMappingCount} mapping${draft.missingSlotMappingCount === 1 ? "" : "s"} to deleted performer slots ${draft.missingSlotMappingCount === 1 ? "was" : "were"} left out. Saving removes them along with this rule's materializations; to keep those, cancel and use Remove missing mappings above.`)
+            : null,
           draft.slotMappings.length === 0
             ? h("p", { key: "empty", className: "text-xs text-secondary" }, "No performer slots will be copied.")
             : h("div", { key: "configured", className: "space-y-2" }, [
@@ -184,6 +189,49 @@ function DerivedSegmentRuleSettingsView(props) {
           }, "Save rule"),
           h("button", { key: "cancel", type: "button", disabled: busy, onClick: () => setDraft(null), className: buttonClass }, "Cancel"),
         ]),
+      ]);
+    }
+
+    function renderMappedSlot(key, label, missing) {
+      const text = missing ? "Deleted slot" : label || "Unnamed slot";
+      return h("span", { key, className: `truncate ${missing ? "italic text-amber-300" : "text-foreground"}`, title: text }, text);
+    }
+
+    function renderMissingSlotNotice() {
+      if (rulesWithMissingSlots.length === 0) return null;
+      const count = rulesWithMissingSlots.length;
+      return h("div", { key: "missing-slots", role: "region", "aria-label": "Deleted performer slot mappings", className: "space-y-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-3" }, [
+        h("div", { key: "summary", className: "flex flex-wrap items-start justify-between gap-3" }, [
+          h("div", { key: "copy", className: "max-w-3xl" }, [
+            h("p", { key: "title", className: "text-sm font-medium text-foreground" },
+              `${count} derivation rule${count === 1 ? " maps" : "s map"} performer slots that no longer exist`),
+            h("p", { key: "details", className: "mt-1 text-xs text-secondary" },
+              "Those mappings copy no performers, and a rule whose derived slot is gone cannot materialize. Removing them keeps each rule's other mappings and its existing materializations."),
+          ]),
+          h("button", {
+            key: "remove",
+            type: "button",
+            disabled: busy || draft != null,
+            onClick: removeMissingSlotMappings,
+            className: buttonClass,
+          }, "Remove missing mappings"),
+        ]),
+        h("ul", { key: "rules", className: "flex flex-wrap gap-2", "aria-label": "Rules with deleted performer slots" },
+          rulesWithMissingSlots.map((rule) => h("li", { key: rule.id }, h("button", {
+            type: "button",
+            disabled: draft != null,
+            onClick: () => {
+              setQuery("");
+              setSegmentGroupKey("all");
+              setView("list");
+              setSelection({ type: "rule", id: rule.id });
+            },
+            className: "rounded-full border border-amber-500/40 px-2.5 py-0.5 text-xs text-foreground hover:bg-amber-500/15 disabled:opacity-50",
+          }, [
+            `${rule.sourceTagName} → ${rule.derivedTagName}`,
+            h("span", { key: "count", className: "ml-1.5 text-secondary" },
+              `· ${rule.slotMappings.filter(isMissingSlotMapping).length} missing`),
+          ])))),
       ]);
     }
 
@@ -326,11 +374,9 @@ function DerivedSegmentRuleSettingsView(props) {
                 key: `${mapping.sourceSlotDefinitionId}:${mapping.derivedSlotDefinitionId}`,
                 className: "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-md border border-border bg-card p-2 text-xs",
               }, [
-                h("span", { key: "source", className: "truncate text-foreground", title: mapping.sourceSlotLabel || "Unnamed slot" },
-                  mapping.sourceSlotLabel || "Unnamed slot"),
+                renderMappedSlot("source", mapping.sourceSlotLabel, mapping.sourceSlotMissing),
                 h("span", { key: "arrow", className: "text-secondary" }, "→"),
-                h("span", { key: "derived", className: "truncate text-foreground", title: mapping.derivedSlotLabel || "Unnamed slot" },
-                  mapping.derivedSlotLabel || "Unnamed slot"),
+                renderMappedSlot("derived", mapping.derivedSlotLabel, mapping.derivedSlotMissing),
               ])),
         ]),
         h("dl", { key: "metadata", className: "grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border pt-3 text-xs" }, [
@@ -551,7 +597,12 @@ function DerivedSegmentRuleSettingsView(props) {
             }, [
               h("span", { key: "relationship", role: "cell", className: "min-w-0 truncate font-medium text-foreground", title: `${rule.sourceTagName} → ${rule.derivedTagName}` },
                 `${rule.sourceTagName} → ${rule.derivedTagName}`),
-              h("span", { key: "mappings", role: "cell", className: "text-secondary" }, String(rule.slotMappings.length)),
+              h("span", { key: "mappings", role: "cell", className: "text-secondary" }, [
+                String(rule.slotMappings.length),
+                rule.slotMappings.some(isMissingSlotMapping)
+                  ? h("span", { key: "missing", className: "ml-1.5 text-amber-300", title: "Maps a deleted performer slot" }, "⚠")
+                  : null,
+              ]),
               h("span", { key: "materialized", role: "cell", className: "text-right text-secondary" }, String(rule.edgeCount)),
             ])),
           ]),
@@ -583,6 +634,7 @@ function DerivedSegmentRuleSettingsView(props) {
           className: "rounded-md border border-accent bg-accent/15 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent/25 disabled:opacity-50",
         }, "Add rule"),
       ]),
+      renderMissingSlotNotice(),
       h("div", { key: "toolbar", className: "flex flex-wrap items-end gap-3 border-b border-border bg-card/40 p-3" }, [
         h("label", { key: "search", className: "min-w-[13rem] flex-1 space-y-1 text-xs text-secondary" }, [
           h("span", { key: "label" }, "Search"),

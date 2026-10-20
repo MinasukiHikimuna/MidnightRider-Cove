@@ -4,7 +4,7 @@ import { completeOperation, operationIdFor, requestJson } from "../../shared/api
 
 import { applyDerivationRuleSlotSuggestions } from "../../editor/model/history.js";
 
-import { buildDerivationRuleGraph, derivationRuleNameCompare, isSavedDerivationRulePair, layoutDerivationRuleComponents, resolveSelectedDerivationRule, retagDerivationRuleDraft, validateDerivationRuleDraft } from "./model.js";
+import { buildDerivationRuleGraph, derivationRuleNameCompare, derivationRulesWithMissingSlots, isMissingSlotMapping, isSavedDerivationRulePair, layoutDerivationRuleComponents, resolveSelectedDerivationRule, retagDerivationRuleDraft, validateDerivationRuleDraft } from "./model.js";
 
 import { DerivedSegmentRuleSettingsView } from "./DerivedSegmentRuleSettingsView.js";
 
@@ -108,7 +108,7 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
     setDerivedSlots([]);
     setSourceSlotsLoading(true);
     setDerivedSlotsLoading(true);
-    const slotMappings = rule.slotMappings.map((mapping) => ({
+    const slotMappings = rule.slotMappings.filter((mapping) => !isMissingSlotMapping(mapping)).map((mapping) => ({
       sourceSlotDefinitionId: mapping.sourceSlotDefinitionId,
       derivedSlotDefinitionId: mapping.derivedSlotDefinitionId,
     }));
@@ -120,6 +120,7 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
       derivedTagId: rule.derivedTagId,
       derivedTagName: rule.derivedTagName,
       slotMappings,
+      missingSlotMappingCount: rule.slotMappings.length - slotMappings.length,
       saved: { sourceTagId: rule.sourceTagId, derivedTagId: rule.derivedTagId, slotMappings },
     });
     setMessage("");
@@ -238,6 +239,23 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
     }
   }
 
+  async function removeMissingSlotMappings() {
+    setBusy(true);
+    setMessage("Removing mappings to deleted performer slots…");
+    try {
+      const result = await requestJson("/derivation-rules/missing-slot-mappings/remove", { method: "POST" });
+      await loadRules();
+      const count = Number(result?.repairedRuleCount) || 0;
+      setMessage(count === 0
+        ? "No derivation rule maps a deleted performer slot."
+        : `Removed mappings to deleted performer slots from ${count} derivation rule${count === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setMessage(error.message || "Unable to remove mappings to deleted performer slots.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteRule(rule) {
     setBusy(true);
     setMessage("Previewing rule deletion…");
@@ -346,6 +364,7 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
   }
 
   const draftIssue = validateDerivationRuleDraft(draft, rules);
+  const rulesWithMissingSlots = useMemo(() => derivationRulesWithMissingSlots(rules), [rules]);
   const graph = useMemo(
     () => buildDerivationRuleGraph(rules, segmentGroups),
     [rules, segmentGroups],
@@ -414,8 +433,10 @@ function DerivedSegmentRuleSettings({ segmentGroups = [], onSegmentGroupsChanged
     normalizedQuery,
     query,
     refreshConfiguredTag,
+    removeMissingSlotMappings,
     revealEditor,
     rules,
+    rulesWithMissingSlots,
     save,
     segmentGroupKey,
     selectedNode,
