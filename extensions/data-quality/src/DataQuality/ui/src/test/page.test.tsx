@@ -954,9 +954,10 @@ describe("Data Quality extension page", () => {
       "Duplicate",
       "Export",
       "Delete…",
+      "Recent changes…",
       "All reviews",
     ]);
-    expect(within(menu).getAllByRole("separator")).toHaveLength(2);
+    expect(within(menu).getAllByRole("separator")).toHaveLength(3);
     // Edit review opens the drawer, as the header's Edit review button does.
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Edit review" }));
     expect(await screen.findByRole("dialog", { name: "Edit review" })).toBeInTheDocument();

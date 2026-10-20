@@ -3668,3 +3668,21 @@ describe("answer groups", () => {
     expect(api.applyTags).toHaveBeenCalledTimes(1);
   });
 });
+it("moves legacy choices with an undo from Recent changes, keeping unsaved ones", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [first], totalCount: 1 });
+  // The first choice was saved earlier; Recent changes then undoes that save.
+  state = { ids: [21], names: ["One"], absent: [] };
+  const rule = { ...review, actions: [] };
+  const props = { review: rule, canWrite: true, onBusy: () => {} };
+  const { rerender } = render(<ReviewWorkspace {...props} />);
+  await ready();
+  const choices = () => screen.getAllByLabelText("Choice");
+  await waitFor(() => expect(choices()[0]).toBeChecked());
+  fireEvent.click(choices()[1]);
+  state = { ids: [], names: [], absent: [] };
+
+  rerender(<ReviewWorkspace {...props} undoRevision={1} />);
+
+  await waitFor(() => expect(choices()[0]).not.toBeChecked());
+  expect(choices()[1]).toBeChecked();
+});

@@ -35,8 +35,10 @@ import {
   Loader2,
   Pencil,
   Trash2,
+  Undo2,
   X,
 } from "@cove/runtime/lucide-react";
+import { RecentChanges } from "./RecentChanges";
 import {
   createConfirmedAbsentTagsField,
   createOccurrenceAbsenceField,
@@ -46,6 +48,8 @@ import {
   getOccurrenceAbsenceFieldStatus,
   listTagGroups,
   readMedia,
+  mediaTitle,
+  resolveRemovalTrees,
   loadReviews,
   loadProgress,
   saveProgress,
@@ -63,6 +67,14 @@ import {
   type MediaItem,
   type ConfirmedAbsentTagsFieldStatus,
 } from "./api";
+import {
+  changedItem,
+  newRecordId,
+  readEach,
+  recordChange,
+  setHistoryScope,
+} from "./history";
+import { readTags, type ReviewItem, type TagState } from "./reviewTags";
 import {
   getNextReviewFocus,
   isComposingKey,
@@ -373,11 +385,14 @@ export function DataQualityPage({
   const [importing, setImporting] = useState(false);
   // A duplicate being saved, before it opens.
   const [duplicating, setDuplicating] = useState(false);
-  // New review, and Delete… awaiting confirmation. Both are modal: while either is open the grid's
-  // own keys wait, as Cove's wait for any dialog.
+  // New review, Delete… awaiting confirmation, and Recent changes. All are modal: while one is open
+  // the grid's own keys wait, as Cove's wait for any dialog.
   const [creating, setCreating] = useState<ReviewDraft | null>(null);
   const [deleting, setDeleting] = useState<{ review: Review; pending: boolean } | null>(null);
-  const pageDialogOpen = !!creating || !!deleting;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // Moves on after Recent changes undoes something, so the open review reads its items again.
+  const [undoRevision, setUndoRevision] = useState(0);
+  const pageDialogOpen = !!creating || !!deleting || historyOpen;
   const pageDialogRef = useRef(pageDialogOpen);
   pageDialogRef.current = pageDialogOpen;
   // Nothing else on the list changes the reviews while one of these saves.
@@ -673,6 +688,7 @@ export function DataQualityPage({
       const result = await loadReviews();
       setReviews(result.reviews);
       setStorageKey(result.storageKey);
+      setHistoryScope(result.storageKey);
       setCanWriteVideos(result.canWriteVideos ?? result.canWrite);
       setCanWriteAudios(result.canWriteAudios ?? false);
       setCanWriteTags(result.canWriteTags ?? false);
@@ -1265,10 +1281,58 @@ export function DataQualityPage({
         if (!previewOpenRef.current) focusCard(optimisticFocus);
       }
       let succeeded = false;
+      // Set when Recent changes could not keep what the action changed, so it says so.
+      let unrecorded = "";
       try {
         if ("effect" in action)
           await runTagReviewAction(action, actionTargets);
-        else await runReviewAction(mediaKind, action, actionTargets);
+        else if (!changesData)
+          await runReviewAction(mediaKind, action, actionTargets);
+        else {
+          // Each target's tags are read before and after, so Recent changes can undo exactly
+          // what the action changed: only its own tags, so an edit landing meanwhile from
+          // elsewhere is never taken for part of it. A target that cannot be read is applied to
+          // as before, but left out of the record.
+          const touched = (await resolveRemovalTrees(action)).flatMap((step) => step.tagIds);
+          const targets: ReviewItem[] = actionTargets.map((id) => ({
+            key: String(id),
+            media: (previousQueue.items.find((item) => item.id === id) ?? {
+              id,
+            }) as MediaItem,
+          }));
+          const read = () =>
+            readEach(targets, (item) => readTags(mediaKind, item).catch(() => null));
+          const before = await read();
+          let applied = false;
+          try {
+            await runReviewAction(mediaKind, action, actionTargets);
+            applied = true;
+          } finally {
+            // Also after a step failed: the steps saved before it can be undone.
+            const after = await read();
+            const items = targets.flatMap((item, index) => {
+              const was = before[index];
+              const is = after[index];
+              return was && is
+                ? [changedItem(item, mediaTitle(item.media, mediaKind), was, is, touched)]
+                : [];
+            });
+            const missed = targets.length - items.length;
+            const recorded = recordChange({
+              id: newRecordId(),
+              at: Date.now(),
+              label: action.label,
+              reviewName: review.name,
+              kind: mediaKind,
+              items,
+            });
+            unrecorded = !recorded
+              ? " Recent changes could not record it, so it cannot be undone there."
+              : missed && applied
+                ? ` Recent changes could not read ${missed} of them, so their change cannot be undone there.`
+                : "";
+          }
+        }
         succeeded = true;
         if (!isCurrent()) return;
         if (!stay)
@@ -1282,6 +1346,7 @@ export function DataQualityPage({
         setMessage(
           `${action.label}: ${actionTargets.length} ${entityType}${actionTargets.length === 1 ? "" : "s"} ${changesData ? "updated" : "skipped"}${stay ? ", kept in place" : ""}.`,
         );
+        if (unrecorded) setActionError(`${action.label} was applied.${unrecorded}`);
       } catch (error) {
         if (!isCurrent()) return;
         setQueue(previousQueue);
@@ -1298,7 +1363,7 @@ export function DataQualityPage({
         setFocusedId(previousFocus);
         if (!previewOpenRef.current) focusCard(previousFocus);
         setActionError(
-          `${action.label}: ${error instanceof Error ? error.message : "Action failed."}`,
+          `${action.label}: ${error instanceof Error ? error.message : "Action failed."}${unrecorded}`,
         );
       }
       try {
@@ -1937,6 +2002,12 @@ export function DataQualityPage({
       },
       ...reviewMenuItems(target),
       {
+        label: "Recent changes…",
+        icon: <Undo2 aria-hidden="true" />,
+        separated: true,
+        onSelect: () => setHistoryOpen(true),
+      },
+      {
         label: "All reviews",
         icon: <ChevronLeft aria-hidden="true" />,
         separated: true,
@@ -2168,6 +2239,7 @@ export function DataQualityPage({
           onBusy={setPending}
           editRequest={editRequest}
           onEditRequestHandled={() => setEditRequest(0)}
+          undoRevision={undoRevision}
           onSaveDefaults={canConfigure ? saveFromView : undefined}
           pageControls={{
             onBack: showAllReviews,
@@ -2200,6 +2272,7 @@ export function DataQualityPage({
           onNew={() => startCreating()}
           onImport={(file) => void importReviews(file)}
           onExportAll={() => downloadReviews(reviews, "data-quality-reviews.json")}
+          onHistory={() => setHistoryOpen(true)}
           rowMenuItems={(item) => [
             {
               label: "Edit",
@@ -2255,6 +2328,17 @@ export function DataQualityPage({
             void execute(action, stay);
           }}
           onClose={() => setFindOpen(false)}
+        />
+      )}
+      {historyOpen && (
+        <RecentChanges
+          onClose={() => setHistoryOpen(false)}
+          onUndone={() => {
+            setUndoRevision((value) => value + 1);
+            // The grid reads its page again; the workspace reads its item on the new revision.
+            if (review && !usesWorkspace && !pendingRef.current)
+              void fetchQueue(review, filter).catch(() => {});
+          }}
         />
       )}
       {creating && (

@@ -1,5 +1,5 @@
 import { useMemo, useRef, type ReactNode, type RefObject } from "react";
-import { ArrowDown, ArrowUp, Download, Film, Plus, Upload } from "@cove/runtime/lucide-react";
+import { ArrowDown, ArrowUp, Download, Film, Plus, Undo2, Upload } from "@cove/runtime/lucide-react";
 import { mediaLabel } from "./api";
 import { MoreMenu, type MoreMenuItem } from "./ReviewHeader";
 import { REVIEW_KIND_NAMES, ReviewEntityIcon } from "./ReviewEntityIcon";
@@ -130,6 +130,7 @@ export function ReviewList({
   onNew,
   onImport,
   onExportAll,
+  onHistory,
   rowMenuItems,
 }: {
   reviews: readonly Review[];
@@ -152,6 +153,8 @@ export function ReviewList({
   onNew(): void;
   onImport(file: File): void;
   onExportAll(): void;
+  /** Opens Recent changes, to undo what reviews changed. */
+  onHistory?(): void;
   rowMenuItems(review: Review): MoreMenuItem[];
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
@@ -201,6 +204,17 @@ export function ReviewList({
             <Download aria-hidden="true" />
             Export all
           </button>
+          {onHistory && (
+            <button
+              type="button"
+              className="dq-header-button"
+              title="See and undo what Data Quality changed from this browser"
+              onClick={onHistory}
+            >
+              <Undo2 aria-hidden="true" />
+              Recent changes
+            </button>
+          )}
           <button
             type="button"
             className="dq-header-button dq-header-button-primary"

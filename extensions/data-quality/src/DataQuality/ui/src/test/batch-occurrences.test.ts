@@ -4,6 +4,7 @@ import {
   ConflictingAnswersError,
   planTags,
   previewOccurrenceBatch,
+  recordBatch,
   runEntries,
   runOccurrenceBatch,
   undoEntries,
@@ -11,6 +12,7 @@ import {
 } from "../batchOccurrences";
 import type { OccurrenceReview, MediaReviewAction } from "../model";
 import type { OccurrenceApplication } from "../occurrences";
+import { loadHistory, setHistoryScope, undoRecord } from "../history";
 const fetch = vi.mocked(extensionFetch);
 const action: MediaReviewAction = {
   id: "answer",
@@ -767,4 +769,36 @@ it("reports a retried occurrence as changed when the failed attempt had fully la
   await run(batch, false, true);
   expect(ids(1)).toEqual([21]);
   expect(batch.entries[0].status).toBe("changed");
+});
+
+it("keeps one Recent changes record per batch that follows its runs and undo", async () => {
+  localStorage.clear();
+  setHistoryScope("batch-history");
+  fixtures(3);
+  add(3, 11, 21);
+  const batch = await preview();
+  await run(batch);
+  recordBatch(batch);
+  await run(batch);
+  recordBatch(batch);
+  const [record] = loadHistory();
+  expect(loadHistory()).toHaveLength(1);
+  expect(record).toMatchObject({ id: batch.id, label: "Batch: Answer", kind: "video" });
+  expect(record.items.map((item) => [item.mediaId, item.performer?.id, item.tags])).toEqual([
+    [1, 11, { added: [21], removed: [] }],
+    [2, 11, { added: [21], removed: [] }],
+  ]);
+
+  // Undone from Recent changes after the dialog has gone.
+  expect(await undoRecord(batch.id)).toEqual({ undone: 2, failed: 0 });
+  expect(ids(1)).toEqual([]);
+  expect(ids(3)).toEqual([21]);
+
+  // Undone in the dialog instead, the batch leaves no record.
+  const again = await preview();
+  await run(again);
+  recordBatch(again);
+  await undoOccurrenceBatch(again, () => false, () => {});
+  recordBatch(again);
+  expect(loadHistory().map((item) => item.id)).toEqual([batch.id]);
 });

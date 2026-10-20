@@ -29,7 +29,9 @@ import {
   mediaCoverUrl,
   mediaLabel,
   mediaStreamUrl,
+  mediaTitle as titleOf,
   request,
+  resolveRemovalTrees,
   type MediaItem,
   type TagGroup,
   type TagInfo,
@@ -126,6 +128,7 @@ import {
   type ReviewItem,
   type TagState,
 } from "./reviewTags";
+import { changedItem, newRecordId, recordChange } from "./history";
 
 export function orderedItems(items: ReviewItem[], backwards: boolean) {
   if (!backwards) return items;
@@ -378,6 +381,7 @@ export function ReviewWorkspace({
   onSaveDefaults,
   editRequest = 0,
   onEditRequestHandled,
+  undoRevision = 0,
   pageControls,
   stayOnTap: pageStayOnTap,
   onStayOnTapChange,
@@ -391,6 +395,8 @@ export function ReviewWorkspace({
   editRequest?: number;
   /** Called once a request has opened the editor, so a later mount does not open it again. */
   onEditRequestHandled?(): void;
+  /** Moves on after Recent changes undoes something, so the item on screen is read again. */
+  undoRevision?: number;
   pageControls?: WorkspacePageControls;
   /**
    * Phone-sized windows: Stay on this item, held by the page so it lasts from review to review
@@ -401,9 +407,7 @@ export function ReviewWorkspace({
 }) {
   const mediaKind: MediaKind = reviewMediaKind(saved);
   const labels = mediaLabel(mediaKind);
-  const fallbackTitle = mediaKind === "audio" ? "Audio" : "Scene";
-  const mediaTitle = (media: ReviewItem["media"]) =>
-    media.title || media.files[0]?.basename || fallbackTitle;
+  const mediaTitle = (media: ReviewItem["media"]) => titleOf(media, mediaKind);
   const queueItemLabel = (item: ReviewItem) =>
     `${item.occurrence ? `${item.occurrence.performer.name} — ` : ""}${mediaTitle(item.media)}`;
   const initial = useRef<ReturnType<typeof readQuery> | null>(null);
@@ -865,7 +869,13 @@ export function ReviewWorkspace({
   const tagsFor = useRef<string | null>(null);
   // Moves on with every action, so a read of the tags begun before one never replaces its result.
   const tagWrites = useRef(0);
+  // An undo from Recent changes reads the tags again. Legacy choices move with what it changed,
+  // so unsaved ones stay while saved ones it took back are no longer ticked.
+  const readForUndo = useRef(undoRevision);
   useEffect(() => {
+    const afterUndo = readForUndo.current !== undoRevision && current?.key === tagsFor.current;
+    readForUndo.current = undoRevision;
+    const shown = tags?.ids ?? [];
     if (current?.key !== tagsFor.current) setTags(null);
     tagsFor.current = current?.key ?? null;
     if (!current) return;
@@ -875,11 +885,16 @@ export function ReviewWorkspace({
       .then((state) => {
         if (!active || writes !== tagWrites.current) return;
         setTags(state);
-        setLegacySelected(
-          isOccurrenceReview(saved)
-            ? state.ids.filter((id) => saved.occurrence.tagIds.includes(id))
-            : [],
-        );
+        const configured = isOccurrenceReview(saved) ? saved.occurrence.tagIds : [];
+        if (!afterUndo)
+          setLegacySelected(state.ids.filter((id) => configured.includes(id)));
+        else {
+          const change = difference(shown, state.ids);
+          setLegacySelected((selected) => [
+            ...selected.filter((id) => !change.removed.includes(id)),
+            ...change.added.filter((id) => configured.includes(id) && !selected.includes(id)),
+          ]);
+        }
       })
       .catch((error) => {
         if (active)
@@ -888,7 +903,13 @@ export function ReviewWorkspace({
     return () => {
       active = false;
     };
-  }, [current]);
+  }, [current, undoRevision]);
+  const answersForUndo = useRef(undoRevision);
+  useEffect(() => {
+    if (answersForUndo.current === undoRevision) return;
+    answersForUndo.current = undoRevision;
+    setAnswersRevision((value) => value + 1);
+  }, [undoRevision]);
   useEffect(() => {
     if (!isOccurrenceReview(saved) || saved.actions.length)
       return;
@@ -1080,21 +1101,41 @@ export function ReviewWorkspace({
     let savedTags = false;
     // The groups the saved tags leave open, while the item waits for them.
     let openAfter: GroupStatus[] = [];
+    // The tags before the write, so Recent changes can undo it, also when it stops partway.
+    let before: TagState | null = null;
+    // The tags the write can change: a record keeps to them, so an edit landing meanwhile from
+    // elsewhere is never taken for part of it.
+    let touched: number[] = [];
+    const record = (after: TagState) =>
+      recordChange({
+        id: newRecordId(),
+        at: Date.now(),
+        label: action?.label ?? (legacy ? "Saved choices" : "Edited tags"),
+        reviewName: saved.name,
+        kind: mediaKind,
+        items: [changedItem(current, mediaTitle(current.media), before!, after, touched)],
+      });
+    let unrecorded = "";
     try {
       if (mutating) {
-        const before = await readTags(mediaKind, current);
+        const read = await readTags(mediaKind, current);
+        before = read;
         if (action) {
+          touched = (await resolveRemovalTrees(action)).flatMap((step) => step.tagIds);
           await applyTags(review, current, action);
         } else {
           const base =
             legacy && isOccurrenceReview(saved)
-              ? saved.occurrence.tagIds.filter((id) => before.ids.includes(id))
+              ? saved.occurrence.tagIds.filter((id) => read.ids.includes(id))
               : editorBase.current;
           const selected = legacy ? legacySelected : draft;
           const change = difference(base, selected);
+          touched = [...change.added, ...change.removed];
           await editTags(review, current, change);
         }
         const after = await readTags(mediaKind, current);
+        if (!record(after))
+          unrecorded = " Recent changes could not record it, so it cannot be undone there.";
         if (!optimisticNext) setTags(after);
         savedTags = true;
         setEditing(false);
@@ -1102,8 +1143,8 @@ export function ReviewWorkspace({
         if (waitingForGroups) openAfter = openGroups(groupStatus(saved.actions, after));
         setNotice(
           openAfter.length
-            ? `Tags saved. Staying until answered: ${openAfter.map((group) => group.name).join(", ")}.`
-            : "Tags saved.",
+            ? `Tags saved. Staying until answered: ${openAfter.map((group) => group.name).join(", ")}.${unrecorded}`
+            : `Tags saved.${unrecorded}`,
         );
         if (current.occurrence) {
           void recountAfterWrite(current.occurrence.performer.id);
@@ -1149,7 +1190,14 @@ export function ReviewWorkspace({
           stayedCursor.current = kept;
         }
         try {
-          setTags(await readTags(mediaKind, current));
+          const after = await readTags(mediaKind, current);
+          // A write that stopped partway is kept too, so what landed of it can be undone.
+          if (before && !record(after))
+            setError(
+              (previous) =>
+                `${previous} Recent changes could not record what was saved, so it cannot be undone there.`,
+            );
+          setTags(after);
         } catch {
           setTags(null);
           setError(

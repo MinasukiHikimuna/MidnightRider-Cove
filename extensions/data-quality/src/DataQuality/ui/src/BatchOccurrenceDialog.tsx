@@ -23,6 +23,7 @@ import {
   ConflictingAnswersError,
   planTags,
   previewOccurrenceBatch,
+  recordBatch,
   runEntries,
   runOccurrenceBatch,
   undoEntries,
@@ -346,6 +347,8 @@ export function BatchOccurrenceDialog({
   const [refused, setRefused] = useState(false);
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
+  // Whether Recent changes holds the batch's undo, so it outlasts the dialog.
+  const [kept, setKept] = useState(true);
   const [listed, setListed] = useState<Listed | null>(null);
   const [performerNames, setPerformerNames] = useState<string[]>([]);
   const [answersRevision, setAnswersRevision] = useState(0);
@@ -469,9 +472,10 @@ export function BatchOccurrenceDialog({
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
   }, [busy]);
-  // Results and undo last only while the dialog stays open on this batch.
+  // Results last only while the dialog stays open on this batch; its undo moves to Recent changes.
   function reset() {
     setStep("answers");
+    setKept(true);
     setBatch(null);
     setCarried({});
     setProgress(null);
@@ -581,9 +585,18 @@ export function BatchOccurrenceDialog({
         ? "Undoing the batch. Keep this page open until it finishes."
         : "Applying the answers. Keep this page open until it finishes.",
     );
-    // Called once per processed occurrence; it also shows each result as it lands.
-    const update = () =>
+    // Called once per processed occurrence; it also shows each result as it lands, and keeps
+    // Recent changes current every few seconds, should the page close before the run ends.
+    // A record that did not fit only grows during the run, so it is not tried again until the end.
+    let recorded = Date.now();
+    let fits = true;
+    const update = () => {
       setProgress((current) => current && { ...current, done: current.done + 1 });
+      if (fits && Date.now() - recorded > 3000) {
+        fits = recordBatch(batch);
+        recorded = Date.now();
+      }
+    };
     let failed = false;
     try {
       if (kind === "undo") await undoOccurrenceBatch(batch, () => cancel.current, update);
@@ -610,6 +623,7 @@ export function BatchOccurrenceDialog({
       setNotice("");
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
+      setKept(recordBatch(batch));
       running.current = false;
       // An unexpected error ends the run early too; what it completed stays, with its undo.
       const stopped = cancel.current || failed;
@@ -1260,7 +1274,9 @@ export function BatchOccurrenceDialog({
                 : shown.stopped || busy
                   ? `${stats.recorded.toLocaleString()} ${stats.recorded === 1 ? "change is" : "changes are"} still recorded.`
                   : `${stats.recorded.toLocaleString()} ${stats.recorded === 1 ? "change" : "changes"} could not be undone; undo again once their conflicts are resolved.`}{" "}
-              It lasts until you close this dialog or start a new batch.
+              {kept
+                ? "After you close this dialog or start a new batch, undo it from Recent changes."
+                : "Recent changes could not keep this batch in this browser's storage (a very large batch does not fit), so its undo lasts only until you close this dialog or start a new batch."}
             </p>
           </div>
         )}

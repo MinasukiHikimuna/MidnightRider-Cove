@@ -26,6 +26,14 @@ const MEDIA_LABELS: Record<MediaKind, { one: string; many: string; queue: string
   audio: { one: "audio", many: "audios", queue: "audio" },
 };
 
+/** A media item's name: its title, else its first file's name, else what it is. */
+export function mediaTitle(
+  media: { title?: string; files?: { basename?: string }[] },
+  kind: MediaKind,
+): string {
+  return media.title || media.files?.[0]?.basename || (kind === "audio" ? "Audio" : "Scene");
+}
+
 export function mediaLabel(kind: MediaKind): { one: string; many: string; queue: string } {
   return MEDIA_LABELS[kind];
 }
@@ -514,6 +522,22 @@ export function getConfirmedAbsentTagsFieldStatus(kind: MediaKind = "video") {
   return absenceFieldStatus(MEDIA_ABSENCE_FIELD, kind);
 }
 
+/** Resolves the confirmed-absent field's key, so callers can verify it before any write. */
+export async function requireConfirmedAbsentField(
+  kind: MediaKind,
+): Promise<string> {
+  let status: ConfirmedAbsentTagsFieldStatus;
+  try {
+    status = await getConfirmedAbsentTagsFieldStatus(kind);
+  } catch (error) {
+    throw new Error(
+      `Could not verify the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
+    );
+  }
+  if (status.kind !== "ready") throw new Error(status.message);
+  return status.definition.key;
+}
+
 export function createConfirmedAbsentTagsField(kind: MediaKind = "video") {
   return createAbsenceField(MEDIA_ABSENCE_FIELD, kind);
 }
@@ -651,19 +675,9 @@ export async function runReviewAction(
       `Choose ${mediaLabel(kind).many} and configure a valid action first.`,
     );
   }
-  let absentFieldKey: string | null = null;
-  if (hasAssessmentSteps(action)) {
-    let status: ConfirmedAbsentTagsFieldStatus;
-    try {
-      status = await getConfirmedAbsentTagsFieldStatus(kind);
-    } catch (error) {
-      throw new Error(
-        `Could not verify the ${CONFIRMED_ABSENT_TAGS_LABEL} custom field. ${error instanceof Error ? error.message : "Request failed."}`,
-      );
-    }
-    if (status.kind !== "ready") throw new Error(status.message);
-    absentFieldKey = status.definition.key;
-  }
+  const absentFieldKey = hasAssessmentSteps(action)
+    ? await requireConfirmedAbsentField(kind)
+    : null;
   const targets = uniqueIds(ids);
   const steps = (await resolveRemovalTrees(action)).map((step) => ({
     mode: step.mode,

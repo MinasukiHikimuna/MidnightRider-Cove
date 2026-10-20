@@ -7,6 +7,8 @@ import "@testing-library/jest-dom/vitest";
 beforeEach(async () => {
   (await import("./viewport")).resetViewport();
   (await import("../tagNames")).clearTagNameCache();
+  // Writes record their changes for Recent changes under the reviews' account, as on the page.
+  (await import("../history")).setHistoryScope("test-account");
   const keyboard = await import("./runtime-components");
   keyboard.testKeyboardConflicts.length = 0;
   keyboard.testPlayerShortcuts.fullscreen.mockReset();

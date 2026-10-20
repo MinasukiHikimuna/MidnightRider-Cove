@@ -1,4 +1,5 @@
-import { request, resolveRemovalTrees } from "./api";
+import { mediaTitle, request, resolveRemovalTrees } from "./api";
+import { changedItem, newRecordId, recordChange } from "./history";
 import {
   conditionSeeksMissingTags,
   reviewMediaKind,
@@ -36,6 +37,10 @@ export interface BatchEntry {
   unverified?: boolean;
 }
 export interface OccurrenceBatch {
+  /** Names the batch's record in Recent changes. */
+  id: string;
+  /** When the batch first changed something, kept as its record moves on. */
+  recordedAt?: number;
   review: OccurrenceReview;
   /** The chosen answers, in review order. */
   actions: MediaReviewAction[];
@@ -238,6 +243,7 @@ export async function previewOccurrenceBatch(
   }
   signal.throwIfAborted();
   return {
+    id: newRecordId(),
     review,
     actions,
     action,
@@ -459,4 +465,32 @@ export async function undoOccurrenceBatch(
     },
     update,
   );
+}
+
+/**
+ * Saves what the batch has changed so far as its record in Recent changes, replacing the record
+ * an earlier run or undo of it saved. A batch with nothing left to undo leaves no record. Says
+ * whether Recent changes holds the batch's undo; it never throws.
+ */
+export function recordBatch(batch: OccurrenceBatch): boolean {
+  return recordChange({
+    id: batch.id,
+    at: (batch.recordedAt ??= Date.now()),
+    label: `Batch: ${batch.actions.map((action) => action.label).join(", ")}`,
+    reviewName: batch.review.name,
+    kind: reviewMediaKind(batch.review),
+    items: batch.entries.flatMap((entry) =>
+      entry.operation
+        ? [
+            changedItem(
+              entry.item,
+              mediaTitle(entry.item.media, reviewMediaKind(batch.review)),
+              entry.operation.before,
+              entry.operation.after,
+              [...entry.operation.tags.added, ...entry.operation.tags.removed],
+            ),
+          ]
+        : [],
+    ),
+  });
 }

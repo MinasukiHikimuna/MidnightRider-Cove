@@ -38,6 +38,8 @@ vi.mock("../api", async (importOriginal) => ({
 
 const CONFIG_SCOPE = "ext:com.midnightrider.data-quality:configuration";
 
+/** Each video's tags as the stand-in API holds them; none unless a test sets some. */
+let served: Record<number, number[]>;
 function video(id: number) {
   return {
     id,
@@ -47,7 +49,7 @@ function video(id: number) {
     studioId: null,
     organized: true,
     urls: [],
-    tags: [],
+    tags: (served[id] ?? []).map((tag) => ({ id: tag, name: `Tag ${tag}` })),
     performers: [],
     groups: [],
     galleries: [],
@@ -94,6 +96,7 @@ function holdWrite() {
 beforeEach(() => {
   window.history.replaceState(null, "", "/data-quality?review=review");
   localStorage.clear();
+  served = {};
   holds = [];
   waiting = 0;
   record = {
@@ -429,4 +432,26 @@ it("keeps the grid's Save to review when an import starts on the list while it w
   // The import's write came after the save, onto the list the save left.
   await waitFor(() => expect(account().reviews).toEqual([withSearch(saved, "temporary"), added]));
   expect(account().deletedIds).toEqual([]);
+});
+
+it("records a grid action in Recent changes, with what it changed on each video", async () => {
+  seed(reviewFor("multiple"));
+  served = { 1: [3] };
+  api.runReviewAction.mockImplementation(async (_kind, _action, ids: number[]) => {
+    for (const id of ids) served[id] = [...new Set([...(served[id] ?? []), 3])];
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Apply/ }));
+  await screen.findByText(/Apply: 2 videos updated/);
+
+  await chooseFromMore("Recent changes…");
+  const dialog = await screen.findByRole("dialog", { name: "Recent changes" });
+  const change = within(dialog).getByRole("region", { name: "Apply" });
+  expect(change).toHaveTextContent("Review");
+  expect(change).toHaveTextContent("1 video");
+  expect(within(change).getByRole("link", { name: "Video 2" })).toHaveAttribute("href", "/video/2");
+  expect(within(change).queryByRole("link", { name: "Video 1" })).toBeNull();
 });

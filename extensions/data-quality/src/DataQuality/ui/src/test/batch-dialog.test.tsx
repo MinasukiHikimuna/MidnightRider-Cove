@@ -117,6 +117,7 @@ beforeEach(() => {
     this.setAttribute("open", "");
   };
   batch = {
+    id: "batch-1",
     review: structuredClone(review),
     actions: [review.actions[0]],
     action: review.actions[0],
