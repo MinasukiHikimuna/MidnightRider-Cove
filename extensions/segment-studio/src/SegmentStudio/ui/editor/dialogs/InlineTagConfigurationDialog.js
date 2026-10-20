@@ -23,6 +23,7 @@ function InlineTagConfigurationDialog({
   const [busySection, setBusySection] = useState(null);
   const [message, setMessage] = useState("");
   const [confirmedAssignedDeletion, setConfirmedAssignedDeletion] = useState(false);
+  const [confirmedRuleMappingRemoval, setConfirmedRuleMappingRemoval] = useState(false);
   const dialogRef = useRef(null);
   const newSlotKeyRef = useRef(0);
 
@@ -49,6 +50,7 @@ function InlineTagConfigurationDialog({
         setCurrentGroupId(currentGroup?.id ?? null);
         setTargetGroupId(currentGroup == null ? "" : String(currentGroup.id));
         setConfirmedAssignedDeletion(false);
+        setConfirmedRuleMappingRemoval(false);
       })
       .catch((error) => {
         if (error.name !== "AbortError")
@@ -85,8 +87,15 @@ function InlineTagConfigurationDialog({
     const assignmentCopy = assignments === 0
       ? ""
       : ` and its ${assignments} assignment${assignments === 1 ? "" : "s"}`;
-    if (!window.confirm(`Delete “${performerSlotLabel(definition)}”${assignmentCopy}?`)) return;
+    const rules = definition.derivationRules || [];
+    const ruleCopy = rules.length === 0
+      ? ""
+      : `\n\nIts performer slot mapping will also be removed from ${
+        rules.length === 1 ? "this derivation rule" : `these ${rules.length} derivation rules`}:\n${
+        rules.map((rule) => `• ${rule}`).join("\n")}`;
+    if (!window.confirm(`Delete “${performerSlotLabel(definition)}”${assignmentCopy}?${ruleCopy}`)) return;
     if (assignments > 0) setConfirmedAssignedDeletion(true);
+    if (rules.length > 0) setConfirmedRuleMappingRemoval(true);
     setModel({
       ...model,
       definitions: model.definitions
@@ -107,6 +116,7 @@ function InlineTagConfigurationDialog({
           revision: model.revision,
           allowSamePerformerInMultipleSlots: Boolean(model.allowSamePerformerInMultipleSlots),
           confirmDeleteAssigned: confirmedAssignedDeletion,
+          confirmRemoveDerivationRuleMappings: confirmedRuleMappingRemoval,
           definitions: model.definitions.map((definition, sortOrder) => ({
             id: definition.id || undefined,
             label: definition.label?.trim() || null,
@@ -117,12 +127,14 @@ function InlineTagConfigurationDialog({
       });
       setModel(saved);
       setConfirmedAssignedDeletion(false);
+      setConfirmedRuleMappingRemoval(false);
     } catch (error) {
       if (error.status === 409) {
         setMessage("Performer slots changed elsewhere; current values were reloaded.");
         if (error.payload?.current) {
           setModel(error.payload.current);
           setConfirmedAssignedDeletion(false);
+          setConfirmedRuleMappingRemoval(false);
         }
       } else {
         setMessage(error.message || "Unable to save performer slots.");

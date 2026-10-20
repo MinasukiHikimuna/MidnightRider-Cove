@@ -799,6 +799,19 @@ test("derivation rule mapping rows offer only slots no other row has taken", () 
   assert.match(view, /disabled: busy\s+\|\| draft\.slotMappings\.some\(\(mapping\) => !mapping\.sourceSlotDefinitionId \|\| !mapping\.derivedSlotDefinitionId\)\s+\|\| availableDerivationRuleSlots\(sourceSlots, draft\.slotMappings, -1, "sourceSlotDefinitionId"\)\.length === 0\s+\|\| availableDerivationRuleSlots\(derivedSlots, draft\.slotMappings, -1, "derivedSlotDefinitionId"\)\.length === 0/);
 });
 
+test("inline tag configuration names derivation rules that lose a deleted slot's mapping", () => {
+  const dialog = sourceByModule["editor/dialogs/InlineTagConfigurationDialog.js"];
+  assert.match(dialog, /const rules = definition\.derivationRules \|\| \[\];/);
+  assert.match(dialog, /Its performer slot mapping will also be removed from/);
+  assert.match(dialog, /rules\.map\(\(rule\) => `• \$\{rule\}`\)/);
+  assert.match(dialog, /if \(rules\.length > 0\) setConfirmedRuleMappingRemoval\(true\);/);
+  assert.match(dialog, /confirmRemoveDerivationRuleMappings: confirmedRuleMappingRemoval,/);
+  assert.equal(
+    (dialog.match(/setConfirmedRuleMappingRemoval\(false\);/g) || []).length,
+    (dialog.match(/setConfirmedAssignedDeletion\(false\);/g) || []).length,
+  );
+});
+
 test("inline tag configuration edits performer slots unless a Basic editor opts out", () => {
   const dialog = sourceByModule["editor/dialogs/InlineTagConfigurationDialog.js"];
   assert.match(dialog, /performerSlotsEnabled = true,/);

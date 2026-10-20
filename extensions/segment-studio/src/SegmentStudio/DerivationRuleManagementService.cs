@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Cove.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -238,7 +239,8 @@ public static class DerivationRuleManagementService
         try
         {
             using var document = JsonDocument.Parse(metadataJson);
-            if (!document.RootElement.TryGetProperty("slotMappings", out var mappings)
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("slotMappings", out var mappings)
                 || mappings.ValueKind != JsonValueKind.Array)
                 return [];
             var parsed = new List<DerivationRuleSlotMappingRequest>();
@@ -247,6 +249,8 @@ public static class DerivationRuleManagementService
                 if (mapping.ValueKind != JsonValueKind.Object
                     || !mapping.TryGetProperty("sourceSlotDefinitionId", out var source)
                     || !mapping.TryGetProperty("derivedSlotDefinitionId", out var derived)
+                    || source.ValueKind != JsonValueKind.String
+                    || derived.ValueKind != JsonValueKind.String
                     || !source.TryGetGuid(out var sourceId)
                     || !derived.TryGetGuid(out var derivedId))
                     continue;
@@ -258,6 +262,83 @@ public static class DerivationRuleManagementService
         {
             return [];
         }
+    }
+
+    // Mappings live in rule metadata rather than a table, so nothing cascades when a slot is deleted.
+    // A mapping only connects slots of its rule's own two tags, so only rules using the tag are read.
+    internal static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<string>>> LoadRulesMappingSlotsAsync(
+        DbContext db,
+        int tagId,
+        IReadOnlyCollection<Guid> slotDefinitionIds,
+        CancellationToken ct)
+    {
+        if (slotDefinitionIds.Count == 0) return new Dictionary<Guid, IReadOnlyList<string>>();
+        var rules = await db.Set<SegmentStudioDerivationRule>().AsNoTracking()
+            .Where(rule => rule.SourceTagId == tagId || rule.DerivedTagId == tagId)
+            .Select(rule => new { rule.SourceTagId, rule.DerivedTagId, rule.MetadataJson })
+            .ToListAsync(ct);
+        var uses = rules
+            .SelectMany(rule => ParseMappings(rule.MetadataJson)
+                .SelectMany(mapping => new[] { mapping.SourceSlotDefinitionId, mapping.DerivedSlotDefinitionId })
+                .Where(slotDefinitionIds.Contains)
+                .Distinct()
+                .Select(slotDefinitionId => (slotDefinitionId, rule.SourceTagId, rule.DerivedTagId)))
+            .ToArray();
+        if (uses.Length == 0) return new Dictionary<Guid, IReadOnlyList<string>>();
+        var tagIds = uses.SelectMany(use => new[] { use.SourceTagId, use.DerivedTagId }).Distinct().ToArray();
+        var tagNames = await db.Set<Tag>().AsNoTracking()
+            .Where(tag => tagIds.Contains(tag.Id))
+            .ToDictionaryAsync(tag => tag.Id, tag => tag.Name, ct);
+        return uses
+            .GroupBy(use => use.slotDefinitionId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .Select(use => $"{tagNames.GetValueOrDefault(use.SourceTagId) ?? $"Tag {use.SourceTagId}"}"
+                        + $" → {tagNames.GetValueOrDefault(use.DerivedTagId) ?? $"Tag {use.DerivedTagId}"}")
+                    .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+                    .ThenBy(name => name, StringComparer.Ordinal)
+                    .ToArray());
+    }
+
+    // Keeps the rule's version: its existing edges stay valid, and only future materializations change.
+    internal static async Task RemoveSlotMappingsAsync(
+        DbContext db,
+        int tagId,
+        IReadOnlyCollection<Guid> slotDefinitionIds,
+        CancellationToken ct)
+    {
+        if (slotDefinitionIds.Count == 0) return;
+        var now = DateTime.UtcNow;
+        var rules = await db.Set<SegmentStudioDerivationRule>()
+            .Where(rule => rule.SourceTagId == tagId || rule.DerivedTagId == tagId)
+            .ToListAsync(ct);
+        foreach (var rule in rules)
+        {
+            if (!ParseMappings(rule.MetadataJson).Any(mapping =>
+                    slotDefinitionIds.Contains(mapping.SourceSlotDefinitionId)
+                    || slotDefinitionIds.Contains(mapping.DerivedSlotDefinitionId)))
+                continue;
+            var metadata = JsonNode.Parse(rule.MetadataJson)!.AsObject();
+            var retained = metadata["slotMappings"]!.AsArray()
+                .Where(mapping => !(mapping is JsonObject candidate
+                    && (References(candidate, "sourceSlotDefinitionId")
+                        || References(candidate, "derivedSlotDefinitionId"))))
+                .Select(mapping => mapping?.DeepClone())
+                .ToArray();
+            for (var sortOrder = 0; sortOrder < retained.Length; sortOrder++)
+                if (retained[sortOrder] is JsonObject mapping && mapping.ContainsKey("sortOrder"))
+                    mapping["sortOrder"] = sortOrder;
+            metadata["slotMappings"] = new JsonArray(retained);
+            rule.MetadataJson = metadata.ToJsonString();
+            rule.UpdatedAt = now;
+        }
+
+        bool References(JsonObject mapping, string property) =>
+            mapping[property] is JsonValue value
+            && value.TryGetValue<string>(out var text)
+            && Guid.TryParse(text, out var id)
+            && slotDefinitionIds.Contains(id);
     }
 
     private static string SerializeMetadata(

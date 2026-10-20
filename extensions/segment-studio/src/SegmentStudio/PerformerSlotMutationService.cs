@@ -6,10 +6,10 @@ using Microsoft.EntityFrameworkCore;
 namespace SegmentStudio;
 
 public sealed record SlotDefinitionInput(Guid? Id, string? Label, int SortOrder, IReadOnlyList<string>? GenderHints);
-public sealed record SlotDefinitionSetUpdate(string? Revision, bool AllowSamePerformerInMultipleSlots, IReadOnlyList<SlotDefinitionInput>? Definitions, bool ConfirmDeleteAssigned = false);
+public sealed record SlotDefinitionSetUpdate(string? Revision, bool AllowSamePerformerInMultipleSlots, IReadOnlyList<SlotDefinitionInput>? Definitions, bool ConfirmDeleteAssigned = false, bool ConfirmRemoveDerivationRuleMappings = false);
 public sealed record SlotAssignmentInput(Guid SlotDefinitionId, int? PerformerId);
 public sealed record SlotAssignmentUpdate(string? Revision, IReadOnlyList<SlotAssignmentInput>? Assignments);
-public sealed record SlotDefinitionView(Guid Id, string? Label, int SortOrder, IReadOnlyList<string> GenderHints, int AssignmentCount);
+public sealed record SlotDefinitionView(Guid Id, string? Label, int SortOrder, IReadOnlyList<string> GenderHints, int AssignmentCount, IReadOnlyList<string> DerivationRules);
 public sealed record SlotDefinitionSetView(int TagId, string Revision, bool AllowSamePerformerInMultipleSlots, IReadOnlyList<SlotDefinitionView> Definitions);
 public sealed record SlotDefinitionSummaryView(Guid Id, string? Label, int SortOrder, IReadOnlyList<string> GenderHints);
 public sealed record SlotDefinitionSetSummaryView(
@@ -89,7 +89,12 @@ public static class PerformerSlotMutationService
             .ToArray();
     }
 
-    public static async Task<SlotDefinitionSetView?> LoadDefinitionsAsync(DbContext db, int tagId, CancellationToken ct)
+    public static Task<SlotDefinitionSetView?> LoadDefinitionsAsync(DbContext db, int tagId, CancellationToken ct) =>
+        LoadDefinitionsAsync(db, tagId, includeDerivationRules: true, ct);
+
+    // Assignment writes check their own revision, which ignores which derivation rules map a slot.
+    private static async Task<SlotDefinitionSetView?> LoadDefinitionsAsync(
+        DbContext db, int tagId, bool includeDerivationRules, CancellationToken ct)
     {
         var set = await (from candidate in db.Set<SegmentStudioSlotDefinitionSet>().AsNoTracking()
                          join tag in db.Set<Tag>().AsNoTracking() on candidate.TagId equals tag.Id
@@ -106,9 +111,13 @@ public static class PerformerSlotMutationService
             .Where(slot => ids.Contains(slot.SlotDefinitionId))
             .Select(slot => new DefinitionAssignmentIdentity(slot.SlotDefinitionId, slot.ItemId, slot.PerformerId))
             .ToListAsync(ct);
+        var derivationRules = includeDerivationRules
+            ? await DerivationRuleManagementService.LoadRulesMappingSlotsAsync(db, tagId, ids, ct)
+            : new Dictionary<Guid, IReadOnlyList<string>>();
         var views = definitions.Select(definition => new SlotDefinitionView(definition.Id, definition.Label,
             definition.SortOrder, hints.Where(hint => hint.SlotDefinitionId == definition.Id).Select(hint => hint.GenderHint)
-                .Order(StringComparer.Ordinal).ToArray(), assignments.Count(item => item.SlotDefinitionId == definition.Id))).ToArray();
+                .Order(StringComparer.Ordinal).ToArray(), assignments.Count(item => item.SlotDefinitionId == definition.Id),
+            derivationRules.GetValueOrDefault(definition.Id) ?? [])).ToArray();
         return new(tagId, Revision(set.AllowSamePerformerInMultipleSlots, views, assignments), set.AllowSamePerformerInMultipleSlots, views);
     }
 
@@ -130,6 +139,8 @@ public static class PerformerSlotMutationService
         if (!await db.Set<Tag>().AsNoTracking().AnyAsync(tag => tag.Id == tagId, ct))
             return new(SlotMutationStatus.NotFound, Error: "Activity tag not found.");
         await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        // Materialization holds the derivation lock while it writes slot assignments, so take it first.
+        await DerivationRuleIntegrityService.AcquireMutationLockAsync(db, ct);
         await LockSlotTablesAsync(db, ct);
         var current = await LoadDefinitionsAsync(db, tagId, ct);
         if (current is not null && current.Revision != request.Revision)
@@ -152,6 +163,19 @@ public static class PerformerSlotMutationService
         var removedIds = existing.Where(item => !requestedIds.Contains(item.Id)).Select(item => item.Id).ToArray();
         if (!request.ConfirmDeleteAssigned && await db.Set<SegmentStudioSegmentSlot>().AsNoTracking().AnyAsync(slot => removedIds.Contains(slot.SlotDefinitionId), ct))
             return new(SlotMutationStatus.Invalid, Error: "Deleting an assigned slot requires explicit confirmation.");
+        if ((await DerivationRuleManagementService.LoadRulesMappingSlotsAsync(db, tagId, removedIds, ct)).Count > 0)
+        {
+            if (!request.ConfirmRemoveDerivationRuleMappings)
+                return new(SlotMutationStatus.Invalid, Error: "Deleting a slot that a derivation rule maps requires explicit confirmation.");
+            try
+            {
+                await SegmentStudioRolloutService.EnsureWritesEnabledAsync(db, ct);
+            }
+            catch (LineageConflictException error)
+            {
+                return new(SlotMutationStatus.Invalid, Error: error.Message);
+            }
+        }
         if (!request.AllowSamePerformerInMultipleSlots)
         {
             var retainedIds = existing.Where(item => requestedIds.Contains(item.Id)).Select(item => item.Id).ToArray();
@@ -161,6 +185,7 @@ public static class PerformerSlotMutationService
             if (hasDuplicates) return new(SlotMutationStatus.Invalid, Error: "Existing assignments contain duplicate performers; clear them before tightening the policy.");
         }
         db.RemoveRange(existing.Where(item => !requestedIds.Contains(item.Id)));
+        await DerivationRuleManagementService.RemoveSlotMappingsAsync(db, tagId, removedIds, ct);
         // Avoid transient collisions on the unique (set, sort_order) index when two stable slots swap positions.
         foreach (var (definition, index) in existing.Where(item => requestedIds.Contains(item.Id)).OrderBy(item => item.Id).Select((item, index) => (item, index)))
             definition.SortOrder = 1_000_000 + index;
@@ -199,7 +224,7 @@ public static class PerformerSlotMutationService
                                  && item.HostId == videoId && item.Kind == "tag"
                              select item).SingleOrDefaultAsync(ct);
         if (segment is null) return new(SlotMutationStatus.NotFound, Error: "Segment not found.");
-        var definitions = await LoadDefinitionsAsync(db, segment.TagId!.Value, ct);
+        var definitions = await LoadDefinitionsAsync(db, segment.TagId!.Value, includeDerivationRules: false, ct);
         if (definitions is null) return new(SlotMutationStatus.Invalid, Error: "This activity has no performer slots.");
         var currentSlots = await PerformerSlotEditorService.LoadAsync(db, new Dictionary<int, int> { [segmentId] = segment.TagId.Value }, ct);
         var definitionRevision = AssignmentDefinitionRevision(definitions);
@@ -258,7 +283,7 @@ public static class PerformerSlotMutationService
                 && candidate.VideoId == videoId && candidate.ReviewState != null, ct);
             if (item is null || item.TagId is null)
                 return new SlotMutationResult<SlotAssignmentView>(SlotMutationStatus.NotFound, Error: "Draft not found.");
-            var definitions = await LoadDefinitionsAsync(db, item.TagId.Value, ct);
+            var definitions = await LoadDefinitionsAsync(db, item.TagId.Value, includeDerivationRules: false, ct);
             if (definitions is null)
                 return new SlotMutationResult<SlotAssignmentView>(SlotMutationStatus.Invalid, Error: "This activity has no performer slots.");
             var editorId = -itemId;
@@ -372,7 +397,8 @@ public static class PerformerSlotMutationService
                 definition.Label,
                 definition.SortOrder,
                 hints[definition.Id].Order(StringComparer.Ordinal).ToArray(),
-                0)).ToArray())));
+                0,
+                [])).ToArray())));
     }
 
     public static async Task<IReadOnlyDictionary<long, string>> LoadUnifiedAssignmentRevisionsAsync(
@@ -420,7 +446,7 @@ public static class PerformerSlotMutationService
     private static string Revision(bool allowDuplicates, IEnumerable<SlotDefinitionView> definitions,
         IEnumerable<DefinitionAssignmentIdentity> assignments) => Hash(
         System.Text.Json.JsonSerializer.Serialize(new { allowDuplicates, definitions = definitions.Select(item => new
-            { item.Id, item.SortOrder, item.Label, item.GenderHints, item.AssignmentCount }), assignments = assignments
+            { item.Id, item.SortOrder, item.Label, item.GenderHints, item.AssignmentCount, item.DerivationRules }), assignments = assignments
                 .OrderBy(item => item.SlotDefinitionId).ThenBy(item => item.ItemId).ThenBy(item => item.PerformerId) }));
     private static string AssignmentRevision(string definitionRevision, IEnumerable<PerformerSlotEditorItem> slots) => Hash(
         System.Text.Json.JsonSerializer.Serialize(new { definitionRevision, assignments = slots.OrderBy(item => item.SlotDefinitionId)

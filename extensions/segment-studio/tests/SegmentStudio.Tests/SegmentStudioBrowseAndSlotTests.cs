@@ -607,6 +607,116 @@ Occurrence(video: 2, performer: 1, tag: 41));
     }
 
     [Fact]
+    public async Task DeletingMappedSlotRequiresConfirmationAndRemovesOnlyItsRuleMappings()
+    {
+        await using var db = CreateContext();
+        db.AddRange(new Tag { Id = 10, Name = "Specific" }, new Tag { Id = 20, Name = "General" });
+        await db.SaveChangesAsync();
+        var source = (await PerformerSlotMutationService.UpdateDefinitionsAsync(db, 10,
+            new("", false, [new(null, "Giver", 0, []), new(null, "Receiver", 1, [])]), CancellationToken.None)).Value!;
+        var derived = (await PerformerSlotMutationService.UpdateDefinitionsAsync(db, 20,
+            new("", false, [new(null, "Giver", 0, []), new(null, "Receiver", 1, [])]), CancellationToken.None)).Value!;
+        var (giver, receiver) = (source.Definitions[0].Id, source.Definitions[1].Id);
+        var keptMappingId = Guid.NewGuid();
+        var rule = new SegmentStudioDerivationRule
+        {
+            Id = Guid.NewGuid(),
+            Key = "rule",
+            Version = "v1",
+            SourceTagId = 10,
+            DerivedTagId = 20,
+            MetadataJson = JsonSerializer.Serialize(new
+            {
+                relationshipType = "implies",
+                sortOrder = 3,
+                slotMappings = new object[]
+                {
+                    new { id = Guid.NewGuid(), sortOrder = 0, sourceSlotDefinitionId = giver, derivedSlotDefinitionId = derived.Definitions[0].Id },
+                    new { id = keptMappingId, sortOrder = 1, sourceSlotDefinitionId = receiver, derivedSlotDefinitionId = derived.Definitions[1].Id },
+                },
+            }),
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow.AddDays(-1),
+        };
+        db.Add(new Tag { Id = 30, Name = "Other" });
+        await db.SaveChangesAsync();
+        var other = (await PerformerSlotMutationService.UpdateDefinitionsAsync(db, 30,
+            new("", false, [new(null, "Giver", 0, [])]), CancellationToken.None)).Value!;
+        var unrelated = new SegmentStudioDerivationRule
+        {
+            Id = Guid.NewGuid(),
+            Key = "unrelated",
+            Version = "v1",
+            SourceTagId = 30,
+            DerivedTagId = 20,
+            MetadataJson = JsonSerializer.Serialize(new
+            {
+                slotMappings = new[]
+                {
+                    new { sourceSlotDefinitionId = other.Definitions[0].Id, derivedSlotDefinitionId = derived.Definitions[0].Id },
+                },
+            }),
+            CreatedAt = rule.CreatedAt,
+            UpdatedAt = rule.UpdatedAt,
+        };
+        // Malformed metadata on a rule using the tag must not break its slot configuration.
+        db.AddRange(rule, unrelated,
+            new SegmentStudioDerivationRule
+            {
+                Id = Guid.NewGuid(), Key = "array", Version = "v1", SourceTagId = 10, DerivedTagId = 30,
+                MetadataJson = "[]", CreatedAt = rule.CreatedAt, UpdatedAt = rule.UpdatedAt,
+            },
+            new SegmentStudioDerivationRule
+            {
+                Id = Guid.NewGuid(), Key = "null-ids", Version = "v1", SourceTagId = 30, DerivedTagId = 10,
+                MetadataJson = """{"slotMappings":[{"sourceSlotDefinitionId":null,"derivedSlotDefinitionId":5}, 3]}""",
+                CreatedAt = rule.CreatedAt, UpdatedAt = rule.UpdatedAt,
+            });
+        await db.SaveChangesAsync();
+
+        var loaded = (await PerformerSlotMutationService.LoadDefinitionsAsync(db, 10, CancellationToken.None))!;
+        Assert.All(loaded.Definitions, definition => Assert.Equal(["Specific → General"], definition.DerivationRules));
+        Assert.NotEqual(source.Revision, loaded.Revision);
+
+        var refused = await PerformerSlotMutationService.UpdateDefinitionsAsync(db, 10,
+            new(loaded.Revision, false, [new(receiver, "Receiver", 0, [])]), CancellationToken.None);
+        Assert.Equal(SlotMutationStatus.Invalid, refused.Status);
+        Assert.Contains("derivation rule", refused.Error);
+        Assert.Equal(2, (await PerformerSlotMutationService.LoadDefinitionsAsync(db, 10, CancellationToken.None))!.Definitions.Count);
+
+        var deleted = await PerformerSlotMutationService.UpdateDefinitionsAsync(db, 10,
+            new(loaded.Revision, false, [new(receiver, "Receiver", 0, [])], ConfirmRemoveDerivationRuleMappings: true),
+            CancellationToken.None);
+        Assert.Equal(SlotMutationStatus.Updated, deleted.Status);
+        var saved = await db.Set<SegmentStudioDerivationRule>().AsNoTracking().SingleAsync(item => item.Id == rule.Id);
+        Assert.Equal("v1", saved.Version);
+        Assert.True(saved.UpdatedAt > rule.CreatedAt.AddHours(1));
+        using (var metadata = JsonDocument.Parse(saved.MetadataJson))
+        {
+            Assert.Equal(3, metadata.RootElement.GetProperty("sortOrder").GetInt32());
+            var kept = Assert.Single(metadata.RootElement.GetProperty("slotMappings").EnumerateArray());
+            Assert.Equal(keptMappingId, kept.GetProperty("id").GetGuid());
+            Assert.Equal(0, kept.GetProperty("sortOrder").GetInt32());
+            Assert.Equal(receiver, kept.GetProperty("sourceSlotDefinitionId").GetGuid());
+        }
+        Assert.Equal(["Specific → General"], Assert.Single(deleted.Value!.Definitions).DerivationRules);
+
+        // A derived slot takes its mappings with it in the same way, and other rules stay untouched.
+        var derivedLoaded = (await PerformerSlotMutationService.LoadDefinitionsAsync(db, 20, CancellationToken.None))!;
+        Assert.Equal(["Other → General"], derivedLoaded.Definitions[0].DerivationRules);
+        Assert.Equal(["Specific → General"], derivedLoaded.Definitions[1].DerivationRules);
+        var derivedDeleted = await PerformerSlotMutationService.UpdateDefinitionsAsync(db, 20,
+            new(derivedLoaded.Revision, false, [new(derived.Definitions[0].Id, "Giver", 0, [])], ConfirmRemoveDerivationRuleMappings: true),
+            CancellationToken.None);
+        Assert.Equal(SlotMutationStatus.Updated, derivedDeleted.Status);
+        Assert.Empty(DerivationRuleManagementService.ParseMappings(
+            (await db.Set<SegmentStudioDerivationRule>().AsNoTracking().SingleAsync(item => item.Id == rule.Id)).MetadataJson));
+        var untouched = await db.Set<SegmentStudioDerivationRule>().AsNoTracking().SingleAsync(item => item.Id == unrelated.Id);
+        Assert.Equal(unrelated.MetadataJson, untouched.MetadataJson);
+        Assert.Equal(unrelated.UpdatedAt, untouched.UpdatedAt);
+    }
+
+    [Fact]
     public async Task AssignmentCanReplaceAndClearButRejectsWrongActivityDefinition()
     {
         await using var db = CreateContext();
@@ -769,6 +879,7 @@ Occurrence(video: 2, performer: 1, tag: 41));
             builder.Entity<Video>().Ignore(item => item.Urls).Ignore(item => item.VideoTags).Ignore(item => item.VideoPerformers)
                 .Ignore(item => item.VideoGalleries).Ignore(item => item.GroupItems).Ignore(item => item.RemoteIds).Ignore(item => item.PlayHistory)
                 .Ignore(item => item.ParentVideo).Ignore(item => item.ChildVideos).Ignore(item => item.Studio);
+            builder.Entity<Video>().HasOne(item => item.PrimaryFile).WithMany().HasForeignKey(item => item.PrimaryFileId);
             builder.Entity<BaseFileEntity>().HasKey(item => item.Id);
             builder.Entity<BaseFileEntity>().Ignore(item => item.ParentFolder).Ignore(item => item.Fingerprints);
             builder.Entity<Segment>().HasKey(item => item.Id);
@@ -786,6 +897,7 @@ Occurrence(video: 2, performer: 1, tag: 41));
             builder.Entity<SegmentStudioSegmentSlot>().HasKey(item => new { item.ItemId, item.SlotDefinitionId });
             builder.Entity<SegmentStudioSegmentSlot>().HasOne(item => item.Item).WithMany(item => item.Slots).HasForeignKey(item => item.ItemId);
             builder.Entity<SegmentStudioReviewSegment>().HasKey(item => item.SegmentId);
+            builder.Entity<SegmentStudioDerivationRule>().HasKey(item => item.Id);
             builder.Entity<VideoPerformer>().HasKey(item => new { item.VideoId, item.PerformerId });
             builder.Entity<TagApplication>().HasKey(item => item.Id);
             builder.Entity<TagApplication>().Ignore(item => item.Tag);
