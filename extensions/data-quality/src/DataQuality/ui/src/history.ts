@@ -43,6 +43,8 @@ export interface ChangeRecord {
   at: number;
   label: string;
   reviewName: string;
+  /** The review it was made in, so an undo brings items back only there. */
+  reviewId?: string;
   kind: MediaKind;
   items: ChangedItem[];
 }
@@ -122,6 +124,7 @@ export function loadHistory(): ChangeRecord[] {
           ...record,
           label: String(record.label ?? ""),
           reviewName: String(record.reviewName ?? ""),
+          reviewId: typeof record.reviewId === "string" ? record.reviewId : undefined,
           items: record.items.map((item) => ({
             ...item,
             title: String(item.title ?? ""),
@@ -441,6 +444,10 @@ export async function readEach<T, R>(
   );
   return results;
 }
+
+/** An item's key as the review queues key their items. */
+export const itemKey = (item: ChangedItem) =>
+  item.performer ? `${item.mediaId}:${item.performer.id}` : String(item.mediaId);
 
 export const newRecordId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

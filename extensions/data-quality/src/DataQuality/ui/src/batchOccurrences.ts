@@ -478,6 +478,7 @@ export function recordBatch(batch: OccurrenceBatch): boolean {
     at: (batch.recordedAt ??= Date.now()),
     label: `Batch: ${batch.actions.map((action) => action.label).join(", ")}`,
     reviewName: batch.review.name,
+    reviewId: batch.review.id,
     kind: reviewMediaKind(batch.review),
     items: batch.entries.flatMap((entry) =>
       entry.operation

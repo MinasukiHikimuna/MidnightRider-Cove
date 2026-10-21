@@ -390,8 +390,14 @@ export function DataQualityPage({
   const [creating, setCreating] = useState<ReviewDraft | null>(null);
   const [deleting, setDeleting] = useState<{ review: Review; pending: boolean } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // Moves on after Recent changes undoes something, so the open review reads its items again.
-  const [undoRevision, setUndoRevision] = useState(0);
+  // Moves on after Recent changes undoes something, so the open review reads its items again and
+  // brings back the items it undid (their queue keys).
+  const [undone, setUndone] = useState<{ revision: number; keys: string[] }>({
+    revision: 0,
+    keys: [],
+  });
+  // A grid card an undo brought back, focused once Recent changes closes.
+  const undoneCard = useRef<number | null>(null);
   const pageDialogOpen = !!creating || !!deleting || historyOpen;
   const pageDialogRef = useRef(pageDialogOpen);
   pageDialogRef.current = pageDialogOpen;
@@ -1151,6 +1157,13 @@ export function DataQualityPage({
     if (progressReady && !previewOpenRef.current) focusCard(focusedRef.current);
   }, [progressReady, focusCard]);
 
+  // Once Recent changes closes, focus and show the card its undo brought back.
+  useEffect(() => {
+    if (historyOpen || undoneCard.current == null) return;
+    focusCard(undoneCard.current);
+    undoneCard.current = null;
+  }, [historyOpen, focusCard]);
+
   useEffect(() => {
     if (queueLoading || !itemIds.length) return;
     if (focusedRef.current == null || !itemIds.includes(focusedRef.current)) {
@@ -1323,6 +1336,7 @@ export function DataQualityPage({
               at: Date.now(),
               label: action.label,
               reviewName: review.name,
+              reviewId: review.id,
               kind: mediaKind,
               items,
             });
@@ -2239,7 +2253,8 @@ export function DataQualityPage({
           onBusy={setPending}
           editRequest={editRequest}
           onEditRequestHandled={() => setEditRequest(0)}
-          undoRevision={undoRevision}
+          undoRevision={undone.revision}
+          undoneKeys={undone.keys}
           onSaveDefaults={canConfigure ? saveFromView : undefined}
           pageControls={{
             onBack: showAllReviews,
@@ -2333,11 +2348,25 @@ export function DataQualityPage({
       {historyOpen && (
         <RecentChanges
           onClose={() => setHistoryOpen(false)}
-          onUndone={() => {
-            setUndoRevision((value) => value + 1);
-            // The grid reads its page again; the workspace reads its item on the new revision.
+          onUndone={(record, restored) => {
+            // Items come back into view only in the review the change was made in: elsewhere their
+            // keys could name other media (an audio's id in a video review) or a tag's card.
+            const keys = review && record.reviewId === review.id ? restored : [];
+            setUndone((current) => ({ revision: current.revision + 1, keys }));
+            undoneCard.current = null;
+            // The grid reads its page again and focuses the first card the undo brought back;
+            // the workspace reloads its queue on the new revision.
             if (review && !usesWorkspace && !pendingRef.current)
-              void fetchQueue(review, filter).catch(() => {});
+              void fetchQueue(review, filter)
+                .then((result) => {
+                  const card = result.items.find((item) => keys.includes(String(item.id)));
+                  if (!card) return;
+                  setFocusedId(card.id);
+                  // Focus waits for Recent changes to close, unless it already has.
+                  if (pageDialogRef.current) undoneCard.current = card.id;
+                  else focusCard(card.id);
+                })
+                .catch(() => {});
           }}
         />
       )}

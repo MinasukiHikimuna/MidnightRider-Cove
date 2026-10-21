@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { extensionFetch } from "@cove/runtime/api";
+import { recordChange } from "../history";
 import { DataQualityPage } from "../index";
 import type { Review } from "../model";
 
@@ -454,4 +455,91 @@ it("records a grid action in Recent changes, with what it changed on each video"
   expect(change).toHaveTextContent("1 video");
   expect(within(change).getByRole("link", { name: "Video 2" })).toHaveAttribute("href", "/video/2");
   expect(within(change).queryByRole("link", { name: "Video 1" })).toBeNull();
+});
+
+it("reads the grid's page again after an undo and focuses the card it brought back", async () => {
+  seed(reviewFor("multiple"));
+  api.runReviewAction.mockImplementation(async (_kind, _action, ids: number[]) => {
+    for (const id of ids) served[id] = [...new Set([...(served[id] ?? []), 3])];
+  });
+  // Bulk undo requests reach the stand-in API; its tag removals are applied here.
+  const fetch = vi.mocked(extensionFetch);
+  const serve = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path, options) => {
+    if (String(path) === "/api/videos/bulk") {
+      const body = JSON.parse(String(options!.body));
+      for (const id of body.ids)
+        served[id] = (served[id] ?? []).filter((tag) => !body.tagIds.includes(tag));
+      return Response.json({});
+    }
+    return serve(path, options);
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Select Video 2" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Apply/ }));
+  await screen.findByText(/Apply: 1 video updated/);
+
+  await chooseFromMore("Recent changes…");
+  const dialog = await screen.findByRole("dialog", { name: "Recent changes" });
+  const loads = api.findMedia.mock.calls.length;
+  fireEvent.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await within(dialog).findByText("Undone", { selector: ".dq-history-status" });
+  expect(served[2]).toEqual([]);
+  await waitFor(() => expect(api.findMedia.mock.calls.length).toBeGreaterThan(loads));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+  await waitFor(() =>
+    expect(screen.getByRole("article", { name: "Video 2" })).toHaveFocus(),
+  );
+});
+
+it("leaves the grid's focus alone after undoing a change made in another review", async () => {
+  seed(reviewFor("multiple"));
+  served = { 2: [3] };
+  const fetch = vi.mocked(extensionFetch);
+  const serve = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path, options) => {
+    if (String(path) === "/api/videos/bulk") {
+      const body = JSON.parse(String(options!.body));
+      for (const id of body.ids)
+        served[id] = (served[id] ?? []).filter((tag) => !body.tagIds.includes(tag));
+      return Response.json({});
+    }
+    return serve(path, options);
+  });
+  render(<DataQualityPage onNavigate={vi.fn()} />);
+  await screen.findByRole("article", { name: "Video 1" });
+  // A change to the same video, made in another review.
+  recordChange({
+    id: "elsewhere",
+    at: Date.now(),
+    label: "Elsewhere",
+    reviewName: "Other",
+    reviewId: "other",
+    kind: "video",
+    items: [
+      {
+        mediaId: 2,
+        title: "Video 2",
+        tags: { added: [3], removed: [] },
+        absence: { added: [], removed: [] },
+        names: {},
+      },
+    ],
+  });
+
+  await chooseFromMore("Recent changes…");
+  const dialog = await screen.findByRole("dialog", { name: "Recent changes" });
+  const loads = api.findMedia.mock.calls.length;
+  fireEvent.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await within(dialog).findByText("Undone", { selector: ".dq-history-status" });
+  expect(served[2]).toEqual([]);
+  await waitFor(() => expect(api.findMedia.mock.calls.length).toBeGreaterThan(loads));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "More review options" })).toHaveFocus(),
+  );
+  expect(screen.getByRole("article", { name: "Video 2" })).not.toHaveFocus();
 });

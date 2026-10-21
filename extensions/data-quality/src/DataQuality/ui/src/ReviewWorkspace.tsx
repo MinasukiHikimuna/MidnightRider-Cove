@@ -382,6 +382,7 @@ export function ReviewWorkspace({
   editRequest = 0,
   onEditRequestHandled,
   undoRevision = 0,
+  undoneKeys = [],
   pageControls,
   stayOnTap: pageStayOnTap,
   onStayOnTapChange,
@@ -397,6 +398,8 @@ export function ReviewWorkspace({
   onEditRequestHandled?(): void;
   /** Moves on after Recent changes undoes something, so the item on screen is read again. */
   undoRevision?: number;
+  /** The queue keys of the items that undo brought back, to show the first one found again. */
+  undoneKeys?: readonly string[];
   pageControls?: WorkspacePageControls;
   /**
    * Phone-sized windows: Stay on this item, held by the page so it lasts from review to review
@@ -904,12 +907,79 @@ export function ReviewWorkspace({
       active = false;
     };
   }, [current, undoRevision]);
-  const answersForUndo = useRef(undoRevision);
+  // An undo also reloads the queue's page, as what it undid can match the queue again, and shows
+  // the first item it brought back: one an action had just moved on from is usually on this page,
+  // or on the next one either way once the pages have shifted.
+  const handledUndo = useRef(undoRevision);
   useEffect(() => {
-    if (answersForUndo.current === undoRevision) return;
-    answersForUndo.current = undoRevision;
+    if (handledUndo.current === undoRevision) return;
+    handledUndo.current = undoRevision;
     setAnswersRevision((value) => value + 1);
+    if (!lock.current && !loading && !editing && !ruleDraft) void showUndone(undoneKeys);
   }, [undoRevision]);
+  async function showUndone(keys: readonly string[]) {
+    // A queue whose URL could not be read keeps its error rather than load the default queue.
+    if (initialError.current) return;
+    const token = ++refreshToken.current;
+    const load = generation.current;
+    // An action, navigation or a reload of the queue started meanwhile supersedes this one.
+    const superseded = () => refreshToken.current !== token || generation.current !== load;
+    const shown = current?.key;
+    // Showing another item would drop unsaved legacy choices on this one.
+    const configured = isOccurrenceReview(saved) && !saved.actions.length ? saved.occurrence.tagIds : [];
+    const savedChoices = (tags?.ids ?? []).filter((id) => configured.includes(id));
+    const choicesUnsaved =
+      configured.length > 0 &&
+      (legacySelected.length !== savedChoices.length ||
+        legacySelected.some((id) => !savedChoices.includes(id)));
+    const rule = focusedReview(
+      effectiveReview(savedRef.current, queryRef.current),
+      queryRef.current.performerFocus,
+    );
+    const ordered = (result: { items: ReviewItem[] }) =>
+      orderedItems(result.items, queryRef.current.startFrom === "end");
+    const here = Number(queryRef.current.filter.page);
+    // The item on screen stays as it is (a new copy of it would read its tags again and drop
+    // unsaved choices, and an item kept by Apply and stay may have left the queue): only the
+    // queue around it is replaced, and the page it is on.
+    const keep = (result: { items: ReviewItem[]; totalCount: number }, page: number) => {
+      setItems(ordered(result));
+      setTotal(result.totalCount);
+      if (page === here) return;
+      const nextQuery = { ...queryRef.current, filter: { ...queryRef.current.filter, page } };
+      queryRef.current = nextQuery;
+      setQuery(nextQuery);
+      writeQuery(saved.id, nextQuery);
+    };
+    try {
+      const own = await fetchPage(rule, here);
+      if (superseded()) return;
+      const last = Math.max(1, Math.ceil(own.totalCount / Number(queryRef.current.filter.perPage)));
+      for (const page of [here, here - 1, here + 1]) {
+        if (page < 1 || page > last || !keys.length) continue;
+        const result = page === here ? own : await fetchPage(rule, page);
+        if (superseded()) return;
+        const found = ordered(result).find((item) => keys.includes(item.key));
+        if (!found) continue;
+        const label = queueItemLabel(found);
+        if (found.key === shown) keep(result, page);
+        else if (shown && choicesUnsaved) {
+          keep(own, here);
+          setNotice(`Undone: ${label} is back in the queue. Staying here to keep your unsaved choices.`);
+          return;
+        } else acceptPage(result, page, found);
+        setNotice(`Undone: ${label} is back in the queue.`);
+        return;
+      }
+      // Nothing undone is near this page: the page is read again, on the same item.
+      if (!own.items.length) return;
+      if (shown) keep(own, here);
+      else acceptPage(own, here, ordered(own)[0]);
+    } catch (error) {
+      if (!superseded())
+        setError(`Undone, but the queue could not be read again. ${errorText(error)}`);
+    }
+  }
   useEffect(() => {
     if (!isOccurrenceReview(saved) || saved.actions.length)
       return;
@@ -1112,6 +1182,7 @@ export function ReviewWorkspace({
         at: Date.now(),
         label: action?.label ?? (legacy ? "Saved choices" : "Edited tags"),
         reviewName: saved.name,
+        reviewId: saved.id,
         kind: mediaKind,
         items: [changedItem(current, mediaTitle(current.media), before!, after, touched)],
       });

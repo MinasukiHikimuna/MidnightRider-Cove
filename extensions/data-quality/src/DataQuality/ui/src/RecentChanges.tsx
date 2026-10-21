@@ -4,6 +4,7 @@ import { mediaLabel } from "./api";
 import {
   clearHistory,
   HISTORY_LIMIT,
+  itemKey,
   loadHistory,
   subscribeHistory,
   undoRecord,
@@ -154,8 +155,11 @@ export function RecentChanges({
   onUndone,
 }: {
   onClose(): void;
-  /** Called after an undo wrote something, so the page can read what it shows again. */
-  onUndone(): void;
+  /**
+   * Called after an undo, with the change as it left it and the queue keys of the items this undo
+   * restored, so the page can read what it shows again and bring them back into view.
+   */
+  onUndone(record: ChangeRecord, keys: string[]): void;
 }) {
   const ids = useId();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -187,6 +191,7 @@ export function RecentChanges({
   }, [confirmClear]);
   const busy = running !== null;
   async function undo(record: ChangeRecord) {
+    const pending = new Set(record.items.filter((item) => !item.undone).map(itemKey));
     setRunning(record.id);
     setConfirmClear(false);
     setError("");
@@ -198,7 +203,13 @@ export function RecentChanges({
     } finally {
       setRunning(null);
       setProgress(undefined);
-      onUndone();
+      const after = loadHistory().find((item) => item.id === record.id) ?? record;
+      onUndone(
+        after,
+        after.items
+          .filter((item) => item.undone && pending.has(itemKey(item)))
+          .map(itemKey),
+      );
       // The Undo button was disabled while it ran, which drops focus to the page behind the dialog,
       // where Esc and the review's keys would act; keep it in the dialog.
       requestAnimationFrame(() => {

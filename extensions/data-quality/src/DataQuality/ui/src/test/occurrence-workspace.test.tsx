@@ -3686,3 +3686,62 @@ it("moves legacy choices with an undo from Recent changes, keeping unsaved ones"
   await waitFor(() => expect(choices()[0]).not.toBeChecked());
   expect(choices()[1]).toBeChecked();
 });
+it("reloads the queue after an undo from Recent changes and shows the item it brought back", async () => {
+  // The first performer's occurrence was answered and left the queue.
+  api.loadOccurrencePage.mockResolvedValue({ items: [second], totalCount: 1 });
+  const props = { review, canWrite: true, onBusy: () => {} };
+  const { rerender } = render(<ReviewWorkspace {...props} />);
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+  // Undoing the answer puts it back in the queue.
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second], totalCount: 1 });
+
+  rerender(<ReviewWorkspace {...props} undoRevision={1} undoneKeys={[first.key]} />);
+
+  await screen.findByRole("heading", { name: "Reviewing First performer" });
+  expect(
+    screen.getByText("Undone: First performer — First scene is back in the queue."),
+  ).toBeInTheDocument();
+});
+it("reloads the queue after an undo of something it does not hold, staying on the item", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [second, first], totalCount: 1 });
+  const props = { review, canWrite: true, onBusy: () => {} };
+  const { rerender } = render(<ReviewWorkspace {...props} />);
+  await ready();
+  expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+  const pages = api.loadOccurrencePage.mock.calls.length;
+
+  rerender(<ReviewWorkspace {...props} undoRevision={1} undoneKeys={["9:11"]} />);
+
+  await waitFor(() => expect(api.loadOccurrencePage.mock.calls.length).toBeGreaterThan(pages));
+  expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+});
+it("stays on an item kept by Apply and stay when an undo brings nothing back near it", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [second, first], totalCount: 1 });
+  const props = { review, canWrite: true, onBusy: () => {} };
+  const { rerender } = render(<ReviewWorkspace {...props} />);
+  await ready();
+  // The item on screen has left the queue, as an answer applied with Shift does.
+  api.loadOccurrencePage.mockResolvedValue({ items: [first], totalCount: 1 });
+
+  rerender(<ReviewWorkspace {...props} undoRevision={1} undoneKeys={[]} />);
+
+  await waitFor(() => expect(api.loadOccurrencePage).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+});
+it("stays on an item with unsaved legacy choices when an undo brings another one back", async () => {
+  api.loadOccurrencePage.mockResolvedValue({ items: [second], totalCount: 1 });
+  const props = { review: { ...review, actions: [] }, canWrite: true, onBusy: () => {} };
+  const { rerender } = render(<ReviewWorkspace {...props} />);
+  await ready();
+  fireEvent.click(screen.getAllByLabelText("Choice")[0]);
+  api.loadOccurrencePage.mockResolvedValue({ items: [first, second], totalCount: 1 });
+
+  rerender(<ReviewWorkspace {...props} undoRevision={1} undoneKeys={[first.key]} />);
+
+  await screen.findByText(
+    "Undone: First performer — First scene is back in the queue. Staying here to keep your unsaved choices.",
+  );
+  expect(screen.getByRole("heading", { name: "Reviewing Second performer" })).toBeInTheDocument();
+  expect(screen.getAllByLabelText("Choice")[0]).toBeChecked();
+});
