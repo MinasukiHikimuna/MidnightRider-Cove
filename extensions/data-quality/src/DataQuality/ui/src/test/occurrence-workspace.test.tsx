@@ -759,6 +759,42 @@ it("frees the next item's actions while the queue refresh is still loading", asy
   await ready();
   expect(screen.getByRole("link", { name: "Later scene" })).toBeInTheDocument();
 });
+it("cancels the queue read of a refresh that a later action supersedes", async () => {
+  const rule: VideoReview = {
+    ...review,
+    entityType: "video",
+    view: { ...review.view, filter: { ...review.view.filter, perPage: 3 } },
+  };
+  const later = { ...video, id: 3, title: "Later scene" };
+  const signals: Array<AbortSignal | undefined> = [];
+  api.findMedia
+    .mockResolvedValueOnce({ items: [video, third.media, later], totalCount: 3 })
+    // Refreshes answer only by failing once cancelled, as a slow queue query would not before the next action.
+    .mockImplementation((_rule, _filter, signal?: AbortSignal) => {
+      signals.push(signal);
+      return new Promise((_resolve, reject) =>
+        signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))),
+      );
+    });
+  open(rule);
+  await ready();
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByRole("link", { name: "Next scene" });
+  await waitFor(() => expect(signals).toHaveLength(1));
+  expect(signals[0]?.aborted).toBe(false);
+  await waitFor(() => expect(screen.getByRole("button", { name: "q Observation" })).toBeEnabled());
+
+  fireEvent.click(screen.getByRole("button", { name: "q Observation" }));
+  await screen.findByRole("link", { name: "Later scene" });
+  await waitFor(() => expect(signals).toHaveLength(2));
+  // The first refresh could no longer apply, so its request is cancelled; the latest one runs on.
+  expect(signals[0]?.aborted).toBe(true);
+  expect(signals[1]?.aborted).toBe(false);
+  // The cancelled read fails, but as nothing it could have shown is wanted any more, it says nothing.
+  await ready();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
 it("moves on at once after apply and stay let the item leave the queue", async () => {
   const rule: VideoReview = {
     ...review,

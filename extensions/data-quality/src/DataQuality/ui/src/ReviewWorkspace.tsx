@@ -474,6 +474,19 @@ export function ReviewWorkspace({
   const lock = useRef(false);
   // Moves on whenever the user does something a background queue refresh must not undo.
   const refreshToken = useRef(0);
+  // The queue read of the refresh the token guards. Moving the token on cancels it too, so a refresh
+  // that can no longer apply stops costing the server a whole queue query.
+  const refreshRequest = useRef<AbortController | null>(null);
+  function supersedeRefresh() {
+    refreshToken.current++;
+    refreshRequest.current?.abort();
+    refreshRequest.current = null;
+  }
+  function refreshSignal() {
+    const controller = new AbortController();
+    refreshRequest.current = controller;
+    return controller.signal;
+  }
   const actionRunning = useRef(false);
   const queuedAction = useRef<{ action: MediaReviewAction; stay: boolean; key: string } | null>(null);
   const alive = useRef(true);
@@ -485,6 +498,7 @@ export function ReviewWorkspace({
     alive.current = true;
     return () => {
       alive.current = false;
+      refreshRequest.current?.abort();
     };
   }, []);
   const [error, setError] = useState(initialError.current);
@@ -693,7 +707,7 @@ export function ReviewWorkspace({
 
   function replaceQuery(next: ReviewQuery, end = false) {
     if (lock.current) return;
-    refreshToken.current++;
+    supersedeRefresh();
     setSaveError("");
     initialError.current = "";
     startAtEnd.current = end;
@@ -794,7 +808,7 @@ export function ReviewWorkspace({
     writeQuery(saved.id, nextQuery);
   }
   function showItem(next: ReviewItem | null, resumePlayback = false) {
-    refreshToken.current++;
+    supersedeRefresh();
     if (next?.key !== current?.key) stayedCursor.current = null;
     if (next?.media.id !== current?.media.id) {
       setAutostartMediaId(resumePlayback && next ? next.media.id : null);
@@ -920,7 +934,9 @@ export function ReviewWorkspace({
   async function showUndone(keys: readonly string[]) {
     // A queue whose URL could not be read keeps its error rather than load the default queue.
     if (initialError.current) return;
-    const token = ++refreshToken.current;
+    supersedeRefresh();
+    const token = refreshToken.current;
+    const signal = refreshSignal();
     const load = generation.current;
     // An action, navigation or a reload of the queue started meanwhile supersedes this one.
     const superseded = () => refreshToken.current !== token || generation.current !== load;
@@ -952,12 +968,12 @@ export function ReviewWorkspace({
       writeQuery(saved.id, nextQuery);
     };
     try {
-      const own = await fetchPage(rule, here);
+      const own = await fetchPage(rule, here, signal);
       if (superseded()) return;
       const last = Math.max(1, Math.ceil(own.totalCount / Number(queryRef.current.filter.perPage)));
       for (const page of [here, here - 1, here + 1]) {
         if (page < 1 || page > last || !keys.length) continue;
-        const result = page === here ? own : await fetchPage(rule, page);
+        const result = page === here ? own : await fetchPage(rule, page, signal);
         if (superseded()) return;
         const found = ordered(result).find((item) => keys.includes(item.key));
         if (!found) continue;
@@ -1028,6 +1044,8 @@ export function ReviewWorkspace({
     wanted: () => boolean = () => true,
     /** The stayed cursor as it was before the next item was shown. */
     kept = stayedCursor.current,
+    /** Cancels the queue reads of a background refresh once it is superseded. */
+    signal?: AbortSignal,
   ) {
     if (!current) return;
     const { direction, cursor, remainingKeys, visitedKeys, nextLoaded } = traversal(current, kept);
@@ -1042,14 +1060,14 @@ export function ReviewWorkspace({
     // already traversed. Move to the preceding page instead.
     let nextPage = direction === -1 && !refresh ? Math.max(1, page - 1) : page;
     while (alive.current && !deferredRestore.current) {
-      let result = await fetchPage(review, nextPage);
+      let result = await fetchPage(review, nextPage, signal);
       const end = Math.max(
         1,
         Math.ceil(result.totalCount / Number(query.filter.perPage)),
       );
       if (nextPage > end) {
         nextPage = end;
-        result = await fetchPage(review, nextPage);
+        result = await fetchPage(review, nextPage, signal);
       }
       const orderedResult = orderedItems(result.items, direction === -1);
       const resultByKey = new Map(orderedResult.map((item) => [item.key, item]));
@@ -1151,7 +1169,7 @@ export function ReviewWorkspace({
     // and any read of the item's tags started before it, which its own read replaces. One that
     // writes nothing leaves both alone: a read it dropped would never be made again.
     if (mutating) {
-      refreshToken.current++;
+      supersedeRefresh();
       tagWrites.current++;
     }
     // The next loaded item, also when apply and stay has let this one leave the queue. Showing it
@@ -1231,11 +1249,13 @@ export function ReviewWorkspace({
           // The next item already shows: free its actions now and reconcile the queue behind
           // them. Anything done meanwhile (another action, navigation, editing) supersedes the
           // refresh, and that action's own refresh reconciles the queue instead.
+          // The signal comes first: a navigation that ending the operation replays supersedes it.
           const token = refreshToken.current;
+          const signal = refreshSignal();
           released = true;
           actionRunning.current = false;
           endOperation();
-          void advance(true, false, true, () => refreshToken.current === token && !lock.current, kept)
+          void advance(true, false, true, () => refreshToken.current === token && !lock.current, kept, signal)
             .catch((error) => {
               if (refreshToken.current === token)
                 setError(`Tags saved, but the queue could not refresh. Retry navigation with Skip. ${errorText(error)}`);
@@ -1342,7 +1362,7 @@ export function ReviewWorkspace({
     };
     // The draft is the saved review; the queue's criteria join it as they are while it is edited,
     // so criteria changed before editing began are unsaved changes too.
-    refreshToken.current++;
+    supersedeRefresh();
     setRuleDraft(structuredClone(saved));
     setRuleError("");
     setNotice("");
@@ -2223,7 +2243,7 @@ export function ReviewWorkspace({
                       className="dq-button"
                       disabled={blocked || !!ruleDraft || !canWrite || !tags}
                       onClick={() => {
-                        refreshToken.current++;
+                        supersedeRefresh();
                         editorBase.current = [...tags!.ids];
                         setDraft([...tags!.ids]);
                         setEditing(true);
