@@ -9,6 +9,7 @@ import {
   parseArgs,
   predictedSpans,
   render,
+  rowsQuery,
   score,
   union,
 } from "../../scripts/ai-tagging-comparison-report.mjs";
@@ -110,6 +111,25 @@ test("comparison report: floors never go below what the runs captured", () => {
   assert.equal(evaluate(rows).floors[0], 0.3);
   assert.equal(evaluate([run({ threshold: null })]).lowestFloor, 0.2);
   assert.ok(evaluate(rows, { floor: 0.42 }).floors.includes(0.42));
+});
+
+test("comparison report: rows from store-only runs are scored like rows from review runs", () => {
+  const published = [{ tag: "Kissing", start: 0, end: 4, source: "segment-studio/user" }];
+  const payload = { tags: { actions: { Kissing: [[0, 0.4], [2, 0.4]] } } };
+  const rows = [
+    run({ videoId: 7, analyses: ["aiTaggingStoreOnly"], published, payload }),
+    run({ videoId: 8, analyses: ["aiTagging"], published, payload }),
+  ];
+  const result = evaluate(rows);
+  assert.deepEqual([result.storeOnlyRuns, result.reviewRuns], [1, 1]);
+  assert.deepEqual(result.pairs.map(pair => [pair.videoId, pair.byFloor.get(0.35).keptSeconds]), [[7, 4], [8, 4]]);
+  const text = render(result, { rowCount: 2 });
+  assert.match(text, /Runs compared: 2 \(one per video, the most recent stored: 1 store-only, 1 from review tagging\)/);
+  assert.match(text, /each tagging model's own default \(0\.5 in production\)\. Stored predictions may come from a lower threshold/);
+  // The query reads every raw row and only labels where it came from.
+  const sql = rowsQuery({ videoIds: [7], since: null });
+  assert.match(sql, /FROM segment_studio_ai_raw_results x\s+WHERE x\.video_id IN \(7\)\s+ORDER BY/);
+  assert.match(sql, /'analyses', \(SELECT r\.analyses FROM segment_studio_analysis_runs r WHERE r\.id = l\.run_id\)/);
 });
 
 test("comparison report: options are validated", () => {

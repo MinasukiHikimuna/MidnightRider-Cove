@@ -6,6 +6,8 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const CURRENT_FLOOR = 0.35;
+// The analyses entry of a run row written by the store-only claim (SegmentStudioAiContributor.StoreOnlyAnalysis).
+export const STORE_ONLY_ANALYSIS = "aiTaggingStoreOnly";
 const EPSILON = 1e-9;
 
 const help = `Usage:
@@ -20,8 +22,13 @@ the published Segment Studio tag segments, by time overlap:
            (predicted minus published; negative starts early)
 Only tags published on a video are scored there, because an uncurated tag's
 absence is not a negative; --tags scores the listed tags on every video instead.
-Each video uses its most recent stored run. Every number names the model
-versions that produced it.
+Each video uses its most recent stored run, from the store-only capability or
+from review tagging alike. Every number names the model versions that produced it.
+
+Published segments were reviewed from drafts of runs that asked for no
+threshold, so the AI server applied each tagging model's own default (0.5 in
+production). Stored predictions may come from a lower threshold: below the
+default, a floor also scores frames that never reached a draft.
 
 --container NAME     Docker container with Cove's PostgreSQL (default: cove)
 --local              Use psql from PATH with the PG* environment instead
@@ -221,6 +228,11 @@ export function modelsByCategory(row) {
   return byCategory;
 }
 
+/** Whether a stored row came from a store-only run rather than review tagging. */
+export function isStoreOnly(row) {
+  return Array.isArray(row.analyses) && row.analyses.includes(STORE_ONLY_ANALYSIS);
+}
+
 /**
  * Scores every stored run row. Each row is one video's most recent capture with its published segments; the
  * result has one entry per (video, tag) holding the score at every floor.
@@ -275,7 +287,8 @@ export function evaluate(rows, { tags = null, excludeSources = [], minFloor = nu
     const byFloor = new Map(floors.map(floor => [floor, combine(group.pairs.map(pair => pair.byFloor.get(floor)))]));
     return { tag: group.tag, tagKey: group.pairs[0].tagKey, model: group.model, videos: group.videos, byFloor, best: bestFloor(byFloor) };
   }).sort((a, b) => b.byFloor.get(floors[0]).publishedSeconds - a.byFloor.get(floors[0]).publishedSeconds || a.tag.localeCompare(b.tag));
-  return { floors, lowestFloor: lowest, thresholds: [...new Set(thresholds)].sort(), unknownThresholdRuns: rows.length - thresholds.length, pairs, summary };
+  const storeOnlyRuns = rows.filter(isStoreOnly).length;
+  return { floors, lowestFloor: lowest, thresholds: [...new Set(thresholds)].sort(), unknownThresholdRuns: rows.length - thresholds.length, storeOnlyRuns, reviewRuns: rows.length - storeOnlyRuns, pairs, summary };
 }
 
 const seconds = value => (value === null ? "-" : `${value.toFixed(1)}`);
@@ -292,9 +305,10 @@ export function render(result, { rowCount, floor = null } = {}) {
   const out = [];
   const models = [...new Set(result.summary.map(item => item.model))].sort();
   out.push(`# AI tagging comparison`, "");
-  out.push(`Runs compared: ${rowCount} (one per video, the most recent stored). Tag/video pairs scored: ${result.pairs.length}.`);
+  out.push(`Runs compared: ${rowCount} (one per video, the most recent stored: ${result.storeOnlyRuns} store-only, ${result.reviewRuns} from review tagging). Tag/video pairs scored: ${result.pairs.length}.`);
   out.push(`Stored thresholds: ${result.thresholds.length ? result.thresholds.join(", ") : "none recorded"}${result.unknownThresholdRuns ? `; ${result.unknownThresholdRuns} run(s) with an unknown threshold, whose low floors may be missing predictions` : ""}. Floors tried: ${result.floors[0]}–${result.floors.at(-1)}.`);
   out.push(`Models: ${models.join("; ") || "none"}.`, "");
+  out.push(`Published segments were reviewed from drafts of runs that asked for no threshold, so the AI server applied each tagging model's own default (0.5 in production). Stored predictions may come from a lower threshold: below the default, a floor also scores frames that never reached a draft.`, "");
   out.push(`## Per tag, all videos`, "");
   out.push(table(
     ["Tag", "Model", "Videos", "Published s", `@${CURRENT_FLOOR} kept`, `@${CURRENT_FLOOR} missed s`, `@${CURRENT_FLOOR} extra s`, "Best floor", "Best kept", "Best missed s", "Best extra s", "Start shift", "End shift", "Best F1"],
@@ -315,12 +329,13 @@ export function render(result, { rowCount, floor = null } = {}) {
   return out.join("\n");
 }
 
-function readRows(options) {
+/** Every stored raw row, whichever claim wrote it, newest per video. */
+export function rowsQuery(options) {
   const where = [
     options.videoIds ? `x.video_id IN (${options.videoIds.join(",")})` : null,
     options.since ? `x.created_at >= '${options.since}'::timestamptz` : null,
   ].filter(Boolean);
-  const sql = `
+  return `
     WITH latest AS (
       SELECT DISTINCT ON (x.video_id) x.* FROM segment_studio_ai_raw_results x
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
@@ -329,11 +344,16 @@ function readRows(options) {
       'videoId', l.video_id, 'runId', l.run_id, 'aiRunId', l.ai_run_id, 'threshold', l.threshold,
       'interval', l.frame_interval_seconds, 'duration', l.duration_seconds, 'frameCount', l.frame_count,
       'schemaVersion', l.schema_version, 'models', l.models, 'payload', l.payload,
+      'analyses', (SELECT r.analyses FROM segment_studio_analysis_runs r WHERE r.id = l.run_id),
       'journalModels', (SELECT a."Models" FROM ai_runs a WHERE a."RunKey" = l.ai_run_id AND a."TargetType" = 1 AND a."TargetId" = l.video_id LIMIT 1),
       'published', (SELECT COALESCE(json_agg(json_build_object('tag', t."Name", 'start', s."StartSec", 'end', s."EndSec", 'source', s."SourceKey")), '[]'::json)
         FROM segment_studio_items i JOIN segments s ON s."Id" = i.native_segment_id JOIN tags t ON t."Id" = s."TagId"
         WHERE s."HostType" = 1 AND s."HostId" = l.video_id AND s."Kind" = 'tag')
     ) ORDER BY l.video_id), '[]'::json) FROM latest l`;
+}
+
+function readRows(options) {
+  const sql = rowsQuery(options);
   const command = options.local
     ? ["psql", "--no-psqlrc", "--tuples-only", "--no-align", "--quiet", "--command", sql]
     : ["docker", "exec", "--user", "postgres", options.container, "psql", "--dbname", "cove", "--no-psqlrc", "--tuples-only", "--no-align", "--quiet", "--command", sql];
@@ -349,7 +369,7 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) { console.log(help); return; }
   const rows = readRows(options);
-  if (!rows.length) throw new Error("No stored AI predictions match; capture some first");
+  if (!rows.length) throw new Error("No stored AI predictions match; store some first");
   const result = evaluate(rows, options);
   console.log(render(result, { rowCount: rows.length, floor: options.floor }));
   if (options.json) {
