@@ -421,6 +421,112 @@ public sealed class AiTaggingProjectionServiceTests
         Assert.Equal("""{"tags":{"actions":{"Kissing":[[0,0.6]]}}}""", raw.PayloadJson);
     }
 
+    // ── store-only ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AStoreOnlyRunKeepsPredictionsAndPutsNothingUpForReview()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddAiRunAsync("run-1", """{"threshold":0.2}""");
+        var kissing = await fixture.AddTagAsync("Kissing");
+        await fixture.AddPublishedAsync(kissing, 0, 1);
+        var contributor = fixture.CreateContributor();
+
+        var result = await contributor.DispatchAsync(VideoRequest(
+            "run-1",
+            [contributor.Describe().Claims.Single(claim => claim.ClaimId == SegmentStudioAiContributor.StoreOnlyClaimId)],
+            // Strong predictions far from the published segment, and for a tag
+            // the library does not have yet: a review run would draft both.
+            Frame(5, ("actions", "Kissing", 0.9), ("actions", "Dancing", 0.9)),
+            Frame(6, ("actions", "Kissing", 0.3))));
+
+        Assert.Equal(1, result.PreparedCounts?["rawPredictions"]);
+        Assert.Contains("Stored 3 tag prediction(s) over 2 frame(s) for comparison, without drafts.", result.Notes ?? []);
+        Assert.Empty(await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioItem>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioLineageNode>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioProvenanceActivity>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioSegmentProvenance>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioSource>().ToListAsync());
+        Assert.Equal(["Kissing"], (await fixture.Context.Set<Tag>().ToListAsync()).Select(tag => tag.Name));
+        var published = Assert.Single(await fixture.Context.Set<Segment>().ToListAsync());
+        Assert.Equal((0d, (double?)1d, (int?)kissing), (published.StartSec, published.EndSec, published.TagId));
+
+        var run = Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        Assert.Equal("""["aiTaggingStoreOnly"]""", run.AnalysesJson);
+        Assert.Equal((AiTaggingProjectionService.CompletedStatus, Fixture.VideoFileId), (run.Status, run.VideoFileId));
+        var raw = Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+        Assert.Equal((run.Id, "run-1", (double?)0.2), (raw.RunId, raw.AiRunId, raw.Threshold));
+        Assert.Equal(
+            """{"tags":{"actions":{"Dancing":[[5,0.9]],"Kissing":[[5,0.9],[6,0.3]]}}}""",
+            raw.PayloadJson);
+    }
+
+    [Fact]
+    public async Task AStoreOnlyRunLeavesAnUnreviewedQueueAsItIs()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var contributor = fixture.CreateContributor();
+        var review = contributor.Describe().Claims.Single(claim => claim.ClaimId == SegmentStudioAiContributor.TaggingClaimId);
+        var storeOnly = contributor.Describe().Claims.Single(claim => claim.ClaimId == SegmentStudioAiContributor.StoreOnlyClaimId);
+        await contributor.DispatchAsync(VideoRequest("run-1", [review], Frame(0, ("actions", "Kissing", 0.9))));
+        fixture.Context.ChangeTracker.Clear();
+        var candidates = await fixture.Context.Set<SegmentStudioAnalysisCandidate>().AsNoTracking().ToListAsync();
+        var items = await fixture.Context.Set<SegmentStudioItem>().AsNoTracking().ToListAsync();
+
+        // Lower-confidence frames that would lengthen the reviewed span.
+        await contributor.DispatchAsync(VideoRequest(
+            "run-2", [storeOnly],
+            Frame(0, ("actions", "Kissing", 0.9)), Frame(1, ("actions", "Kissing", 0.4)), Frame(2, ("actions", "Kissing", 0.4))));
+        fixture.Context.ChangeTracker.Clear();
+
+        Assert.Equal(
+            candidates.Select(candidate => (candidate.Id, candidate.RunId, candidate.StartSec, candidate.EndSec)),
+            (await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync())
+                .Select(candidate => (candidate.Id, candidate.RunId, candidate.StartSec, candidate.EndSec)));
+        Assert.Equal(
+            items.Select(item => (item.Id, item.StartSec, item.EndSec, item.ReviewState, item.Revision)),
+            (await fixture.Context.Set<SegmentStudioItem>().ToListAsync())
+                .Select(item => (item.Id, item.StartSec, item.EndSec, item.ReviewState, item.Revision)));
+        Assert.Equal(2, (await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync()).Count);
+    }
+
+    [Fact]
+    public async Task ARunWithBothClaimsKeepsOneRawRowThroughReview()
+    {
+        // Every claim at once is what AI Core runs when nothing is picked. The
+        // store-only claim must not add a second run row for the same predictions.
+        await using var fixture = await Fixture.CreateAsync();
+        var contributor = fixture.CreateContributor();
+
+        var result = await contributor.DispatchAsync(VideoRequest(
+            "run-1", contributor.Describe().Claims, Frame(0, ("actions", "Kissing", 0.9))));
+
+        Assert.Equal((1, 0), (result.PreparedCounts?["tagging"], result.PreparedCounts?["rawPredictions"]));
+        Assert.Contains("Review tagging in the same run kept the raw predictions.", result.Notes ?? []);
+        var run = Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        Assert.Equal("""["aiTagging"]""", run.AnalysesJson);
+        Assert.Equal(run.Id, Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync()).RunId);
+        Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ARetriedStoreOnlyDispatchReplacesItsRawRow()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var contributor = fixture.CreateContributor();
+        var storeOnly = contributor.Describe().Claims.Single(claim => claim.ClaimId == SegmentStudioAiContributor.StoreOnlyClaimId);
+
+        await contributor.DispatchAsync(VideoRequest("run-1", [storeOnly], Frame(0, ("actions", "Kissing", 0.5))));
+        fixture.Context.ChangeTracker.Clear();
+        await contributor.DispatchAsync(VideoRequest("run-1", [storeOnly], Frame(0, ("actions", "Kissing", 0.6))));
+        fixture.Context.ChangeTracker.Clear();
+
+        Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        var raw = Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+        Assert.Equal("""{"tags":{"actions":{"Kissing":[[0,0.6]]}}}""", raw.PayloadJson);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────
 
     private static AiDispatchRequest VideoRequest(
