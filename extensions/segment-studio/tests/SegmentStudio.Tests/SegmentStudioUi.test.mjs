@@ -9,3 +9,4 @@ import "./ui/segment-playback-navigation.cases.mjs";
 import "./ui/save-flows.cases.mjs";
 import "./ui/save-queue.cases.mjs";
 import "./ui/pending-changes.cases.mjs";
+import "./AiTaggingComparisonReport.cases.mjs";
