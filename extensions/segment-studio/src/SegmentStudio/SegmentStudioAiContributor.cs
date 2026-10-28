@@ -1,4 +1,5 @@
 using AI.Extensions.Abstractions;
+using System.Text.Json;
 using Cove.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -171,16 +172,12 @@ public sealed class SegmentStudioAiContributor(
 
         var candidates = AiTaggingCandidateBuilder.Build(
             request.Result.Frames, fingerprint, duration, interval, CandidateConfidenceFloor);
-        if (candidates.Count == 0)
-        {
-            notes.Add("Tagging produced no predictions above the confidence floor.");
-            return 0;
-        }
 
+        var runId = RunIdFor(request.Context.RunId, videoId.Value);
         var projectionRequest = new AiTaggingProjectionRequest(
             videoId.Value,
             file.Id,
-            RunIdFor(request.Context.RunId, videoId.Value),
+            runId,
             fingerprint,
             candidates)
         {
@@ -190,10 +187,15 @@ public sealed class SegmentStudioAiContributor(
 
         try
         {
-            // Candidates, their draft items and the run row are one unit: a partial
-            // write would leave a reviewer looking at an incomplete queue. The
-            // transaction is opened through the execution strategy because Cove
-            // configures a retrying strategy that owns transaction boundaries.
+            var raw = AiRawResultBuilder.Build(request.Result.Frames, request.Result.Models);
+            var threshold = await ReadRequestedThresholdAsync(db, request.Context.RunId, videoId.Value, ct);
+
+            // Candidates, their draft items, the run row and its raw predictions are
+            // one unit: a partial write would leave a reviewer looking at an
+            // incomplete queue. The transaction is opened through the execution
+            // strategy because Cove configures a retrying strategy that owns
+            // transaction boundaries. A run with nothing above the review floor
+            // still gets its run row, so the predictions below it are kept.
             var strategy = db.Database.CreateExecutionStrategy();
             var firstAttempt = true;
             var result = await strategy.ExecuteAsync(async () =>
@@ -203,13 +205,22 @@ public sealed class SegmentStudioAiContributor(
 
                 await using var transaction = await db.Database.BeginTransactionAsync(ct);
                 var projected = await projection.ProjectAsync(db, projectionRequest, ct);
+                await StoreRawResultAsync(db, runId, videoId.Value, request, raw, threshold, ct);
                 await transaction.CommitAsync(ct);
                 return projected;
             });
 
             logger.LogInformation(
-                "Segment Studio stored {CandidateCount} tag candidate(s) for video {VideoId} from run {RunId}.",
-                result.CandidateCount, videoId.Value, request.Context.RunId);
+                "Segment Studio stored {CandidateCount} tag candidate(s), left out {AlreadyPublishedCount} already published, and kept {PredictionCount} raw prediction(s) for video {VideoId} from run {RunId}.",
+                result.CandidateCount, result.AlreadyPublishedCount, raw.PredictionCount, videoId.Value, request.Context.RunId);
+            if (result.AlreadyPublishedCount > 0)
+                notes.Add($"Left out {result.AlreadyPublishedCount} tag span(s) that published segments already cover.");
+            if (result.CandidateCount == 0)
+            {
+                if (result.AlreadyPublishedCount == 0)
+                    notes.Add("Tagging produced no predictions above the confidence floor.");
+                return 0;
+            }
             notes.Add($"Stored {result.CandidateCount} tag candidate(s) for review.");
             return result.CandidateCount;
         }
@@ -222,6 +233,64 @@ public sealed class SegmentStudioAiContributor(
             notes.Add("Storing tag candidates failed; the run's tagging output was not applied.");
             return 0;
         }
+    }
+
+    /// <summary>Writes or replaces the run's raw row; the caller owns the transaction.</summary>
+    private static async Task StoreRawResultAsync(
+        DbContext db,
+        Guid runId,
+        int videoId,
+        AiDispatchRequest request,
+        AiRawResult raw,
+        double? threshold,
+        CancellationToken ct)
+    {
+        var row = await db.Set<SegmentStudioAiRawResult>()
+            .FirstOrDefaultAsync(candidate => candidate.RunId == runId, ct);
+        if (row is null)
+        {
+            row = new SegmentStudioAiRawResult { RunId = runId, CreatedAt = DateTime.UtcNow };
+            db.Add(row);
+        }
+        row.VideoId = videoId;
+        row.AiRunId = request.Context.RunId;
+        row.Threshold = threshold;
+        row.FrameIntervalSeconds = request.Result.FrameIntervalSeconds ?? request.Context.FrameIntervalSeconds;
+        row.DurationSeconds = request.Result.DurationSeconds ?? request.Context.DurationSeconds;
+        row.FrameCount = raw.FrameCount;
+        row.ModelsJson = raw.ModelsJson;
+        row.SchemaVersion = AiRawResultBuilder.SchemaVersion;
+        row.PayloadJson = raw.PayloadJson;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The threshold the AI run asked the server for, from AI Core's journal of the
+    /// run, which it writes before analysis starts. The dispatch does not carry it.
+    /// Null when the request named none: the server then applied a default that is
+    /// recorded nowhere.
+    /// </summary>
+    private static async Task<double?> ReadRequestedThresholdAsync(
+        DbContext db, string aiRunId, int videoId, CancellationToken ct)
+    {
+        var request = await db.Set<AiRun>().AsNoTracking()
+            .Where(run => run.RunKey == aiRunId
+                && run.TargetType == AiRunTargetType.Video
+                && run.TargetId == videoId)
+            .Select(run => run.Request)
+            .FirstOrDefaultAsync(ct);
+        if (request?.RootElement is not { ValueKind: JsonValueKind.Object } root)
+            return null;
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "threshold", StringComparison.OrdinalIgnoreCase))
+                continue;
+            return property.Value.ValueKind == JsonValueKind.Number
+                && property.Value.TryGetDouble(out var threshold)
+                    ? threshold
+                    : null;
+        }
+        return null;
     }
 
     private static int? ResolveVideoId(AiRunContext context)

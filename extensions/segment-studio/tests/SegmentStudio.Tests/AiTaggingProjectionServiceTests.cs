@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using AI.Extensions.Abstractions;
 using Cove.Core.Entities;
@@ -266,7 +267,180 @@ public sealed class AiTaggingProjectionServiceTests
         Assert.Empty(await fixture.Context.Set<Segment>().ToListAsync());
     }
 
+    // ── raw predictions ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ATaggingRunAlsoKeepsEveryPredictionBelowTheReviewFloor()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddAiRunAsync("run-1", """{"threshold":0.2,"frameInterval":1}""");
+        var contributor = fixture.CreateContributor();
+
+        var result = await contributor.DispatchAsync(VideoRequest(
+            "run-1",
+            [contributor.Describe().Claims.Single(claim => claim.ClaimId == SegmentStudioAiContributor.TaggingClaimId)],
+            Frame(1, ("actions", "Kissing", 0.8), ("actions", "Dancing", 0.21)),
+            Frame(0, ("actions", "Kissing", 0.9), ("actions", "Kissing", 0.4), ("bodyparts", "Hands", null)),
+            Frame(2)));
+
+        Assert.Equal(2, result.PreparedCounts?["tagging"]);
+        // Only spans above the floor became drafts; an unscored prediction is not a weak one...
+        Assert.Equal(
+            ["Hands", "Kissing"],
+            (await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync())
+                .Select(candidate => candidate.TagName).Order(StringComparer.Ordinal));
+        // ...while the raw row keeps every prediction, frame by frame.
+        var run = Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        var raw = Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+        Assert.Equal(run.Id, raw.RunId);
+        Assert.Equal(Fixture.VideoId, raw.VideoId);
+        Assert.Equal("run-1", raw.AiRunId);
+        Assert.Equal(0.2, raw.Threshold);
+        Assert.Equal(1.0, raw.FrameIntervalSeconds);
+        Assert.Equal(10.0, raw.DurationSeconds);
+        Assert.Equal(3, raw.FrameCount);
+        Assert.Equal(AiRawResultBuilder.SchemaVersion, raw.SchemaVersion);
+        Assert.Equal(
+            """{"tags":{"actions":{"Dancing":[[1,0.21]],"Kissing":[[0,0.9],[1,0.8]]},"bodyparts":{"Hands":[[0,null]]}}}""",
+            raw.PayloadJson);
+        Assert.Equal(
+            """[{"configName":"tagger_v2","name":"Tagger","version":"2.1","type":"tagging","categories":["actions","bodyparts"]}]""",
+            raw.ModelsJson);
+    }
+
+    [Fact]
+    public async Task ATaggingRunWithNothingAboveTheFloorStillKeepsItsPredictions()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var contributor = fixture.CreateContributor();
+
+        var result = await contributor.DispatchAsync(VideoRequest(
+            "run-1",
+            [contributor.Describe().Claims.Single(claim => claim.ClaimId == SegmentStudioAiContributor.TaggingClaimId)],
+            Frame(0, ("actions", "Kissing", 0.3))));
+
+        Assert.Equal(0, result.PreparedCounts?["tagging"]);
+        Assert.Contains(result.Notes ?? [], note => note.Contains("above the confidence floor", StringComparison.Ordinal));
+        Assert.Empty(await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioItem>().ToListAsync());
+        var run = Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        Assert.Equal("""["aiTagging"]""", run.AnalysesJson);
+        var raw = Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+        // No journal entry for the run: the threshold is unknown, not guessed.
+        Assert.Null(raw.Threshold);
+        Assert.Equal("""{"tags":{"actions":{"Kissing":[[0,0.3]]}}}""", raw.PayloadJson);
+    }
+
+    // ── published segments ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task AReviewRunLeavesOutSpansThatPublishedSegmentsOfTheSameTagAlreadyCover()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var kissing = await fixture.AddTagAsync("Kissing");
+        // 0–2 is three-quarters covered; 5–9 only 1.5 of 4 seconds, and a published
+        // moment without an end covers nothing.
+        await fixture.AddPublishedAsync(kissing, 0, 1.5);
+        await fixture.AddPublishedAsync(kissing, 5, 6);
+        await fixture.AddPublishedAsync(kissing, 6.5, 7);
+        await fixture.AddPublishedAsync(kissing, 8, null);
+        var contributor = fixture.CreateContributor();
+
+        var result = await contributor.DispatchAsync(VideoRequest(
+            "run-1",
+            contributor.Describe().Claims,
+            Frame(0, ("actions", "Kissing", 0.9), ("actions", "Dancing", 0.9)),
+            Frame(1, ("actions", "Kissing", 0.9)),
+            Frame(2),
+            Frame(3),
+            Frame(4),
+            Frame(5, ("actions", "Kissing", 0.9)),
+            Frame(6, ("actions", "Kissing", 0.9)),
+            Frame(7, ("actions", "Kissing", 0.9)),
+            Frame(8, ("actions", "Kissing", 0.9))));
+
+        Assert.Equal(2, result.PreparedCounts?["tagging"]);
+        // Another tag's published segment does not cover Dancing.
+        Assert.Equal(
+            [("Dancing", 0d, 1d), ("Kissing", 5d, 9d)],
+            (await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync())
+                .Select(candidate => (candidate.TagName, candidate.StartSec, candidate.EndSec))
+                .OrderBy(candidate => candidate.TagName, StringComparer.Ordinal));
+        Assert.Contains("Left out 1 tag span(s) that published segments already cover.", result.Notes ?? []);
+        Assert.Equal(2, (await fixture.Context.Set<SegmentStudioItem>().ToListAsync()).Count);
+        Assert.Equal(4, (await fixture.Context.Set<Segment>().ToListAsync()).Count);
+        // The raw predictions still hold every frame, covered or not.
+        var raw = Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+        Assert.Contains("\"Kissing\":[[0,0.9],[1,0.9],[5,0.9]", raw.PayloadJson);
+    }
+
+    [Fact]
+    public async Task ARunWhosePublishedSegmentsCoverEverythingStillKeepsItsPredictions()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var kissing = await fixture.AddTagAsync("Kissing");
+        await fixture.AddPublishedAsync(kissing, 0, 2);
+        var contributor = fixture.CreateContributor();
+
+        var result = await contributor.DispatchAsync(VideoRequest(
+            "run-1", contributor.Describe().Claims, Frame(0, ("actions", "Kissing", 0.9))));
+
+        Assert.Equal(0, result.PreparedCounts?["tagging"]);
+        Assert.DoesNotContain(result.Notes ?? [], note => note.Contains("above the confidence floor", StringComparison.Ordinal));
+        Assert.Empty(await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioItem>().ToListAsync());
+        Assert.Empty(await fixture.Context.Set<SegmentStudioLineageNode>().ToListAsync());
+        Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(0, 2, 1.2)]   // two overlapping segments count once
+    [InlineData(1, 2, 0.2)]   // only the part inside the span counts
+    [InlineData(3, 4, 0)]     // segments outside the span cover nothing
+    public void CoverageCountsOverlappingPublishedSegmentsOnce(double start, double end, double expected)
+    {
+        var covered = AiTaggingProjectionService.CoveredSeconds(start, end, [(0.5, 1.2), (0, 0.6), (10, 12)]);
+
+        Assert.Equal(expected, covered, 9);
+    }
+
+    [Fact]
+    public async Task ARetriedDispatchReplacesItsRawRowInsteadOfAddingOne()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var contributor = fixture.CreateContributor();
+
+        await contributor.DispatchAsync(VideoRequest("run-1", contributor.Describe().Claims, Frame(0, ("actions", "Kissing", 0.5))));
+        fixture.Context.ChangeTracker.Clear();
+        await contributor.DispatchAsync(VideoRequest("run-1", contributor.Describe().Claims, Frame(0, ("actions", "Kissing", 0.6))));
+        fixture.Context.ChangeTracker.Clear();
+
+        Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisRun>().ToListAsync());
+        var raw = Assert.Single(await fixture.Context.Set<SegmentStudioAiRawResult>().ToListAsync());
+        Assert.Equal("""{"tags":{"actions":{"Kissing":[[0,0.6]]}}}""", raw.PayloadJson);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────
+
+    private static AiDispatchRequest VideoRequest(
+        string runId, IReadOnlyList<AiCapabilityClaim> claims, params AiTemporalSlice[] frames)
+        => new(
+            new AiRunContext(runId, AiMediaKinds.Video, "/media/example.mp4", "/media/example.mp4",
+                "video", Fixture.VideoId, 10.0, 1.0),
+            claims,
+            new AiAnalyzeResult
+            {
+                MediaKind = AiMediaKinds.Video,
+                DurationSeconds = 10.0,
+                FrameIntervalSeconds = 1.0,
+                Models =
+                [
+                    new AiModelDescriptor("tagger_v2", "Tagger", "tagging", ["tagging"], ["frame"],
+                        ["actions", "bodyparts"], "2.1", Active: true, Loaded: true),
+                ],
+                Frames = frames,
+            });
 
     private static AiTaggingCandidate Candidate(string key, string tag, double start, double end)
         => new(key, "tag", tag, tag, start, end, 0.9, "model", 2);
@@ -357,6 +531,47 @@ public sealed class AiTaggingProjectionServiceTests
                 CancellationToken.None);
             Context.ChangeTracker.Clear();
             return result;
+        }
+
+        public async Task<int> AddTagAsync(string name)
+        {
+            var tag = new Tag { Name = name, SortName = name };
+            Context.Add(tag);
+            await Context.SaveChangesAsync();
+            Context.ChangeTracker.Clear();
+            return tag.Id;
+        }
+
+        /// <summary>A native Cove segment of the video, as a completed review publishes it.</summary>
+        public async Task AddPublishedAsync(int tagId, double start, double? end)
+        {
+            Context.Add(new Segment
+            {
+                HostType = SegmentHostType.Video,
+                HostId = VideoId,
+                StartSec = start,
+                EndSec = end,
+                TagId = tagId,
+                Kind = "tag",
+                SourceKey = "segment-studio/user",
+            });
+            await Context.SaveChangesAsync();
+            Context.ChangeTracker.Clear();
+        }
+
+        /// <summary>AI Core's journal entry for a run, which it writes before analysis.</summary>
+        public async Task AddAiRunAsync(string runKey, string requestJson)
+        {
+            Context.Add(new AiRun
+            {
+                RunKey = runKey,
+                SourceKey = "ext:ai.core",
+                TargetType = AiRunTargetType.Video,
+                TargetId = VideoId,
+                Request = JsonDocument.Parse(requestJson),
+            });
+            await Context.SaveChangesAsync();
+            Context.ChangeTracker.Clear();
         }
 
         public SegmentStudioAiContributor CreateContributor()
@@ -467,6 +682,16 @@ public sealed class AiTaggingProjectionServiceTests
                 builder.Ignore(segment => segment.Payload);
             });
             modelBuilder.Entity<SegmentStudioAnalysisRun>().HasKey(run => run.Id);
+            modelBuilder.Entity<SegmentStudioAiRawResult>().HasKey(result => result.RunId);
+            modelBuilder.Entity<AiRun>(builder =>
+            {
+                builder.HasKey(run => run.Id);
+                builder.Property(run => run.Request).HasConversion(
+                    document => document == null ? null : document.RootElement.GetRawText(),
+                    text => text == null ? null : JsonDocument.Parse(text, default));
+                builder.Ignore(run => run.Models);
+                builder.Ignore(run => run.Summary);
+            });
             modelBuilder.Entity<SegmentStudioAnalysisCandidate>().HasKey(candidate => candidate.Id);
             modelBuilder.Entity<SegmentStudioAnalysisCandidate>().Ignore(candidate => candidate.Run);
             modelBuilder.Entity<SegmentStudioItem>(builder =>

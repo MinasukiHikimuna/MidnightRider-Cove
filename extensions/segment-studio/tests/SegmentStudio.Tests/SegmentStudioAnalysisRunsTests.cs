@@ -48,6 +48,38 @@ public sealed class SegmentStudioAnalysisRunsTests
     }
 
     [Fact]
+    public async Task LeavesOutRunsThatOnlyKeptRawPredictions()
+    {
+        // The editor reloads for each new completed run it sees here. A review run
+        // with nothing above the review floor, or nothing published segments do not
+        // already cover, keeps raw predictions but puts nothing up for review, so it
+        // must not make the editor reload.
+        await using var fixture = await Fixture.CreateAsync();
+        var nothingToReview = fixture.AddRun(7, "completed", Now.AddMinutes(-3));
+        var review = fixture.AddRun(7, "completed", Now.AddMinutes(-2));
+        var older = fixture.AddRun(7, "completed", Now.AddMinutes(-1));
+        foreach (var runId in new[] { nothingToReview, review })
+            fixture.Context.Add(new SegmentStudioAiRawResult { RunId = runId, VideoId = 7, AiRunId = "run", CreatedAt = Now });
+        fixture.Context.Add(new SegmentStudioAnalysisCandidate
+        {
+            RunId = review,
+            VideoId = 7,
+            CandidateKey = "k1",
+            Kind = "tag",
+            TagName = "Kissing",
+            Title = "Kissing",
+            ModelKey = "model",
+            CreatedAt = Now,
+        });
+        await fixture.Context.SaveChangesAsync();
+
+        var runs = await fixture.ListAsync(7);
+
+        // A run from before raw predictions were kept is listed as it always was.
+        Assert.Equal([older, review], runs.Select(run => run.Id));
+    }
+
+    [Fact]
     public async Task ReturnsOnlyTheMostRecentRuns()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -146,6 +178,7 @@ public sealed class SegmentStudioAnalysisRunsTests
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<SegmentStudioAnalysisRun>().HasKey(run => run.Id);
+            modelBuilder.Entity<SegmentStudioAiRawResult>().HasKey(raw => raw.RunId);
             modelBuilder.Entity<SegmentStudioAnalysisCandidate>().HasKey(candidate => candidate.Id);
             modelBuilder.Entity<SegmentStudioAnalysisCandidate>().Ignore(candidate => candidate.Run);
             modelBuilder.Entity<SegmentStudioAnalysisCandidate>().Ignore(candidate => candidate.Item);

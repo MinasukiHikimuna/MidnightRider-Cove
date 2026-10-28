@@ -387,6 +387,18 @@ drafts; no segment is published until a review is completed. When an AI model
 emits a label that is not yet a Cove tag, Segment Studio creates that tag so the
 result is not silently discarded.
 
+A prediction that published segments of the same tag already cover for at least
+half its length gets no draft, so running AI again on a video you have reviewed
+adds only what you have not published yet.
+
+Each review run also keeps every per-frame tag prediction the AI server
+returned, including those below the 0.35 confidence floor that drafts start
+from and those published segments already cover, together with the threshold
+the run requested and the models that answered. They are kept for comparing the
+models with the segments you publish and are not shown in the editor. The
+`scripts/ai-tagging-comparison-report.mjs` script compares them with the
+published segments; run it with `--help` for details.
+
 Segment Studio requires AI Core. It uses the AI contract that AI Core ships, so
 Cove does not load Segment Studio unless AI Core is installed.
 

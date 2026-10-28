@@ -45,7 +45,7 @@ public sealed partial class SegmentStudioBaselineMigrationTests
             await new NpgsqlCommand(tagGroupMigration, connection).ExecuteNonQueryAsync();
             await new NpgsqlCommand(tagGroupMigration, connection).ExecuteNonQueryAsync();
 
-            Assert.Equal(32, await CountAsync(
+            Assert.Equal(33, await CountAsync(
                 connection,
                 "SELECT count(*) FROM pg_tables WHERE schemaname = current_schema() AND tablename LIKE 'segment_studio_%'"));
             Assert.Equal(1, await CountAsync(
@@ -84,6 +84,24 @@ public sealed partial class SegmentStudioBaselineMigrationTests
             Assert.Equal(1, await CountAsync(
                 connection,
                 "SELECT count(*) FROM tags t JOIN tag_groups g ON g.\"Id\" = t.\"TagGroupId\" WHERE t.\"Id\" = 20 AND g.\"Name\" = 'Existing native group'"));
+
+            // Raw AI predictions belong to their analysis run and go with it.
+            await new NpgsqlCommand(
+                """
+                INSERT INTO segment_studio_ai_raw_results (
+                    run_id, video_id, ai_run_id, threshold, frame_interval_seconds, duration_seconds,
+                    frame_count, models, schema_version, payload)
+                VALUES (
+                    '11111111-1111-1111-1111-111111111111', 7, 'ai-run', 0.2, 0.5, 10,
+                    2, '[]', 1, '{"tags":{"actions":{"Kissing":[[0,0.9]]}}}');
+                """, connection).ExecuteNonQueryAsync();
+            Assert.Equal(1, await CountAsync(
+                connection, "SELECT count(*) FROM segment_studio_ai_raw_results"));
+            await new NpgsqlCommand(
+                "DELETE FROM segment_studio_analysis_runs WHERE id = '11111111-1111-1111-1111-111111111111'",
+                connection).ExecuteNonQueryAsync();
+            Assert.Equal(0, await CountAsync(
+                connection, "SELECT count(*) FROM segment_studio_ai_raw_results"));
 
             // Foreign-key checks and actions find child rows with a generic "$1 = column"
             // plan. Each must reach its dedicated index, not a partial or non-leading one.

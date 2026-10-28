@@ -140,6 +140,25 @@ public sealed class SegmentStudioAnalysisRun
     public DateTime? CompletedAt { get; set; }
 }
 
+/// <summary>
+/// The per-frame tag predictions of one analysis run, before Segment Studio's review
+/// floor and span merging. See <see cref="AiRawResultBuilder"/> for the payload.
+/// </summary>
+public sealed class SegmentStudioAiRawResult
+{
+    public Guid RunId { get; set; }
+    public int VideoId { get; set; }
+    public string AiRunId { get; set; } = "";
+    public double? Threshold { get; set; }
+    public double? FrameIntervalSeconds { get; set; }
+    public double? DurationSeconds { get; set; }
+    public int FrameCount { get; set; }
+    public string ModelsJson { get; set; } = "[]";
+    public int SchemaVersion { get; set; }
+    public string PayloadJson { get; set; } = "{}";
+    public DateTime CreatedAt { get; set; }
+}
+
 public sealed class SegmentStudioAnalysisCandidate
 {
     public long Id { get; set; }
@@ -681,6 +700,25 @@ public static class SegmentStudioModelConfiguration
             builder.HasIndex(run => run.JobId);
             builder.HasOne<Video>().WithMany().HasForeignKey(run => run.VideoId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<VideoFile>().WithMany().HasForeignKey(run => run.VideoFileId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SegmentStudioAiRawResult>(builder =>
+        {
+            builder.ToTable("segment_studio_ai_raw_results");
+            builder.HasKey(result => result.RunId);
+            builder.Property(result => result.RunId).HasColumnName("run_id");
+            builder.Property(result => result.VideoId).HasColumnName("video_id");
+            builder.Property(result => result.AiRunId).HasColumnName("ai_run_id");
+            builder.Property(result => result.Threshold).HasColumnName("threshold");
+            builder.Property(result => result.FrameIntervalSeconds).HasColumnName("frame_interval_seconds");
+            builder.Property(result => result.DurationSeconds).HasColumnName("duration_seconds");
+            builder.Property(result => result.FrameCount).HasColumnName("frame_count");
+            builder.Property(result => result.ModelsJson).HasColumnName("models").HasColumnType("jsonb");
+            builder.Property(result => result.SchemaVersion).HasColumnName("schema_version");
+            builder.Property(result => result.PayloadJson).HasColumnName("payload").HasColumnType("jsonb");
+            builder.Property(result => result.CreatedAt).HasColumnName("created_at");
+            builder.HasIndex(result => new { result.VideoId, result.CreatedAt });
+            builder.HasOne<SegmentStudioAnalysisRun>().WithOne().HasForeignKey<SegmentStudioAiRawResult>(result => result.RunId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SegmentStudioAnalysisCandidate>(builder =>

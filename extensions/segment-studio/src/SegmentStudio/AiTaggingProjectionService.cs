@@ -20,7 +20,11 @@ public sealed record AiTaggingProjectionRequest(
     public IReadOnlyList<AiModelDescriptor> Models { get; init; } = [];
 }
 
-public sealed record AiTaggingProjectionResult(int CandidateCount);
+public sealed record AiTaggingProjectionResult(int CandidateCount)
+{
+    /// <summary>Spans left out because published segments of the same tag already cover them.</summary>
+    public int AlreadyPublishedCount { get; init; }
+}
 
 public interface IAiTaggingProjectionService
 {
@@ -45,6 +49,11 @@ public interface IAiTaggingProjectionService
 /// activity per run and an origin assertion per candidate. Collecting a draft as AI
 /// feedback, and exporting it, require that provenance. The caller runs the
 /// projection in a transaction, so drafts and their provenance commit together.
+///
+/// A span that published segments of the same tag already cover for at least
+/// <see cref="PublishedCoverageShare"/> of its length gets no candidate or draft, so
+/// re-running a reviewed video does not put its published segments back into
+/// review as duplicates.
 /// </summary>
 public sealed class AiTaggingProjectionService(
     ITagRepository tags,
@@ -66,6 +75,9 @@ public sealed class AiTaggingProjectionService(
     /// test checks it against the constraint in the embedded migrations.
     /// </summary>
     public const string CompletedStatus = "completed";
+
+    /// <summary>How much of a span published segments of its tag must cover to leave it out.</summary>
+    public const double PublishedCoverageShare = 0.5;
 
     public async Task<AiTaggingProjectionResult> ProjectAsync(
         DbContext db, AiTaggingProjectionRequest request, CancellationToken ct)
@@ -100,10 +112,10 @@ public sealed class AiTaggingProjectionService(
         run.UpdatedAt = now;
         run.CompletedAt = now;
 
-        var candidates = await ProjectReviewCandidatesAsync(db, run, request.Candidates, ct);
+        var (candidates, alreadyPublished) = await ProjectReviewCandidatesAsync(db, run, request.Candidates, ct);
         await db.SaveChangesAsync(ct);
         await RecordProvenanceAsync(db, run, request, candidates, ct);
-        return new AiTaggingProjectionResult(candidates.Length);
+        return new AiTaggingProjectionResult(candidates.Length) { AlreadyPublishedCount = alreadyPublished };
     }
 
     /// <summary>
@@ -227,7 +239,7 @@ public sealed class AiTaggingProjectionService(
     /// accept or reject. An item is reused when one already matches the span
     /// exactly, so re-running an analysis does not multiply drafts.
     /// </summary>
-    private async Task<SegmentStudioAnalysisCandidate[]> ProjectReviewCandidatesAsync(
+    private async Task<(SegmentStudioAnalysisCandidate[] Candidates, int AlreadyPublished)> ProjectReviewCandidatesAsync(
         DbContext db,
         SegmentStudioAnalysisRun run,
         IReadOnlyList<AiTaggingCandidate> analysisSegments,
@@ -236,12 +248,21 @@ public sealed class AiTaggingProjectionService(
         var modelTagIdsByName = await ResolveModelTagIdsAsync(
             db, analysisSegments.Select(candidate => candidate.TagName).ToArray(), ct);
 
+        var publishedByTag = await PublishedSpansByTagAsync(
+            db, run.VideoId, modelTagIdsByName.Values.Distinct().ToArray(), ct);
+        var unpublished = analysisSegments
+            .Where(candidate => !modelTagIdsByName.TryGetValue(candidate.TagName.Trim(), out var tagId)
+                || !publishedByTag.TryGetValue(tagId, out var published)
+                || CoveredSeconds(candidate.StartSeconds, candidate.EndSeconds, published)
+                    < PublishedCoverageShare * (candidate.EndSeconds - candidate.StartSeconds))
+            .ToArray();
+
         var existing = await db.Set<SegmentStudioAnalysisCandidate>()
             .Where(candidate => candidate.RunId == run.Id).ToListAsync(ct);
         db.RemoveRange(existing);
 
         var now = DateTime.UtcNow;
-        var candidates = analysisSegments.Select(candidate => new SegmentStudioAnalysisCandidate
+        var candidates = unpublished.Select(candidate => new SegmentStudioAnalysisCandidate
         {
             RunId = run.Id,
             VideoId = run.VideoId,
@@ -300,7 +321,52 @@ public sealed class AiTaggingProjectionService(
             candidate.Item = created;
             reusableItems.Add(created);
         }
-        return candidates;
+        return (candidates, analysisSegments.Count - unpublished.Length);
+    }
+
+    /// <summary>
+    /// The video's published segments of the given tags, as spans per tag. Any
+    /// native tag segment counts, whoever published it; one without an end marks a
+    /// moment and covers no span.
+    /// </summary>
+    private static async Task<Dictionary<int, (double Start, double End)[]>> PublishedSpansByTagAsync(
+        DbContext db, int videoId, int[] tagIds, CancellationToken ct)
+    {
+        if (tagIds.Length == 0)
+            return [];
+        var segments = await db.Set<Segment>().AsNoTracking()
+            .Where(segment => segment.HostType == SegmentHostType.Video
+                && segment.HostId == videoId
+                && segment.Kind == "tag"
+                && segment.TagId != null
+                && tagIds.Contains(segment.TagId.Value)
+                && segment.EndSec != null)
+            .Select(segment => new { TagId = segment.TagId!.Value, segment.StartSec, EndSec = segment.EndSec!.Value })
+            .ToListAsync(ct);
+        return segments
+            .Where(segment => segment.EndSec > segment.StartSec)
+            .GroupBy(segment => segment.TagId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(segment => (segment.StartSec, segment.EndSec)).ToArray());
+    }
+
+    /// <summary>How much of [start, end] the spans cover, counting overlapping spans once.</summary>
+    internal static double CoveredSeconds(double start, double end, IReadOnlyList<(double Start, double End)> spans)
+    {
+        var covered = 0d;
+        var reached = start;
+        foreach (var (spanStart, spanEnd) in spans.OrderBy(span => span.Start))
+        {
+            var from = Math.Max(spanStart, reached);
+            var to = Math.Min(spanEnd, end);
+            if (to > from)
+            {
+                covered += to - from;
+                reached = to;
+            }
+        }
+        return covered;
     }
 
     private async Task<Dictionary<string, int>> ResolveModelTagIdsAsync(

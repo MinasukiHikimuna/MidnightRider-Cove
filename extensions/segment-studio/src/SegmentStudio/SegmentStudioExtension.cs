@@ -164,6 +164,13 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
                 "The embedded Segment Studio delete-cascade index migration is missing.");
         using var deleteCascadeIndexesReader = new StreamReader(deleteCascadeIndexesStream);
         Migration("005_delete_cascade_indexes", deleteCascadeIndexesReader.ReadToEnd());
+
+        using var aiRawResultsStream = typeof(SegmentStudioExtension).Assembly
+            .GetManifestResourceStream("SegmentStudio.SegmentStudioAiRawResults.sql")
+            ?? throw new InvalidOperationException(
+                "The embedded Segment Studio AI raw results migration is missing.");
+        using var aiRawResultsReader = new StreamReader(aiRawResultsStream);
+        Migration("006_ai_raw_results", aiRawResultsReader.ReadToEnd());
     }
 
     public override UIManifest GetUIManifest()

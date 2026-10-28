@@ -458,7 +458,7 @@ public sealed class ExtensionTests
     public void DefinesCleanSchemaMigrations()
     {
         var migrations = CreateExtension().GetMigrations().ToArray();
-        Assert.Equal(6, migrations.Length);
+        Assert.Equal(7, migrations.Length);
         Assert.Equal("000_adopt_legacy_migration_owner", migrations[0].Name);
         var migration = migrations[1];
 
@@ -500,6 +500,9 @@ public sealed class ExtensionTests
         Assert.Contains("\"IX_segment_studio_history_sessions_video_id\"", migrations[5].UpSql);
         Assert.Contains("\"IX_segment_studio_segment_operations_item_id\"", migrations[5].UpSql);
         Assert.Contains("\"IX_segment_studio_native_recycle_bin_tag_id\"", migrations[5].UpSql);
+        Assert.Equal("006_ai_raw_results", migrations[6].Name);
+        Assert.Contains("CREATE TABLE segment_studio_ai_raw_results", migrations[6].UpSql);
+        Assert.Contains("REFERENCES segment_studio_analysis_runs(id) ON DELETE CASCADE", migrations[6].UpSql);
     }
 
     [Fact]

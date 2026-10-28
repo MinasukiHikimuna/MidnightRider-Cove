@@ -31,8 +31,13 @@ public static class SegmentStudioAnalysisRuns
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(jobStatus);
 
+        // A run that only kept raw predictions put nothing up for review, so the editor
+        // has nothing to reload for: nothing was above the review floor, or published
+        // segments already covered all of it.
         var runs = await db.Set<SegmentStudioAnalysisRun>()
             .Where(run => run.VideoId == videoId)
+            .Where(run => !db.Set<SegmentStudioAiRawResult>().Any(raw => raw.RunId == run.Id)
+                || db.Set<SegmentStudioAnalysisCandidate>().Any(candidate => candidate.RunId == run.Id))
             .OrderByDescending(run => run.CreatedAt)
             .Take(Limit)
             .ToListAsync(ct);
