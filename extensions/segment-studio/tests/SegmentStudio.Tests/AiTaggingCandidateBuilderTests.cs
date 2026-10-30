@@ -22,6 +22,55 @@ public sealed class AiTaggingCandidateBuilderTests
                     .ToArray(),
             });
 
+    [Fact]
+    public void FramesTwoSecondsApartSpanTwoSecondsPastTheLastOneWhateverTheRunReported()
+    {
+        AiTemporalSlice[] frames = [Frame(10, ("m", "kissing", 0.9)), Frame(12, ("m", "kissing", 0.9)), Frame(14)];
+
+        var interval = AiTaggingCandidateBuilder.FrameIntervalFor(frames, reportedSeconds: 0.5);
+
+        Assert.Equal(2, interval);
+        var candidate = Assert.Single(Build(frames, interval: interval));
+        Assert.Equal((10d, 14d), (candidate.StartSeconds, candidate.EndSeconds));
+    }
+
+    [Fact]
+    public void ASingleFrameCannotBeMeasuredSoTheReportedIntervalApplies()
+    {
+        AiTemporalSlice[] frames = [Frame(10, ("m", "kissing", 0.9))];
+
+        Assert.Equal(2, AiTaggingCandidateBuilder.FrameIntervalFor(frames, reportedSeconds: 2));
+        Assert.Equal(AiTaggingCandidateBuilder.FallbackFrameIntervalSeconds, AiTaggingCandidateBuilder.FrameIntervalFor(frames, reportedSeconds: null));
+        Assert.Equal(AiTaggingCandidateBuilder.FallbackFrameIntervalSeconds, AiTaggingCandidateBuilder.FrameIntervalFor([], reportedSeconds: 0));
+    }
+
+    [Fact]
+    public void ATagMissingForAWhileDoesNotWidenTheMeasuredInterval()
+    {
+        // On its own, kissing is 8 s apart; across every tag the frames are 2 s apart.
+        AiTemporalSlice[] frames =
+        [
+            Frame(0, ("m", "kissing", 0.9)),
+            Frame(2, ("m", "dancing", 0.9)),
+            Frame(4, ("m", "dancing", 0.9)),
+            Frame(6, ("m", "dancing", 0.9)),
+            Frame(8, ("m", "kissing", 0.9)),
+        ];
+
+        var interval = AiTaggingCandidateBuilder.FrameIntervalFor(frames, reportedSeconds: 0.5);
+
+        Assert.Equal(2, interval);
+        Assert.Equal(
+            [(0d, 2d), (8d, 10d)],
+            Build(frames, interval: interval).Where(candidate => candidate.TagName == "kissing")
+                .Select(candidate => (candidate.StartSeconds, candidate.EndSeconds)));
+    }
+
+    [Fact]
+    public void AnEvenNumberOfGapsBetweenDistinctFrameTimesTakesTheMeanOfTheMiddleTwo()
+        // Gaps 1, 2, 1, 6; the repeated frame at 10 adds no zero gap.
+        => Assert.Equal(1.5, AiTaggingCandidateBuilder.FrameIntervalFor([Frame(0), Frame(1), Frame(3), Frame(4), Frame(10), Frame(10)], reportedSeconds: null));
+
     private static IReadOnlyList<AiTaggingCandidate> Build(
         IReadOnlyList<AiTemporalSlice> frames,
         double duration = 100,

@@ -228,6 +228,22 @@ export function modelsByCategory(row) {
   return byCategory;
 }
 
+/**
+ * The interval a row's frames were sampled at: the median gap between its distinct frame times, over every tag
+ * together so that a tag dropping out does not widen it. The AI server reports 0.5 s when the request names no
+ * frame interval while sampling 2 s apart, so the recorded interval is only the fallback for a row with fewer
+ * than two frame times, then 0.5. A correctly reported interval measures to the same value.
+ */
+export function frameInterval(row) {
+  const times = new Set();
+  for (const byTag of Object.values(row.payload?.tags ?? {})) {
+    for (const points of Object.values(byTag)) for (const [time] of points) times.add(time);
+  }
+  const sorted = [...times].sort((a, b) => a - b);
+  if (sorted.length >= 2) return median(sorted.slice(1).map((time, index) => time - sorted[index]));
+  return row.interval > 0 ? row.interval : 0.5;
+}
+
 /** Whether a stored row came from a store-only run rather than review tagging. */
 export function isStoreOnly(row) {
   return Array.isArray(row.analyses) && row.analyses.includes(STORE_ONLY_ANALYSIS);
@@ -244,7 +260,7 @@ export function evaluate(rows, { tags = null, excludeSources = [], minFloor = nu
   const excluded = new Set(excludeSources);
   const pairs = [];
   for (const row of rows) {
-    const interval = row.interval > 0 ? row.interval : 0.5;
+    const interval = frameInterval(row);
     const models = modelsByCategory(row);
     const predicted = new Map();
     for (const [category, byTag] of Object.entries(row.payload?.tags ?? {})) {

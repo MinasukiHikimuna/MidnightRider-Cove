@@ -267,6 +267,35 @@ public sealed class AiTaggingProjectionServiceTests
         Assert.Empty(await fixture.Context.Set<Segment>().ToListAsync());
     }
 
+    [Fact]
+    public async Task ATaggingRunSpansTheIntervalItsFramesWereSampledAtRatherThanTheReportedOne()
+    {
+        // The AI server reports 0.5 s when the request names no frame interval while sampling 2 s apart.
+        await using var fixture = await Fixture.CreateAsync();
+        var contributor = fixture.CreateContributor();
+        var request = VideoRequest(
+            "run-1",
+            contributor.Describe().Claims,
+            Frame(0, ("actions", "Kissing", 0.9)), Frame(2, ("actions", "Kissing", 0.9)), Frame(4));
+        var reportedHalfSecond = request with
+        {
+            Context = request.Context with { FrameIntervalSeconds = 0.5 },
+            Result = new AiAnalyzeResult
+            {
+                MediaKind = request.Result.MediaKind,
+                DurationSeconds = request.Result.DurationSeconds,
+                FrameIntervalSeconds = 0.5,
+                Models = request.Result.Models,
+                Frames = request.Result.Frames,
+            },
+        };
+
+        await contributor.DispatchAsync(reportedHalfSecond);
+
+        var candidate = Assert.Single(await fixture.Context.Set<SegmentStudioAnalysisCandidate>().ToListAsync());
+        Assert.Equal((0d, 4d), (candidate.StartSec, candidate.EndSec));
+    }
+
     // ── raw predictions ──────────────────────────────────────────────────
 
     [Fact]

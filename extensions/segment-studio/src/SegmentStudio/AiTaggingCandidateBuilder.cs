@@ -37,8 +37,38 @@ public sealed record AiTaggingCandidate(
 /// </summary>
 public static class AiTaggingCandidateBuilder
 {
-    /// <summary>Fallback span when neither the run nor the request reported one.</summary>
+    /// <summary>Fallback span when the frames cannot be measured and nothing reported one.</summary>
     public const double FallbackFrameIntervalSeconds = 0.5;
+
+    /// <summary>
+    /// The interval the frames were actually sampled at: the median gap between the
+    /// run's distinct frame times, taken over every frame rather than per tag so
+    /// that a tag dropping out for a while does not widen it. It needs at least two
+    /// frame times; otherwise the reported interval, then
+    /// <see cref="FallbackFrameIntervalSeconds"/>, applies.
+    /// </summary>
+    /// <remarks>
+    /// The AI server reports 0.5 s when the request names no frame interval while
+    /// sampling frames 2 s apart, so the reported value cannot be trusted on its own.
+    /// A server that reports correctly measures to the same value.
+    /// </remarks>
+    public static double FrameIntervalFor(IReadOnlyList<AiTemporalSlice> frames, double? reportedSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        var times = frames
+            .Where(frame => frame?.TimeSeconds is not null)
+            .Select(frame => frame.TimeSeconds!.Value)
+            .Distinct()
+            .Order()
+            .ToArray();
+        if (times.Length >= 2)
+        {
+            var gaps = times.Zip(times.Skip(1), (previous, next) => next - previous).Order().ToArray();
+            var middle = gaps.Length / 2;
+            return gaps.Length % 2 == 1 ? gaps[middle] : (gaps[middle - 1] + gaps[middle]) / 2;
+        }
+        return reportedSeconds is > 0 ? reportedSeconds.Value : FallbackFrameIntervalSeconds;
+    }
 
     public static IReadOnlyList<AiTaggingCandidate> Build(
         IReadOnlyList<AiTemporalSlice> frames,

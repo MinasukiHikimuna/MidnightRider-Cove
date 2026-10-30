@@ -157,9 +157,9 @@ public sealed class SegmentStudioAiContributor(
             return 0;
         }
 
-        var interval = request.Result.FrameIntervalSeconds
-            ?? request.Context.FrameIntervalSeconds
-            ?? AiTaggingCandidateBuilder.FallbackFrameIntervalSeconds;
+        var interval = AiTaggingCandidateBuilder.FrameIntervalFor(
+            request.Result.Frames,
+            request.Result.FrameIntervalSeconds ?? request.Context.FrameIntervalSeconds);
 
         var candidates = AiTaggingCandidateBuilder.Build(
             request.Result.Frames, fingerprint, duration, interval, CandidateConfidenceFloor);

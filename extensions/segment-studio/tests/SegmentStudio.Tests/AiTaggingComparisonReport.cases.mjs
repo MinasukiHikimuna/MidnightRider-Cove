@@ -5,6 +5,7 @@ import {
   evaluate,
   f1,
   floorsFrom,
+  frameInterval,
   modelsByCategory,
   parseArgs,
   predictedSpans,
@@ -25,6 +26,29 @@ const run = (overrides = {}) => ({
   payload: { tags: { actions: {} } },
   published: [],
   ...overrides,
+});
+
+const everyFrame = (from, to, step = 2) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, index) => [from + index * step, 0.5]);
+
+test("comparison report: spans use the interval frames were sampled at, not the recorded one", () => {
+  // The AI server records 0.5 s when the request names no interval while sampling 2 s apart.
+  const row = run({ interval: 0.5, payload: { tags: { actions: { Kissing: [[10, 0.9], [12, 0.9]] } } }, published: [{ tag: "Kissing", start: 10, end: 14, source: "segment-studio/user" }] });
+  assert.equal(frameInterval(row), 2);
+  const pair = evaluate([row]).pairs[0];
+  assert.deepEqual([pair.byFloor.get(0.2).predictedSeconds, pair.byFloor.get(0.2).keptSeconds], [4, 4]);
+});
+
+test("comparison report: a row with a single frame time uses its recorded interval, then 0.5", () => {
+  assert.equal(frameInterval(run({ interval: 2, payload: { tags: { actions: { Kissing: [[10, 0.9]], Dancing: [[10, 0.4]] } } } })), 2);
+  assert.equal(frameInterval(run({ interval: null, payload: { tags: { actions: { Kissing: [[10, 0.9]] } } } })), 0.5);
+  assert.equal(frameInterval(run({ interval: 0.5, payload: null })), 0.5);
+});
+
+test("comparison report: the interval is measured over every tag, so a tag missing for a while does not widen it", () => {
+  // On its own, Kissing is 8 s apart.
+  const row = run({ interval: 0.5, payload: { tags: { actions: { Kissing: [[0, 0.9], [8, 0.9]], Dancing: [[2, 0.9], [4, 0.9], [6, 0.9]] } } } });
+  assert.equal(frameInterval(row), 2);
+  assert.deepEqual(predictedSpans(row.payload.tags.actions.Kissing, 0.2, frameInterval(row), 100), [[0, 2], [8, 10]]);
 });
 
 test("comparison report: predictions merge into spans the way review candidates are built", () => {
@@ -69,7 +93,8 @@ test("comparison report: the best floor maximises overlap and prefers the higher
 
 test("comparison report: only tags published on a video are scored there, unless tags are listed", () => {
   const rows = [run({
-    payload: { tags: { actions: { Kissing: [[10, 0.9], [12, 0.25]], Dancing: [[30, 0.9]] } } },
+    // Frames are 2 s apart, as a run with a dense category shows.
+    payload: { tags: { actions: { Kissing: [[10, 0.9], [12, 0.25]], Dancing: [[30, 0.9]] }, scenes: { Indoors: everyFrame(10, 30) } } },
     published: [{ tag: "kissing", start: 10, end: 14, source: "segment-studio/user" }],
   })];
 
