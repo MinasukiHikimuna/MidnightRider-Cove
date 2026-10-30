@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const CURRENT_FLOOR = 0.35;
-// The analyses entry of a run row written by the store-only claim (SegmentStudioAiContributor.StoreOnlyAnalysis).
+// The analyses entry of run rows that the former store-only capability wrote; existing rows still carry it.
 export const STORE_ONLY_ANALYSIS = "aiTaggingStoreOnly";
 const EPSILON = 1e-9;
 
@@ -22,8 +22,8 @@ the published Segment Studio tag segments, by time overlap:
            (predicted minus published; negative starts early)
 Only tags published on a video are scored there, because an uncurated tag's
 absence is not a negative; --tags scores the listed tags on every video instead.
-Each video uses its most recent stored run, from the store-only capability or
-from review tagging alike. Every number names the model versions that produced it.
+Each video uses its most recent stored run, from review tagging or from the
+former store-only capability alike. Every number names the model versions that produced it.
 
 Published segments were reviewed from drafts of runs that asked for no
 threshold, so the AI server applied each tagging model's own default (0.5 in

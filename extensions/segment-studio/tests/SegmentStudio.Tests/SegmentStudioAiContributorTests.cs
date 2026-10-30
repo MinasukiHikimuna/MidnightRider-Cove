@@ -146,48 +146,6 @@ public sealed class SegmentStudioAiContributorTests
             Assert.All(capability.ClaimIds, claimId => Assert.Contains(claimId, claimIds));
     }
 
-    [Fact]
-    public void StoreOnlyIsItsOwnCapabilityAndClaimSoAiCoreTracksItsRunsApart()
-    {
-        // AI Core plans each want against the completed runs that carried one of its
-        // claims, and keys wants by capability id. Sharing the review claim would make
-        // a reviewed video look already done, and a store-only run satisfy a later
-        // review run.
-        var descriptor = CreateContributor().Describe();
-
-        var review = Assert.Single(descriptor.Claims, claim => claim.ClaimId == SegmentStudioAiContributor.TaggingClaimId);
-        var storeOnly = Assert.Single(descriptor.Claims, claim => claim.ClaimId == SegmentStudioAiContributor.StoreOnlyClaimId);
-        Assert.Equal(SegmentStudioAiContributor.TaggingCapabilityId, review.CapabilityId);
-        Assert.Equal(SegmentStudioAiContributor.StoreOnlyCapabilityId, storeOnly.CapabilityId);
-        Assert.NotEqual(review.OutputKey, storeOnly.OutputKey);
-        // The same model answers both, so it binds the same slot and want.
-        Assert.Equal(review.ModelBindingSlotId, storeOnly.ModelBindingSlotId);
-        Assert.Equal((review.WantCapability, review.WantScope), (storeOnly.WantCapability, storeOnly.WantScope));
-        Assert.Equal(
-            [SegmentStudioAiContributor.TaggingClaimId],
-            Assert.Single(descriptor.Capabilities, feature => feature.CapabilityId == SegmentStudioAiContributor.TaggingCapabilityId).ClaimIds);
-        Assert.Equal(
-            [SegmentStudioAiContributor.StoreOnlyClaimId],
-            Assert.Single(descriptor.Capabilities, feature => feature.CapabilityId == SegmentStudioAiContributor.StoreOnlyCapabilityId).ClaimIds);
-    }
-
-    [Fact]
-    public void StoreOnlyAsksRunAiToLeaveItUnticked()
-    {
-        // SelectedByDefault reaches Run AI only through an AI Core whose contract has
-        // it; no released one does yet. The loaded contract decides, so this checks
-        // whichever one the tests run against.
-        var features = CreateContributor().Describe().Capabilities;
-        var selectedByDefault = typeof(AiCapabilityFeature).GetProperty("SelectedByDefault");
-        var storeOnly = Assert.Single(features, feature => feature.CapabilityId == SegmentStudioAiContributor.StoreOnlyCapabilityId);
-        var review = Assert.Single(features, feature => feature.CapabilityId == SegmentStudioAiContributor.TaggingCapabilityId);
-        if (selectedByDefault is null)
-            return;
-
-        Assert.Equal(false, selectedByDefault.GetValue(storeOnly));
-        Assert.Equal(true, selectedByDefault.GetValue(review));
-    }
-
     private static ExtensionContext CreateContext() => new()
     {
         Configuration = new ConfigurationBuilder().Build(),

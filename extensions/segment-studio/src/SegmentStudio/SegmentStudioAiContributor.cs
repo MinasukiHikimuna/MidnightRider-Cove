@@ -32,13 +32,6 @@ public sealed class SegmentStudioAiContributor(
     private const string TaggingWantScope = "frame";
     private const string TaggingSlotId = "tagger";
 
-    public const string StoreOnlyCapabilityId = "segment-studio.ai-tagging-store-only";
-    public const string StoreOnlyClaimId = "segment-studio.video.ai-tagging-store-only";
-    private const string StoreOnlyOutputKey = "rawPredictions";
-
-    /// <summary>The analyses entry of a store-only run's row, which the comparison report reads.</summary>
-    public const string StoreOnlyAnalysis = "aiTaggingStoreOnly";
-
     /// <summary>
     /// Predictions weaker than this are not worth a reviewer's time. It matches the
     /// floor the superseded analysis service applied.
@@ -61,21 +54,6 @@ public sealed class SegmentStudioAiContributor(
                 CapabilityId = TaggingCapabilityId,
                 ModelBindingSlotId = TaggingSlotId,
             },
-            // Its own claim, so AI Core tracks its completed runs apart from review
-            // runs: storing predictions for a reviewed video is not skipped as done,
-            // and a later review run is not skipped because predictions were stored.
-            new AiCapabilityClaim(
-                StoreOnlyClaimId,
-                "AI Tagging predictions only (Segment Studio, no drafts)",
-                AiMediaKinds.Video,
-                TaggingWantCapability,
-                TaggingWantScope,
-                StoreOnlyOutputKey,
-                Description: "Keep a video's per-frame tag predictions for comparison without creating drafts.")
-            {
-                CapabilityId = StoreOnlyCapabilityId,
-                ModelBindingSlotId = TaggingSlotId,
-            },
         ])
     {
         Capabilities =
@@ -86,25 +64,8 @@ public sealed class SegmentStudioAiContributor(
                 [TaggingClaimId],
                 [TaggerSlot()],
                 "Collect AI tag predictions as spans Segment Studio can review."),
-            Unticked(new AiCapabilityFeature(
-                StoreOnlyCapabilityId,
-                "AI Tagging predictions only (Segment Studio, no drafts)",
-                [StoreOnlyClaimId],
-                [TaggerSlot()],
-                "Keep per-frame tag predictions to compare with published segments. Creates no drafts, so it leaves reviewed videos as they are.")),
         ],
     };
-
-    /// <summary>
-    /// Asks the Run AI dialog to leave a feature unticked when it picks a selection.
-    /// <c>SelectedByDefault</c> is newer than every released AI Core contract, so it
-    /// is set only when the loaded contract has it; a released AI Core ignores it.
-    /// </summary>
-    private static AiCapabilityFeature Unticked(AiCapabilityFeature feature)
-    {
-        typeof(AiCapabilityFeature).GetProperty("SelectedByDefault")?.SetValue(feature, false);
-        return feature;
-    }
 
     private static AiModelBindingSlot TaggerSlot()
         => new(
@@ -130,17 +91,6 @@ public sealed class SegmentStudioAiContributor(
                 case TaggingClaimId:
                     written[TaggingOutputKey] = written.GetValueOrDefault(TaggingOutputKey)
                         + await ProjectTagsAsync(request, notes, ct);
-                    break;
-
-                case StoreOnlyClaimId:
-                    // A run that also carries review tagging is one where every claim
-                    // was picked, as AI Core does by default. The review claim already
-                    // keeps the same predictions under the same run row.
-                    var reviewed = request.Claims.Any(other => other.ClaimId == TaggingClaimId);
-                    if (reviewed)
-                        notes.Add("Review tagging in the same run kept the raw predictions.");
-                    written[StoreOnlyOutputKey] = written.GetValueOrDefault(StoreOnlyOutputKey)
-                        + (reviewed ? 0 : await StoreRawPredictionsAsync(request, notes, ct));
                     break;
 
                 default:
@@ -272,93 +222,6 @@ public sealed class SegmentStudioAiContributor(
                 "Failed to project AI tag candidates for video {VideoId} from run {RunId}",
                 videoId.Value, request.Context.RunId);
             notes.Add("Storing tag candidates failed; the run's tagging output was not applied.");
-            return 0;
-        }
-    }
-
-    /// <summary>
-    /// Keeps the run's per-frame predictions and nothing else: no candidates, drafts,
-    /// tags or provenance, so analysing a reviewed video again leaves its review
-    /// queue and published segments as they are.
-    /// </summary>
-    private async Task<int> StoreRawPredictionsAsync(
-        AiDispatchRequest request, List<string> notes, CancellationToken ct)
-    {
-        var videoId = ResolveVideoId(request.Context);
-        if (videoId is null)
-        {
-            notes.Add("Run was not anchored to a Cove video; tag predictions were not stored.");
-            return 0;
-        }
-
-        if (request.Result.Frames.Count == 0)
-        {
-            notes.Add("The AI server returned no per-frame tagging output for this video.");
-            return 0;
-        }
-
-        using var scope = scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DbContext>();
-
-        var file = await ResolveSourceFileAsync(db, videoId.Value, ct);
-        if (file is null)
-        {
-            notes.Add("The video has no file on disk; tag predictions were not stored.");
-            return 0;
-        }
-
-        var runId = RunIdFor(request.Context.RunId, videoId.Value);
-        var fingerprint = SourceFingerprint.For(file.Path);
-
-        try
-        {
-            var raw = AiRawResultBuilder.Build(request.Result.Frames, request.Result.Models);
-            var threshold = await ReadRequestedThresholdAsync(db, request.Context.RunId, videoId.Value, ct);
-
-            var strategy = db.Database.CreateExecutionStrategy();
-            var firstAttempt = true;
-            await strategy.ExecuteAsync(async () =>
-            {
-                if (!firstAttempt) db.ChangeTracker.Clear();
-                firstAttempt = false;
-
-                await using var transaction = await db.Database.BeginTransactionAsync(ct);
-                // The run row only anchors the raw row. It has no candidates, so the
-                // editor's run list leaves it out.
-                if (!await db.Set<SegmentStudioAnalysisRun>().AnyAsync(run => run.Id == runId, ct))
-                {
-                    var now = DateTime.UtcNow;
-                    db.Add(new SegmentStudioAnalysisRun
-                    {
-                        Id = runId,
-                        VideoId = videoId.Value,
-                        VideoFileId = file.Id,
-                        Status = AiTaggingProjectionService.CompletedStatus,
-                        AnalysesJson = $"""["{StoreOnlyAnalysis}"]""",
-                        SourceFingerprint = fingerprint,
-                        CreatedAt = now,
-                        UpdatedAt = now,
-                        CompletedAt = now,
-                    });
-                    await db.SaveChangesAsync(ct);
-                }
-                await StoreRawResultAsync(db, runId, videoId.Value, request, raw, threshold, ct);
-                await transaction.CommitAsync(ct);
-            });
-
-            logger.LogInformation(
-                "Segment Studio stored {PredictionCount} raw tag prediction(s) over {FrameCount} frame(s) without drafts for video {VideoId} from run {RunId}.",
-                raw.PredictionCount, raw.FrameCount, videoId.Value, request.Context.RunId);
-            notes.Add($"Stored {raw.PredictionCount} tag prediction(s) over {raw.FrameCount} frame(s) for comparison, without drafts.");
-            return 1;
-        }
-        catch (Exception error) when (error is not OperationCanceledException)
-        {
-            logger.LogError(
-                error,
-                "Failed to store raw AI tag predictions for video {VideoId} from run {RunId}",
-                videoId.Value, request.Context.RunId);
-            notes.Add("Storing tag predictions failed; nothing was stored.");
             return 0;
         }
     }

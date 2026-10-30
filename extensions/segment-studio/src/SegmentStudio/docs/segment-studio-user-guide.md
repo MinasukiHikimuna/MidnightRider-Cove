@@ -399,15 +399,6 @@ models with the segments you publish and are not shown in the editor. The
 `scripts/ai-tagging-comparison-report.mjs` script compares them with the
 published segments; run it with `--help` for details.
 
-To keep those predictions without creating any drafts, choose **AI Tagging
-predictions only (Segment Studio, no drafts)** instead. It stores the per-frame
-predictions and nothing else, so the review queue and published segments stay
-as they are. AI Core tracks it apart from review tagging, so it runs on videos
-that review tagging already analysed. An AI Core that supports it leaves this
-option unticked in **Run AI**; an older one ticks it only on a first run or
-after **Select all**, and when review tagging runs in the same run it adds
-nothing.
-
 Segment Studio requires AI Core. It uses the AI contract that AI Core ships, so
 Cove does not load Segment Studio unless AI Core is installed.
 
