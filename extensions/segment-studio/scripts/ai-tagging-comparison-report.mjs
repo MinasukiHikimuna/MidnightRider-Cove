@@ -8,6 +8,8 @@ import { pathToFileURL } from "node:url";
 export const CURRENT_FLOOR = 0.35;
 // The analyses entry of run rows that the former store-only capability wrote; existing rows still carry it.
 export const STORE_ONLY_ANALYSIS = "aiTaggingStoreOnly";
+// AI Core leaves a run's threshold unset unless one is configured, and the AI server then applies its own default.
+export const SERVER_DEFAULT_THRESHOLD = 0.5;
 const EPSILON = 1e-9;
 
 const help = `Usage:
@@ -30,6 +32,11 @@ threshold, so the AI server applied each tagging model's own default (0.5 in
 production). Stored predictions may come from a lower threshold: below the
 default, a floor also scores frames that never reached a draft.
 
+A run stored without a threshold (a Run AI review run) is read as the server
+default, 0.5. By default every stored prediction is used, so backfill runs
+stored at 0.2 show near misses below 0.5 that review runs never stored;
+--compare-at 0.5 drops those predictions first to compare like with like.
+
 --container NAME     Docker container with Cove's PostgreSQL (default: cove)
 --local              Use psql from PATH with the PG* environment instead
 --video-ids IDS      Only these videos (comma-separated IDs)
@@ -37,14 +44,16 @@ default, a floor also scores frames that never reached a draft.
 --tags LIST          Score these tags (comma-separated names) on every video
 --exclude-sources L  Ignore published segments from these source keys
 --floor N            Floor for the per-video table (default: each tag's best)
---min-floor N        Lowest floor to try (default: highest stored threshold, at
-                     least 0.2)
+--compare-at N       Drop stored predictions below N before building spans, so
+                     runs stored at a lower threshold compare at N
+--min-floor N        Lowest floor to try (default: lowest effective threshold,
+                     at least 0.2)
 --json PATH          Also write every number as JSON
 --help               Show help
 `;
 
 export function parseArgs(args) {
-  const options = { container: "cove", local: false, videoIds: null, since: null, tags: null, excludeSources: [], floor: null, minFloor: null, json: null, help: false };
+  const options = { container: "cove", local: false, videoIds: null, since: null, tags: null, excludeSources: [], floor: null, minFloor: null, compareAt: null, json: null, help: false };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const value = () => {
@@ -61,6 +70,7 @@ export function parseArgs(args) {
     else if (arg === "--exclude-sources") options.excludeSources = parseList(value(), arg);
     else if (arg === "--floor") options.floor = parseFloor(value(), arg);
     else if (arg === "--min-floor") options.minFloor = parseFloor(value(), arg);
+    else if (arg === "--compare-at") options.compareAt = parseFloor(value(), arg);
     else if (arg === "--json") options.json = value();
     else throw new Error(`Unknown option: ${arg}`);
   }
@@ -244,6 +254,22 @@ export function frameInterval(row) {
   return row.interval > 0 ? row.interval : 0.5;
 }
 
+/** The threshold a row's predictions were stored at; a row without one got the AI server's default. */
+export function storedThreshold(row) {
+  return row.threshold === null || row.threshold === undefined ? SERVER_DEFAULT_THRESHOLD : row.threshold;
+}
+
+/** How a row is compared: at its stored threshold, or at compareAt when that is higher and drops what lies below. */
+export function effectiveThreshold(row, compareAt = null) {
+  const stored = storedThreshold(row);
+  const effective = compareAt !== null && compareAt > stored + EPSILON ? compareAt : stored;
+  const unset = row.threshold === null || row.threshold === undefined;
+  const label = effective > stored + EPSILON
+    ? `${effective} (stored at ${unset ? `server default ${stored}` : stored}, filtered)`
+    : unset ? `server default (${stored})` : `${stored}`;
+  return { stored, effective, filtered: effective > stored + EPSILON, label };
+}
+
 /** Whether a stored row came from a store-only run rather than review tagging. */
 export function isStoreOnly(row) {
   return Array.isArray(row.analyses) && row.analyses.includes(STORE_ONLY_ANALYSIS);
@@ -253,13 +279,16 @@ export function isStoreOnly(row) {
  * Scores every stored run row. Each row is one video's most recent capture with its published segments; the
  * result has one entry per (video, tag) holding the score at every floor.
  */
-export function evaluate(rows, { tags = null, excludeSources = [], minFloor = null, floor = null } = {}) {
-  const thresholds = rows.map(row => row.threshold).filter(value => value !== null && value !== undefined);
-  const lowest = minFloor ?? Math.max(0.2, ...thresholds);
-  const floors = [...new Set([...floorsFrom(lowest), ...(floor === null ? [] : [floor])])].sort((a, b) => a - b);
+export function evaluate(rows, { tags = null, excludeSources = [], minFloor = null, floor = null, compareAt = null } = {}) {
+  const thresholds = rows.map(row => effectiveThreshold(row, compareAt));
+  const lowest = minFloor ?? Math.max(0.2, Math.min(...thresholds.map(item => item.effective)));
+  // The current floor is always scored: below a run's threshold it builds what production builds from that run.
+  const searched = [...new Set([...floorsFrom(lowest), ...(floor === null ? [] : [floor])])];
+  const floors = [...new Set([...searched, CURRENT_FLOOR])].sort((a, b) => a - b);
   const excluded = new Set(excludeSources);
   const pairs = [];
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
+    const threshold = thresholds[index];
     const interval = frameInterval(row);
     const models = modelsByCategory(row);
     const predicted = new Map();
@@ -267,7 +296,7 @@ export function evaluate(rows, { tags = null, excludeSources = [], minFloor = nu
       for (const [tag, points] of Object.entries(byTag)) {
         const key = normalizeTag(tag);
         const entry = predicted.get(key) ?? { points: [], models: new Set() };
-        entry.points.push(...points);
+        entry.points.push(...(threshold.filtered ? points.filter(([, confidence]) => confidence === null || confidence >= threshold.effective - EPSILON) : points));
         entry.models.add(models.get(category) ?? `${category} model (unknown)`);
         predicted.set(key, entry);
       }
@@ -287,7 +316,7 @@ export function evaluate(rows, { tags = null, excludeSources = [], minFloor = nu
       const truth = published.get(key)?.spans ?? [];
       const model = prediction ? [...prediction.models].sort().join(" + ") : `not predicted by ${[...new Set(models.values())].sort().join(" + ") || "any model"}`;
       const byFloor = new Map(floors.map(floor => [floor, score(truth, prediction ? predictedSpans(prediction.points, floor, interval, row.duration) : [])]));
-      pairs.push({ videoId: row.videoId, aiRunId: row.aiRunId, threshold: row.threshold ?? null, tag: published.get(key)?.name ?? key, tagKey: key, model, byFloor });
+      pairs.push({ videoId: row.videoId, aiRunId: row.aiRunId, threshold: row.threshold ?? null, storedThreshold: threshold.stored, effectiveThreshold: threshold.effective, thresholdLabel: threshold.label, tag: published.get(key)?.name ?? key, tagKey: key, model, byFloor });
     }
   }
 
@@ -301,10 +330,15 @@ export function evaluate(rows, { tags = null, excludeSources = [], minFloor = nu
   }
   const summary = [...groups.values()].map(group => {
     const byFloor = new Map(floors.map(floor => [floor, combine(group.pairs.map(pair => pair.byFloor.get(floor)))]));
-    return { tag: group.tag, tagKey: group.pairs[0].tagKey, model: group.model, videos: group.videos, byFloor, best: bestFloor(byFloor) };
+    const thresholdLabels = [...new Map(group.pairs.map(pair => [pair.thresholdLabel, pair.effectiveThreshold]))].sort((a, b) => a[1] - b[1]).map(([label]) => label);
+    return { tag: group.tag, tagKey: group.pairs[0].tagKey, model: group.model, videos: group.videos, thresholdLabels, byFloor, best: bestFloor(new Map([...byFloor].filter(([floor]) => searched.includes(floor)))) };
   }).sort((a, b) => b.byFloor.get(floors[0]).publishedSeconds - a.byFloor.get(floors[0]).publishedSeconds || a.tag.localeCompare(b.tag));
   const storeOnlyRuns = rows.filter(isStoreOnly).length;
-  return { floors, lowestFloor: lowest, thresholds: [...new Set(thresholds)].sort(), unknownThresholdRuns: rows.length - thresholds.length, storeOnlyRuns, reviewRuns: rows.length - storeOnlyRuns, pairs, summary };
+  const byLabel = new Map();
+  for (const item of thresholds) byLabel.set(item.label, { label: item.label, threshold: item.effective, runs: (byLabel.get(item.label)?.runs ?? 0) + 1 });
+  const effectiveThresholds = [...byLabel.values()].sort((a, b) => a.threshold - b.threshold || a.label.localeCompare(b.label));
+  const runsAboveLowestFloor = thresholds.filter(item => item.effective > lowest + EPSILON).length;
+  return { floors, lowestFloor: lowest, compareAt, effectiveThresholds, runsAboveLowestFloor, storeOnlyRuns, reviewRuns: rows.length - storeOnlyRuns, pairs, summary };
 }
 
 const seconds = value => (value === null ? "-" : `${value.toFixed(1)}`);
@@ -322,26 +356,29 @@ export function render(result, { rowCount, floor = null } = {}) {
   const models = [...new Set(result.summary.map(item => item.model))].sort();
   out.push(`# AI tagging comparison`, "");
   out.push(`Runs compared: ${rowCount} (one per video, the most recent stored: ${result.storeOnlyRuns} store-only, ${result.reviewRuns} from review tagging). Tag/video pairs scored: ${result.pairs.length}.`);
-  out.push(`Stored thresholds: ${result.thresholds.length ? result.thresholds.join(", ") : "none recorded"}${result.unknownThresholdRuns ? `; ${result.unknownThresholdRuns} run(s) with an unknown threshold, whose low floors may be missing predictions` : ""}. Floors tried: ${result.floors[0]}–${result.floors.at(-1)}.`);
+  out.push(result.compareAt === null
+    ? `View: as stored. Every stored prediction is scored, so runs stored below ${SERVER_DEFAULT_THRESHOLD} include near misses that review runs never stored; --compare-at ${SERVER_DEFAULT_THRESHOLD} compares like with like.`
+    : `View: compared at ${result.compareAt}. Predictions below ${result.compareAt} are dropped before building spans, so every run is compared at ${result.compareAt} or its own higher threshold.`);
+  out.push(`Effective thresholds: ${result.effectiveThresholds.map(item => `${item.label} for ${item.runs} run(s)`).join("; ")}. Floors tried: ${result.floors[0]}–${result.floors.at(-1)}, best floor from ${result.lowestFloor}${result.runsAboveLowestFloor ? `; ${result.runsAboveLowestFloor} run(s) have a threshold above ${result.lowestFloor}, and below it they score only what they stored` : ""}.`);
   out.push(`Models: ${models.join("; ") || "none"}.`, "");
   out.push(`Published segments were reviewed from drafts of runs that asked for no threshold, so the AI server applied each tagging model's own default (0.5 in production). Stored predictions may come from a lower threshold: below the default, a floor also scores frames that never reached a draft.`, "");
   out.push(`## Per tag, all videos`, "");
   out.push(table(
-    ["Tag", "Model", "Videos", "Published s", `@${CURRENT_FLOOR} kept`, `@${CURRENT_FLOOR} missed s`, `@${CURRENT_FLOOR} extra s`, "Best floor", "Best kept", "Best missed s", "Best extra s", "Start shift", "End shift", "Best F1"],
+    ["Tag", "Model", "Videos", "Thresholds", "Published s", `@${CURRENT_FLOOR} kept`, `@${CURRENT_FLOOR} missed s`, `@${CURRENT_FLOOR} extra s`, "Best floor", "Best kept", "Best missed s", "Best extra s", "Start shift", "End shift", "Best F1"],
     result.summary.map(item => {
       const current = item.byFloor.get(CURRENT_FLOOR);
       const best = item.best.score;
-      return [item.tag, item.model, item.videos, seconds(current.publishedSeconds), percent(current.keptSeconds, current.publishedSeconds), seconds(current.missedSeconds), seconds(current.extraSeconds), item.best.floor === null ? "-" : item.best.floor.toFixed(2), percent(best.keptSeconds, best.publishedSeconds), seconds(best.missedSeconds), seconds(best.extraSeconds), shift(best.startShifts), shift(best.endShifts), f1(best).toFixed(2)];
+      return [item.tag, item.model, item.videos, item.thresholdLabels.join(", "), seconds(current.publishedSeconds), percent(current.keptSeconds, current.publishedSeconds), seconds(current.missedSeconds), seconds(current.extraSeconds), item.best.floor === null ? "-" : item.best.floor.toFixed(2), percent(best.keptSeconds, best.publishedSeconds), seconds(best.missedSeconds), seconds(best.extraSeconds), shift(best.startShifts), shift(best.endShifts), f1(best).toFixed(2)];
     })));
   out.push("", `Shifts are medians in seconds over published segments the predictions touch. Best floor maximises time-overlap F1 summed over the tag's videos.`, "");
   out.push(`## Per video and tag, ${floor === null ? "at each tag's best floor" : `at floor ${floor}`}`, "");
   const bestByTag = new Map(result.summary.map(item => [`${item.tagKey}\u001f${item.model}`, item.best.floor]));
   const rows = [...result.pairs].sort((a, b) => a.videoId - b.videoId || a.tag.localeCompare(b.tag)).map(pair => {
-    const chosen = floor ?? bestByTag.get(`${pair.tagKey}\u001f${pair.model}`) ?? result.floors[0];
+    const chosen = floor ?? bestByTag.get(`${pair.tagKey}\u001f${pair.model}`) ?? result.floors.find(candidate => candidate >= result.lowestFloor - EPSILON);
     const item = pair.byFloor.get(chosen);
-    return [pair.videoId, pair.tag, pair.model, chosen.toFixed(2), seconds(item.publishedSeconds), seconds(item.keptSeconds), seconds(item.missedSeconds), seconds(item.extraSeconds), `${item.matchedSegments}/${item.publishedSegments}`, item.extraSpans, shift(item.startShifts), shift(item.endShifts)];
+    return [pair.videoId, pair.tag, pair.model, pair.thresholdLabel, chosen.toFixed(2), seconds(item.publishedSeconds), seconds(item.keptSeconds), seconds(item.missedSeconds), seconds(item.extraSeconds), `${item.matchedSegments}/${item.publishedSegments}`, item.extraSpans, shift(item.startShifts), shift(item.endShifts)];
   });
-  out.push(table(["Video", "Tag", "Model", "Floor", "Published s", "Kept s", "Missed s", "Extra s", "Segments hit", "Extra spans", "Start shift", "End shift"], rows));
+  out.push(table(["Video", "Tag", "Model", "Threshold", "Floor", "Published s", "Kept s", "Missed s", "Extra s", "Segments hit", "Extra spans", "Start shift", "End shift"], rows));
   return out.join("\n");
 }
 

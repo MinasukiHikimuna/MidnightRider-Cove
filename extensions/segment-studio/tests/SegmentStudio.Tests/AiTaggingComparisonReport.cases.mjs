@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bestFloor,
+  effectiveThreshold,
   evaluate,
   f1,
   floorsFrom,
@@ -131,11 +132,55 @@ test("comparison report: every number names its models, with versions from AI Co
   assert.match(render(result, { rowCount: 1 }), /Models: not predicted by actions_30 v3\./);
 });
 
-test("comparison report: floors never go below what the runs captured", () => {
+test("comparison report: floors start at the lowest effective threshold and always include the current floor", () => {
   const rows = [run({ threshold: 0.3, published: [{ tag: "Kissing", start: 0, end: 4, source: "segment-studio/user" }] })];
   assert.equal(evaluate(rows).floors[0], 0.3);
-  assert.equal(evaluate([run({ threshold: null })]).lowestFloor, 0.2);
+  assert.equal(evaluate([run({ threshold: null })]).lowestFloor, 0.5);
+  assert.ok(evaluate([run({ threshold: null })]).floors.includes(0.35));
   assert.ok(evaluate(rows, { floor: 0.42 }).floors.includes(0.42));
+  // As stored, a backfill run keeps its near misses and a review run scores only what it stored below 0.5.
+  const mixed = evaluate([run({ videoId: 7 }), run({ videoId: 8, threshold: null })]);
+  assert.deepEqual([mixed.lowestFloor, mixed.runsAboveLowestFloor], [0.2, 1]);
+  const compared = evaluate([run({ videoId: 7 }), run({ videoId: 8, threshold: null })], { compareAt: 0.5 });
+  assert.deepEqual([compared.lowestFloor, compared.runsAboveLowestFloor], [0.5, 0]);
+});
+
+test("comparison report: a run stored without a threshold is labelled and treated as the server default", () => {
+  const published = [{ tag: "Kissing", start: 0, end: 6, source: "segment-studio/user" }];
+  const row = run({ threshold: null, published, payload: { tags: { actions: { Kissing: [[0, 0.9], [2, 0.6], [4, 0.55]] } } } });
+  assert.deepEqual(effectiveThreshold(row), { stored: 0.5, effective: 0.5, filtered: false, label: "server default (0.5)" });
+  const result = evaluate([row]);
+  assert.equal(result.lowestFloor, 0.5);
+  assert.deepEqual(result.effectiveThresholds, [{ label: "server default (0.5)", threshold: 0.5, runs: 1 }]);
+  assert.deepEqual([result.pairs[0].effectiveThreshold, result.pairs[0].thresholdLabel], [0.5, "server default (0.5)"]);
+  assert.equal(result.pairs[0].byFloor.get(0.5).keptSeconds, 6);
+  // Comparing at 0.5 leaves it alone: nothing below the server default was stored.
+  assert.equal(effectiveThreshold(row, 0.5).filtered, false);
+  const text = render(result, { rowCount: 1 });
+  assert.match(text, /Effective thresholds: server default \(0\.5\) for 1 run\(s\)\./);
+  assert.doesNotMatch(text, /unknown threshold/);
+  assert.match(text, /\| 7 +\| Kissing \| actions_30 v3 \| server default \(0\.5\) \|/);
+});
+
+test("comparison report: a backfill run compared at 0.5 spans what a 0.5 run with the same predictions above 0.5 does", () => {
+  const published = [{ tag: "Kissing", start: 0, end: 12, source: "segment-studio/user" }];
+  const above = [[0, 0.9], [2, 0.5], [8, 0.7], [10, null]];
+  // At 0.2 the near misses join the spans and the run spans 0–12 in one piece.
+  const backfill = run({ videoId: 7, threshold: 0.2, analyses: ["aiTaggingStoreOnly"], published, payload: { tags: { actions: { Kissing: [...above, [4, 0.3], [6, 0.45]] } } } });
+  const review = run({ videoId: 8, threshold: null, analyses: ["aiTagging"], published, payload: { tags: { actions: { Kissing: above } } } });
+
+  const compared = evaluate([backfill, review], { compareAt: 0.5 });
+  const [filtered, reference] = compared.pairs;
+  assert.deepEqual([filtered.effectiveThreshold, filtered.thresholdLabel], [0.5, "0.5 (stored at 0.2, filtered)"]);
+  for (const floor of compared.floors) assert.deepEqual(filtered.byFloor.get(floor), reference.byFloor.get(floor));
+  assert.deepEqual([filtered.byFloor.get(0.5).predictedSpans, filtered.byFloor.get(0.5).keptSeconds], [2, 8]);
+  assert.deepEqual(compared.effectiveThresholds.map(item => [item.label, item.runs]), [["0.5 (stored at 0.2, filtered)", 1], ["server default (0.5)", 1]]);
+  assert.match(render(compared, { rowCount: 2 }), /View: compared at 0\.5\. Predictions below 0\.5 are dropped/);
+
+  // As stored, the backfill run keeps its near misses for a look below 0.5.
+  const stored = evaluate([backfill, review]);
+  assert.deepEqual([stored.pairs[0].thresholdLabel, stored.pairs[0].byFloor.get(0.2).predictedSpans, stored.pairs[0].byFloor.get(0.2).keptSeconds], ["0.2", 1, 12]);
+  assert.match(render(stored, { rowCount: 2 }), /View: as stored\. Every stored prediction is scored/);
 });
 
 test("comparison report: rows from store-only runs are scored like rows from review runs", () => {
@@ -159,8 +204,10 @@ test("comparison report: rows from store-only runs are scored like rows from rev
 
 test("comparison report: options are validated", () => {
   assert.deepEqual(parseArgs(["--local", "--video-ids", "3,1", "--tags", " Kissing ,Dancing", "--floor", "0.4"]), {
-    container: "cove", local: true, videoIds: [3, 1], since: null, tags: ["kissing", "dancing"], excludeSources: [], floor: 0.4, minFloor: null, json: null, help: false,
+    container: "cove", local: true, videoIds: [3, 1], since: null, tags: ["kissing", "dancing"], excludeSources: [], floor: 0.4, minFloor: null, compareAt: null, json: null, help: false,
   });
+  assert.equal(parseArgs(["--compare-at", "0.5"]).compareAt, 0.5);
+  assert.throws(() => parseArgs(["--compare-at", "2"]), /between 0 and 1/);
   assert.throws(() => parseArgs(["--floor", "1"]), /between 0 and 1/);
   assert.throws(() => parseArgs(["--video-ids", "x"]), /comma-separated IDs/);
   assert.throws(() => parseArgs(["--since", "yesterday"]), /ISO 8601/);
