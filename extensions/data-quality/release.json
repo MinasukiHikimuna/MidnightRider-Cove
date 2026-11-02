@@ -6,5 +6,7 @@
   "project": "src/DataQuality/DataQuality.csproj",
   "manifest": "src/DataQuality/extension.json",
   "readme": "README.md",
-  "ui": "src/DataQuality/dist"
+  "ui": "src/DataQuality/dist",
+  "uiPackagePath": "dist",
+  "uiBuildDirectory": "src/DataQuality/ui"
 }
