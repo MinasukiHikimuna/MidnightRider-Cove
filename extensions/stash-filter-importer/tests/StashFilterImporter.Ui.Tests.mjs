@@ -12,6 +12,7 @@ test("declares the compiled package and scoped UI assets", async () => {
   assert.equal(manifest.id, "com.midnightrider.stash-filter-importer");
   assert.equal(manifest.version, "1.0.0");
   assert.equal(manifest.minCoveVersion, "1.1.1-dev.0");
+  assert.equal(manifest.kind, "extension");
   assert.equal(manifest.entryDll, "StashFilterImporter.dll");
   assert.equal(manifest.jsBundle, "ui/StashFilterImporter.js");
   assert.equal(manifest.cssBundle, "ui/StashFilterImporter.css");

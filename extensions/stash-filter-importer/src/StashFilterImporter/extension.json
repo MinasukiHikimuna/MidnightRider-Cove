@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Reviews compatible saved scene, performer, image, gallery, tag, studio, and scene-marker filters from a read-only Stash backup and imports them into Cove.",
   "author": "MidnightRider",
+  "kind": "extension",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
   "categories": ["metadata", "tools"],
   "minCoveVersion": "1.1.1-dev.0",
