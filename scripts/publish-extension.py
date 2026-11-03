@@ -179,8 +179,9 @@ def main() -> None:
     version = manifest["version"]
     if manifest["id"] != args.extension_id or not VERSION_PATTERN.fullmatch(version):
         raise PublishError("Manifest ID or version is invalid")
-    if not manifest.get("minCoveVersion"):
-        raise PublishError("Manifest must declare minCoveVersion")
+    for field in ("minCoveVersion", "name", "description", "author", "kind", "categories"):
+        if not manifest.get(field):
+            raise PublishError(f"Manifest must declare {field}")
     changelog = args.changelog_file.read_text(encoding="utf-8").strip()
     if not changelog:
         raise PublishError("Changelog file is empty")
