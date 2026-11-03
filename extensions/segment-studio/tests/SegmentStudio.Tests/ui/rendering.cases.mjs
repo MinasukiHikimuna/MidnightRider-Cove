@@ -4,6 +4,7 @@ test("UI imports only components available in the declared Cove runtime", () => 
   assert.equal(manifest.id, "com.midnightrider.segment-studio");
   assert.equal(manifest.version, "0.3.0");
   assert.equal(manifest.minCoveVersion, "1.7.0");
+  assert.equal(manifest.kind, "extension");
   assert.match(source, /from "@cove\/runtime\/api"/);
   assert.doesNotMatch(source, /EntityTileFrame/);
   assert.match(source, /DetailListToolbar/);

@@ -4,6 +4,7 @@
   "version": "0.3.0",
   "description": "Provides focused, direct review and timing edits for canonical Cove video segments.",
   "author": "MidnightRider",
+  "kind": "extension",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
   "categories": [
     "metadata",
