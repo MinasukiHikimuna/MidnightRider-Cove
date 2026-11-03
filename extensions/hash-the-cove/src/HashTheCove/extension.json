@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Calculates additional whole-file fingerprints for Cove video and gallery files.",
   "author": "MidnightRider",
+  "kind": "extension",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
   "categories": [
     "metadata",
