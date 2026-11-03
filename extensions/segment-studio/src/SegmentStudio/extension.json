@@ -9,7 +9,7 @@
     "metadata",
     "workflow"
   ],
-  "minCoveVersion": "1.4.0-rc.1",
+  "minCoveVersion": "1.7.0",
   "entryDll": "SegmentStudio.dll",
   "sharedAssemblies": [
     "AI.Extensions.Abstractions"
