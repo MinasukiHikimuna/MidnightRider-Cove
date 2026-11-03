@@ -1,7 +1,7 @@
 {
   "id": "com.midnightrider.segment-studio",
   "name": "Segment Studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Provides focused, direct review and timing edits for canonical Cove video segments.",
   "author": "MidnightRider",
   "url": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
