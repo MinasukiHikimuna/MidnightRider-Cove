@@ -137,6 +137,114 @@ public sealed class SegmentStudioBrowseAndSlotTests
         Assert.Equal(103, ascending!.Items[0].SegmentId);
     }
 
+    // Sorts build their own expressions over the native and owned union, so they run against SQLite to exercise SQL translation.
+    [Theory]
+    [InlineData(null, "desc", "101,102,item")]
+    [InlineData("default", "desc", "101,102,item")]
+    [InlineData("updated_at", "asc", "101,item,102")]
+    [InlineData("video_updated_at", "desc", "101,102,item")]
+    [InlineData("created_at", "desc", "item,101,102")]
+    [InlineData("video_title", "asc", "102,item,101")]
+    [InlineData("tag_name", "asc", "102,101,item")]
+    [InlineData("start_sec", "asc", "102,101,item")]
+    [InlineData("end_sec", "desc", "item,101,102")]
+    [InlineData("duration", "desc", "item,101,102")]
+    [InlineData("review_state", "asc", "item,101,102")]
+    public async Task BrowseOrdersNativeAndOwnedSegmentsTogetherBySort(string? sort, string direction, string expected)
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedSortableBrowseAsync(db);
+
+        var (result, error) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, [], 1, 20, Sort: sort, Direction: direction), true, CancellationToken.None);
+
+        Assert.Null(error);
+        Assert.Equal(expected, string.Join(',', result!.Items.Select(item => item.SegmentId?.ToString() ?? "item")));
+    }
+
+    [Fact]
+    public async Task BrowseRandomSortIsStablePerSeedAndUnknownSortsAreRejected()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedSortableBrowseAsync(db);
+
+        var (first, firstError) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, [], 1, 20, Sort: "random", Seed: 42), true, CancellationToken.None);
+        var (second, _) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, [], 1, 20, Sort: "random", Seed: 42), true, CancellationToken.None);
+        Assert.Null(firstError);
+        Assert.Equal(3, first!.Items.Count);
+        Assert.Equal(first.Items.Select(item => item.Key), second!.Items.Select(item => item.Key));
+
+        var (invalid, invalidError) = await SegmentStudioBrowseService.SearchAsync(db,
+            new(null, [], 1, 20, Sort: "confidence"), true, CancellationToken.None);
+        Assert.Null(invalid);
+        Assert.Equal("Sort is invalid.", invalidError);
+    }
+
+    [Fact]
+    public async Task BrowseRandomSortShufflesDifferentlyPerSeedAndPagesEverySegmentOnce()
+    {
+        await using var db = await CreateSqliteContextAsync();
+        await SeedSortableBrowseAsync(db);
+        var now = DateTime.UtcNow;
+        db.AddRange(Enumerable.Range(0, 24).Select(index => new SegmentStudioItem
+        {
+            VideoId = 1, TagId = 10, Kind = "tag", StartSec = index, EndSec = index + 1,
+            ReviewState = "unreviewed", Revision = 1, CreatedAt = now, UpdatedAt = now,
+        }));
+        // Native IDs that equal owned item IDs, which a shared sort identity would keep side by side.
+        db.AddRange(Enumerable.Range(1, 6).Select(id => Segment(id, 2, 10, null, now)));
+        await db.SaveChangesAsync();
+        const int total = 33;
+
+        async Task<List<string>> OrderAsync(int seed, int perPage)
+        {
+            var keys = new List<string>();
+            for (var page = 1; page <= (total + perPage - 1) / perPage; page++)
+            {
+                var (result, error) = await SegmentStudioBrowseService.SearchAsync(db,
+                    new(null, [], page, perPage, Sort: "random", Seed: seed), true, CancellationToken.None);
+                Assert.Null(error);
+                keys.AddRange(result!.Items.Select(item => item.Key));
+            }
+            return keys;
+        }
+
+        var paged = await OrderAsync(42, 5);
+        Assert.Equal(total, paged.Distinct().Count());
+        Assert.Equal(await OrderAsync(42, total), paged);
+        // A seed that only rotated one fixed cycle would leave every other seed's order a rotation of this one.
+        var first = await OrderAsync(1, total);
+        var rotations = Enumerable.Range(0, first.Count).Select(shift => first.Skip(shift).Concat(first.Take(shift)).ToList()).ToList();
+        var reshuffled = false;
+        foreach (var seed in new[] { 2, 3, 42, 123456789 })
+        {
+            var order = await OrderAsync(seed, total);
+            reshuffled |= !rotations.Any(rotation => rotation.SequenceEqual(order));
+            Assert.DoesNotContain(order.Zip(order.Skip(1)), pair => pair.First.Split(':')[1] == pair.Second.Split(':')[1]);
+        }
+        Assert.True(reshuffled);
+    }
+
+    private static async Task SeedSortableBrowseAsync(TestDb db)
+    {
+        var now = DateTime.UtcNow;
+        var first = Segment(101, 1, 20, null, now.AddMinutes(-10));
+        first.StartSec = 10; first.EndSec = 40; first.CreatedAt = now.AddDays(-1);
+        var second = Segment(102, 2, 10, null, now);
+        second.StartSec = 5; second.EndSec = 10; second.CreatedAt = now.AddDays(-2);
+        db.AddRange(new Tag { Id = 10, Name = "Activity" }, new Tag { Id = 20, Name = "Other" },
+            new Video { Id = 1, Title = "Beta", UpdatedAt = now }, new Video { Id = 2, Title = "Alpha", UpdatedAt = now.AddMinutes(-1) },
+            first, second,
+            new SegmentStudioItem
+            {
+                VideoId = 2, TagId = 20, Kind = "tag", StartSec = 20, EndSec = 80,
+                ReviewState = "unreviewed", Revision = 1, CreatedAt = now, UpdatedAt = now.AddMinutes(-5),
+            });
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task BrowseRoleFiltersFollowRelatedPerformerModesAcrossTags()
     {

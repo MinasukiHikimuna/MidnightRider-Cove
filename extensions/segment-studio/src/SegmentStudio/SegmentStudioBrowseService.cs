@@ -20,7 +20,7 @@ public sealed record BrowseCriteria(IReadOnlyList<int>? ActivityTagIds = null, b
 public sealed record BrowseRequest(string? Query, IReadOnlyList<string>? ReviewStates = null,
     int Page = 1, int PerPage = 24, string? Sort = null, IReadOnlyList<int>? ActivityTagIds = null,
     bool IncludeActivitySubtags = false, string? Direction = null, BrowseRoleFilter? SlottedPerformer = null,
-    FilterExpression<BrowseCriteria>? FilterExpression = null);
+    FilterExpression<BrowseCriteria>? FilterExpression = null, int? Seed = null);
 public sealed record BrowseActivityRef(int TagId, string Name);
 public sealed record BrowseSlotValue(Guid SlotDefinitionId, string? Label, int SortOrder, int PerformerId, string PerformerName);
 public sealed record BrowseVideoFile(int Id, string Format, double Duration, string AudioCodec);
@@ -100,7 +100,8 @@ public static class SegmentStudioBrowseService
         Func<PerformerFilter?, FindFilter, CancellationToken, Task<IReadOnlyCollection<int>>>? findPerformerIds = null)
     {
         var page = Math.Clamp(request.Page, 1, 1_000_000); var perPage = Math.Clamp(request.PerPage, 1, 100);
-        if (!string.IsNullOrWhiteSpace(request.Sort) && !request.Sort.Equals("default", StringComparison.OrdinalIgnoreCase))
+        var sort = NormalizeSort(request.Sort);
+        if (sort is null)
             return (null, "Sort is invalid.");
         var context = new FilterContext(db, includePerformers, findPerformerIds);
         Expression<Func<BrowseRow, bool>>? criteriaPredicate, expressionPredicate;
@@ -137,6 +138,7 @@ public static class SegmentStudioBrowseService
                 Revision = anchor == null ? 0 : anchor.Revision,
                 VideoDate = video.Date,
                 VideoUpdatedAt = video.UpdatedAt,
+                SegmentCreatedAt = segment.CreatedAt,
                 SegmentUpdatedAt = segment.UpdatedAt,
                 VideoSearchText = video.SearchText,
                 FileSearchText = video.FileSearchText,
@@ -163,6 +165,7 @@ public static class SegmentStudioBrowseService
                 Revision = item.Revision,
                 VideoDate = video.Date,
                 VideoUpdatedAt = video.UpdatedAt,
+                SegmentCreatedAt = item.CreatedAt,
                 SegmentUpdatedAt = item.UpdatedAt,
                 VideoSearchText = video.SearchText,
                 FileSearchText = video.FileSearchText,
@@ -181,10 +184,9 @@ public static class SegmentStudioBrowseService
                     && db.Set<Performer>().Any(performer => performer.Id == slot.PerformerId && performer.Name.ToLower().Contains(term)))));
         }
         var total = await query.CountAsync(ct);
-        var ascending = request.Direction?.Equals("asc", StringComparison.OrdinalIgnoreCase) == true;
-        var ordered = ascending
-            ? query.OrderBy(row => row.VideoUpdatedAt).ThenBy(row => row.VideoId)
-            : query.OrderByDescending(row => row.VideoUpdatedAt).ThenByDescending(row => row.VideoId);
+        var descending = request.Direction?.Equals("asc", StringComparison.OrdinalIgnoreCase) != true;
+        var ordered = ApplyOrdering(query, sort, descending, request.Seed);
+        ordered = descending ? ordered.ThenByDescending(row => row.VideoId) : ordered.ThenBy(row => row.VideoId);
         var rows = await ordered.ThenBy(row => row.StartSec).ThenByDescending(row => row.Published)
             .ThenBy(row => row.SegmentId).ThenBy(row => row.ItemId)
             .Skip((page - 1) * perPage).Take(perPage)
@@ -215,6 +217,64 @@ public static class SegmentStudioBrowseService
             row.VideoUpdatedAt, row.SegmentUpdatedAt, videoFiles.GetValueOrDefault(row.VideoId))).ToArray();
         return (new(materialized, total, page, perPage, includePerformers), null);
     }
+
+    /// <summary>The list's sorts; older saved filters and links name the former single sort "default", which ordered by the video's last update.</summary>
+    public static readonly IReadOnlyList<string> Sorts =
+        ["updated_at", "video_updated_at", "created_at", "video_title", "tag_name", "start_sec", "end_sec", "duration", "review_state", "random"];
+
+    private static string? NormalizeSort(string? sort)
+    {
+        var normalized = string.IsNullOrWhiteSpace(sort) ? "video_updated_at" : sort.Trim().ToLowerInvariant();
+        if (normalized == "default") normalized = "video_updated_at";
+        return Sorts.Contains(normalized) ? normalized : null;
+    }
+
+    private static IOrderedQueryable<BrowseRow> ApplyOrdering(IQueryable<BrowseRow> query, string sort, bool descending, int? seed)
+    {
+        if (sort == "random") return OrderByRandom(query, seed, descending);
+        return sort switch
+        {
+            "video_updated_at" => OrderBy(query, row => row.VideoUpdatedAt, descending),
+            "created_at" => OrderBy(query, row => row.SegmentCreatedAt, descending),
+            "video_title" => OrderBy(query, row => row.VideoTitle ?? "", descending),
+            "tag_name" => OrderBy(query, row => row.TagName, descending),
+            "start_sec" => OrderBy(query, row => row.StartSec, descending),
+            "end_sec" => OrderBy(query, row => row.EndSec ?? row.StartSec, descending),
+            "duration" => OrderBy(query, row => (row.EndSec ?? row.StartSec) - row.StartSec, descending),
+            // Workflow order rather than alphabetical, so ascending puts the segments still awaiting review first.
+            "review_state" => OrderBy(query, row => row.ReviewState == "unreviewed" ? 0 : row.ReviewState == "approved" ? 1 : 2, descending),
+            _ => OrderBy(query, row => row.SegmentUpdatedAt, descending),
+        };
+    }
+
+    /// <summary>
+    /// A stable shuffle per seed using Cove's seeded random keys, so paging neither repeats nor skips segments.
+    /// Native and owned rows get disjoint odd and even identities so equal IDs do not sort as pairs, and item IDs
+    /// are reduced first so the products stay within bigint.
+    /// </summary>
+    private static IOrderedQueryable<BrowseRow> OrderByRandom(IQueryable<BrowseRow> query, int? seed, bool descending)
+    {
+        const long modulus = 2147483647L;
+        var normalizedSeed = Math.Abs((long)(seed ?? 1));
+        if (normalizedSeed == 0) normalizedSeed = 1;
+        var primarySeed = normalizedSeed * 31L; var secondarySeed = normalizedSeed * 131L; var tertiarySeed = normalizedSeed * 12345L;
+        Expression<Func<BrowseRow, long>> identity = row => row.SegmentId != null
+            ? (long)row.SegmentId.Value * 2L
+            : (row.ItemId ?? 0L) % modulus * 2L + 1L;
+        var ordered = OrderBy(query, Mix(identity, 17L, primarySeed, 13L), descending);
+        ordered = descending ? ordered.ThenByDescending(Mix(identity, 101L, secondarySeed, 97L)) : ordered.ThenBy(Mix(identity, 101L, secondarySeed, 97L));
+        return descending ? ordered.ThenByDescending(Mix(identity, 1103515245L, tertiarySeed, modulus)) : ordered.ThenBy(Mix(identity, 1103515245L, tertiarySeed, modulus));
+    }
+
+    private static Expression<Func<BrowseRow, long>> Mix(Expression<Func<BrowseRow, long>> identity, long multiplier, long seedTerm, long modulus)
+        => Expression.Lambda<Func<BrowseRow, long>>(
+            Expression.Modulo(
+                Expression.Add(Expression.Multiply(identity.Body, Expression.Constant(multiplier)), Expression.Constant(seedTerm)),
+                Expression.Constant(modulus)),
+            identity.Parameters);
+
+    private static IOrderedQueryable<BrowseRow> OrderBy<T>(IQueryable<BrowseRow> query, Expression<Func<BrowseRow, T>> key, bool descending)
+        => descending ? query.OrderByDescending(key) : query.OrderBy(key);
 
     private const int MaxExpressionDepth = 8;
     private const int MaxExpressionConditions = 32;
@@ -659,6 +719,7 @@ public static class SegmentStudioBrowseService
         public long Revision { get; init; }
         public DateOnly? VideoDate { get; init; }
         public DateTime VideoUpdatedAt { get; init; }
+        public DateTime SegmentCreatedAt { get; init; }
         public DateTime SegmentUpdatedAt { get; init; }
         public string? VideoSearchText { get; init; }
         public string? FileSearchText { get; init; }

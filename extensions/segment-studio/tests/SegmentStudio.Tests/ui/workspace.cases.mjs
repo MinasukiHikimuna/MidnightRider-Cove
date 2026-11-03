@@ -82,9 +82,19 @@ test("Browse sends no slotted performer without a condition and keeps legacy rev
     slottedPerformer: null,
     page: 2,
     perPage: 12,
-    sort: "default",
+    sort: "video_updated_at",
     direction: "desc",
   });
+});
+
+test("Browse reads the former default sort as Video Updated and sends a seed only for random", () => {
+  assert.equal(ui.migrateLegacyBrowseSort({ sort: "default", direction: "asc" }).sort, "video_updated_at");
+  assert.equal(ui.buildBrowseRequest({ sort: "default", seed: 7 }, {}).sort, "video_updated_at");
+  assert.equal(ui.buildBrowseRequest({ sort: "default", seed: 7 }, {}).seed, undefined);
+  assert.equal(ui.buildBrowseRequest({ sort: "random", seed: 7 }, {}).seed, 7);
+  assert.equal(ui.buildBrowseRequest({ sort: "random" }, {}).seed, undefined);
+  assert.equal(ui.buildBrowseRequest({ sort: "random", seed: 9999999999 }, {}).seed, undefined);
+  assert.ok(ui.BROWSE_SORT_OPTIONS.some((option) => option.value === "updated_at" && option.label === "Updated"));
 });
 
 test("Browse sends a slotted performer with its slot and Cove's camelCase modifiers and restores editor deep links", () => {

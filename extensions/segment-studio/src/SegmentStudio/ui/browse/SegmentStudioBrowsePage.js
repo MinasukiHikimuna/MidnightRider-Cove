@@ -2,7 +2,7 @@ import { ListPage, PERFORMER_CRITERIA, VideoPlayer, getDefaultFilter, h, useEffe
 
 import { completeOperation, confirmDependencyDeletion, dependencyDeletionAllowed, formatTime, operationDiscardsMissingImage, operationIdFor, rememberMissingImageDiscard, requestJson } from "../shared/api.js";
 
-import { BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, browseClipEnd, browseEditorHref, buildBrowseRequest, migrateLegacyBrowseFilter, slottedPerformerCriterion, withoutSlottedPerformers } from "../discovery/model.js";
+import { BROWSE_FILTER_CRITERIA, BROWSE_SORT_OPTIONS, BROWSE_URL_OPTIONS, browseClipEnd, browseEditorHref, buildBrowseRequest, migrateLegacyBrowseFilter, migrateLegacyBrowseSort, slottedPerformerCriterion, withoutSlottedPerformers } from "../discovery/model.js";
 
 import { SegmentStateBadge, segmentRailItemStyle } from "../shared/presentation.js";
 
@@ -98,7 +98,9 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
       defaultObjectFilter: saved.objectFilter || {},
     } : BROWSE_URL_OPTIONS;
   }, []);
-  const { filter, objectFilter, setFilter, setObjectFilter } = useListUrlState(urlOptions);
+  const urlState = useListUrlState(urlOptions);
+  const { objectFilter, setFilter, setObjectFilter } = urlState;
+  const filter = migrateLegacyBrowseSort(urlState.filter);
   const [roles, setRoles] = useState(null);
   const [rolesError, setRolesError] = useState("");
   const [rolesAttempt, setRolesAttempt] = useState(0);
@@ -247,7 +249,7 @@ function SegmentStudioBrowsePage({ onNavigate, profile }) {
       cardSizeEntityType: "video", maxPageSize: 100,
       filter, onFilterChange: setFilter, totalCount: result.totalCount, isLoading: loading,
       error: error ? new Error(error) : null, onRetry: () => setRefreshToken((value) => value + 1),
-      sortOptions: [{ value: "default", label: "Updated" }],
+      sortOptions: BROWSE_SORT_OPTIONS,
       displayMode: "grid", availableDisplayModes: ["grid"],
       criteriaDefinitions: criteria, objectFilter: migratedFilter, supportsFilterExpressions: true,
       onObjectFilterChange: replaceObjectFilter, searchPlaceholder: "Search segments...",

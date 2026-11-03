@@ -2,11 +2,29 @@ import { REVIEW_STATES } from "../shared/constants.js";
 
 const BROWSE_URL_OPTIONS = {
   resetKey: "segment-studio-browse",
-  defaultFilter: { page: 1, perPage: 24, sort: "default", direction: "desc" },
+  defaultFilter: { page: 1, perPage: 24, sort: "video_updated_at", direction: "desc" },
   defaultObjectFilter: {},
   defaultDisplayMode: "grid",
   allowedDisplayModes: ["grid"],
 };
+
+const BROWSE_SORT_OPTIONS = [
+  { value: "updated_at", label: "Updated" },
+  { value: "created_at", label: "Created" },
+  { value: "video_updated_at", label: "Video Updated" },
+  { value: "video_title", label: "Video Title" },
+  { value: "tag_name", label: "Tag" },
+  { value: "start_sec", label: "Start Time" },
+  { value: "end_sec", label: "End Time" },
+  { value: "duration", label: "Duration" },
+  { value: "review_state", label: "Review State" },
+  { value: "random", label: "Random" },
+];
+
+/** Older links and saved filters name the former single sort "default"; it ordered by the video's last update. */
+export function migrateLegacyBrowseSort(filter) {
+  return filter?.sort === "default" ? { ...filter, sort: BROWSE_URL_OPTIONS.defaultFilter.sort } : filter;
+}
 
 const BROWSE_FILTER_CRITERIA = [
   { id: "activities", label: "Tags", type: "multiId", entityType: "tags", filterKey: "activitiesCriterion", modifiers: ["INCLUDES"] },
@@ -177,14 +195,16 @@ function toApiExpression(expression) {
 
 export function buildBrowseRequest(filter, objectFilter) {
   const filterExpression = toApiExpression(objectFilter[FILTER_EXPRESSION_KEY]);
+  const sort = migrateLegacyBrowseSort(filter).sort || BROWSE_URL_OPTIONS.defaultFilter.sort;
   return {
     query: String(filter.q || "").trim() || null,
     ...browseCriteria(objectFilter, { legacyStates: true }),
     ...(filterExpression ? { filterExpression } : {}),
     page: Math.max(1, Number(filter.page) || 1),
     perPage: Math.max(1, Number(filter.perPage) || 24),
-    sort: filter.sort || "default",
+    sort,
     direction: filter.direction || "desc",
+    ...(sort === "random" && Number.isInteger(filter.seed) && filter.seed > 0 && filter.seed <= 2147483647 ? { seed: filter.seed } : {}),
   };
 }
 
@@ -492,4 +512,4 @@ export function rankPerformerOptions(performers, videoPerformers, genderHints) {
   });
 }
 
-export { ANY_SLOT_ROLE, BROWSE_FILTER_CRITERIA, BROWSE_URL_OPTIONS, interchangeableSlotKey };
+export { ANY_SLOT_ROLE, BROWSE_FILTER_CRITERIA, BROWSE_SORT_OPTIONS, BROWSE_URL_OPTIONS, interchangeableSlotKey };
