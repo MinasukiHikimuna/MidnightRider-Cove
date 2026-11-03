@@ -22,7 +22,7 @@ public sealed class SegmentGroupServiceTests
         Assert.Equal(typeof(Segment), foreignKeys[nameof(SegmentStudioItem.NativeSegmentId)].PrincipalEntityType.ClrType);
         Assert.Equal(DeleteBehavior.Cascade, foreignKeys[nameof(SegmentStudioItem.VideoId)].DeleteBehavior);
         Assert.Equal(typeof(Video), foreignKeys[nameof(SegmentStudioItem.VideoId)].PrincipalEntityType.ClrType);
-        Assert.Equal(DeleteBehavior.Restrict, foreignKeys[nameof(SegmentStudioItem.TagId)].DeleteBehavior);
+        Assert.Equal(DeleteBehavior.Cascade, foreignKeys[nameof(SegmentStudioItem.TagId)].DeleteBehavior);
         Assert.Equal(typeof(Tag), foreignKeys[nameof(SegmentStudioItem.TagId)].PrincipalEntityType.ClrType);
     }
 
@@ -389,6 +389,7 @@ public sealed class SegmentGroupServiceTests
                 builder.Ignore(video => video.ParentVideo);
                 builder.Ignore(video => video.ChildVideos);
                 builder.Ignore(video => video.Urls);
+                builder.Ignore(video => video.PrimaryFile);
                 builder.Ignore(video => video.Files);
                 builder.Ignore(video => video.VideoTags);
                 builder.Ignore(video => video.VideoPerformers);

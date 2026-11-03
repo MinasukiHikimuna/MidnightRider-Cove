@@ -949,6 +949,7 @@ public sealed class SegmentLineageDeletionServiceTests
                 builder.Ignore(video => video.ParentVideo);
                 builder.Ignore(video => video.ChildVideos);
                 builder.Ignore(video => video.Urls);
+                builder.Ignore(video => video.PrimaryFile);
                 builder.Ignore(video => video.Files);
                 builder.Ignore(video => video.VideoTags);
                 builder.Ignore(video => video.VideoPerformers);
