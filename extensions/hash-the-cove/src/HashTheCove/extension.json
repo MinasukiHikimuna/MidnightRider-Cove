@@ -13,6 +13,9 @@
   "minCoveVersion": "0.9.0",
   "entryDll": "HashTheCove.dll",
   "jsBundle": "ui/HashTheCove.js",
+  "featureGuides": [
+    "docs/guides/hash-the-cove.json"
+  ],
   "dependencies": {},
   "settings": [
     {

@@ -6,5 +6,6 @@
   "project": "src/HashTheCove/HashTheCove.csproj",
   "manifest": "src/HashTheCove/extension.json",
   "readme": "README.md",
-  "ui": "src/HashTheCove/ui"
+  "ui": "src/HashTheCove/ui",
+  "docs": "src/HashTheCove/docs"
 }

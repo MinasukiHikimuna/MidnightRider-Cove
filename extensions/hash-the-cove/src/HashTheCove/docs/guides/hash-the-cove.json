@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "id": "hash-the-cove",
+  "title": "Hash The Cove",
+  "description": "Add xxHash64, SHA-256, and SHA-1 whole-file fingerprints to your video files and gallery archives.",
+  "order": 1200,
+  "pages": ["settings"],
+  "contexts": ["settings-tab:extensions/com.midnightrider.hash-the-cove"],
+  "sections": [
+    {
+      "id": "what-it-adds",
+      "title": "Add the fingerprints other tools expect",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Cove fingerprints every file it scans so it can recognize the file later. Hash The Cove adds three more whole-file fingerprints, xxHash64, SHA-256, and SHA-1, for when you compare your library with another catalog, a checksum list, or a tool that identifies files by one of those hashes."
+        },
+        {
+          "type": "paragraph",
+          "text": "It reads each video file and gallery archive in full and saves the result next to the file's other fingerprints. It never changes or removes a fingerprint that is already there, so running it again only fills in what is missing."
+        },
+        {
+          "type": "table",
+          "caption": "Fingerprints Hash The Cove can add",
+          "columns": ["Fingerprint", "Stored as", "Choose it when"],
+          "rows": [
+            ["xxHash64", "xxhash", "You want a fast whole-file hash for your own duplicate and integrity checks."],
+            ["SHA-256", "sha256", "Another catalog or checksum list identifies files by SHA-256."],
+            ["SHA-1", "sha1", "An older library or tool you are matching against still uses SHA-1."]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "choose-fingerprints",
+      "title": "Choose fingerprints and file types",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "Open Settings and expand Extensions.",
+            "Choose Hash The Cove.",
+            "Under Hash algorithms, turn on each fingerprint you want. All three start turned off.",
+            "Under File types, choose whether to include Videos, Galleries, or both. Both start turned on.",
+            "Choose Save settings."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "../images/settings.webp",
+          "alt": "Hash The Cove settings with the Hash algorithms and File types choices and the Save settings button"
+        },
+        {
+          "type": "note",
+          "text": "With no fingerprint turned on, the task finds nothing to do and finishes straight away. The settings page shows a reminder until you turn one on."
+        }
+      ]
+    },
+    {
+      "id": "run-the-task",
+      "title": "Calculate the missing fingerprints",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "Open Settings and expand Operations.",
+            "Choose Extension Tasks.",
+            "Choose Run next to Hash The Cove.",
+            "Follow the job in the jobs drawer, or later under Operations → Jobs."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "../images/extension-tasks.webp",
+          "alt": "Extension Tasks settings listing Hash The Cove with its Run button"
+        },
+        {
+          "type": "paragraph",
+          "text": "The job first counts the files that are missing at least one of the fingerprints you turned on, then hashes them one at a time. Its status keeps a running total:"
+        },
+        {
+          "type": "table",
+          "columns": ["Count", "Meaning"],
+          "rows": [
+            ["Processed", "Files the job has looked at so far."],
+            ["Added", "Fingerprints saved. One file can add up to three."],
+            ["Skipped", "Files that already had every fingerprint you turned on."],
+            ["Failed", "Files the job could not hash. The server log records each one with the reason."]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Large libraries take a while, because every byte of every file is read. You can cancel the job at any time; fingerprints already saved stay saved, and the next run continues with the files that are still missing one."
+        }
+      ]
+    },
+    {
+      "id": "changed-files",
+      "title": "Why a file can fail",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Hash The Cove only saves a fingerprint for the exact file Cove knows about. Before hashing, it checks that the file's size and modification time still match what Cove recorded at the last scan, and afterwards it checks that the file did not change while it was being read. A file that does not match is counted as failed instead of getting a fingerprint for different contents."
+        },
+        {
+          "type": "list",
+          "items": [
+            "A file that was moved, replaced, or edited since the last scan fails until you scan its library again.",
+            "A file that is missing or on a disconnected drive fails until it is available again.",
+            "A file that changes during hashing, for example while it is still being copied, no longer matches the last scan, so it fails until you scan its library again."
+          ]
+        },
+        {
+          "type": "note",
+          "text": "Scan the affected library paths, then run Hash The Cove again. Only the files that still need a fingerprint are hashed."
+        }
+      ]
+    },
+    {
+      "id": "continue",
+      "title": "Continue in Cove",
+      "blocks": [
+        {
+          "type": "links",
+          "items": [
+            {
+              "label": "Discover and install extensions",
+              "href": "https://yourcove.net/docs/user/extensions/",
+              "topicId": "extensions"
+            },
+            {
+              "label": "Scan your first library",
+              "href": "https://yourcove.net/docs/user/getting-started/first-scan/",
+              "topicId": "scan-your-first-library"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
