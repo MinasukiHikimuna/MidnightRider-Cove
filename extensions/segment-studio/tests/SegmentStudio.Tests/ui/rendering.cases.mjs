@@ -2,7 +2,7 @@ import test from "node:test";
 import { assert, fs, manifest, repositoryRoot, source, sourceByModule, TestElement, ui } from "../SegmentStudioUiHarness.mjs";
 test("UI imports only components available in the declared Cove runtime", () => {
   assert.equal(manifest.id, "com.midnightrider.segment-studio");
-  assert.equal(manifest.version, "0.3.1");
+  assert.equal(manifest.version, "0.3.2");
   assert.equal(manifest.minCoveVersion, "1.7.0");
   assert.equal(manifest.kind, "extension");
   assert.match(source, /from "@cove\/runtime\/api"/);
