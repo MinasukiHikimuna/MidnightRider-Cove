@@ -17,10 +17,10 @@ namespace SegmentStudio;
 
 public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContributor
 {
-    public const string ProvenanceReadPermission = "segment-studio.provenance.read";
-    public const string ProvenanceManagePermission = "segment-studio.provenance.manage";
-    public const string LineageManagePermission = "segment-studio.lineage.manage";
-    public const string LineageMaintenancePermission = "segment-studio.lineage.maintenance";
+    public const string ProvenanceReadPermission = "com.midnightrider.segment-studio.provenance.read";
+    public const string ProvenanceManagePermission = "com.midnightrider.segment-studio.provenance.manage";
+    public const string LineageManagePermission = "com.midnightrider.segment-studio.lineage.manage";
+    public const string LineageMaintenancePermission = "com.midnightrider.segment-studio.lineage.maintenance";
     public const string OpenInSegmentStudioActionId = "open-segment-studio";
 
     private CancellationTokenSource? _cleanupCancellation;
@@ -58,7 +58,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             ProvenanceReadPermission,
             "Segment Studio",
             "Read segment provenance evidence.",
-            Source: "extension:segment-studio",
+            Source: "extension:com.midnightrider.segment-studio",
             GrantToAdminsByDefault: true),
         new(
             ProvenanceManagePermission,
@@ -66,7 +66,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             "Register sources and append provenance corrections.",
             Dangerous: true,
             Implies: [ProvenanceReadPermission],
-            Source: "extension:segment-studio",
+            Source: "extension:com.midnightrider.segment-studio",
             GrantToAdminsByDefault: true),
         new(
             LineageManagePermission,
@@ -74,7 +74,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             "Create and mutate segment derivation lineage.",
             Dangerous: true,
             Implies: [ProvenanceReadPermission],
-            Source: "extension:segment-studio",
+            Source: "extension:com.midnightrider.segment-studio",
             GrantToAdminsByDefault: true),
         new(
             LineageMaintenancePermission,
@@ -82,7 +82,7 @@ public sealed class SegmentStudioExtension : FullExtensionBase, IPermissionContr
             "Scan and repair segment lineage integrity.",
             Dangerous: true,
             Implies: [ProvenanceReadPermission],
-            Source: "extension:segment-studio",
+            Source: "extension:com.midnightrider.segment-studio",
             GrantToAdminsByDefault: true),
     ];
 

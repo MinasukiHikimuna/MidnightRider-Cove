@@ -929,10 +929,10 @@ already matches the operation. Add dedicated permissions only where the existing
 contract is insufficient:
 
 ```text
-segment-studio.provenance.read
-segment-studio.provenance.manage
-segment-studio.lineage.manage
-segment-studio.lineage.maintenance
+com.midnightrider.segment-studio.provenance.read
+com.midnightrider.segment-studio.provenance.manage
+com.midnightrider.segment-studio.lineage.manage
+com.midnightrider.segment-studio.lineage.maintenance
 ```
 
 Principles:
