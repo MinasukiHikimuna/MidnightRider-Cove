@@ -1,7 +1,7 @@
 {
   "id": "com.midnightrider.hash-the-cove",
   "name": "Hash The Cove",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Calculates additional whole-file fingerprints for Cove video and gallery files.",
   "author": "MidnightRider",
   "kind": "extension",
