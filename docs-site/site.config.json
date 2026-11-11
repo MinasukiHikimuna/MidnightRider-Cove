@@ -1,0 +1,9 @@
+{
+  "title": "MidnightRider extensions",
+  "description": "Documentation for the MidnightRider extensions for Cove.",
+  "repository": "https://github.com/MinasukiHikimuna/MidnightRider-Cove",
+  "site": "https://minasukihikimuna.github.io",
+  "base": "/MidnightRider-Cove/",
+  "coveDocumentation": "https://yourcove.net",
+  "developerTools": ["com.midnightrider.api-fault-simulator"]
+}

@@ -4,6 +4,11 @@ Independent Cove extensions maintained in one repository. Each extension owns
 its source, tests, build contracts, solution, package validation, and release
 descriptor under `extensions/<extension-id>/`.
 
+User documentation for each released extension is published at
+https://minasukihikimuna.github.io/MidnightRider-Cove/, built from the guides
+the extensions ship. See [docs-site/README.md](docs-site/README.md) for how a
+guide gets onto the site.
+
 | Extension | Package directory | Release tag |
 | --- | --- | --- |
 | Hash The Cove | `extensions/hash-the-cove` | `com.midnightrider.hash-the-cove/v<version>` |

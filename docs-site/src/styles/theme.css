@@ -1,0 +1,12 @@
+/* MidnightRider's own accent: a midnight blue, so the site does not read as Cove's documentation. */
+:root {
+  --sl-color-accent-low: #161b46;
+  --sl-color-accent: #5865d6;
+  --sl-color-accent-high: #c9cdf6;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d8dbf7;
+  --sl-color-accent: #3a47b8;
+  --sl-color-accent-high: #1b2160;
+}

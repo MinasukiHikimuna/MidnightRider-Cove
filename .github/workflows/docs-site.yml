@@ -1,0 +1,114 @@
+name: Documentation Site
+
+# Pull requests build the site from their own files and check it. The site is deployed from each
+# extension's newest published release: after a release build succeeds, when the site itself changes on
+# main, or when run by hand.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - docs-site/**
+      - scripts/feature-guides/**
+      - extensions/*/release.json
+      - extensions/*/src/*/extension.json
+      - extensions/*/src/*/docs/**
+      - .github/workflows/docs-site.yml
+  push:
+    branches: [main]
+    paths:
+      - docs-site/**
+      - scripts/feature-guides/**
+      - .github/workflows/docs-site.yml
+  workflow_run:
+    workflows: ["Build, Test, and Release Extensions"]
+    types: [completed]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '24'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docs-site-check-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm test
+      # What a deploy would collect, so a change to the site or the checks that breaks an existing release
+      # fails here rather than after merging.
+      - name: Collect from release tags, as a deploy does
+        run: node scripts/collect.mjs
+      # The working tree, so a pull request's guide changes are checked before they are released, plus a
+      # page with every block Cove renders, which the build's output check verifies.
+      - run: node scripts/collect.mjs --working-tree --renderer-fixture
+      - run: npm run build
+
+  build:
+    # A release build runs for pull requests too; only a successful tag build publishes a release.
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    # Set on the jobs, not the workflow: every pull request's release build also starts this workflow, and
+    # those runs, whose jobs are all skipped, must not cancel a deploy that is waiting its turn.
+    concurrency:
+      group: docs-site-deploy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: List the tags with a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release list --limit 1000 --exclude-drafts --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/published-tags.txt"
+      - run: node scripts/collect.mjs --published-tags "$RUNNER_TEMP/published-tags.txt"
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs-site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docs-site-deploy-pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

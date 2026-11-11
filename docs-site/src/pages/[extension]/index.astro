@@ -1,0 +1,56 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { LinkCard } from '@astrojs/starlight/components';
+import { guidePath, guideTree, loadExtensions, type CollectedExtension, type FeatureGuide } from '../../lib/extensions.mjs';
+
+export function getStaticPaths() {
+  return loadExtensions().map((extension) => ({ params: { extension: extension.slug }, props: { extension } }));
+}
+
+const { extension } = Astro.props as { extension: CollectedExtension };
+const tree = guideTree(extension.guides);
+const href = (guide: FeatureGuide) => `${import.meta.env.BASE_URL}${guidePath(extension, guide)}`;
+---
+
+<StarlightPage frontmatter={{ title: extension.name, description: extension.description }} headings={tree.length > 0 ? [{ depth: 2, slug: 'guides', text: 'Guides' }] : []}>
+  <p>{extension.description}</p>
+  <dl class="extension-facts">
+    <dt>Latest release</dt>
+    <dd>{extension.version}</dd>
+    {extension.minCoveVersion ? <><dt>Requires</dt><dd>Cove {extension.minCoveVersion} or later</dd></> : null}
+    <dt>Extension ID</dt>
+    <dd><code>{extension.id}</code></dd>
+  </dl>
+  {tree.length > 0 ? (
+    <>
+      <h2 id="guides">Guides</h2>
+      {tree.map(({ guide, children }) => (
+        <>
+          <LinkCard title={guide.title} description={guide.description} href={href(guide)} />
+          {children.length > 0 ? (
+            <div class="child-guides">
+              {children.map((child) => <LinkCard title={child.title} description={child.description} href={href(child)} />)}
+            </div>
+          ) : null}
+        </>
+      ))}
+    </>
+  ) : (
+    <p>This extension has no guide on this site yet. Its <a href={extension.readmeUrl}>README</a> describes what it does and how to set it up.</p>
+  )}
+  {tree.length > 0 ? <p>The <a href={extension.readmeUrl}>README</a> covers installation and development.</p> : null}
+</StarlightPage>
+
+<style>
+  .extension-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+  }
+  .extension-facts dd {
+    margin: 0;
+  }
+  .child-guides {
+    margin-inline-start: 1.5rem;
+  }
+</style>

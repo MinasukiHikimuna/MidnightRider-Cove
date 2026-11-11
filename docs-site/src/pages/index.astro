@@ -1,0 +1,32 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+import siteConfig from '../../site.config.json';
+import { extensionPath, loadExtensions, type CollectedExtension } from '../lib/extensions.mjs';
+
+const extensions = loadExtensions();
+const groups = [
+  { title: 'Extensions', items: extensions.filter((extension) => !extension.developerTool) },
+  { title: 'Developer tools', items: extensions.filter((extension) => extension.developerTool) },
+].filter((group) => group.items.length > 0);
+const groupId = (title: string) => `group-${title.toLowerCase().replace(/\s+/g, '-')}`;
+const headings = groups.map((group) => ({ depth: 2, slug: groupId(group.title), text: group.title }));
+const href = (extension: CollectedExtension) => `${import.meta.env.BASE_URL}${extensionPath(extension)}`;
+---
+
+<StarlightPage frontmatter={{ title: 'All extensions', description: siteConfig.description }} headings={headings}>
+  <p>
+    These pages document the MidnightRider extensions for Cove, each at its latest release. The same guides
+    open from Cove's User Guide once an extension is installed.
+  </p>
+  <Aside>
+    This is not official Cove documentation. For Cove itself, see <a href={siteConfig.coveDocumentation}>Cove's documentation</a>.
+  </Aside>
+  {groups.map((group) => (
+    <section aria-labelledby={groupId(group.title)}>
+      <h2 id={groupId(group.title)}>{group.title}</h2>
+      {group.title === 'Developer tools' ? <p>Tools for developing and troubleshooting Cove and its extensions, not features to install for everyday use.</p> : null}
+      {group.items.map((extension) => <LinkCard title={extension.name} description={extension.description} href={href(extension)} />)}
+    </section>
+  ))}
+</StarlightPage>

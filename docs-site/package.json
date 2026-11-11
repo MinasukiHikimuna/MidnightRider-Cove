@@ -1,0 +1,21 @@
+{
+  "name": "midnightrider-docs-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "collect": "node scripts/collect.mjs",
+    "dev": "node scripts/collect.mjs --working-tree && astro dev",
+    "check": "astro check",
+    "build": "astro check && astro build && node scripts/check-output.mjs",
+    "preview": "astro preview",
+    "test": "node --test scripts/*.test.mjs ../scripts/feature-guides/*.test.mjs"
+  },
+  "dependencies": {
+    "@astrojs/check": "0.9.10",
+    "@astrojs/starlight": "0.42.0",
+    "astro": "7.3.1",
+    "parse5": "8.0.1",
+    "sharp": "0.35.5",
+    "typescript": "6.0.3"
+  }
+}

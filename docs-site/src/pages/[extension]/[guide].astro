@@ -1,0 +1,19 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import FeatureGuide from '../../components/guides/FeatureGuide.astro';
+import { loadExtensions, type CollectedExtension, type FeatureGuide as GuideData } from '../../lib/extensions.mjs';
+
+export function getStaticPaths() {
+  return loadExtensions().flatMap((extension) =>
+    extension.guides.map((guide) => ({ params: { extension: extension.slug, guide: guide.id }, props: { extension, guide } })),
+  );
+}
+
+const { extension, guide } = Astro.props as { extension: CollectedExtension; guide: GuideData };
+const headings = guide.sections.map((section) => ({ depth: 2, slug: section.id, text: section.title }));
+---
+
+<StarlightPage frontmatter={{ title: guide.title, description: guide.description }} headings={headings}>
+  <p class="guide-extension">Part of <a href={`${import.meta.env.BASE_URL}${extension.slug}/`}>{extension.name}</a> {extension.version}.</p>
+  <FeatureGuide guide={guide} />
+</StarlightPage>
